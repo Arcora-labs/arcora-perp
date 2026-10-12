@@ -2,7 +2,7 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `f9a0f2f59ffae651163fc10a43a995054a07ebcc` (#52).
+Bu paketin başlangıç main'i: `0b20e6a4ad7223d394cfb0632507f20c9ed0d776` (#53).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -385,6 +385,33 @@ kullanıcı kararıyla ertelenmiştir. GPU'suz offline hazırlık bu gerçek kim
 ve proof'u tahmin ederek kapatamaz. Production HOLD devam eder.
 
 ## Açık işler ve kapanış ölçütleri
+
+#53 dual-lease handoff/offline identity, `0d14d01cb31fd90e443ea740d81888517e2459bb`
+yayın head'inde 19/19 esas SUCCESS (+ Preview Comments ek SUCCESS) sonrası
+12 Ekim 04:12:58 Türkiye saatinde normal merge edildi:
+`0b20e6a4ad7223d394cfb0632507f20c9ed0d776`. Test/merge ağacı aynı
+`579ee2a02a358f704e3d6e2aadbc7801629400de`; merge sonrası main'in ci,
+A11 release evidence ve Chainlink candidate push koşuları da SUCCESS.
+Son yayın Linux debug/release gateway **673 PASS / 0 FAIL / 23 intentional
+IGNORE**, workspace/serde/no_std ve ayrı CPU/Foundry kapılarını geçti. Eski
+yerel 995d204 tam koşu, yeni CI sonucu yerine geçirilmez.
+
+Yeni GPU'suz yazılım paketi [candidate target observer](CHAINLINK_TARGET_OBSERVER.md)
+ile yalnız read-only finalized RPC kimlik kontrolüdür. Eski candidate/v2
+manifest şemaları ve guarded source/ELF/vkey değişmez. On EVM code hash'i,
+yedi compiler template/immutable kimliği, candidate stack'in on bir bağlantısı,
+clock/key/policy/grace ve explicit operatör declaration'ları eşleşmelidir.
+Kod/getter okumaları aynı EIP-1898 anchor'da tekrarlanır; güncel finalized tip
+gerileyemez ve en fazla 64 parent ile özgün anchor'a bağlanmalıdır. Bu tek
+RPC'nin tutarlılığıdır; bağımsız consensus/ancestry kanıtı değildir.
+
+Public gerçek candidate hedef/servis config'i bulunmadı. Salt yerel owned Anvil
+provasında yedi gerçek sözleşme + mock token/DON proxy/uptime kullanılır.
+Uptime sağlığı, gerçek DON, yeni proof, çalışan servis, custody ve production
+kabulü açık kalır; sonuç başarılı kimlik eşleşmesinde bile HOLD'dur. Yeni Python
+kaynakları covered inventory'yi değiştirdiği için #53'ün 353-source manifest
+demo'su tarihsel olarak korunur; yeni bir manifest ayrı pathname'de hazırlanır.
+Bu paketin yerel sonuç/kanıtı ve yeni yayın head'inin CI'ı ayrı kaydedilir.
 
 | Öncelik | İş | Kapanış ölçütü |
 |---|---|---|

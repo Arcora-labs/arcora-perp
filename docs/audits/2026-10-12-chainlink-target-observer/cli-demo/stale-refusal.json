@@ -1,0 +1,32 @@
+{
+  "bindings": [],
+  "blocker": "local candidate identity or explicit policy refused",
+  "contracts": {},
+  "limitations": [
+    "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+    "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+    "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+    "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+  ],
+  "observed_utc": "2026-10-12T08:21:53.038510+00:00",
+  "schema": "arcora-chainlink-target-observation/v1",
+  "scope": {
+    "candidate_submission_enabled": false,
+    "custody_accepted": false,
+    "fresh_guest_build_performed": false,
+    "fresh_setup_key_derived": false,
+    "local_identity_checked": false,
+    "operator_and_settlement_policy_matches": false,
+    "operator_policy_approved": false,
+    "proof_generated": false,
+    "real_don_verified": false,
+    "release_gate": "HOLD",
+    "rpc_ancestry_consistent": false,
+    "running_services_attested": false,
+    "runtime_bytecode_verified": false,
+    "target_chain_observed": false,
+    "token_proxy_feed_implementations_audited": false,
+    "uptime_health_observed": false
+  },
+  "status": "BLOCKED"
+}

@@ -1,0 +1,70 @@
+{
+  "artifact_write_scope": "Only this new ignored receipt plus owned new docs/CHAINLINK_TARGET_OBSERVER.md.",
+  "confirmed_read_only_invariants": [
+    "Strict separate policy envelope and preserved legacy operator-policy parser.",
+    "Existing candidate/v2 manifests and scripts, ELF, guest and runtime pins not edited by reviewer.",
+    "Candidate observer script current SHA must be present in validated manifest source inventory before RPC.",
+    "Injected transport receives cloned parameters; source inputs are snapshotted and rechecked.",
+    "All10 nonempty runtimes match declared EVM Keccak hashes; seven also match compiler templates, including repeated immutable words.",
+    "Candidate clock-to-oracle-to-SP1 linkage, exact key/policy/uptime grace, operator getters and unfrozen canonical route are checked.",
+    "All code/getter requests use fixed EIP1898 canonical block hash; each is reread identically.",
+    "Initial anchor, bounded64-parent chain, completion finalized head and chain ID are consistent.",
+    "Provider errors are wrapped with fixed local messages; no body/endpoint error text enters report.",
+    "Success flags are set only after completion revalidation; proof/DON/health/services/custody/operator approval/submission remain false and release gate HOLD."
+  ],
+  "findings": [
+    {
+      "current_source_confirmed": true,
+      "id": "ambient-proxy",
+      "initial_location": "candidate_target_observer.py:118",
+      "problem": "Default build_opener installed ProxyHandler(None), which consults getproxies and can attach Proxy-authorization from proxy URL credentials.",
+      "root_repair": "Explicit urllib.request.ProxyHandler({}) passed to build_opener.",
+      "stdlib_evidence": "Local Python3.12 inspect.getsource(urllib.request.ProxyHandler.__init__) and proxy_open; no RPC or getproxies execution by reviewer."
+    },
+    {
+      "current_source_confirmed": true,
+      "id": "checked-time-budget",
+      "initial_locations": [
+        "candidate_target_observer.py:131-132",
+        "candidate_target_observer.py:138"
+      ],
+      "problem": "Blocking whole-body read delayed all deadline checks; urllib timeout alone is not an absolute call or invocation wall-clock bound.",
+      "root_repair": "Bounded read1 body chunks with global120/request15 checked deadlines; explicit documented DNS/connect/header/in-flight socket non-preemption."
+    },
+    {
+      "current_source_confirmed": true,
+      "id": "final-eof-call-budget",
+      "intermediate_location": "candidate_target_observer.py:150",
+      "problem": "Final EOF read could cross per-call deadline but pass a global-only final time check.",
+      "root_repair": "Final response check uses call_deadline=min(global_deadline, request_deadline)."
+    }
+  ],
+  "git_mutation": false,
+  "initial_330_line_source_sha256": null,
+  "initial_fingerprint_note": "The reviewer read numbered source but did not capture a raw-byte source SHA before the first root repair; do not infer one from rendered tool text.",
+  "intermediate_source_sha256": "bb7d6c86345654dd41f16c0a16b4795387c47db718b349efaa11ab76eede8d2d",
+  "kind": "read-only pre-test design iteration, not test evidence",
+  "limits": [
+    "No light-client or cryptographic header ancestry verification; caller RPC may lie consistently.",
+    "Three third-party roles have declared code-hash checks only; proxy implementation and feed semantics are not discovered or audited.",
+    "No hard wall-clock guarantee for DNS/connect/header/in-flight socket waits.",
+    "No unit, Anvil, Cargo or Foundry command run by reviewer in this task; actual validation receipts belong to root/owners.",
+    "The earlier353-source demo is preserved historical evidence; added Python sources require a fresh identity manifest."
+  ],
+  "release_gate": "HOLD",
+  "remaining_open_findings": [],
+  "reviewed_current_files": [
+    {
+      "path": "scripts/local-verification/candidate_target_observer.py",
+      "sha256": "f7dc51552b2c8d08646d6d9495803788ed1546816b454e8d97ad1eee7f12436e",
+      "size_bytes": 18056
+    },
+    {
+      "path": "docs/CHAINLINK_TARGET_OBSERVER.md",
+      "sha256": "14e9543dc2a9608991aa28a1c8319aca1c3bb6a1afb2c27bc96fbbd25d04ffb7",
+      "size_bytes": 9747
+    }
+  ],
+  "schema": "arcora-candidate-target-design-qa/v1",
+  "tests_executed_by_reviewer": []
+}

@@ -1,0 +1,3428 @@
+{
+  "expected_policy": {
+    "operator_policy": {
+      "clock_verifier": {
+        "configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "settlement": {
+        "challenge_bond_wei": 1000,
+        "challenge_window_blocks": 50,
+        "enclave_signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "final_settle_grace_blocks": 10,
+        "governance": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "inclusion_deadline_seconds": 600,
+        "liveness_timeout_blocks": 100,
+        "sequencer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "sp1_gateway": {
+        "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "vault": {
+        "gateway_signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+      }
+    },
+    "oracle_configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+    "runtime_hash_algorithm": "keccak256-evm",
+    "schema": "arcora-chainlink-target-policy/v1"
+  },
+  "manifest_sha256": "64f1b3d258294defa3e0d17b78b5629f96dd2dcec2d05a65d2cf14e27de44f25",
+  "pass": {
+    "anchor": {
+      "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+      "number": 78,
+      "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+    },
+    "bindings": [
+      {
+        "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "getter": "verifier()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+        "getter": "vault()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+        "getter": "settlement()",
+        "matches": true,
+        "role": "vault"
+      },
+      {
+        "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+        "getter": "token()",
+        "matches": true,
+        "role": "vault"
+      },
+      {
+        "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+        "getter": "settlement()",
+        "matches": true,
+        "role": "clock_verifier"
+      },
+      {
+        "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+        "getter": "innerVerifier()",
+        "matches": true,
+        "role": "clock_verifier"
+      },
+      {
+        "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "getter": "innerVerifier()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "getter": "streamsVerifier()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "getter": "clockVerifier()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "getter": "sequencerUptimeFeed()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "getter": "gateway()",
+        "matches": true,
+        "role": "sp1_adapter"
+      },
+      {
+        "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+        "getter": "programVKey()",
+        "matches": true,
+        "role": "sp1_adapter"
+      },
+      {
+        "expected": 2000,
+        "getter": "maxWindowMs()",
+        "matches": true,
+        "role": "clock_verifier"
+      },
+      {
+        "expected": 0,
+        "getter": "clockSkewMs()",
+        "matches": true,
+        "role": "clock_verifier"
+      },
+      {
+        "expected": 2,
+        "getter": "proofVersion()",
+        "matches": true,
+        "role": "clock_verifier"
+      },
+      {
+        "expected": "0x3131313131313131313131313131313131313131313131313131313131313131",
+        "getter": "policyHash()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": 84532,
+        "getter": "deploymentChainId()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": 10,
+        "getter": "sequencerGraceSeconds()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "configurator()",
+        "matches": true,
+        "role": "oracle_wrapper"
+      },
+      {
+        "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+        "getter": "VERIFIER_HASH()",
+        "matches": true,
+        "role": "sp1_verifier"
+      },
+      {
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "sequencer()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "getter": "enclaveSigner()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "governance()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+        "getter": "gatewaySigner()",
+        "matches": true,
+        "role": "vault"
+      },
+      {
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "configurator()",
+        "matches": true,
+        "role": "clock_verifier"
+      },
+      {
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "owner()",
+        "matches": true,
+        "role": "sp1_gateway"
+      },
+      {
+        "expected": 100,
+        "getter": "livenessTimeoutBlocks()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": 50,
+        "getter": "challengeWindowBlocks()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": 1000,
+        "getter": "challengeBond()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": 600,
+        "getter": "inclusionDeadlineSecs()",
+        "matches": true,
+        "role": "settlement"
+      },
+      {
+        "expected": 10,
+        "getter": "finalSettleGraceBlocks()",
+        "matches": true,
+        "role": "settlement"
+      }
+    ],
+    "chain_id": 84532,
+    "contracts": {
+      "clock_verifier": {
+        "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+        "getters": {
+          "clockSkewMs()": 0,
+          "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "maxWindowMs()": 2000,
+          "proofVersion()": 2,
+          "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+        },
+        "identity_kind": "compiler_template_and_declared_code_hash",
+        "immutable_words_by_compiler_id": {
+          "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+          "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+          "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "runtime_bytes": 5498,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+      },
+      "oracle_wrapper": {
+        "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+        "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+        "getters": {
+          "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "deploymentChainId()": 84532,
+          "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "policyHash()": "0x3131313131313131313131313131313131313131313131313131313131313131",
+          "sequencerGraceSeconds()": 10,
+          "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+        },
+        "identity_kind": "compiler_template_and_declared_code_hash",
+        "immutable_words_by_compiler_id": {
+          "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+          "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+          "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+        },
+        "runtime_bytes": 8467,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+      },
+      "settlement": {
+        "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+        "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+        "getters": {
+          "challengeBond()": 1000,
+          "challengeWindowBlocks()": 50,
+          "enclaveSigner()": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "finalSettleGraceBlocks()": 10,
+          "governance()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "inclusionDeadlineSecs()": 600,
+          "livenessTimeoutBlocks()": 100,
+          "sequencer()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+        },
+        "identity_kind": "compiler_template_and_declared_code_hash",
+        "immutable_words_by_compiler_id": {
+          "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+          "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+          "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+          "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+          "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+        },
+        "runtime_bytes": 11146,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+      },
+      "sp1_adapter": {
+        "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+        "getters": {
+          "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+        },
+        "identity_kind": "compiler_template_and_declared_code_hash",
+        "immutable_words_by_compiler_id": {
+          "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+        },
+        "runtime_bytes": 734,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+      },
+      "sp1_gateway": {
+        "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+        "getters": {
+          "owner()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        },
+        "identity_kind": "compiler_template_and_declared_code_hash",
+        "immutable_words_by_compiler_id": {},
+        "runtime_bytes": 1931,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+      },
+      "sp1_verifier": {
+        "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+        "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+        "getters": {
+          "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+        },
+        "identity_kind": "compiler_template_and_declared_code_hash",
+        "immutable_words_by_compiler_id": {},
+        "runtime_bytes": 6741,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+      },
+      "token": {
+        "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+        "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+        "getters": {},
+        "identity_kind": "declared_code_hash_only",
+        "runtime_bytes": 1442,
+        "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+      },
+      "uptime_feed": {
+        "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+        "getters": {},
+        "identity_kind": "declared_code_hash_only",
+        "runtime_bytes": 1343,
+        "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+      },
+      "vault": {
+        "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+        "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+        "getters": {
+          "gatewaySigner()": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+          "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+        },
+        "identity_kind": "compiler_template_and_declared_code_hash",
+        "immutable_words_by_compiler_id": {
+          "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+        },
+        "runtime_bytes": 3257,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+      },
+      "verifier_proxy": {
+        "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+        "getters": {},
+        "identity_kind": "declared_code_hash_only",
+        "runtime_bytes": 1396,
+        "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+      }
+    },
+    "finalized_tip_at_completion": {
+      "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+      "number": 78,
+      "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+    },
+    "limitations": [
+      "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+      "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+      "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+      "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+    ],
+    "manifest_sha256": "64f1b3d258294defa3e0d17b78b5629f96dd2dcec2d05a65d2cf14e27de44f25",
+    "observed_utc": "2026-10-12T08:14:05.974627+00:00",
+    "observer": {
+      "path": "scripts/local-verification/candidate_target_observer.py",
+      "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+      "size_bytes": 18379
+    },
+    "public_config_sha256": "f98925d32904b30a5d82fc2bbad6443aa469ac36b112e9b9cb6ff0c7892ad94b",
+    "runtime_hash_algorithm": "keccak256-evm",
+    "schema": "arcora-chainlink-target-observation/v1",
+    "scope": {
+      "candidate_submission_enabled": false,
+      "custody_accepted": false,
+      "fresh_guest_build_performed": false,
+      "fresh_setup_key_derived": false,
+      "local_identity_checked": true,
+      "operator_and_settlement_policy_matches": true,
+      "operator_policy_approved": false,
+      "proof_generated": false,
+      "real_don_verified": false,
+      "release_gate": "HOLD",
+      "rpc_ancestry_consistent": true,
+      "running_services_attested": false,
+      "runtime_bytecode_verified": true,
+      "target_chain_observed": true,
+      "token_proxy_feed_implementations_audited": false,
+      "uptime_health_observed": false
+    },
+    "sp1_route": {
+      "frozen": false,
+      "selector": "0x4388a21c",
+      "verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+    },
+    "status": "VERIFIED_AT_FINALIZED_BLOCK",
+    "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+  },
+  "proof_generated": false,
+  "public_config": {
+    "addresses": {
+      "clock_verifier": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+      "oracle_wrapper": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+      "settlement": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+      "sp1_adapter": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+      "sp1_gateway": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+      "sp1_verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+      "token": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+      "uptime_feed": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+      "vault": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+      "verifier_proxy": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+    },
+    "chain_id": 84532,
+    "clock": {
+      "clock_skew_ms": 0,
+      "max_window_ms": 2000
+    },
+    "expected_runtime_code_hashes": {
+      "clock_verifier": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+      "oracle_wrapper": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+      "settlement": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+      "sp1_adapter": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+      "sp1_gateway": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+      "sp1_verifier": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+      "token": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+      "uptime_feed": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+      "vault": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+      "verifier_proxy": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8"
+    },
+    "network": 0,
+    "oracle_policy_hash": "0x3131313131313131313131313131313131313131313131313131313131313131",
+    "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+    "sequencer_grace_seconds": 10
+  },
+  "read_methods": [
+    "eth_call",
+    "eth_chainId",
+    "eth_getBlockByNumber",
+    "eth_getCode"
+  ],
+  "real_don_verified": false,
+  "refusals": {
+    "actual_frozen_sp1_route": {
+      "anchor": {
+        "hash": "0x1c04c1dd014bde1d4631e7b673abfced5b7b045901fa5b4cbd673ec384bb0b67",
+        "number": 598,
+        "parentHash": "0x1c0f2019d504fb4d993d459e52319c2172ef93fe33bd84766ee004890540a309"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "getter": "sequencerUptimeFeed()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "getter": "gateway()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "getter": "programVKey()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": 2000,
+          "getter": "maxWindowMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 0,
+          "getter": "clockSkewMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 2,
+          "getter": "proofVersion()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x3131313131313131313131313131313131313131313131313131313131313131",
+          "getter": "policyHash()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 84532,
+          "getter": "deploymentChainId()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 10,
+          "getter": "sequencerGraceSeconds()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "configurator()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+          "getter": "VERIFIER_HASH()",
+          "matches": true,
+          "role": "sp1_verifier"
+        }
+      ],
+      "blocker": "SP1 route is wrong or frozen",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "clockSkewMs()": 0,
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "maxWindowMs()": 2000,
+            "proofVersion()": 2,
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "deploymentChainId()": 84532,
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "policyHash()": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "sequencerGraceSeconds()": 10,
+            "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {
+            "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {
+            "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "64f1b3d258294defa3e0d17b78b5629f96dd2dcec2d05a65d2cf14e27de44f25",
+      "observed_utc": "2026-10-12T08:14:14.534028+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "f98925d32904b30a5d82fc2bbad6443aa469ac36b112e9b9cb6ff0c7892ad94b",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    },
+    "direct_sp1_clock_instead_of_wrapper": {
+      "anchor": {
+        "hash": "0x7f1ebe031cc02848c1c3e181c078a1c819d1700d462efe7fa462624c67a70706",
+        "number": 469,
+        "parentHash": "0xc16bbd45f3c44e8f6d1ac98b9574ddefd45d442a96bb3cc46549dd5e32d58894"
+      },
+      "bindings": [
+        {
+          "expected": "0x959922be3caee4b8cd9a407cc3ac1c251c2007b1",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x68b1d87f95878fe05b998f19b66f4baba5de1aed",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        }
+      ],
+      "blocker": "target binding mismatch: clock_verifier.innerVerifier()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0x959922be3caee4b8cd9a407cc3ac1c251c2007b1",
+          "evm_code_hash": "0x371ff513144394974c6504f40e9b1e4c19604d3c9d2698f104c9e45629b2e56c",
+          "getters": {
+            "settlement()": "0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "3c8a0c9b28a33aaf4e870a5b34c663d5a2d145306bcc7c9257dff8be3035d200"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae",
+          "evm_code_hash": "0x03e0808f256d8bb9b89885c802e51f487130f65f550fd2c7b38319611f441fde",
+          "getters": {
+            "vault()": "0x68b1d87f95878fe05b998f19b66f4baba5de1aed",
+            "verifier()": "0x959922be3caee4b8cd9a407cc3ac1c251c2007b1"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000959922be3caee4b8cd9a407cc3ac1c251c2007b1",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "020efe70abe3d5c12f8ab6baeacebea760503d7abfb3c54bd0d0628da5471d44"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x68b1d87f95878fe05b998f19b66f4baba5de1aed",
+          "evm_code_hash": "0x61797165b3a79803cd45393efe76f117b49aaf0fd8e9695d523a8b216dc51da6",
+          "getters": {
+            "settlement()": "0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000009a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "2f76809403c66491c7bc0f3432026a7c79168e4c0435e617d263d3db8c5cfd64"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "58e9d94efd0035f39d79fbea826218332e06d14b8c0db432f0603633a32992d1",
+      "observed_utc": "2026-10-12T08:14:13.923400+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "d61301002e2df7760beb151f695030e24d05cc2309a93ae8a1b9f60d77bc6fba",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    },
+    "unbound_uptime_feed": {
+      "anchor": {
+        "hash": "0xde5ae2d8f4fd2f4d4baac273069befa709559fc87bffca2b0d209eb866d4adb1",
+        "number": 336,
+        "parentHash": "0x219c9f941a063ce57df169c829d5194017e0e07e41662945e8c5706cf357e2cd"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        }
+      ],
+      "blocker": "target binding mismatch: oracle_wrapper.sequencerUptimeFeed()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x0b306bf915c4d645ff596e518faf3f9669b97016",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "c864593bab3b79f15494b6d1b34b35f75ba0a6180da455f0f27b9674737a8bb1",
+      "observed_utc": "2026-10-12T08:14:12.691817+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "7d96719860fd0db738e46e5bf8fe1cd75f6bfe5ce359ec55a85c33f2534e6b11",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    },
+    "unbound_verifier_proxy": {
+      "anchor": {
+        "hash": "0xfcd503544c1e54a7704e2e5969594b5f1458e3e7c457d847e0259160f75c4299",
+        "number": 207,
+        "parentHash": "0xbf500f26f9c2aa2418b7306e7da7c0c749bce898fc6e1d90d7734b5ed519cc1f"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        }
+      ],
+      "blocker": "target binding mismatch: oracle_wrapper.streamsVerifier()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0x9a676e781a523b5d0c0e43731313a708cb607508",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "5fc662d3cc90955d63d9920ba27f0869eecd1028f96788fae4efe98f07c4fde6",
+      "observed_utc": "2026-10-12T08:14:11.830075+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "7d2bdbf08ee0852c3e7a5d1cc66135be52b52e2358b192e3a7710d51d3198dbe",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    },
+    "wrong_challenge_bond": {
+      "anchor": {
+        "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+        "number": 78,
+        "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "getter": "sequencerUptimeFeed()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "getter": "gateway()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "getter": "programVKey()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": 2000,
+          "getter": "maxWindowMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 0,
+          "getter": "clockSkewMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 2,
+          "getter": "proofVersion()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x3131313131313131313131313131313131313131313131313131313131313131",
+          "getter": "policyHash()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 84532,
+          "getter": "deploymentChainId()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 10,
+          "getter": "sequencerGraceSeconds()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "configurator()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+          "getter": "VERIFIER_HASH()",
+          "matches": true,
+          "role": "sp1_verifier"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "sequencer()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "getter": "enclaveSigner()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "governance()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+          "getter": "gatewaySigner()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "configurator()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "owner()",
+          "matches": true,
+          "role": "sp1_gateway"
+        },
+        {
+          "expected": 100,
+          "getter": "livenessTimeoutBlocks()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": 50,
+          "getter": "challengeWindowBlocks()",
+          "matches": true,
+          "role": "settlement"
+        }
+      ],
+      "blocker": "target binding mismatch: settlement.challengeBond()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "clockSkewMs()": 0,
+            "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "maxWindowMs()": 2000,
+            "proofVersion()": 2,
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "deploymentChainId()": 84532,
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "policyHash()": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "sequencerGraceSeconds()": 10,
+            "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "challengeWindowBlocks()": 50,
+            "enclaveSigner()": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "governance()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "livenessTimeoutBlocks()": 100,
+            "sequencer()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {
+            "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {
+            "owner()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {
+            "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "gatewaySigner()": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "64f1b3d258294defa3e0d17b78b5629f96dd2dcec2d05a65d2cf14e27de44f25",
+      "observed_utc": "2026-10-12T08:14:10.312760+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "f98925d32904b30a5d82fc2bbad6443aa469ac36b112e9b9cb6ff0c7892ad94b",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "sp1_route": {
+        "frozen": false,
+        "selector": "0x4388a21c",
+        "verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "fa0de4ec08a246dbebba7ab0ad5882012666f3f9e6908efdb9abbc35c3ce13fd"
+    },
+    "wrong_clock_policy": {
+      "anchor": {
+        "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+        "number": 78,
+        "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "getter": "sequencerUptimeFeed()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "getter": "gateway()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "getter": "programVKey()",
+          "matches": true,
+          "role": "sp1_adapter"
+        }
+      ],
+      "blocker": "target binding mismatch: clock_verifier.maxWindowMs()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {
+            "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "8e57e5448526d9ae3b57404cecf2d105a42536b5a693263e716fc828bd794db7",
+      "observed_utc": "2026-10-12T08:14:09.265495+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "1d5836b955873837967cbd42c60179b7af757ff98e2528bb66f5cfd76705a5cd",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    },
+    "wrong_governance": {
+      "anchor": {
+        "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+        "number": 78,
+        "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "getter": "sequencerUptimeFeed()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "getter": "gateway()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "getter": "programVKey()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": 2000,
+          "getter": "maxWindowMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 0,
+          "getter": "clockSkewMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 2,
+          "getter": "proofVersion()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x3131313131313131313131313131313131313131313131313131313131313131",
+          "getter": "policyHash()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 84532,
+          "getter": "deploymentChainId()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 10,
+          "getter": "sequencerGraceSeconds()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "configurator()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+          "getter": "VERIFIER_HASH()",
+          "matches": true,
+          "role": "sp1_verifier"
+        },
+        {
+          "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "getter": "sequencer()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "getter": "enclaveSigner()",
+          "matches": true,
+          "role": "settlement"
+        }
+      ],
+      "blocker": "target binding mismatch: settlement.governance()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "clockSkewMs()": 0,
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "maxWindowMs()": 2000,
+            "proofVersion()": 2,
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "deploymentChainId()": 84532,
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "policyHash()": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "sequencerGraceSeconds()": 10,
+            "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "enclaveSigner()": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "sequencer()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {
+            "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {
+            "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "64f1b3d258294defa3e0d17b78b5629f96dd2dcec2d05a65d2cf14e27de44f25",
+      "observed_utc": "2026-10-12T08:14:09.746681+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "f98925d32904b30a5d82fc2bbad6443aa469ac36b112e9b9cb6ff0c7892ad94b",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "sp1_route": {
+        "frozen": false,
+        "selector": "0x4388a21c",
+        "verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "507e4e1d1f0814e1828a3a44503bf558c75fb45ce78ee279774d61f279d49820"
+    },
+    "wrong_grace": {
+      "anchor": {
+        "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+        "number": 78,
+        "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "getter": "sequencerUptimeFeed()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "getter": "gateway()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "getter": "programVKey()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": 2000,
+          "getter": "maxWindowMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 0,
+          "getter": "clockSkewMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 2,
+          "getter": "proofVersion()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x3131313131313131313131313131313131313131313131313131313131313131",
+          "getter": "policyHash()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 84532,
+          "getter": "deploymentChainId()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        }
+      ],
+      "blocker": "target binding mismatch: oracle_wrapper.sequencerGraceSeconds()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "clockSkewMs()": 0,
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "maxWindowMs()": 2000,
+            "proofVersion()": 2,
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "deploymentChainId()": 84532,
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "policyHash()": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {
+            "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "5f228e5058efbd8e6dec36fbbb646d5aa28d47ef48b77b9db9678e576fe602c9",
+      "observed_utc": "2026-10-12T08:14:07.903334+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "7d2c8d0b9b49506e4147a12af5a99436de67cf5d522c6c01c4655b410f3283ec",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    },
+    "wrong_oracle_configurator": {
+      "anchor": {
+        "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+        "number": 78,
+        "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "getter": "sequencerUptimeFeed()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "getter": "gateway()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "getter": "programVKey()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": 2000,
+          "getter": "maxWindowMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 0,
+          "getter": "clockSkewMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 2,
+          "getter": "proofVersion()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x3131313131313131313131313131313131313131313131313131313131313131",
+          "getter": "policyHash()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 84532,
+          "getter": "deploymentChainId()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": 10,
+          "getter": "sequencerGraceSeconds()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        }
+      ],
+      "blocker": "target binding mismatch: oracle_wrapper.configurator()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "clockSkewMs()": 0,
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "maxWindowMs()": 2000,
+            "proofVersion()": 2,
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "deploymentChainId()": 84532,
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "policyHash()": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "sequencerGraceSeconds()": 10,
+            "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {
+            "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "64f1b3d258294defa3e0d17b78b5629f96dd2dcec2d05a65d2cf14e27de44f25",
+      "observed_utc": "2026-10-12T08:14:10.931981+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "f98925d32904b30a5d82fc2bbad6443aa469ac36b112e9b9cb6ff0c7892ad94b",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "58a106d962d9e7475d770dadeb2412b8f8797c6853573838d67ded18a4ed01c4"
+    },
+    "wrong_policy_hash": {
+      "anchor": {
+        "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+        "number": 78,
+        "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+      },
+      "bindings": [
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "verifier()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "getter": "vault()",
+          "matches": true,
+          "role": "settlement"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "getter": "token()",
+          "matches": true,
+          "role": "vault"
+        },
+        {
+          "expected": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "getter": "settlement()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "getter": "innerVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "getter": "streamsVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "getter": "clockVerifier()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "getter": "sequencerUptimeFeed()",
+          "matches": true,
+          "role": "oracle_wrapper"
+        },
+        {
+          "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "getter": "gateway()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+          "getter": "programVKey()",
+          "matches": true,
+          "role": "sp1_adapter"
+        },
+        {
+          "expected": 2000,
+          "getter": "maxWindowMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 0,
+          "getter": "clockSkewMs()",
+          "matches": true,
+          "role": "clock_verifier"
+        },
+        {
+          "expected": 2,
+          "getter": "proofVersion()",
+          "matches": true,
+          "role": "clock_verifier"
+        }
+      ],
+      "blocker": "target binding mismatch: oracle_wrapper.policyHash()",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {
+            "clockSkewMs()": 0,
+            "innerVerifier()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+            "maxWindowMs()": 2000,
+            "proofVersion()": 2,
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        },
+        "oracle_wrapper": {
+          "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "evm_code_hash": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+          "getters": {
+            "clockVerifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "sequencerUptimeFeed()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "streamsVerifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "203": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+            "206": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+            "208": "0x3131313131313131313131313131313131313131313131313131313131313131",
+            "210": "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "212": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+            "216": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 8467,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "a1b315772135c9a592e36d1dd9567649d73d2fac56add3e57cd6310d416f7a67"
+        },
+        "settlement": {
+          "address": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+          "evm_code_hash": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+          "getters": {
+            "vault()": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+            "verifier()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "2540": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2543": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "2546": "0x000000000000000000000000a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+            "2564": "0x0000000000000000000000000000000000000000000000000000000000000064",
+            "2566": "0x0000000000000000000000000000000000000000000000000000000000000032",
+            "2569": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+            "2572": "0x0000000000000000000000000000000000000000000000000000000000000258",
+            "2581": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "2584": "0x000000000000000000000000000000000000000000000000000000000000000a"
+          },
+          "runtime_bytes": 11146,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "9a410fabc3228973ffbbadecb8fb8629434ae85e2db882bef17ded6448b26498"
+        },
+        "sp1_adapter": {
+          "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "evm_code_hash": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+          "getters": {
+            "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            "programVKey()": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "4226": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+            "4229": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+          },
+          "runtime_bytes": 734,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "b1ef1bcee305788c2129f6d738eddfe8b171e2ff0538a8acd2117762e8fad3eb"
+        },
+        "sp1_gateway": {
+          "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "evm_code_hash": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 1931,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+        },
+        "sp1_verifier": {
+          "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+          "evm_code_hash": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {},
+          "runtime_bytes": 6741,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+        },
+        "token": {
+          "address": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+          "evm_code_hash": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1442,
+          "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+        },
+        "uptime_feed": {
+          "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "evm_code_hash": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1343,
+          "runtime_sha256": "40e129a212edc40f795d35e896d247eabe94d8f4d9723688ee8f2c8d4ed622ec"
+        },
+        "vault": {
+          "address": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+          "evm_code_hash": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+          "getters": {
+            "settlement()": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "token()": "0x8a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1972": "0x0000000000000000000000002279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+            "1976": "0x0000000000000000000000008a791620dd6260079bf849dc5567adc3f2fdc318"
+          },
+          "runtime_bytes": 3257,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "cee3f5af524585353a4ee0ad9078655ade29f9264ebe6d8b26b9026c1a62f899"
+        },
+        "verifier_proxy": {
+          "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "evm_code_hash": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8",
+          "getters": {},
+          "identity_kind": "declared_code_hash_only",
+          "runtime_bytes": 1396,
+          "runtime_sha256": "208fa999072cb7ec3e6a5d85acf21310d84160b065ecc807fa5e92caea732bca"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "0cd56d59abb70fa8c5c89eac8bd31b53ce4b7ff43901980d8205e22b7f98a0ef",
+      "observed_utc": "2026-10-12T08:14:07.139320+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "21d2e07394261ccc24047bd40bd274a1c83311dd770c65ef5f0b04864e92a900",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    },
+    "wrong_reviewed_v2_key_pre_rpc": {
+      "bindings": [],
+      "blocker": "local candidate identity or explicit policy refused",
+      "contracts": {},
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "observed_utc": "2026-10-12T08:14:11.435124+00:00",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": false,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED"
+    },
+    "wrong_runtime_hash": {
+      "anchor": {
+        "hash": "0x312cf3ea3be5910374ed3e428ca450f0526c715f49e7b7cf3a58a13289a35225",
+        "number": 78,
+        "parentHash": "0xc8fc0f360cd815a51d8a3c8c3b47470e1766be9ed80b3dd9108d63f2f738d971"
+      },
+      "bindings": [],
+      "blocker": "declared runtime code hash mismatch: oracle_wrapper",
+      "chain_id": 84532,
+      "contracts": {
+        "clock_verifier": {
+          "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "evm_code_hash": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+          "getters": {},
+          "identity_kind": "compiler_template_and_declared_code_hash",
+          "immutable_words_by_compiler_id": {
+            "1289": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "1292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f",
+            "1294": "0x00000000000000000000000000000000000000000000000000000000000007d0",
+            "1296": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "runtime_bytes": 5498,
+          "runtime_matches_compiler_template": true,
+          "runtime_sha256": "1ba33b2586daf09f3ad0488a1fdfda66eb358fbb765224fe5a63d0562a93b9ee"
+        }
+      },
+      "limitations": [
+        "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
+        "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+        "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
+        "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."
+      ],
+      "manifest_sha256": "00e5405ce66ea4f822e06208956e4a1f6c9f0246fb150fe4e6449b55ab26a2c0",
+      "observed_utc": "2026-10-12T08:14:08.680286+00:00",
+      "observer": {
+        "path": "scripts/local-verification/candidate_target_observer.py",
+        "sha256": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+        "size_bytes": 18379
+      },
+      "public_config_sha256": "05d1bac7fdd510cd1427490189de20f63e536eb1bb8fda8f965a4d597721be30",
+      "runtime_hash_algorithm": "keccak256-evm",
+      "schema": "arcora-chainlink-target-observation/v1",
+      "scope": {
+        "candidate_submission_enabled": false,
+        "custody_accepted": false,
+        "fresh_guest_build_performed": false,
+        "fresh_setup_key_derived": false,
+        "local_identity_checked": true,
+        "operator_and_settlement_policy_matches": false,
+        "operator_policy_approved": false,
+        "proof_generated": false,
+        "real_don_verified": false,
+        "release_gate": "HOLD",
+        "rpc_ancestry_consistent": false,
+        "running_services_attested": false,
+        "runtime_bytecode_verified": false,
+        "target_chain_observed": false,
+        "token_proxy_feed_implementations_audited": false,
+        "uptime_health_observed": false
+      },
+      "status": "BLOCKED",
+      "target_policy_sha256": "f0329be8bafc7bfbb9fac4d902dbbb04b8228302bf07752411c32ee9885aed72"
+    }
+  },
+  "release_gate": "HOLD",
+  "running_services_attested": false,
+  "scope": "Owned disposable Anvil chain84532, seven real compiled contracts and mock token/streams/uptime; no public target, DON, service, proof or release acceptance."
+}

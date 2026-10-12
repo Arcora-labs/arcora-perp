@@ -1,0 +1,51 @@
+{
+  "schema": "arcora-candidate-target-preservation-v1",
+  "observed_utc": "2026-10-12T08:20:08.317743+00:00",
+  "base_main": "0b20e6a4ad7223d394cfb0632507f20c9ed0d776",
+  "frozen_files": 2721,
+  "unchanged_frozen_files": 2718,
+  "planned_existing_changes": [
+    ".gitattributes",
+    ".github/workflows/a11-release-evidence.yml",
+    "docs/ACTIVE_WORK.md"
+  ],
+  "unexpected_changes": [],
+  "a11_exact_two_new_gates_only": true,
+  "ci_workspace_workflow_byte_exact": true,
+  "external": [
+    {
+      "name": "primary",
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "dirty_count": 13,
+      "same_head": true,
+      "same_status": true,
+      "same_staged_diff": true,
+      "dirty_files_changed": [],
+      "passed": true
+    },
+    {
+      "name": "kimi",
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "dirty_count": 7,
+      "same_head": true,
+      "same_status": true,
+      "same_staged_diff": true,
+      "dirty_files_changed": [],
+      "passed": true
+    },
+    {
+      "name": "dark",
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "dirty_count": 62,
+      "same_head": true,
+      "same_status": true,
+      "same_staged_diff": true,
+      "dirty_files_changed": [],
+      "passed": true
+    }
+  ],
+  "passed": true
+}

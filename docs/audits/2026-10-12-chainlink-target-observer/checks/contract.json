@@ -1,0 +1,22 @@
+{
+  "objective": "GPU-free candidate finalized target observer software and owned-Anvil verification, publication-head CI and normal merge",
+  "base_main": "0b20e6a4ad7223d394cfb0632507f20c9ed0d776",
+  "scope": "New read-only observer, separate explicit policy, strict mocks+owned local chain, all old protocols and checks unchanged",
+  "production_release": "HOLD",
+  "required": [
+    "Validatedmanifest/config/policy beforeRPC+after",
+    "10EVMhash/7exactcompiler templates/11candidatebindings/keyclockpolicygrace/realSP1route",
+    "Operatorvaluesexplicitmatchednotapproved",
+    "EIP1898anchor+bounded64RPCancestry/source/endreads",
+    "NoRPCmutations/secretread/discovery/proof/setup/GPU/liveacceptance",
+    "Unitnegative+actual7real/3mockAnvilstack read-onlyobserver",
+    "Preservealloldguest/core/ELF/pins/formats/tests/workflowscommands/old13-7-62dirty",
+    "NewCIunit+actualAnvilgate and exactheadall19normalmerge"
+  ],
+  "targeted_repair_budget": 2,
+  "outside_scope": [
+    "Livefeed discovery deferred",
+    "Actualtarget/service acceptance withoutpublicconfig",
+    "Productionactivation/proving/funds/migrations/rulesetchanges"
+  ]
+}
