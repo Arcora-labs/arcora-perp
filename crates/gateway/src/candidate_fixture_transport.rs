@@ -483,9 +483,14 @@ impl FixtureTransport {
             })
             .as_ref()
             .map_err(|error| *error)?;
-        counter
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map_err(|_| TransportError::ExchangeExhausted)
+        let mut id = counter.load(Ordering::Relaxed);
+        loop {
+            let next = id.checked_add(1).ok_or(TransportError::ExchangeExhausted)?;
+            match counter.compare_exchange_weak(id, next, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => return Ok(id),
+                Err(current) => id = current,
+            }
+        }
     }
 
     fn exchange(

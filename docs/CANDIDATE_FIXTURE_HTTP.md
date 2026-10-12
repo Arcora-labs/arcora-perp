@@ -84,6 +84,13 @@ stages and no-retry behavior distinguish transport evidence from an in-memory
 callback-only test. Final source-bound test counts, raw logs, preservation and
 publication-head CI are retained separately in the evidence packet.
 
+The initial publication's newer CI compiler rejected deprecated `fetch_update`.
+The counter now uses a checked `compare_exchange_weak` loop, retaining Relaxed
+ordering, the previous-ID return and exhaustion without wrap. The original full
+697-test source and the later 18-test compatibility source are recorded separately
+in the [compatibility evidence](audits/2026-10-12-candidate-fixture-http-compatibility/README.md);
+only the current publication's CI can establish its full-suite result.
+
 Real candidate backend/proof generation, authenticated and sealed witness
 transport, current target/service public configuration, receipt/nonce/finality
 on a real chain, CC/key release, DON/uptime health, custody, capacity and

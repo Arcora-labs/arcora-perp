@@ -410,10 +410,16 @@ Opaque mock proof ve finality beyanları gerçek proof/chain kabulü değildir.
 Kaynakta 18 yeni test vardır; final yerel sonuç ve yeni yayın head'inin CI/merge
 kaydı ayrı kanıtlanır. [HTTP fixture sınırları](CANDIDATE_FIXTURE_HTTP.md) ve
 [kanıt paketi](audits/2026-10-12-candidate-fixture-http/README.md).
-Final yerel gateway **697 PASS / 0 FAIL / 23 intentional IGNORE** (18 yeni HTTP
+İlk kaynakta yerel gateway **697 PASS / 0 FAIL / 23 intentional IGNORE** (18 yeni HTTP
 testi dahil), Python builder/preflight **25 PASS**, workspace format/Clippy PASS.
-373 covered source aynı final hash'le test öncesi/sonrası eşleşti; 21/9/AUX2
-pinler ve root Cargo manifestleri byte-exact. Bu yerel sonuç yeni yayın head'inin
+373 covered source `69e33918…` hash'iyle test öncesi/sonrası eşleşti; 21/9/AUX2
+pinler ve root Cargo manifestleri byte-exact. PR56 ilk yayın head'i `8181880…`
+CI'da yeni derleyicinin `fetch_update` deprecation hatası nedeniyle merge edilmedi.
+Yalnız sayaçta checked `compare_exchange_weak` döngüsüne geçildi; Relaxed ordering,
+önceki ID dönüşü ve taşmada ret korunur. Yeni `644a6c7c…` kaynakta 18 HTTP testi,
+25 Python testi, workspace format/Clippy yeniden PASS; eski tam 697 sonucuyla
+yeni focused sonuç ayrı kayıtlıdır. [Uyumluluk ek kanıtı](audits/2026-10-12-candidate-fixture-http-compatibility/README.md).
+Bu yerel sonuç yeni yayın head'inin
 CI'ı yerine geçmez; kaynak/komut/çıktı ve başarısız-önce/geçti-sonra kayıtları
 ayrı kanıt paketindedir.
 Mevcut gerçek servisler legacy/DPCLK2 kalır; production service preflight'ında
