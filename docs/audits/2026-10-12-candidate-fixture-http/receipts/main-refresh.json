@@ -1,0 +1,149 @@
+{
+  "schema": "arcora-pr55-main-refresh-v1",
+  "observed_utc": "2026-10-12T11:12:19.875553+00:00",
+  "scope": "Historical PR55 merge/main29be push CI only, not new candidate-transport feature validation. Read-only GitHub metadata and raw logs; no services/discovery/credential content or source/Git changes.",
+  "expected_main": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+  "repository": "Arcora-labs/arcora-perp",
+  "runs": [
+    {
+      "id": 38237840515,
+      "name": "ci",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38237840515",
+      "run_attempt": 1,
+      "created_at": "2026-10-12T10:40:52Z",
+      "updated_at": "2026-10-12T11:05:02Z",
+      "downloads": {
+        "metadata": {
+          "command": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38237840515"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.750304999994114,
+          "observed_utc": "2026-10-12T11:12:16.336809+00:00",
+          "path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840515.metadata.json",
+          "bytes": 12564,
+          "sha256": "132b5e6b2bef89b3337be1f49d4515820410d6072f22e51924576c5e4a5b6d6e",
+          "stderr_path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840515.metadata.stderr.log",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "logs": {
+          "command": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38237840515/logs"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 2.317059166962281,
+          "observed_utc": "2026-10-12T11:12:17.087314+00:00",
+          "path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840515.logs.zip",
+          "bytes": 241913,
+          "sha256": "333e44922a18bf9a63560fcbeb5d9d3f3591605bc376a8ac76820f1989bdb7d9",
+          "stderr_path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840515.logs.stderr.log",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": 38237840414,
+      "name": "A11 release evidence",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38237840414",
+      "run_attempt": 1,
+      "created_at": "2026-10-12T10:40:52Z",
+      "updated_at": "2026-10-12T10:47:10Z",
+      "downloads": {
+        "metadata": {
+          "command": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38237840414"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.6977318749995902,
+          "observed_utc": "2026-10-12T11:12:16.336997+00:00",
+          "path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840414.metadata.json",
+          "bytes": 12600,
+          "sha256": "0d73fbabf6ded801520f35491334dc953be56a1bb4f923eac2c5bdb41ae4e9e1",
+          "stderr_path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840414.metadata.stderr.log",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "logs": {
+          "command": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38237840414/logs"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 2.838792541064322,
+          "observed_utc": "2026-10-12T11:12:17.034973+00:00",
+          "path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840414.logs.zip",
+          "bytes": 328432,
+          "sha256": "fd45a752e9939f5fb4109771e7919a2922e2864798ee565ec05fd33ae0f806db",
+          "stderr_path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840414.logs.stderr.log",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": 38237840360,
+      "name": "Chainlink candidate",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38237840360",
+      "run_attempt": 1,
+      "created_at": "2026-10-12T10:40:52Z",
+      "updated_at": "2026-10-12T10:41:37Z",
+      "downloads": {
+        "metadata": {
+          "command": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38237840360"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.6525831250473857,
+          "observed_utc": "2026-10-12T11:12:16.337072+00:00",
+          "path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840360.metadata.json",
+          "bytes": 12597,
+          "sha256": "e9647ed8956e9a9b7796e99fa3cdc41953aa218bf7a401781959bb85cb0c2508",
+          "stderr_path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840360.metadata.stderr.log",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "logs": {
+          "command": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38237840360/logs"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 1.3641035000327975,
+          "observed_utc": "2026-10-12T11:12:16.990604+00:00",
+          "path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840360.logs.zip",
+          "bytes": 54850,
+          "sha256": "209da4a17bf1d5fa073cfc75f3de06901f919ec1ef37619bc64932b699639696",
+          "stderr_path": "target/candidate-transport-validation-20261012/pr55-main-refresh/38237840360.logs.stderr.log",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "passed": true
+    }
+  ],
+  "all_three_completed_success": true,
+  "release_gate": "HOLD"
+}

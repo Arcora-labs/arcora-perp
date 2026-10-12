@@ -1,0 +1,35 @@
+{
+  "acceptance_nuance": "Lost clock ACK resume skips RegisterReports, observes Absent and holds ReportsPending; lost report ACK resumes LC/LR/LC/LR/mockProve; lost broadcast ACK resumes only LookupOutcome. No retry is per-callback HTTP attempt, not global at-most-once mock proving.",
+  "bytes": 47091,
+  "file": "crates/gateway/src/candidate_fixture_transport_tests.rs",
+  "observed_utc": "2026-10-12T11:31:37.025836+00:00",
+  "schema": "arcora-owned-candidate-fixture-http-tests-freeze/v1",
+  "scope": "Only new test source and ignored receipts edited. Each semantic negative proves both unchanged normal/liquidation full-HTTP positive baselines; TCP fixtures are typed owned 127.0.0.1 ephemeral listeners. Stored source/plan bytes remain existing coordinator authority. Opaque fixture proof/native replay, not actual proof/DON/service/chain acceptance.",
+  "sha256": "86106496e135e952a2cd3aa3f6ad95479eb555f5472954618d63f7c6f64106e4",
+  "syntax_format": {
+    "command": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt --edition 2021 crates/gateway/src/candidate_fixture_transport_tests.rs",
+    "exit_code": 0
+  },
+  "test_build_runs_performed": false,
+  "test_count": 18,
+  "tests": [
+    "candidate_fixture_http_both_native_flows_prepare_handoff_and_terminal_replay",
+    "candidate_fixture_http_lost_clock_ack_resumes_lookups_and_holds_absent_reports",
+    "candidate_fixture_http_lost_report_ack_reconciles_existing_effect_without_reregistration",
+    "candidate_fixture_http_lost_broadcast_ack_keeps_same_lane_and_resume_lookup_only",
+    "candidate_fixture_http_local_constructor_pins_refuse_without_connections",
+    "candidate_fixture_http_local_callback_payload_changes_refuse_without_connections",
+    "candidate_fixture_http_response_frame_scope_identity_and_exchange_guards",
+    "candidate_fixture_http_response_header_body_bounds_and_truncation_guards",
+    "candidate_fixture_http_exact_proof_program_native_and_nested_length_guards",
+    "candidate_fixture_http_replayed_same_operation_response_rejected_by_exchange_id",
+    "candidate_fixture_http_lookup_states_hold_and_do_not_retry_registration",
+    "candidate_fixture_http_observation_anchor_input_and_epoch_changes_hold",
+    "candidate_fixture_http_local_plan_nonce_roles_roots_and_exact_lane_refuse",
+    "candidate_fixture_http_outcome_effect_and_finality_refusals_preserve_pending",
+    "candidate_fixture_http_stalled_owned_peer_has_finite_deadline_and_one_effect",
+    "candidate_fixture_http_registration_nested_size_hint_is_bounded_before_allocation",
+    "candidate_fixture_http_reports_observed_resume_can_repeat_mock_prove_only",
+    "candidate_fixture_http_unknown_broadcast_outcomes_resume_lookup_only_same_attempt"
+  ]
+}

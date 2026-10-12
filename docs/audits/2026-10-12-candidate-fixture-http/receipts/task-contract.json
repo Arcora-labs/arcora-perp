@@ -1,0 +1,47 @@
+{
+  "schema": "arcora-candidate-fixture-http-task-contract/v1",
+  "observed_utc": "2026-10-12T11:16:54.951351+00:00",
+  "base_main": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+  "branch": "feat/candidate-fixture-http-20261012",
+  "allowed_existing_paths": [
+    "crates/gateway/src/main.rs",
+    ".github/workflows/a11-release-evidence.yml",
+    "docs/ACTIVE_WORK.md",
+    ".gitattributes"
+  ],
+  "new_code_paths": [
+    "crates/gateway/src/candidate_fixture_transport.rs",
+    "crates/gateway/src/candidate_fixture_transport_tests.rs"
+  ],
+  "scope": "cfg(test)-only, caller-owned loopback HTTP fixture transport for immutable candidate preparation/broadcast contracts; synthetic observations and opaque mock proof",
+  "acceptance": [
+    "canonical pinned DPCLK3 fixture request and action-bound response, independent configured request target/program/witness/material before HTTP",
+    "normal and liquidation complete durablePrepared/handoff through ownedTCP fixture",
+    "lost-ACK registration/broadcast preserves existingPending and Resume lookup-only, no mutation retries",
+    "method/framing/length/nonce/domain/op/request/response/plan/body/deadline refusals after full positive baseline",
+    "legacy production code, all21/9/AUX2 and root manifests unchanged; original82dirty files preserved",
+    "same publication-head requiredCI/allregisteredcontexts, normal matched-head merge, tested/main/local treeequal, finalreport/hashreadback"
+  ],
+  "node_state": {
+    "baseline": "PASS",
+    "prior_pr55_main_ci": "PASS",
+    "adapter": "ACTIVE",
+    "fixture_tests": "ACTIVE",
+    "local_verification": "WAITING",
+    "publication_ci": "WAITING",
+    "normal_merge": "WAITING",
+    "report": "WAITING"
+  },
+  "repair_preference": "initial attempt plus two targeted evidence-based repairs; retain failed rawlog/sourcebinders",
+  "authorization": "User repeatedly authorized normal merge after current checks and continued GPU-free work; no renewed permission required",
+  "out_of_scope": [
+    "productionroute/backend/prover startup",
+    "legacyProverClient fallback",
+    "newSP1setup/proof",
+    "CC/keyrelease or attestation",
+    "livefeeddiscovery/credentials",
+    "realchain/Funds/transaction",
+    "approvedtarget/policy/service acceptance"
+  ],
+  "release_gate": "HOLD"
+}

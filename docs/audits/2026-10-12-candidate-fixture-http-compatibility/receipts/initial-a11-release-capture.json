@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-12T12:04:17.720543+00:00",
+  "head": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+  "run_id": 38246622674,
+  "job_id": 114801984146,
+  "job_conclusion": "failure",
+  "command": [
+    "gh",
+    "api",
+    "repos/Arcora-labs/arcora-perp/actions/jobs/114801984146/logs"
+  ],
+  "exit_code": 0,
+  "log": "a11-release.log",
+  "bytes": 36976,
+  "sha256": "cb12db3e5a92fcdf4a2f7c20f38bcc2df010c2ab06e0fe7479500e4297654c35",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

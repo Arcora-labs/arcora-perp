@@ -1,0 +1,46 @@
+{
+  "boundary_test_assessment": {
+    "blocker": false,
+    "existing18_checks": "Successful per-flow exchange uniqueness and actual same-operation response replay refusal; semantic fault/effect/durability matrices unchanged.",
+    "not_directly_exercised": "The global allocator reaching MAX and a cross-thread shared allocation interval are not explicitly tested by the unchanged18.",
+    "recommendation": "No demonstrated semantic gap in this mechanical compatibility correction; preserve narrow patch and18 tests. If direct allocator boundary evidence is requested later, extract the actual allocation loop into a helper taking an owned AtomicU64 and test MAX-1/MAX plus concurrent uniqueness against that helper, not a duplicate/mirrored implementation. This would be new source scope and require fresh source-bound checks."
+  },
+  "current_core_sha256": "493eb023745d8f25d22e8d26484e93b47814214f2504f5cf6115ea688070fbb8",
+  "current_covered_source_files": 373,
+  "current_covered_source_map_sha256": "644a6c7c5f18a3557d619abacd2cb8a5acfed726f25ad5c7b23a5aff87c29db0",
+  "current_test_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99",
+  "execution_scope": "Independent read-only source/inverse/hash reasoning only. No Cargo, tests, network, tracked source edits or runtime arithmetic claims from an executed boundary test. Parent-reported CI deprecation/local compiler mismatch is recorded as investigation context, not independently queried here.",
+  "historical_packet": {
+    "all_artifacts_unchanged": true,
+    "artifacts": 54,
+    "code_commit": "a716f0c0fe6305749844d4f16cabbff19541b2d2",
+    "current_local_focused_and_true_1_99_checks_required_separately": true,
+    "current_publication_CI_full_gateway_required_separately": true,
+    "full_gateway_697_is_historical_for_compatibility_source": true,
+    "ledger_sha256": "5f22174f712cdb0db7b968eb0e9ab3a2dd81add3bc68b0ac5b2604c7eeae2378",
+    "source_map_sha256": "69e339182071f166942be65ced7857f27f401093315ba48b0bea73f5551661e1"
+  },
+  "inverse_byte_comparison": {
+    "old18_tests_unchanged": true,
+    "other_four_code_commit_paths_unchanged": true,
+    "reverting_only_checked_cas_loop_recreates_old_core_sha256": "898386c6fb1dad49690a8a6c53befe7ca8fc4e594534b19dbf9c767483d87c80",
+    "sole_changed_code_path": "crates/gateway/src/candidate_fixture_transport.rs"
+  },
+  "observed_utc": "2026-10-12T12:08:50.228396+00:00",
+  "passed": true,
+  "production_release": "HOLD",
+  "schema": "arcora-candidate-fixture-http-compatibility-source-qa/v1",
+  "semantic_review": {
+    "allocator_not_used_as_memory_publication_barrier": true,
+    "cas_success_is_unique_linearization_point": true,
+    "checked_add_before_atomic_update": true,
+    "last_success_is_MAX_minus_1_then_future_allocation_refuses": true,
+    "maximum_refuses_without_wrap_or_update": true,
+    "no_new_durable_uniqueness_authentication_or_freshness_claim": true,
+    "race_failure_updates_local_id_and_rechecks_add": true,
+    "random_nonzero_seed_rejects_zero_and_MAX_as_before": true,
+    "relaxed_order_same_as_original": true,
+    "success_returns_previous_id": true,
+    "weak_cas_spurious_failure_retries_observed_id": true
+  }
+}

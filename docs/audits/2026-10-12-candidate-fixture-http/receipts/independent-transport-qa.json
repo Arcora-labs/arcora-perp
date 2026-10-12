@@ -1,0 +1,195 @@
+{
+  "schema": "arcora-candidate-fixture-transport-independent-qa/v1",
+  "observed_utc": "2026-10-12T11:38:23.548127+00:00",
+  "reviewed_core_sha256": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+  "reviewed_tests_sha256": "abb74639279b1cedcb65e9a4fe58cc460e7110694219d8c787350ed9faaf319c",
+  "historical_owner_test_freeze_sha256": "86106496e135e952a2cd3aa3f6ad95479eb555f5472954618d63f7c6f64106e4",
+  "root_test_only_repair": "Add & to existing BROADCAST_SEED argument expected by decode_sealed; no semantic/storage/core changes.",
+  "source_hashes": {
+    "crates/gateway/src/candidate_fixture_transport.rs": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+    "crates/gateway/src/candidate_fixture_transport_tests.rs": "abb74639279b1cedcb65e9a4fe58cc460e7110694219d8c787350ed9faaf319c",
+    "crates/gateway/src/main.rs": "85395eb89e704547d945747630e23e2eabf441c5b565642c7cd982e7d5816bcf",
+    ".github/workflows/a11-release-evidence.yml": "96536024c2bbaea80c0d9c23f48a4aa47514107afb0c5c699031fe4219bfa818",
+    "crates/gateway/src/candidate_handoff.rs": "065db35e88cceeaaa3a65ec035fe549aaa9803c19800c23c1c1f229fc8ef2964",
+    "crates/gateway/src/candidate_preparation.rs": "f2af88321bc7386bc681d975709db1c1e427d22d8c3eca6da12ec97385e14de1",
+    "crates/gateway/src/candidate_broadcast.rs": "82335c73299f05e892db2d68c8ed4057a549ac418f1c4282abe7d2cebb6bbaeb",
+    "crates/gateway/src/candidate_recovery.rs": "41ec00cfab8f95c22a10832f3b8223808755bf3cdb2dc74293627b22e4531499"
+  },
+  "defined_test_count": 18,
+  "test_names": [
+    "candidate_fixture_http_both_native_flows_prepare_handoff_and_terminal_replay",
+    "candidate_fixture_http_lost_clock_ack_resumes_lookups_and_holds_absent_reports",
+    "candidate_fixture_http_lost_report_ack_reconciles_existing_effect_without_reregistration",
+    "candidate_fixture_http_lost_broadcast_ack_keeps_same_lane_and_resume_lookup_only",
+    "candidate_fixture_http_local_constructor_pins_refuse_without_connections",
+    "candidate_fixture_http_local_callback_payload_changes_refuse_without_connections",
+    "candidate_fixture_http_response_frame_scope_identity_and_exchange_guards",
+    "candidate_fixture_http_response_header_body_bounds_and_truncation_guards",
+    "candidate_fixture_http_exact_proof_program_native_and_nested_length_guards",
+    "candidate_fixture_http_replayed_same_operation_response_rejected_by_exchange_id",
+    "candidate_fixture_http_lookup_states_hold_and_do_not_retry_registration",
+    "candidate_fixture_http_observation_anchor_input_and_epoch_changes_hold",
+    "candidate_fixture_http_local_plan_nonce_roles_roots_and_exact_lane_refuse",
+    "candidate_fixture_http_outcome_effect_and_finality_refusals_preserve_pending",
+    "candidate_fixture_http_stalled_owned_peer_has_finite_deadline_and_one_effect",
+    "candidate_fixture_http_registration_nested_size_hint_is_bounded_before_allocation",
+    "candidate_fixture_http_reports_observed_resume_can_repeat_mock_prove_only",
+    "candidate_fixture_http_unknown_broadcast_outcomes_resume_lookup_only_same_attempt"
+  ],
+  "acceptance_matrix": [
+    {
+      "area": "actual native flows",
+      "evidence": [
+        "positive(0)",
+        "positive(1)",
+        "native run_encoded equality",
+        "PREP_ACTIONS8/PREP_STAGES8",
+        "Recheck,BroadcastFixture,LookupOutcome",
+        "effects(1,1,1,1)",
+        "terminal zero HTTP and stable source/outcome bytes"
+      ],
+      "review": "covered by source assertions"
+    },
+    {
+      "area": "lost clock ack",
+      "evidence": [
+        "effect Clock1 before dropped ACK",
+        "ClockPending",
+        "Fresh refusal preserves pending bytes",
+        "Resume LC,LC,LR only",
+        "ReportsPending + absent report HOLD",
+        "no duplicate registry/no proof/no broadcast"
+      ],
+      "review": "covered; remote clock effect correctly counted"
+    },
+    {
+      "area": "lost report ack",
+      "evidence": [
+        "ReportsPending after remoteReports1",
+        "Resume lookup-only existing registrations then explicit mockProve",
+        "effects(1,1,1,0)"
+      ],
+      "review": "covered; no global exactly-once proof claim"
+    },
+    {
+      "area": "lost broadcast ack",
+      "evidence": [
+        "durable Pending before remoteBroadcast1",
+        "exact pending plan bytes",
+        "Prepared source unchanged",
+        "Resume LookupOutcome only",
+        "effects remain(1,1,1,1)"
+      ],
+      "review": "covered; no replay/rebroadcast/recheck on resume"
+    },
+    {
+      "area": "pre-wire refusal",
+      "evidence": [
+        "constructor wrong version/ELF/key/SDK/witness/material/bridge/zero sender/nonloopback",
+        "callback wrong clock/input/entries/full request",
+        "plan nonce/sender/bridge/root and later exact plan change"
+      ],
+      "review": "zero connections/effects asserted only before wire"
+    },
+    {
+      "area": "frame correlation and scope",
+      "evidence": [
+        "15 header variants",
+        "magic/version/operation/scope/flags/reserved",
+        "request/program/exchange/request-bodySHA/length/payloadSHA/length/trailing",
+        "same operation stale reply yields Replay"
+      ],
+      "review": "wrong post-effect response preserves ClockPending and honest effect1"
+    },
+    {
+      "area": "HTTP bounds/framing",
+      "evidence": [
+        "duplicate/conflicting/missing CL",
+        "TE/chunked/compressed/redirect/wrongtype/version",
+        "8KiB header/20MiB frame",
+        "body cap before allocation",
+        "truncated/trailing response",
+        "strict EOF"
+      ],
+      "review": "12 fault variants present; code also rejects noncanonical/overflow CL and unknown headers"
+    },
+    {
+      "area": "nested proof/material response",
+      "evidence": [
+        "fixed SDK[5]/public32",
+        "1MiB proof visitor size_hint guard",
+        "existing4096-byte reverted-outcome visitor",
+        "registration ABI visitor",
+        "malicious claimed length/noncanonical prefix/trailing",
+        "wrong program/public32/empty proof"
+      ],
+      "review": "bounded DTOs and canonical reencode; generic decode is used only on frozen known input/known bounded DTOs"
+    },
+    {
+      "area": "deadline and no automatic retry",
+      "evidence": [
+        "single Instant through connect/write/readEOF/frame/typed decode",
+        "set_deadline zero/>2s refused",
+        "owned peer Stall +200ms budget",
+        "Deadline with ClockPending and one remote effect",
+        "channel release + owned listener wakeup/join"
+      ],
+      "review": "finite socket budget shown; no hard scheduler/kernel/CPU preemption claim"
+    },
+    {
+      "area": "unknown observations/finality",
+      "evidence": [
+        "Pending/Absent/Unknown/Reorg HOLD",
+        "clock anchor/report input/epoch changed stop later actions",
+        "outcome prefix effect/finality changes leave Pending",
+        "Resume outcome lookup only same attempt"
+      ],
+      "review": "old coordinator remains anchor/source/finality authority; mocks are not chain consensus"
+    },
+    {
+      "area": "explicit proof resume nuance",
+      "evidence": [
+        "bad public32 leaves ReportsObserved",
+        "explicitResume LC,LR,ProveFixture",
+        "effects(1,1,2,0)"
+      ],
+      "review": "one exchange per callback, not globally exactly-once proving"
+    },
+    {
+      "area": "privacy/activation",
+      "evidence": [
+        "cfg(test) hooks only",
+        "SocketAddr127.0.0.1 nonzero only",
+        "fixed path/MIME/Host",
+        "no URL/auth/proxy/env reads in adapter",
+        "TransportError enums only",
+        "fixture/HOLD true false proof/approval/submission flags"
+      ],
+      "review": "synthetic plaintext fixture only, no real service/proof/DON/L1 acceptances"
+    }
+  ],
+  "findings": [],
+  "status": "SCOPED_SOURCE_REVIEW_PASS",
+  "execution_evidence": {
+    "first_compile": {
+      "path": "target/candidate-transport-validation-20261012/checks/fixture-first.json",
+      "sha256": "ad339ba29e382f5e53d15438c8ec97417bc0e31be49666ae4285ef294e7e3da7",
+      "exit_code": 101,
+      "tests_executed": 0,
+      "result": "E0308 new helper missing seed borrow; retained by root"
+    },
+    "repair1_result": "Root running; not asserted PASS by this source QA",
+    "this_agent_ran_tests_or_builds": false
+  },
+  "limits": [
+    "Owned loopback HTTP and synthetic peer/effects/proof bytes only; no public target/config requirement to close this software scope.",
+    "Random-seeded exchange counter supplies correlation only; no authenticated signed freshness or durable/global uniqueness.",
+    "First plan source-cut/Prepared/anchor authenticity stays with existing authenticated leased coordinator, not standalone adapter.",
+    "No actual chain finality, SP1 proof authentication, DON/uptime health, custody acceptance or service attestation."
+  ],
+  "method": {
+    "read_only_source_and_owner_receipt_review": true,
+    "new_tests_builds_network_calls_or_tracked_mutations": false
+  },
+  "release_gate": "HOLD"
+}

@@ -1,0 +1,21 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error[E0308]: mismatched types
+   --> crates/gateway/src/candidate_fixture_transport_tests.rs:543:63
+    |
+543 |         .then(|| decode_sealed(&std::fs::read(path).unwrap(), BROADCAST_SEED).unwrap())
+    |                  -------------                                ^^^^^^^^^^^^^^ expected `&[u8; 32]`, found `[u8; 32]`
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> crates/gateway/src/candidate_broadcast_store.rs:547:15
+    |
+547 | pub(crate) fn decode_sealed(bytes: &[u8], seed: &[u8; 32]) -> Result<Record, StoreError> {
+    |               ^^^^^^^^^^^^^               ---------------
+help: consider borrowing here
+    |
+543 |         .then(|| decode_sealed(&std::fs::read(path).unwrap(), &BROADCAST_SEED).unwrap())
+    |                                                               +
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `gateway` (bin "gateway" test) due to 1 previous error

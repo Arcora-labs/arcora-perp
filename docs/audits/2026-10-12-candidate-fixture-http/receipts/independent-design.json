@@ -1,0 +1,79 @@
+{
+  "acceptance_cases": [
+    "Both fixed #50 normal/liquidation lifecycle requests reach durable Prepared, exact stored bytes/native commitments, then fixed-lane Pending->Outcome over actual owned HTTP sockets.",
+    "Every semantic wire refusal starts from a separate successful baseline. Exact program/key/ELF/domain, request/material/full-container correspondence, clock receipt/epoch, report input/evidence and 32-byte native commitment enforced.",
+    "Drop acknowledgement after one recorded clock/report/broadcast effect; inspect exact durable Pending; fresh refuses; reopened Resume performs only lookups, no second registration/broadcast and same source/plan identity.",
+    "Wrong local version/target/trusted material refuses before any connection; wrong peer identity refuses before mutating wire operation. Wrong action/exchange/operation/request/nonce/lane is rejected.",
+    "Response framing matrices: duplicate Content-Length, Transfer-Encoding, missing/incorrect size, oversize header/body, malformed version/content type, truncation, trailing frame, payload checksum, status errors/redirects and bounded deadlines.",
+    "Lookup Pending/Absent/Unknown/Reorg all retain original state/HOLD; finalized identity/effect/finality mismatch refused; success and finalized mock revert exactly persisted; terminal replay zero HTTP callbacks.",
+    "Persistence definite/ambiguous failures do not cause a network retry; exact reconciliation required after reload. Existing ownership and shared validator tests remain unchanged."
+  ],
+  "base_main": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+  "critical_recovery_rules": [
+    "ClockPending/ReportsPending/Pending are durable before respective HTTP mutation. An HTTP timeout, truncated reply, connection loss, malformed acknowledgement or identity failure must stop later callbacks and leave original pending cut.",
+    "No automatic registration or broadcast retry. Resume only looks up saved immutable operation/attempt identity; absent/unknown/pending/reorg remains HOLD. Prove may repeat after Prepared save failure per existing nonfinancial schedule.",
+    "Receipt/status must not be equated to finality. Finalized response carries exact original anchor/target/value and caller-owned consistency metadata; unchanged pure validators enforce epoch/time/finality/order.",
+    "Mock attempt_id/mock_tx_id are domain-separated offline IDs, never signed Ethereum transaction hashes. Any proof/outcome/material/nonce/lane change refuses exact persisted plan match.",
+    "Terminal Prepared/Outcome resume returns with zero callbacks, so a pure constructor must not send identity HTTP eagerly. A terminal stored outcome is historical recorded consistency, not newly observed canonical-chain finality.",
+    "Keep original source clock/report timestamps and full report containers; DPCLK3 outer witness and inner clock version2 are different domains. Full Entry ABI input hash is distinct from body evidence hash."
+  ],
+  "finding": "The durable candidate protocol already has exact request/material/native/program/target/anchor bindings and cooperative dual leases, but every transport action is still a direct caller-owned in-process mock. PR55 current-service preflight intentionally refuses DPCLK3; it cannot be reused as candidate service acceptance.",
+  "implementation_assignment_after_design": "Root subsequently assigned this agent only NEW candidate_fixture_transport_tests.rs. Adapter API negotiation must finish before test source is written; root retains Cargo/build authority.",
+  "observed_utc": "2026-10-12T11:16:50.216758+00:00",
+  "open_gates": [
+    "No actual approved public target/operator/service expectations supplied.",
+    "No real candidate backend setup/proof, DON verification, uptime health, signed chain transaction or public RPC/service acceptance.",
+    "No authenticated transport, CC/key release, independent approval, custody/economic/capacity/finality or production release gate closed. Live feed discovery remains user-deferred."
+  ],
+  "read_only_source_sha256": {
+    "crates/gateway/src/candidate_broadcast.rs": "82335c73299f05e892db2d68c8ed4057a549ac418f1c4282abe7d2cebb6bbaeb",
+    "crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+    "crates/gateway/src/candidate_handoff.rs": "065db35e88cceeaaa3a65ec035fe549aaa9803c19800c23c1c1f229fc8ef2964",
+    "crates/gateway/src/candidate_preparation.rs": "f2af88321bc7386bc681d975709db1c1e427d22d8c3eca6da12ec97385e14de1",
+    "crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+    "crates/gateway/src/candidate_recovery.rs": "41ec00cfab8f95c22a10832f3b8223808755bf3cdb2dc74293627b22e4531499",
+    "docs/PUBLIC_SERVICE_IDENTITY.md": "61f964e64cb2990ffe320d22ba328f4727cf8bf60632622fe8172c38ae6a2b17",
+    "scripts/local-verification/service_identity_preflight.py": "e99e4ffdb9c87732702b8f51b2cb89c45b2c30f164e91af063caaa3fe7efd947"
+  },
+  "recommended_packet": {
+    "boundary": "Owned loopback HTTP fixture only; implements unchanged PreparationTransport and BroadcastTransport; not legacy ProverClient, a real candidate prover, live registry or Ethereum transaction sender.",
+    "constructor": "FixtureTransport::new(SocketAddr, &ProtocolRequest, &TrustedRequest, &BridgeTarget, sender:[u8;20], nonce:u64), pure validation/no network; exact final names to be agreed with adapter owner.",
+    "durability": "Coordinators retain sole checkpoint and lease authority. New transport never writes/reseals/replaces Prepared, source binding, fixed broadcast lane or outcomes.",
+    "files": [
+      "NEW cfg(test) gateway candidate_fixture_transport.rs",
+      "NEW cfg(test) gateway candidate_fixture_transport_tests.rs",
+      "Root-owned cfg(test) module wiring only"
+    ],
+    "peer_identity": "New explicitly fixture-only wire identity; candidate pinned program is expected declaration, native replay and opaque mock proof are explicit. All release/attestation/live-candidate-submission claims false/HOLD. Current arcora-public-service-identity/v1 remains unchanged, and legacy DPCLK2 identity remains an incompatible peer."
+  },
+  "schema": "arcora-candidate-fixture-transport-independent-design/v1",
+  "scope": {
+    "actual_service_accepted": false,
+    "candidate_submission_enabled": false,
+    "proof_generated": false,
+    "release_gate": "HOLD",
+    "software_design_only": true,
+    "tests_builds_or_network_run": false,
+    "tracked_edits_performed_for_this_design": false
+  },
+  "wire_recommendations": {
+    "body": "Bound raw frame before allocation, reject noncanonical/trailing/foreign codecs. Server compares full opaque request bytes to pinned owned corpus before decoding ProtocolRequest; do not deserialize an arbitrary network ProtocolRequest with derived unbounded Vec/String allocation. Proof response uses exact 32-byte public values, pinned program fields and bounded <=1MiB opaque mock proof.",
+    "bound_reuse": {
+      "entries": 128,
+      "entries_abi_bytes": "reuse candidate_registration::MAX_ENTRIES_ABI_BYTES",
+      "full_report_bytes": 4096,
+      "observation_bytes": 65536,
+      "outcome_bytes": 65536,
+      "plan_bytes": 2097152,
+      "proof_bytes": 1048576,
+      "request_bytes": 25165824,
+      "revert_bytes": 4096,
+      "witness_bytes": 16777216
+    },
+    "deadline": "Finite connect/read/write socket limits plus monotonic checked operation budget at chunk boundaries; do not claim a hard asynchronous preemption or proving-capacity measurement.",
+    "endpoint": "Typed numeric SocketAddr, loopback only, caller-owned ephemeral port; no URL, DNS, proxy, credentials, discovery, env lookup or redirects.",
+    "frame": "Fixed magic/version/action/status plus request SHA256, fresh exchange ID, immutable operation/effect ID, explicit payload length and SHA256. Response must echo identity/action/exchange/operation/request; validate before converting to existing DTOs.",
+    "http": "One request per connection, strict bounded headers, fixed Content-Length, application/octet-stream, Connection: close; refuse duplicate/conflicting lengths, Transfer-Encoding/chunking/compression, status/version/path mismatch and trailing body.",
+    "privacy": "No request/response bodies, witness, reports, auth material or endpoints in errors. Receipt only action, length, digest, counts and stage; synthetic owned loopback data only."
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-12T12:05:55.916516+00:00",
+  "head": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+  "passed": false,
+  "cause": "AtomicU64.fetch_update deprecated; LinuxRust1.99 suggests try_update; deniedby-Dwarnings",
+  "source": "crates/gateway/src/candidate_fixture_transport.rs:487",
+  "jobs": [
+    {
+      "run": 38246622428,
+      "job": 114801983021,
+      "log": "rust-lint.log"
+    },
+    {
+      "run": 38246622674,
+      "job": 114801984146,
+      "log": "a11-release.log"
+    }
+  ],
+  "files": {
+    "rust-lint.log": {
+      "bytes": 36537,
+      "sha256": "3fcff8d39516665988aa1a066658e2485862ddc305b10b081ad8ba1118c91bc3"
+    },
+    "a11-release.log": {
+      "bytes": 36976,
+      "sha256": "cb12db3e5a92fcdf4a2f7c20f38bcc2df010c2ab06e0fe7479500e4297654c35"
+    }
+  },
+  "matched_errors": {
+    "rust-lint.log": [
+      "2026-10-12T12:03:53.8708833Z error: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency",
+      "2026-10-12T12:03:59.6295191Z error: could not compile `gateway` (bin \"gateway\" test) due to 1 previous error"
+    ],
+    "a11-release.log": [
+      "2026-10-12T12:04:03.8383887Z error: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency",
+      "2026-10-12T12:04:09.8565894Z error: could not compile `gateway` (bin \"gateway\" test) due to 1 previous error"
+    ]
+  },
+  "mutations": false,
+  "retries": false
+}

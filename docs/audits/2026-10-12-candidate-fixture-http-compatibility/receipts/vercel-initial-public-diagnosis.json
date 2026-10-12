@@ -1,0 +1,17 @@
+{
+  "schema": "arcora-initial-publication-deployment-diagnosis/v1",
+  "deployment_id": "dpl_Hq4RHF647v2DfeJ8Pq2PYAQzTNez",
+  "project_id": "prj_TYWLUuNI7YcdhRkW7oSlL0zxZanO",
+  "project": "arcora-labs",
+  "scope": "kubudak90s-projects",
+  "publication_head": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+  "ref": "feat/candidate-fixture-http-20261012",
+  "ready_state": "ERROR",
+  "error_code": "git_info_fail",
+  "build_skipped": false,
+  "build_log_lines_observed": 0,
+  "inference": "git_info_fail is deployment Git metadata failure; no application compilation error was observed. Exact next-head deployment must be checked independently.",
+  "api_sha256": "2e2d73310306c71fd0dc4e6a73331fac091c382969766ca2abf733dc2904d860",
+  "configuration_changed": false,
+  "redeploy_requested": false
+}

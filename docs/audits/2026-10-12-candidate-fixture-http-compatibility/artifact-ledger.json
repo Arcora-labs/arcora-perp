@@ -1,0 +1,245 @@
+{
+  "schema": "arcora-candidate-fixture-http-compatibility-evidence/v1",
+  "observed_utc": "2026-10-12T12:12:45.495323+00:00",
+  "initial_publication_head": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+  "compatibility_code_commit": "90ab7e2acb0c173fb0e76a311ac9377e4363636f",
+  "compatibility_code_blobs_sha256": {
+    "crates/gateway/src/candidate_fixture_transport.rs": "493eb023745d8f25d22e8d26484e93b47814214f2504f5cf6115ea688070fbb8",
+    "crates/gateway/src/candidate_fixture_transport_tests.rs": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99",
+    "crates/gateway/src/main.rs": "85395eb89e704547d945747630e23e2eabf441c5b565642c7cd982e7d5816bcf",
+    ".github/workflows/a11-release-evidence.yml": "96536024c2bbaea80c0d9c23f48a4aa47514107afb0c5c699031fe4219bfa818",
+    "docs/CANDIDATE_FIXTURE_HTTP.md": "c6f1df1318286592487f3825616fb38e8617680453b8d3c004da9d99d2a7643b",
+    "docs/ACTIVE_WORK.md": "24447143f917ccacad2ed5db126b2812ddcba18b2e9799dc6d727e585cdaae7b"
+  },
+  "covered_source_files": 373,
+  "covered_source_map_sha256": "644a6c7c5f18a3557d619abacd2cb8a5acfed726f25ad5c7b23a5aff87c29db0",
+  "original_packet_ledger_sha256": "5f22174f712cdb0db7b968eb0e9ab3a2dd81add3bc68b0ac5b2604c7eeae2378",
+  "artifacts": {
+    "README.md": {
+      "sha256": "37409d33f54df17e3eb25697c49e72d8b6a8b9b9507dcf0faa800d05d09a7789",
+      "bytes": 2402
+    },
+    "logs/fixture-compatibility.stderr.log": {
+      "sha256": "28eea729d2aafc093eaef8c145decfecf8db72415499ae237d861b1d99d4f7ca",
+      "bytes": 267
+    },
+    "logs/fixture-compatibility.stdout.log": {
+      "sha256": "ac9f7ede09b6fe5e6919456d56fbbf7220ab498811a4fd21b09e91f6adfa08c7",
+      "bytes": 2354
+    },
+    "logs/initial-a11-release.log": {
+      "sha256": "cb12db3e5a92fcdf4a2f7c20f38bcc2df010c2ab06e0fe7479500e4297654c35",
+      "bytes": 36976
+    },
+    "logs/initial-rust-lint.log": {
+      "sha256": "3fcff8d39516665988aa1a066658e2485862ddc305b10b081ad8ba1118c91bc3",
+      "bytes": 36537
+    },
+    "logs/new-python-compatibility.stderr.log": {
+      "sha256": "11cd669068618d15bcf75cddb7d4520fe8198b709b6bf6db1652506ea67ed9a9",
+      "bytes": 4346
+    },
+    "logs/new-python-compatibility.stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/workspace-clippy-compatibility.stderr.log": {
+      "sha256": "9002ac1f3d653f4798bbf70f9c9fc9246498ace721e1239adb0abbfd3919388a",
+      "bytes": 186
+    },
+    "logs/workspace-clippy-compatibility.stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/workspace-format-compatibility.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/workspace-format-compatibility.stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "receipts/compatibility-source-qa.json": {
+      "sha256": "9dd08d06152724d7f64f8b6edd3bfd6795217802b4f0f9983aaa08dd96a4338a",
+      "bytes": 3199
+    },
+    "receipts/fixture-compatibility.json": {
+      "sha256": "76b59af32236db8155c71c2abbc078856861dd1e8539c5b480afebebbb96a751",
+      "bytes": 87356
+    },
+    "receipts/initial-a11-release-capture.json": {
+      "sha256": "e7a487c5cf1150e06059bf22d18e2d5e4228446bf1fbe643ab8ae7fc00921c47",
+      "bytes": 531
+    },
+    "receipts/initial-initial-ci-failure-diagnosis.json": {
+      "sha256": "accdd83ea94449971d4741cb46da4e8b85cf0e036bab6243bfca73e53be7dd13",
+      "bytes": 1477
+    },
+    "receipts/initial-snapshot-20261012T120416427591Z.json": {
+      "sha256": "b6d98440551c68c344efee1f2a86835869e113f1e643338f377d994db83aa2f6",
+      "bytes": 159415
+    },
+    "receipts/new-python-compatibility.json": {
+      "sha256": "02c443e280fdbb67637ecf098c3da3a20784d61a80e13e5c168474bb1e637086",
+      "bytes": 87573
+    },
+    "receipts/pins-compatibility.json": {
+      "sha256": "c023a75169fa738cf91f6d89f9b712f457edfdf41ba6b3c49080467fa66f6f75",
+      "bytes": 47246
+    },
+    "receipts/preservation-compatibility-final.json": {
+      "sha256": "5601a108a1cbc3be7ea9f3698e5671526ae7125cf2f74e04790217b68e9d511f",
+      "bytes": 16916
+    },
+    "receipts/vercel-initial-public-diagnosis.json": {
+      "sha256": "9ae27ee8bfeb42812f4d8b97a05ad508d4cc2fd1f7f49c65c34dff1ef6abcff7",
+      "bytes": 793
+    },
+    "receipts/workspace-clippy-compatibility.json": {
+      "sha256": "a501b7b10be0d3a4307c3acd2cef6df793172eff019d70caabe2bae68536b46c",
+      "bytes": 87311
+    },
+    "receipts/workspace-format-compatibility.json": {
+      "sha256": "ea6476efda7bf8e39d23fd5d4d29f7f1490a65bed76b2355ab7b616d03ccb333",
+      "bytes": 87244
+    },
+    "tools/prepare_compatibility_packet.py": {
+      "sha256": "0139dace6f6d0197e611d85f474b275b4e9980f7ce8bbf9da7c2172896f2e2d3",
+      "bytes": 3221
+    },
+    "tools/record_check.py": {
+      "sha256": "fe7602e116ce200040cbc8832adc7533303be04c24823be446ffeb5dd8e58c4d",
+      "bytes": 3477
+    }
+  },
+  "copied_artifacts": {
+    "receipts/fixture-compatibility.json": {
+      "original": "target/candidate-transport-validation-20261012/checks/fixture-compatibility.json",
+      "sha256": "76b59af32236db8155c71c2abbc078856861dd1e8539c5b480afebebbb96a751",
+      "bytes": 87356
+    },
+    "logs/fixture-compatibility.stdout.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/fixture-compatibility.stdout.log",
+      "sha256": "ac9f7ede09b6fe5e6919456d56fbbf7220ab498811a4fd21b09e91f6adfa08c7",
+      "bytes": 2354
+    },
+    "logs/fixture-compatibility.stderr.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/fixture-compatibility.stderr.log",
+      "sha256": "28eea729d2aafc093eaef8c145decfecf8db72415499ae237d861b1d99d4f7ca",
+      "bytes": 267
+    },
+    "receipts/workspace-clippy-compatibility.json": {
+      "original": "target/candidate-transport-validation-20261012/checks/workspace-clippy-compatibility.json",
+      "sha256": "a501b7b10be0d3a4307c3acd2cef6df793172eff019d70caabe2bae68536b46c",
+      "bytes": 87311
+    },
+    "logs/workspace-clippy-compatibility.stdout.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/workspace-clippy-compatibility.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/workspace-clippy-compatibility.stderr.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/workspace-clippy-compatibility.stderr.log",
+      "sha256": "9002ac1f3d653f4798bbf70f9c9fc9246498ace721e1239adb0abbfd3919388a",
+      "bytes": 186
+    },
+    "receipts/workspace-format-compatibility.json": {
+      "original": "target/candidate-transport-validation-20261012/checks/workspace-format-compatibility.json",
+      "sha256": "ea6476efda7bf8e39d23fd5d4d29f7f1490a65bed76b2355ab7b616d03ccb333",
+      "bytes": 87244
+    },
+    "logs/workspace-format-compatibility.stdout.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/workspace-format-compatibility.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/workspace-format-compatibility.stderr.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/workspace-format-compatibility.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "receipts/new-python-compatibility.json": {
+      "original": "target/candidate-transport-validation-20261012/checks/new-python-compatibility.json",
+      "sha256": "02c443e280fdbb67637ecf098c3da3a20784d61a80e13e5c168474bb1e637086",
+      "bytes": 87573
+    },
+    "logs/new-python-compatibility.stdout.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/new-python-compatibility.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/new-python-compatibility.stderr.log": {
+      "original": "target/candidate-transport-validation-20261012/checks/new-python-compatibility.stderr.log",
+      "sha256": "11cd669068618d15bcf75cddb7d4520fe8198b709b6bf6db1652506ea67ed9a9",
+      "bytes": 4346
+    },
+    "receipts/pins-compatibility.json": {
+      "original": "target/candidate-transport-validation-20261012/checks/pins-compatibility.json",
+      "sha256": "c023a75169fa738cf91f6d89f9b712f457edfdf41ba6b3c49080467fa66f6f75",
+      "bytes": 47246
+    },
+    "receipts/compatibility-source-qa.json": {
+      "original": "target/candidate-transport-validation-20261012/publication/compatibility-source-qa.json",
+      "sha256": "9dd08d06152724d7f64f8b6edd3bfd6795217802b4f0f9983aaa08dd96a4338a",
+      "bytes": 3199
+    },
+    "receipts/vercel-initial-public-diagnosis.json": {
+      "original": "target/candidate-transport-validation-20261012/publication/vercel-initial-public-diagnosis.json",
+      "sha256": "9ae27ee8bfeb42812f4d8b97a05ad508d4cc2fd1f7f49c65c34dff1ef6abcff7",
+      "bytes": 793
+    },
+    "logs/initial-rust-lint.log": {
+      "original": "target/candidate-transport-validation-20261012/publication/ci56-initial-8181880/rust-lint.log",
+      "sha256": "3fcff8d39516665988aa1a066658e2485862ddc305b10b081ad8ba1118c91bc3",
+      "bytes": 36537
+    },
+    "logs/initial-a11-release.log": {
+      "original": "target/candidate-transport-validation-20261012/publication/ci56-initial-8181880/a11-release.log",
+      "sha256": "cb12db3e5a92fcdf4a2f7c20f38bcc2df010c2ab06e0fe7479500e4297654c35",
+      "bytes": 36976
+    },
+    "receipts/initial-a11-release-capture.json": {
+      "original": "target/candidate-transport-validation-20261012/publication/ci56-initial-8181880/a11-release-capture.json",
+      "sha256": "e7a487c5cf1150e06059bf22d18e2d5e4228446bf1fbe643ab8ae7fc00921c47",
+      "bytes": 531
+    },
+    "receipts/initial-initial-ci-failure-diagnosis.json": {
+      "original": "target/candidate-transport-validation-20261012/publication/ci56-initial-8181880/initial-ci-failure-diagnosis.json",
+      "sha256": "accdd83ea94449971d4741cb46da4e8b85cf0e036bab6243bfca73e53be7dd13",
+      "bytes": 1477
+    },
+    "receipts/initial-snapshot-20261012T120416427591Z.json": {
+      "original": "target/candidate-transport-validation-20261012/publication/ci56-initial-8181880/snapshot-20261012T120416427591Z.json",
+      "sha256": "b6d98440551c68c344efee1f2a86835869e113f1e643338f377d994db83aa2f6",
+      "bytes": 159415
+    },
+    "tools/record_check.py": {
+      "original": "target/candidate-transport-validation-20261012/record_check.py",
+      "sha256": "fe7602e116ce200040cbc8832adc7533303be04c24823be446ffeb5dd8e58c4d",
+      "bytes": 3477
+    },
+    "tools/prepare_compatibility_packet.py": {
+      "original": "target/candidate-transport-validation-20261012/prepare_compatibility_packet.py",
+      "sha256": "0139dace6f6d0197e611d85f474b275b4e9980f7ce8bbf9da7c2172896f2e2d3",
+      "bytes": 3221
+    },
+    "receipts/preservation-compatibility-final.json": {
+      "original": "target/candidate-transport-validation-20261012/preservation-compatibility-final.json",
+      "sha256": "5601a108a1cbc3be7ea9f3698e5671526ae7125cf2f74e04790217b68e9d511f",
+      "bytes": 16916
+    }
+  },
+  "scope": {
+    "local_focused_http_passed": 18,
+    "local_focused_failed": 0,
+    "local_focused_ignored": 0,
+    "local_python_passed": 25,
+    "local_clippy_and_format_passed": true,
+    "current_full_gateway_local_run": false,
+    "original_full697_source_is_historical": true,
+    "publication_ci_observed": false,
+    "candidate_submission_enabled": false,
+    "fresh_proof_generated": false,
+    "production_release": "HOLD"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "arcora-candidate-fixture-transport-source/v1",
+  "at": "2026-10-12T11:25:59.701220+00:00",
+  "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_fixture_transport.rs",
+  "sha256": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+  "bytes": 31649,
+  "rustfmt": {
+    "binary": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+    "version": "rustfmt 1.10.0-stable (b940084d7e 2026-09-28)",
+    "command": [
+      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+      "--check",
+      "--edition",
+      "2021",
+      "--config",
+      "skip_children=true",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_fixture_transport.rs"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "after_sha256": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+  "cargo_run": false,
+  "network_run": false,
+  "scope": "cfg(test)-only fixture HTTP adapter; no production routes/backend/authentication/proof generation/new journal"
+}
