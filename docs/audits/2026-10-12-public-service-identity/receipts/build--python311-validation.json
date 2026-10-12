@@ -1,0 +1,40 @@
+[
+  {
+    "command": [
+      "python3.11",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "scripts/local-verification",
+      "-p",
+      "test_service_build_identity.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.13270804099738598,
+    "observed_utc": "2026-10-12T09:27:59.036312+00:00",
+    "log": "target/candidate-service-validation-20261012/build/unit-python311.log",
+    "log_sha256": "604bd4be9d2cc54520e3692187b7e93e99ca1408f4a29429df248ecbdb3ccde9"
+  },
+  {
+    "command": [
+      "rustup",
+      "run",
+      "1.99.0",
+      "rustfmt",
+      "--edition",
+      "2021",
+      "--config",
+      "skip_children=true",
+      "crates/service-identity/build_support.rs",
+      "crates/gateway/build.rs",
+      "crates/prover-service/build.rs"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.19164075003936887,
+    "observed_utc": "2026-10-12T09:27:59.169189+00:00",
+    "log": "target/candidate-service-validation-20261012/build/format-owned.log",
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

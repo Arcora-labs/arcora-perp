@@ -1,0 +1,1359 @@
+﻿2026-10-12T08:53:52.8037470Z Current runner version: '2.337.0'
+2026-10-12T08:53:52.8072696Z ##[group]Runner Image Provisioner
+2026-10-12T08:53:52.8074247Z Hosted Compute Agent
+2026-10-12T08:53:52.8075325Z Version: 20261002.596
+2026-10-12T08:53:52.8076753Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-12T08:53:52.8078256Z Build Date: 2026-10-02T22:28:27Z
+2026-10-12T08:53:52.8079546Z Worker ID: {2ad225a1-3438-4045-9670-d6237df00f62}
+2026-10-12T08:53:52.8080947Z Region: eastus
+2026-10-12T08:53:52.8081927Z Cloud: Azure
+2026-10-12T08:53:52.8082852Z ##[endgroup]
+2026-10-12T08:53:52.8085220Z ##[group]Operating System
+2026-10-12T08:53:52.8086623Z Ubuntu
+2026-10-12T08:53:52.8087630Z 24.04.5
+2026-10-12T08:53:52.8088589Z LTS
+2026-10-12T08:53:52.8089466Z ##[endgroup]
+2026-10-12T08:53:52.8090585Z ##[group]Runner Image
+2026-10-12T08:53:52.8091621Z Image: ubuntu-24.04
+2026-10-12T08:53:52.8092676Z Version: 20261004.327.1
+2026-10-12T08:53:52.8094756Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261004.327/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-12T08:53:52.8097990Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261004.327
+2026-10-12T08:53:52.8099896Z ##[endgroup]
+2026-10-12T08:53:52.8102212Z ##[group]GITHUB_TOKEN Permissions
+2026-10-12T08:53:52.8105071Z Contents: read
+2026-10-12T08:53:52.8106430Z Metadata: read
+2026-10-12T08:53:52.8107542Z ##[endgroup]
+2026-10-12T08:53:52.8110861Z Secret source: Actions
+2026-10-12T08:53:52.8112487Z Cache mode: write
+2026-10-12T08:53:52.8113678Z Prepare workflow directory
+2026-10-12T08:53:52.8589402Z Prepare all required actions
+2026-10-12T08:53:52.8660192Z Getting action download info
+2026-10-12T08:53:53.1343510Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-12T08:53:53.2550534Z Download action repository 'dtolnay/rust-toolchain@stable' (SHA:686976e191b89faba57d3206551f0f330d8cb249)
+2026-10-12T08:53:53.3595266Z Download action repository 'Swatinem/rust-cache@v2' (SHA:6323deb102c322ba6fcbdcafc7e3dddab59af2b6)
+2026-10-12T08:53:53.5334467Z Download action repository 'foundry-rs/foundry-toolchain@v1' (SHA:908c540300062bd5a7e473851cdb4282204cee09)
+2026-10-12T08:53:53.7641157Z Download action repository 'pnpm/action-setup@v4' (SHA:b906affcce14559ad1aafd4ab0e942779e9f58b1)
+2026-10-12T08:53:53.9451744Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-12T08:53:54.0321186Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-12T08:53:54.3693097Z Complete job name: gateway RPC, crash and alert drills
+2026-10-12T08:53:54.4812651Z ##[group]Run actions/checkout@v4
+2026-10-12T08:53:54.4814034Z with:
+2026-10-12T08:53:54.4814938Z   repository: Arcora-labs/arcora-perp
+2026-10-12T08:53:54.4823520Z   token: ***
+2026-10-12T08:53:54.4824400Z   ssh-strict: true
+2026-10-12T08:53:54.4825278Z   ssh-user: git
+2026-10-12T08:53:54.4826327Z   persist-credentials: true
+2026-10-12T08:53:54.4827305Z   clean: true
+2026-10-12T08:53:54.4828228Z   sparse-checkout-cone-mode: true
+2026-10-12T08:53:54.4829275Z   fetch-depth: 1
+2026-10-12T08:53:54.4830126Z   fetch-tags: false
+2026-10-12T08:53:54.4831026Z   show-progress: true
+2026-10-12T08:53:54.4831919Z   lfs: false
+2026-10-12T08:53:54.4832752Z   submodules: false
+2026-10-12T08:53:54.4833660Z   set-safe-directory: true
+2026-10-12T08:53:54.4834722Z   allow-unsafe-pr-checkout: false
+2026-10-12T08:53:54.4836485Z ##[endgroup]
+2026-10-12T08:53:54.5878863Z Syncing repository: Arcora-labs/arcora-perp
+2026-10-12T08:53:54.5882914Z ##[group]Getting Git version info
+2026-10-12T08:53:54.5885283Z Working directory is '/home/runner/work/arcora-perp/arcora-perp'
+2026-10-12T08:53:54.5888856Z [command]/usr/bin/git version
+2026-10-12T08:53:54.5940691Z git version 2.55.0
+2026-10-12T08:53:54.5964201Z ##[endgroup]
+2026-10-12T08:53:54.5980032Z Temporarily overriding HOME='/home/runner/work/_temp/1c672345-6a1c-4785-84e4-aadbf524f0eb' before making global git config changes
+2026-10-12T08:53:54.5984983Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-12T08:53:54.5989069Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:53:54.6053001Z Deleting the contents of '/home/runner/work/arcora-perp/arcora-perp'
+2026-10-12T08:53:54.6058637Z ##[group]Initializing the repository
+2026-10-12T08:53:54.6063222Z [command]/usr/bin/git init /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:53:54.6196846Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-12T08:53:54.6200488Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-12T08:53:54.6203836Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-12T08:53:54.6206816Z hint: call:
+2026-10-12T08:53:54.6208371Z hint:
+2026-10-12T08:53:54.6210192Z hint: 	git config --global init.defaultBranch <name>
+2026-10-12T08:53:54.6212490Z hint:
+2026-10-12T08:53:54.6214717Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-12T08:53:54.6218395Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-12T08:53:54.6221491Z hint:
+2026-10-12T08:53:54.6223086Z hint: 	git branch -m <name>
+2026-10-12T08:53:54.6224896Z hint:
+2026-10-12T08:53:54.6227410Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-12T08:53:54.6231363Z Initialized empty Git repository in /home/runner/work/arcora-perp/arcora-perp/.git/
+2026-10-12T08:53:54.6237978Z [command]/usr/bin/git remote add origin https://github.com/Arcora-labs/arcora-perp
+2026-10-12T08:53:54.6272524Z ##[endgroup]
+2026-10-12T08:53:54.6275454Z ##[group]Disabling automatic garbage collection
+2026-10-12T08:53:54.6278342Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-12T08:53:54.6332825Z ##[endgroup]
+2026-10-12T08:53:54.6335712Z ##[group]Setting up auth
+2026-10-12T08:53:54.6341151Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-12T08:53:54.6360629Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-12T08:53:55.3373715Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-12T08:53:55.3416940Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-12T08:53:55.3667298Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-12T08:53:55.3704429Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-12T08:53:55.3945464Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-12T08:53:55.4211069Z ##[endgroup]
+2026-10-12T08:53:55.4212065Z ##[group]Fetching the repository
+2026-10-12T08:53:55.4223814Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +8f5e97bc690c1d9a6d796fdc3725526d283e077d:refs/remotes/origin/main
+2026-10-12T08:53:57.3615786Z From https://github.com/Arcora-labs/arcora-perp
+2026-10-12T08:53:57.3617021Z  * [new ref]         8f5e97bc690c1d9a6d796fdc3725526d283e077d -> origin/main
+2026-10-12T08:53:57.3620020Z ##[endgroup]
+2026-10-12T08:53:57.3621046Z ##[group]Determining the checkout info
+2026-10-12T08:53:57.3629164Z ##[endgroup]
+2026-10-12T08:53:57.3636699Z [command]/usr/bin/git sparse-checkout disable
+2026-10-12T08:53:57.3714987Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-12T08:53:57.3751716Z ##[group]Checking out the ref
+2026-10-12T08:53:57.3765271Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-10-12T08:53:57.6922079Z Switched to a new branch 'main'
+2026-10-12T08:53:57.6928071Z branch 'main' set up to track 'origin/main'.
+2026-10-12T08:53:57.6953225Z ##[endgroup]
+2026-10-12T08:53:57.7004529Z [command]/usr/bin/git log -1 --format=%H
+2026-10-12T08:53:57.7036969Z 8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:53:57.7408321Z ##[group]Run dtolnay/rust-toolchain@stable
+2026-10-12T08:53:57.7408685Z with:
+2026-10-12T08:53:57.7408898Z   toolchain: stable
+2026-10-12T08:53:57.7409122Z ##[endgroup]
+2026-10-12T08:53:57.7487717Z ##[start-action display=Parse toolchain version;id=__dtolnay_rust-toolchain.parse]
+2026-10-12T08:53:57.7549035Z ##[group]Run if [[ -z $toolchain ]]; then
+2026-10-12T08:53:57.7549440Z [36;1mif [[ -z $toolchain ]]; then[0m
+2026-10-12T08:53:57.7550001Z [36;1m  # GitHub does not enforce `required: true` inputs itself. https://github.com/actions/runner/issues/1070[0m
+2026-10-12T08:53:57.7550574Z [36;1m  echo "'toolchain' is a required input" >&2[0m
+2026-10-12T08:53:57.7550888Z [36;1m  exit 1[0m
+2026-10-12T08:53:57.7551258Z [36;1melif [[ $toolchain =~ ^stable' '[0-9]+' '(year|month|week|day)s?' 'ago$ ]]; then[0m
+2026-10-12T08:53:57.7551683Z [36;1m  if [[ Linux == macOS ]]; then[0m
+2026-10-12T08:53:57.7552273Z [36;1m    echo "toolchain=1.$((($(date -v-$(sed 's/stable \([0-9]*\) \(.\).*/\1\2/' <<< $toolchain) +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:57.7552820Z [36;1m  else[0m
+2026-10-12T08:53:57.7553261Z [36;1m    echo "toolchain=1.$((($(date --date "${toolchain#stable }" +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:57.7553757Z [36;1m  fi[0m
+2026-10-12T08:53:57.7554105Z [36;1melif [[ $toolchain =~ ^stable' 'minus' '[0-9]+' 'releases?$ ]]; then[0m
+2026-10-12T08:53:57.7554646Z [36;1m  echo "toolchain=1.$((($(date +%s)/60/60/24-16569)/7/6-${toolchain//[^0-9]/}))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:57.7555128Z [36;1melif [[ $toolchain =~ ^1\.[0-9]+$ ]]; then[0m
+2026-10-12T08:53:57.7555672Z [36;1m  echo "toolchain=1.$((i=${toolchain#1.}, c=($(date +%s)/60/60/24-16569)/7/6, i+9*i*(10*i<=c)+90*i*(100*i<=c)))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:57.7556688Z [36;1melse[0m
+2026-10-12T08:53:57.7556911Z [36;1m  delimiter=EOF[0m
+2026-10-12T08:53:57.7557248Z [36;1m  while [[ $toolchain == *$delimiter* ]]; do delimiter+=_; done[0m
+2026-10-12T08:53:57.7557771Z [36;1m  printf 'toolchain<<%s\n%s\n%s\n' "$delimiter" "$toolchain" "$delimiter" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:57.7558197Z [36;1mfi[0m
+2026-10-12T08:53:57.7822879Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:57.7823330Z env:
+2026-10-12T08:53:57.7823572Z   toolchain: stable
+2026-10-12T08:53:57.7823826Z ##[endgroup]
+2026-10-12T08:53:57.7967425Z ##[end-action id=__dtolnay_rust-toolchain.parse;outcome=success;conclusion=success;duration_ms=47]
+2026-10-12T08:53:57.7972104Z ##[start-action display=Set $CARGO_HOME;id=__dtolnay_rust-toolchain.__run]
+2026-10-12T08:53:57.8008921Z ##[group]Run echo CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV
+2026-10-12T08:53:57.8009455Z [36;1mecho CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV[0m
+2026-10-12T08:53:57.8072090Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:57.8072459Z ##[endgroup]
+2026-10-12T08:53:57.8167470Z ##[end-action id=__dtolnay_rust-toolchain.__run;outcome=success;conclusion=success;duration_ms=19]
+2026-10-12T08:53:57.8170067Z ##[start-action display=Install rustup if needed;id=__dtolnay_rust-toolchain.__run_2]
+2026-10-12T08:53:57.8235003Z ##[group]Run if ! command -v rustup &>/dev/null; then
+2026-10-12T08:53:57.8235394Z [36;1mif ! command -v rustup &>/dev/null; then[0m
+2026-10-12T08:53:57.8236485Z [36;1m  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs | sh -s -- --default-toolchain none -y[0m
+2026-10-12T08:53:57.8237270Z [36;1m  echo "$CARGO_HOME/bin" >> $GITHUB_PATH[0m
+2026-10-12T08:53:57.8237571Z [36;1mfi[0m
+2026-10-12T08:53:57.8300223Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:57.8300773Z env:
+2026-10-12T08:53:57.8300988Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:57.8301254Z ##[endgroup]
+2026-10-12T08:53:57.8391836Z ##[end-action id=__dtolnay_rust-toolchain.__run_2;outcome=success;conclusion=success;duration_ms=22]
+2026-10-12T08:53:57.8394296Z ##[start-action display=Install rustup if needed on windows;id=__dtolnay_rust-toolchain.__run_3]
+2026-10-12T08:53:57.8402403Z ##[end-action id=__dtolnay_rust-toolchain.__run_3;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-12T08:53:57.8418114Z ##[start-action display=rustup toolchain install stable;id=__dtolnay_rust-toolchain.__run_4]
+2026-10-12T08:53:57.8440109Z ##[group]Run set -f  # split targets and components on commas and whitespace, without glob expansion
+2026-10-12T08:53:57.8440812Z [36;1mset -f  # split targets and components on commas and whitespace, without glob expansion[0m
+2026-10-12T08:53:57.8441261Z [36;1mflags=()[0m
+2026-10-12T08:53:57.8441549Z [36;1mfor t in ${targets//,/ }; do flags+=(--target "$t"); done[0m
+2026-10-12T08:53:57.8441978Z [36;1mfor c in ${components//,/ }; do flags+=(--component "$c"); done[0m
+2026-10-12T08:53:57.8442477Z [36;1mif [[ $toolchain == nightly && -n $components ]]; then flags+=(--allow-downgrade); fi[0m
+2026-10-12T08:53:57.8442915Z [36;1mlog=$(mktemp)[0m
+2026-10-12T08:53:57.8443153Z [36;1mtrap 'rm -f "$log"' EXIT[0m
+2026-10-12T08:53:57.8443414Z [36;1mfor attempt in 1 2 3 4 5; do[0m
+2026-10-12T08:53:57.8443984Z [36;1m  if rustup toolchain install "$toolchain" "${flags[@]}" --profile minimal --no-self-update --force-non-host 2>&1 | tee "$log"; then[0m
+2026-10-12T08:53:57.8444575Z [36;1m    break[0m
+2026-10-12T08:53:57.8444797Z [36;1m  else[0m
+2026-10-12T08:53:57.8444998Z [36;1m    status=$?[0m
+2026-10-12T08:53:57.8445218Z [36;1m  fi[0m
+2026-10-12T08:53:57.8445514Z [36;1m  if [[ $attempt == 5 ]] || ! grep -Fq 'checksum failed for ' "$log" \[0m
+2026-10-12T08:53:57.8446459Z [36;1m      || ! grep -Fq 'this is likely due to an ongoing update of the official release server' "$log"; then[0m
+2026-10-12T08:53:57.8446951Z [36;1m    exit "$status"[0m
+2026-10-12T08:53:57.8447181Z [36;1m  fi[0m
+2026-10-12T08:53:57.8447541Z [36;1m  echo "Retrying rustup toolchain install in 30 seconds (retry $attempt of 4)" >&2[0m
+2026-10-12T08:53:57.8447959Z [36;1m  sleep 30[0m
+2026-10-12T08:53:57.8448164Z [36;1mdone[0m
+2026-10-12T08:53:57.8509600Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:57.8509956Z env:
+2026-10-12T08:53:57.8510164Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:57.8510417Z   toolchain: stable
+2026-10-12T08:53:57.8510625Z   targets: 
+2026-10-12T08:53:57.8510825Z   components: 
+2026-10-12T08:53:57.8511060Z   RUSTUP_PERMIT_COPY_RENAME: 1
+2026-10-12T08:53:57.8511301Z ##[endgroup]
+2026-10-12T08:53:58.0852749Z info: syncing channel updates for stable-x86_64-unknown-linux-gnu
+2026-10-12T08:53:58.1675231Z 
+2026-10-12T08:53:58.1777436Z   stable-x86_64-unknown-linux-gnu unchanged - rustc 1.99.0 (b940084d7 2026-09-28)
+2026-10-12T08:53:58.1778283Z 
+2026-10-12T08:53:58.1830723Z ##[end-action id=__dtolnay_rust-toolchain.__run_4;outcome=success;conclusion=success;duration_ms=341]
+2026-10-12T08:53:58.1836816Z ##[start-action display=rustup default stable;id=__dtolnay_rust-toolchain.__run_5]
+2026-10-12T08:53:58.1857934Z ##[group]Run rustup default "$toolchain" --force-non-host
+2026-10-12T08:53:58.1858351Z [36;1mrustup default "$toolchain" --force-non-host[0m
+2026-10-12T08:53:58.1922617Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:58.1922970Z env:
+2026-10-12T08:53:58.1923182Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.1923439Z   toolchain: stable
+2026-10-12T08:53:58.1923660Z ##[endgroup]
+2026-10-12T08:53:58.2053174Z info: using existing install for stable-x86_64-unknown-linux-gnu
+2026-10-12T08:53:58.2062641Z info: default toolchain set to stable-x86_64-unknown-linux-gnu
+2026-10-12T08:53:58.2062973Z 
+2026-10-12T08:53:58.2138928Z   stable-x86_64-unknown-linux-gnu unchanged - rustc 1.99.0 (b940084d7 2026-09-28)
+2026-10-12T08:53:58.2139682Z 
+2026-10-12T08:53:58.2157472Z ##[end-action id=__dtolnay_rust-toolchain.__run_5;outcome=success;conclusion=success;duration_ms=31]
+2026-10-12T08:53:58.2161434Z ##[start-action display=Create cachekey;id=__dtolnay_rust-toolchain.rustc-version]
+2026-10-12T08:53:58.2183137Z ##[group]Run DATE=$(rustc +"$toolchain" --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')
+2026-10-12T08:53:58.2184016Z [36;1mDATE=$(rustc +"$toolchain" --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')[0m
+2026-10-12T08:53:58.2184689Z [36;1mHASH=$(rustc +"$toolchain" --version --verbose | sed -ne 's/^commit-hash: //p')[0m
+2026-10-12T08:53:58.2185224Z [36;1mecho "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:58.2250316Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:58.2250675Z env:
+2026-10-12T08:53:58.2250898Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.2251162Z   toolchain: stable
+2026-10-12T08:53:58.2251377Z ##[endgroup]
+2026-10-12T08:53:58.2634739Z ##[end-action id=__dtolnay_rust-toolchain.rustc-version;outcome=success;conclusion=success;duration_ms=47]
+2026-10-12T08:53:58.2637688Z ##[start-action display=Disable incremental compilation;id=__dtolnay_rust-toolchain.__run_6]
+2026-10-12T08:53:58.2659534Z ##[group]Run if [ -z "${CARGO_INCREMENTAL+set}" ]; then
+2026-10-12T08:53:58.2659930Z [36;1mif [ -z "${CARGO_INCREMENTAL+set}" ]; then[0m
+2026-10-12T08:53:58.2660262Z [36;1m  echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV[0m
+2026-10-12T08:53:58.2660552Z [36;1mfi[0m
+2026-10-12T08:53:58.2725228Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:58.2725585Z env:
+2026-10-12T08:53:58.2725791Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.2726304Z ##[endgroup]
+2026-10-12T08:53:58.2814678Z ##[end-action id=__dtolnay_rust-toolchain.__run_6;outcome=success;conclusion=success;duration_ms=17]
+2026-10-12T08:53:58.2817333Z ##[start-action display=Enable colors in Cargo output;id=__dtolnay_rust-toolchain.__run_7]
+2026-10-12T08:53:58.2838297Z ##[group]Run if [ -z "${CARGO_TERM_COLOR+set}" ]; then
+2026-10-12T08:53:58.2838688Z [36;1mif [ -z "${CARGO_TERM_COLOR+set}" ]; then[0m
+2026-10-12T08:53:58.2839031Z [36;1m  echo CARGO_TERM_COLOR=always >> $GITHUB_ENV[0m
+2026-10-12T08:53:58.2839326Z [36;1mfi[0m
+2026-10-12T08:53:58.2899934Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:58.2900292Z env:
+2026-10-12T08:53:58.2900501Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.2900777Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:53:58.2900997Z ##[endgroup]
+2026-10-12T08:53:58.2989948Z ##[end-action id=__dtolnay_rust-toolchain.__run_7;outcome=success;conclusion=success;duration_ms=17]
+2026-10-12T08:53:58.2993502Z ##[start-action display=Enable Cargo sparse registry;id=__dtolnay_rust-toolchain.__run_8]
+2026-10-12T08:53:58.3016519Z ##[group]Run # implemented in 1.66, stabilized in 1.68, made default in 1.70
+2026-10-12T08:53:58.3017086Z [36;1m# implemented in 1.66, stabilized in 1.68, made default in 1.70[0m
+2026-10-12T08:53:58.3017826Z [36;1mif [ -z "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL+set}" -o -f "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol ]; then[0m
+2026-10-12T08:53:58.3018592Z [36;1m  if rustc +"$toolchain" --version --verbose | grep -q '^release: 1\.6[89]\.'; then[0m
+2026-10-12T08:53:58.3019183Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+2026-10-12T08:53:58.3019732Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse >> $GITHUB_ENV[0m
+2026-10-12T08:53:58.3020272Z [36;1m  elif rustc +"$toolchain" --version --verbose | grep -q '^release: 1\.6[67]\.'; then[0m
+2026-10-12T08:53:58.3020851Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+2026-10-12T08:53:58.3021365Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git >> $GITHUB_ENV[0m
+2026-10-12T08:53:58.3021900Z [36;1m  fi[0m
+2026-10-12T08:53:58.3022100Z [36;1mfi[0m
+2026-10-12T08:53:58.3081611Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:58.3081957Z env:
+2026-10-12T08:53:58.3082331Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.3082600Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:53:58.3082832Z   CARGO_TERM_COLOR: always
+2026-10-12T08:53:58.3083067Z   toolchain: stable
+2026-10-12T08:53:58.3083278Z ##[endgroup]
+2026-10-12T08:53:58.3420361Z ##[end-action id=__dtolnay_rust-toolchain.__run_8;outcome=success;conclusion=success;duration_ms=42]
+2026-10-12T08:53:58.3424460Z ##[start-action display=Work around spurious network errors in curl 8.0;id=__dtolnay_rust-toolchain.__run_9]
+2026-10-12T08:53:58.3446260Z ##[group]Run # https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation
+2026-10-12T08:53:58.3447062Z [36;1m# https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation[0m
+2026-10-12T08:53:58.3447727Z [36;1mif rustc +"$toolchain" --version --verbose | grep -q '^release: 1\.7[01]\.'; then[0m
+2026-10-12T08:53:58.3448205Z [36;1m  echo CARGO_HTTP_MULTIPLEXING=false >> $GITHUB_ENV[0m
+2026-10-12T08:53:58.3448521Z [36;1mfi[0m
+2026-10-12T08:53:58.3512691Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:58.3513047Z env:
+2026-10-12T08:53:58.3513253Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.3513519Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:53:58.3513747Z   CARGO_TERM_COLOR: always
+2026-10-12T08:53:58.3513976Z   toolchain: stable
+2026-10-12T08:53:58.3514182Z ##[endgroup]
+2026-10-12T08:53:58.3726923Z ##[end-action id=__dtolnay_rust-toolchain.__run_9;outcome=success;conclusion=success;duration_ms=30]
+2026-10-12T08:53:58.3731873Z ##[start-action display=rustc +stable --version --verbose;id=__dtolnay_rust-toolchain.__run_10]
+2026-10-12T08:53:58.3753758Z ##[group]Run rustc +"$toolchain" --version --verbose
+2026-10-12T08:53:58.3754144Z [36;1mrustc +"$toolchain" --version --verbose[0m
+2026-10-12T08:53:58.3819123Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:58.3819478Z env:
+2026-10-12T08:53:58.3819690Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.3819971Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:53:58.3820202Z   CARGO_TERM_COLOR: always
+2026-10-12T08:53:58.3820435Z   toolchain: stable
+2026-10-12T08:53:58.3820643Z ##[endgroup]
+2026-10-12T08:53:58.4024668Z rustc 1.99.0 (b940084d7 2026-09-28)
+2026-10-12T08:53:58.4025774Z binary: rustc
+2026-10-12T08:53:58.4026958Z commit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4
+2026-10-12T08:53:58.4027911Z commit-date: 2026-09-28
+2026-10-12T08:53:58.4028681Z host: x86_64-unknown-linux-gnu
+2026-10-12T08:53:58.4029418Z release: 1.99.0
+2026-10-12T08:53:58.4030053Z LLVM version: 23.1.1
+2026-10-12T08:53:58.4050364Z ##[end-action id=__dtolnay_rust-toolchain.__run_10;outcome=success;conclusion=success;duration_ms=31]
+2026-10-12T08:53:58.4169486Z ##[group]Run Swatinem/rust-cache@v2
+2026-10-12T08:53:58.4169865Z with:
+2026-10-12T08:53:58.4170092Z   prefix-key: v0-rust
+2026-10-12T08:53:58.4170323Z   add-job-id-key: true
+2026-10-12T08:53:58.4170570Z   add-rust-environment-hash-key: true
+2026-10-12T08:53:58.4170846Z   cache-targets: true
+2026-10-12T08:53:58.4171066Z   cache-all-crates: false
+2026-10-12T08:53:58.4171306Z   cache-workspace-crates: false
+2026-10-12T08:53:58.4171542Z   save-if: true
+2026-10-12T08:53:58.4171747Z   cache-provider: github
+2026-10-12T08:53:58.4171978Z   cache-bin: true
+2026-10-12T08:53:58.4172184Z   lookup-only: false
+2026-10-12T08:53:58.4172411Z   cmd-format: {0}
+2026-10-12T08:53:58.4172607Z env:
+2026-10-12T08:53:58.4172802Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:58.4173107Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:53:58.4173345Z   CARGO_TERM_COLOR: always
+2026-10-12T08:53:58.4173567Z ##[endgroup]
+2026-10-12T08:53:59.7082257Z ##[group]Cache Configuration
+2026-10-12T08:53:59.7082955Z Cache Provider:
+2026-10-12T08:53:59.7083309Z     github
+2026-10-12T08:53:59.7084003Z Workspaces:
+2026-10-12T08:53:59.7084392Z     /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:53:59.7084940Z Cache Paths:
+2026-10-12T08:53:59.7085276Z     /home/runner/.cargo/bin
+2026-10-12T08:53:59.7085711Z     /home/runner/.cargo/.crates.toml
+2026-10-12T08:53:59.7086446Z     /home/runner/.cargo/.crates2.json
+2026-10-12T08:53:59.7086939Z     /home/runner/.cargo/registry
+2026-10-12T08:53:59.7087380Z     /home/runner/.cargo/git
+2026-10-12T08:53:59.7087889Z     /home/runner/work/arcora-perp/arcora-perp/target
+2026-10-12T08:53:59.7088421Z Restore Key:
+2026-10-12T08:53:59.7088870Z     v0-rust-gateway-local-drills-Linux-x64-c7b3ef7d
+2026-10-12T08:53:59.7089426Z Cache Key:
+2026-10-12T08:53:59.7089954Z     v0-rust-gateway-local-drills-Linux-x64-c7b3ef7d-8bac56bd
+2026-10-12T08:53:59.7090540Z .. Prefix:
+2026-10-12T08:53:59.7090920Z   - v0-rust-gateway-local-drills-Linux-x64
+2026-10-12T08:53:59.7091455Z .. Environment considered:
+2026-10-12T08:53:59.7091862Z   - Rust Versions:
+2026-10-12T08:53:59.7092426Z     - 1.99.0 x86_64-unknown-linux-gnu b940084d7eb6a299eb4bfeb8e34901bc051e7ac4
+2026-10-12T08:53:59.7093071Z   - CARGO_HOME
+2026-10-12T08:53:59.7093411Z   - CARGO_INCREMENTAL
+2026-10-12T08:53:59.7093777Z   - CARGO_TERM_COLOR
+2026-10-12T08:53:59.7094141Z .. Lockfiles considered:
+2026-10-12T08:53:59.7094658Z   - /home/runner/work/arcora-perp/arcora-perp/Cargo.lock
+2026-10-12T08:53:59.7095411Z   - /home/runner/work/arcora-perp/arcora-perp/crates/attestation/Cargo.toml
+2026-10-12T08:53:59.7096481Z   - /home/runner/work/arcora-perp/arcora-perp/crates/bridge/Cargo.toml
+2026-10-12T08:53:59.7097405Z   - /home/runner/work/arcora-perp/arcora-perp/crates/chainlink-oracle-host/Cargo.toml
+2026-10-12T08:53:59.7098095Z   - /home/runner/work/arcora-perp/arcora-perp/crates/chainlink-streams-client-host/Cargo.toml
+2026-10-12T08:53:59.7098693Z   - /home/runner/work/arcora-perp/arcora-perp/crates/committee/Cargo.toml
+2026-10-12T08:53:59.7099156Z   - /home/runner/work/arcora-perp/arcora-perp/crates/demo/Cargo.toml
+2026-10-12T08:53:59.7099623Z   - /home/runner/work/arcora-perp/arcora-perp/crates/e2e/Cargo.toml
+2026-10-12T08:53:59.7100074Z   - /home/runner/work/arcora-perp/arcora-perp/crates/gateway/Cargo.toml
+2026-10-12T08:53:59.7100676Z   - /home/runner/work/arcora-perp/arcora-perp/crates/loadbot/Cargo.toml
+2026-10-12T08:53:59.7101125Z   - /home/runner/work/arcora-perp/arcora-perp/crates/matcher/Cargo.toml
+2026-10-12T08:53:59.7101764Z   - /home/runner/work/arcora-perp/arcora-perp/crates/node/Cargo.toml
+2026-10-12T08:53:59.7102596Z   - /home/runner/work/arcora-perp/arcora-perp/crates/note-archive/Cargo.toml
+2026-10-12T08:53:59.7103466Z   - /home/runner/work/arcora-perp/arcora-perp/crates/oracle-feed/Cargo.toml
+2026-10-12T08:53:59.7104702Z   - /home/runner/work/arcora-perp/arcora-perp/crates/perp-core/Cargo.toml
+2026-10-12T08:53:59.7105533Z   - /home/runner/work/arcora-perp/arcora-perp/crates/prover/Cargo.toml
+2026-10-12T08:53:59.7106740Z   - /home/runner/work/arcora-perp/arcora-perp/crates/sealed-box/Cargo.toml
+2026-10-12T08:53:59.7107523Z   - /home/runner/work/arcora-perp/arcora-perp/crates/sequencer/Cargo.toml
+2026-10-12T08:53:59.7108388Z ##[endgroup]
+2026-10-12T08:53:59.7108573Z 
+2026-10-12T08:53:59.7108720Z ... Restoring cache ...
+2026-10-12T08:53:59.7727914Z Cache hit for: v0-rust-gateway-local-drills-Linux-x64-c7b3ef7d-8bac56bd
+2026-10-12T08:54:00.8067992Z Received 218103808 of 420145434 (51.9%), 207.6 MBs/sec
+2026-10-12T08:54:01.8074390Z Received 415951130 of 420145434 (99.0%), 198.0 MBs/sec
+2026-10-12T08:54:01.8125492Z Received 420145434 of 420145434 (100.0%), 199.5 MBs/sec
+2026-10-12T08:54:01.8126689Z Cache Size: ~401 MB (420145434 B)
+2026-10-12T08:54:01.8166815Z [command]/usr/bin/tar -xf /home/runner/work/_temp/75640767-c153-4e97-a4d0-94803e491e7f/cache.tzst -P -C /home/runner/work/arcora-perp/arcora-perp --use-compress-program unzstd
+2026-10-12T08:54:04.8406420Z Cache restored successfully
+2026-10-12T08:54:05.0696404Z Restored from cache key "v0-rust-gateway-local-drills-Linux-x64-c7b3ef7d-8bac56bd" full match: true.
+2026-10-12T08:54:05.0963180Z ##[group]Run foundry-rs/foundry-toolchain@v1
+2026-10-12T08:54:05.0963524Z with:
+2026-10-12T08:54:05.0963722Z   version: stable
+2026-10-12T08:54:05.0963940Z   network: ethereum
+2026-10-12T08:54:05.0964150Z   cache: true
+2026-10-12T08:54:05.0964492Z   cache-key: gateway-local-drills-8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:54:05.0964940Z   cache-restore-keys: gateway-local-drills-
+2026-10-12T08:54:05.0965229Z env:
+2026-10-12T08:54:05.0965428Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:05.0965689Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:05.0966208Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:05.0966464Z   CACHE_ON_FAILURE: false
+2026-10-12T08:54:05.0966702Z ##[endgroup]
+2026-10-12T08:54:05.2270654Z Installing Foundry (version: stable)
+2026-10-12T08:54:05.2278546Z Downloading foundryup installer from foundry-rs/foundryup@a27902ef04dcb43061fabf343365cb5afc95fc48...
+2026-10-12T08:54:05.2556892Z Running foundryup installer...
+2026-10-12T08:54:05.5136010Z Running: foundryup 
+2026-10-12T08:54:08.3578873Z Added /home/runner/.foundry/bin to PATH
+2026-10-12T08:54:08.3580553Z Primary key: linux-foundry-chain-fork-gateway-local-drills-8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:54:08.3587789Z Restore keys: linux-foundry-chain-fork-gateway-local-drills-
+2026-10-12T08:54:08.4193627Z Cache hit for restore-key: linux-foundry-chain-fork-gateway-local-drills-0b20e6a4ad7223d394cfb0632507f20c9ed0d776
+2026-10-12T08:54:08.5370173Z Received 9788 of 9788 (100.0%), 0.2 MBs/sec
+2026-10-12T08:54:08.5370883Z Cache Size: ~0 MB (9788 B)
+2026-10-12T08:54:08.5402568Z [command]/usr/bin/tar -xf /home/runner/work/_temp/0a13e652-9e78-49eb-9d9b-ee5a7cd923e3/cache.tzst -P -C /home/runner/work/arcora-perp/arcora-perp --use-compress-program unzstd
+2026-10-12T08:54:08.5455398Z Cache restored successfully
+2026-10-12T08:54:08.5459053Z Cache restored from key: linux-foundry-chain-fork-gateway-local-drills-0b20e6a4ad7223d394cfb0632507f20c9ed0d776
+2026-10-12T08:54:08.5460271Z Running: forge --version
+2026-10-12T08:54:08.5518804Z forge Version: 1.8.5
+2026-10-12T08:54:08.5519317Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:54:08.5519870Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:54:08.5520202Z Build Profile: dist
+2026-10-12T08:54:08.5524844Z Running: cast --version
+2026-10-12T08:54:08.5610988Z cast Version: 1.8.5
+2026-10-12T08:54:08.5611710Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:54:08.5612625Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:54:08.5613354Z Build Profile: dist
+2026-10-12T08:54:08.5618934Z Running: anvil --version
+2026-10-12T08:54:08.5660162Z anvil Version: 1.8.5
+2026-10-12T08:54:08.5660689Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:54:08.5661374Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:54:08.5661974Z Build Profile: dist
+2026-10-12T08:54:08.5664429Z Running: chisel --version
+2026-10-12T08:54:08.5704293Z chisel Version: 1.8.5
+2026-10-12T08:54:08.5704836Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:54:08.5705515Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:54:08.5706335Z Build Profile: dist
+2026-10-12T08:54:08.6277460Z ##[group]Run pnpm/action-setup@v4
+2026-10-12T08:54:08.6277804Z with:
+2026-10-12T08:54:08.6278018Z   version: 10
+2026-10-12T08:54:08.6278246Z   dest: ~/setup-pnpm
+2026-10-12T08:54:08.6278508Z   run_install: null
+2026-10-12T08:54:08.6278746Z   cache: false
+2026-10-12T08:54:08.6279005Z   cache_dependency_path: pnpm-lock.yaml
+2026-10-12T08:54:08.6279334Z   package_json_file: package.json
+2026-10-12T08:54:08.6279597Z   standalone: false
+2026-10-12T08:54:08.6279817Z env:
+2026-10-12T08:54:08.6280021Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:08.6280285Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:08.6280525Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:08.6280763Z   CACHE_ON_FAILURE: false
+2026-10-12T08:54:08.6280999Z ##[endgroup]
+2026-10-12T08:54:08.7753848Z ##[group]Running self-installer...
+2026-10-12T08:54:09.1898830Z (node:2547) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:54:09.1900639Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:09.3399339Z Progress: resolved 1, reused 0, downloaded 0, added 0
+2026-10-12T08:54:09.3501651Z Packages: +1
+2026-10-12T08:54:09.3502086Z +
+2026-10-12T08:54:09.7559351Z Progress: resolved 1, reused 0, downloaded 1, added 1, done
+2026-10-12T08:54:09.7848533Z 
+2026-10-12T08:54:09.7849293Z dependencies:
+2026-10-12T08:54:09.7849920Z + pnpm 10.34.7 (12.11.2 is available)
+2026-10-12T08:54:09.7850447Z 
+2026-10-12T08:54:09.7873276Z Done in 832ms
+2026-10-12T08:54:09.8067013Z ##[endgroup]
+2026-10-12T08:54:09.8067448Z Installation Completed!
+2026-10-12T08:54:09.8221800Z ##[group]Run actions/setup-node@v4
+2026-10-12T08:54:09.8222121Z with:
+2026-10-12T08:54:09.8222324Z   node-version: 22
+2026-10-12T08:54:09.8222543Z   cache: pnpm
+2026-10-12T08:54:09.8222804Z   cache-dependency-path: frontend/pnpm-lock.yaml
+2026-10-12T08:54:09.8223116Z   always-auth: false
+2026-10-12T08:54:09.8223342Z   check-latest: false
+2026-10-12T08:54:09.8225768Z   token: ***
+2026-10-12T08:54:09.8226357Z env:
+2026-10-12T08:54:09.8226580Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:09.8226854Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:09.8227093Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:09.8227334Z   CACHE_ON_FAILURE: false
+2026-10-12T08:54:09.8227637Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:09.8227956Z ##[endgroup]
+2026-10-12T08:54:09.9639752Z Found in cache @ /opt/hostedtoolcache/node/22.23.3/x64
+2026-10-12T08:54:09.9644709Z (node:2561) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:54:09.9645608Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:09.9648237Z ##[group]Environment details
+2026-10-12T08:54:10.3677955Z node: v22.23.3
+2026-10-12T08:54:10.3678419Z npm: 10.9.9
+2026-10-12T08:54:10.3678820Z yarn: 1.22.22
+2026-10-12T08:54:10.3679643Z ##[endgroup]
+2026-10-12T08:54:10.3704212Z [command]/home/runner/setup-pnpm/node_modules/.bin/pnpm store path --silent
+2026-10-12T08:54:10.8076485Z /home/runner/setup-pnpm/node_modules/.bin/store/v10
+2026-10-12T08:54:10.9237316Z Cache hit for: node-cache-Linux-x64-pnpm-af9df8d830b0c5b5d1808040b01b631e357799f05f171003e5291b089c33c269
+2026-10-12T08:54:10.9346555Z (node:2561) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:54:11.2055704Z Received 24978193 of 24978193 (100.0%), 103.1 MBs/sec
+2026-10-12T08:54:11.2056837Z Cache Size: ~24 MB (24978193 B)
+2026-10-12T08:54:11.2092955Z [command]/usr/bin/tar -xf /home/runner/work/_temp/6be790cc-1581-471b-ba72-f4dfad768000/cache.tzst -P -C /home/runner/work/arcora-perp/arcora-perp --use-compress-program unzstd
+2026-10-12T08:54:11.6168481Z Cache restored successfully
+2026-10-12T08:54:11.6183590Z Cache restored from key: node-cache-Linux-x64-pnpm-af9df8d830b0c5b5d1808040b01b631e357799f05f171003e5291b089c33c269
+2026-10-12T08:54:11.6349952Z ##[group]Run pnpm install --frozen-lockfile
+2026-10-12T08:54:11.6350355Z [36;1mpnpm install --frozen-lockfile[0m
+2026-10-12T08:54:11.6419571Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:11.6419849Z env:
+2026-10-12T08:54:11.6420069Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:11.6420362Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:11.6420608Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:11.6420865Z   CACHE_ON_FAILURE: false
+2026-10-12T08:54:11.6421169Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:11.6421506Z ##[endgroup]
+2026-10-12T08:54:12.0367680Z Lockfile is up to date, resolution step is skipped
+2026-10-12T08:54:12.0567096Z Progress: resolved 1, reused 0, downloaded 0, added 0
+2026-10-12T08:54:12.0965138Z Packages: +123
+2026-10-12T08:54:12.0968761Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+2026-10-12T08:54:12.4666712Z Progress: resolved 123, reused 123, downloaded 0, added 123, done
+2026-10-12T08:54:12.9196392Z 
+2026-10-12T08:54:12.9196941Z dependencies:
+2026-10-12T08:54:12.9197429Z + @noble/ciphers 1.3.0
+2026-10-12T08:54:12.9197809Z + @noble/curves 1.9.0
+2026-10-12T08:54:12.9198080Z + @noble/hashes 1.8.0
+2026-10-12T08:54:12.9198325Z + react 18.3.1
+2026-10-12T08:54:12.9198578Z + react-dom 18.3.1
+2026-10-12T08:54:12.9198717Z 
+2026-10-12T08:54:12.9198825Z devDependencies:
+2026-10-12T08:54:12.9199100Z + @playwright/test 1.58.2
+2026-10-12T08:54:12.9199405Z + @testing-library/dom 10.4.1
+2026-10-12T08:54:12.9199732Z + @testing-library/react 16.3.2
+2026-10-12T08:54:12.9200019Z + @types/node 22.20.4
+2026-10-12T08:54:12.9200276Z + @types/react 18.3.31
+2026-10-12T08:54:12.9200586Z + @types/react-dom 18.3.7
+2026-10-12T08:54:12.9200864Z + @vitejs/plugin-react 4.7.0
+2026-10-12T08:54:12.9201150Z + happy-dom 20.10.6
+2026-10-12T08:54:12.9201403Z + typescript 5.9.3
+2026-10-12T08:54:12.9201636Z + vite 6.4.3
+2026-10-12T08:54:12.9201852Z + vitest 4.1.11
+2026-10-12T08:54:12.9201983Z 
+2026-10-12T08:54:12.9480959Z Done in 1.2s using pnpm v10.34.7
+2026-10-12T08:54:12.9632574Z ##[group]Run python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks gateway-build -- cargo build --locked -p gateway
+2026-10-12T08:54:12.9633765Z [36;1mpython3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks gateway-build -- cargo build --locked -p gateway[0m
+2026-10-12T08:54:12.9707369Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:12.9707641Z env:
+2026-10-12T08:54:12.9707868Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:12.9708156Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:12.9708407Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:12.9708660Z   CACHE_ON_FAILURE: false
+2026-10-12T08:54:12.9708970Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:12.9709300Z ##[endgroup]
+2026-10-12T08:54:30.6240305Z {"argv": ["cargo", "build", "--locked", "-p", "gateway"], "cwd": "/home/runner/work/arcora-perp/arcora-perp", "exit_code": 0, "duration_seconds": 17.502, "log_sha256": "4a03782d7669a28471b09e2449d67f34b500e5ac9414f03354b294f8a8a6385b", "rust_test_summaries": []}
+2026-10-12T08:54:30.6242604Z [1m[92m    Updating[0m crates.io index
+2026-10-12T08:54:30.6243778Z [1m[92m   Compiling[0m perp-core v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/perp-core)
+2026-10-12T08:54:30.6245560Z [1m[92m   Compiling[0m dcap-qvl-webpki v0.103.4+dcap.1 (/home/runner/work/arcora-perp/arcora-perp/vendor/dcap-qvl-webpki)
+2026-10-12T08:54:30.6247823Z [1m[92m   Compiling[0m sealed-box v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/sealed-box)
+2026-10-12T08:54:30.6249579Z [1m[92m   Compiling[0m chainlink-oracle-host v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/chainlink-oracle-host)
+2026-10-12T08:54:30.6250715Z [1m[92m   Compiling[0m matcher v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/matcher)
+2026-10-12T08:54:30.6251694Z [1m[92m   Compiling[0m sequencer v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/sequencer)
+2026-10-12T08:54:30.6252327Z [1m[92m   Compiling[0m dcap-qvl v0.5.2
+2026-10-12T08:54:30.6253870Z [1m[92m   Compiling[0m chainlink-streams-client-host v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/chainlink-streams-client-host)
+2026-10-12T08:54:30.6255738Z [1m[92m   Compiling[0m prover v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/prover)
+2026-10-12T08:54:30.6257734Z [1m[92m   Compiling[0m note-archive v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/note-archive)
+2026-10-12T08:54:30.6259338Z [1m[92m   Compiling[0m oracle-feed v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/oracle-feed)
+2026-10-12T08:54:30.6260311Z [1m[92m   Compiling[0m dark-perp-attestation v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/attestation)
+2026-10-12T08:54:30.6261850Z [1m[92m   Compiling[0m gateway v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/gateway)
+2026-10-12T08:54:30.6262625Z [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 17.36s
+2026-10-12T08:54:30.6262958Z 
+2026-10-12T08:54:30.6327673Z ##[group]Run ARCORA_PAIR_EVIDENCE=/tmp/arcora-local-drills/paired-recovery.json cargo test --locked -p gateway public_macos_pair_restores -- --nocapture
+2026-10-12T08:54:30.6328851Z [36;1mARCORA_PAIR_EVIDENCE=/tmp/arcora-local-drills/paired-recovery.json cargo test --locked -p gateway public_macos_pair_restores -- --nocapture[0m
+2026-10-12T08:54:30.6392168Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:30.6392447Z env:
+2026-10-12T08:54:30.6392670Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:30.6392959Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:30.6393195Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:30.6393458Z   CACHE_ON_FAILURE: false
+2026-10-12T08:54:30.6393753Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:30.6394077Z ##[endgroup]
+2026-10-12T08:54:30.7657488Z [1m[92m   Compiling[0m dcap-qvl v0.5.2
+2026-10-12T08:54:32.1222132Z [1m[92m   Compiling[0m dark-perp-attestation v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/attestation)
+2026-10-12T08:54:32.4367692Z [1m[92m   Compiling[0m gateway v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/gateway)
+2026-10-12T08:54:51.5120700Z [1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 20.85s
+2026-10-12T08:54:51.5247872Z [1m[92m     Running[0m unittests src/main.rs (target/debug/deps/gateway-12f823311170bc40)
+2026-10-12T08:54:51.5268296Z 
+2026-10-12T08:54:51.5268698Z running 1 test
+2026-10-12T08:54:51.5523626Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:54:51.5770925Z [recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 2, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+2026-10-12T08:54:51.5777388Z [recovery] rolled back window 0 at boot (seal persisted, tx never landed) — the next settle re-seals it under the same batch id
+2026-10-12T08:54:51.6105572Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:54:51.6637728Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:54:51.6987868Z [recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+2026-10-12T08:54:51.6992702Z [recovery] rollback journal for window 0 is stale (its commit was already persisted) — resolved, nothing to do
+2026-10-12T08:54:51.7017299Z PAIR_RECOVERY_VERIFIED {"status":"PASS_PUBLIC_FIXTURE_PAIRED_RECOVERY","fixture_source_os":"macos","fixture_source_arch":"aarch64","execution_os":"linux","execution_arch":"x86_64","snapshot_sha256":"a1d0036155f3cd37a2f65f45fe909a57918f2d2087423c0722da525db04ab73e","journal_sha256":"055c42499b46300e23f8ce5cd25d7d890e63d49d507f3d17db9c03622cc5ac18","deposit_records":3,"drained_withdrawal_leaves":1,"rollback_replay_deposits":3,"hold_no_mutation":true,"roll_forward_claims":1,"repeat_commit_no_mutation":true,"stale_deposit_page_rejected":true,"fresh_l1_revalidation_still_required":true,"live_chain_verified":false,"new_proof_generated":false,"production_service_relocated":false,"release_gate":"HOLD"}
+2026-10-12T08:54:51.7020853Z test deposit_ingestion::paired_recovery_tests::public_macos_pair_restores_with_identical_cursor_and_recovery_semantics ... ok
+2026-10-12T08:54:51.7021427Z 
+2026-10-12T08:54:51.7021856Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 695 filtered out; finished in 0.17s
+2026-10-12T08:54:51.7022275Z 
+2026-10-12T08:54:51.7102606Z ##[group]Run forge build --root contracts
+2026-10-12T08:54:51.7103168Z [36;1mforge build --root contracts[0m
+2026-10-12T08:54:51.7104104Z [36;1mARCORA_FUNDS_EVIDENCE=/tmp/arcora-local-drills/funds-lifecycle.json ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-local-drills/funds-witnesses cargo test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture[0m
+2026-10-12T08:54:51.7167383Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:51.7167655Z env:
+2026-10-12T08:54:51.7167876Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:51.7168160Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:51.7168399Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:51.7168653Z   CACHE_ON_FAILURE: false
+2026-10-12T08:54:51.7168952Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:51.7169298Z ##[endgroup]
+2026-10-12T08:54:51.9275011Z Compiling 40 files with Solc 0.8.24
+2026-10-12T08:54:57.8715487Z Solc 0.8.24 finished in 5.94s
+2026-10-12T08:54:57.8816674Z Compiler run successful with warnings:
+2026-10-12T08:54:57.8817607Z Warning (2519): This declaration shadows an existing declaration.
+2026-10-12T08:54:57.8818451Z    --> test/ChainlinkNativeContractBridge.t.sol:128:10:
+2026-10-12T08:54:57.8819015Z     |
+2026-10-12T08:54:57.8819731Z 128 |         (bool ready, uint80 round, uint64 started) = x.oracle.uptimeStatus();
+2026-10-12T08:54:57.8820427Z     |          ^^^^^^^^^^
+2026-10-12T08:54:57.8820941Z Note: The shadowed declaration is here:
+2026-10-12T08:54:57.8823791Z    --> test/ChainlinkNativeContractBridge.t.sol:186:5:
+2026-10-12T08:54:57.8824445Z     |
+2026-10-12T08:54:57.8825438Z 186 |     function ready(T.SourceData memory d, T.VectorData memory v) internal returns (Stack memory x) {
+2026-10-12T08:54:57.8826871Z     |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:57.8827431Z 
+2026-10-12T08:54:57.8827922Z Warning (2018): Function state mutability can be restricted to pure
+2026-10-12T08:54:57.8828663Z  --> test/DeployGuard.t.sol:9:5:
+2026-10-12T08:54:57.8829242Z   |
+2026-10-12T08:54:57.8830224Z 9 |     function test_testnets_allow_the_mock_verifier() public {
+2026-10-12T08:54:57.8831308Z   |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:57.8831957Z 
+2026-10-12T08:54:57.8832624Z Warning (2018): Function state mutability can be restricted to pure
+2026-10-12T08:54:57.8847225Z   --> test/DeployGuard.t.sol:15:5:
+2026-10-12T08:54:57.8847788Z    |
+2026-10-12T08:54:57.8848531Z 15 |     function test_real_value_chains_block_the_mock_verifier() public {
+2026-10-12T08:54:57.8849535Z    |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:57.8850089Z 
+2026-10-12T08:54:57.8850577Z Warning (2018): Function state mutability can be restricted to view
+2026-10-12T08:54:57.8851277Z   --> test/Fuzz.t.sol:90:5:
+2026-10-12T08:54:57.8851723Z    |
+2026-10-12T08:54:57.8852746Z 90 |     function testFuzz_inclusion_leaf_is_not_an_internal_node(uint256 batchId, bytes32 orderHash) public {
+2026-10-12T08:54:57.8853920Z    |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:57.8854437Z 
+2026-10-12T08:54:57.9053469Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:57.9076887Z    ╭▸ contracts/src/SequencerUptime.sol:26:85
+2026-10-12T08:54:57.9077476Z    │
+2026-10-12T08:54:57.9078551Z 26 │                 || words[1] != 0 || words[2] == 0 || words[2] > type(uint64).max || words[2] > block.timestamp
+2026-10-12T08:54:57.9079849Z    │                                                                                     ━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9080544Z    │
+2026-10-12T08:54:57.9081233Z    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:57.9081714Z 
+2026-10-12T08:54:57.9082480Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:57.9083599Z    ╭▸ contracts/src/SequencerUptime.sol:31:13
+2026-10-12T08:54:57.9084658Z    │
+2026-10-12T08:54:57.9085765Z 31 │         if (block.timestamp - words[2] <= graceSeconds) return (false, epoch);
+2026-10-12T08:54:57.9117247Z    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9117861Z    │
+2026-10-12T08:54:57.9118565Z    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:57.9119074Z 
+2026-10-12T08:54:57.9119993Z warning[missing-events-access-control]: `settlement` is changed without an event but is used for access control
+2026-10-12T08:54:57.9121234Z    ╭▸ contracts/src/ClockBoundVerifier.sol:62:9
+2026-10-12T08:54:57.9121812Z    │
+2026-10-12T08:54:57.9122307Z 62 │         settlement = target;
+2026-10-12T08:54:57.9122848Z    │         ━━━━━━━━━━
+2026-10-12T08:54:57.9123251Z    │
+2026-10-12T08:54:57.9124041Z    ╰ help: https://getfoundry.sh/forge/linting/missing-events-access-control
+2026-10-12T08:54:57.9124627Z 
+2026-10-12T08:54:57.9125018Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:57.9125831Z    ╭▸ contracts/src/SequencerUptime.sol:16:55
+2026-10-12T08:54:57.9126667Z    │
+2026-10-12T08:54:57.9127692Z 16 │         bytes memory request = abi.encodeWithSelector(bytes4(keccak256("latestRoundData()")));
+2026-10-12T08:54:57.9128929Z    │                                                       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9129571Z    │
+2026-10-12T08:54:57.9130307Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:57.9131097Z    │       
+2026-10-12T08:54:57.9131755Z    │       // casting to 'bytes4' is safe because [explain why]
+2026-10-12T08:54:57.9132644Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:57.9133269Z    │       
+2026-10-12T08:54:57.9133651Z    │       
+2026-10-12T08:54:57.9134334Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:57.9134815Z 
+2026-10-12T08:54:57.9135204Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:57.9136296Z    ╭▸ contracts/src/SequencerUptime.sol:32:23
+2026-10-12T08:54:57.9136923Z    │
+2026-10-12T08:54:57.9137619Z 32 │         epoch = Epoch(uint80(words[0]), uint64(words[2]));
+2026-10-12T08:54:57.9138381Z    │                       ━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9138885Z    │
+2026-10-12T08:54:57.9139631Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:57.9140370Z    │       
+2026-10-12T08:54:57.9140987Z    │       // casting to 'uint80' is safe because [explain why]
+2026-10-12T08:54:57.9141866Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:57.9142511Z    │       
+2026-10-12T08:54:57.9142906Z    │       
+2026-10-12T08:54:57.9143599Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:57.9144073Z 
+2026-10-12T08:54:57.9144469Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:57.9145268Z    ╭▸ contracts/src/SequencerUptime.sol:32:41
+2026-10-12T08:54:57.9145822Z    │
+2026-10-12T08:54:57.9176988Z 32 │         epoch = Epoch(uint80(words[0]), uint64(words[2]));
+2026-10-12T08:54:57.9177880Z    │                                         ━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9178440Z    │
+2026-10-12T08:54:57.9179198Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:57.9179929Z    │       
+2026-10-12T08:54:57.9180575Z    │       // casting to 'uint64' is safe because [explain why]
+2026-10-12T08:54:57.9181474Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:57.9182105Z    │       
+2026-10-12T08:54:57.9182493Z    │       
+2026-10-12T08:54:57.9183171Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:57.9183660Z 
+2026-10-12T08:54:57.9184572Z warning[missing-events-access-control]: `clockVerifier` is changed without an event but is used for access control
+2026-10-12T08:54:57.9185843Z    ╭▸ contracts/src/ChainlinkOracleVerifier.sol:99:9
+2026-10-12T08:54:57.9186753Z    │
+2026-10-12T08:54:57.9187620Z 99 │         clockVerifier = clock_;
+2026-10-12T08:54:57.9188428Z    │         ━━━━━━━━━━━━━
+2026-10-12T08:54:57.9188865Z    │
+2026-10-12T08:54:57.9189667Z    ╰ help: https://getfoundry.sh/forge/linting/missing-events-access-control
+2026-10-12T08:54:57.9190248Z 
+2026-10-12T08:54:57.9191150Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:57.9192479Z    ╭▸ contracts/src/ChainlinkOracleVerifier.sol:72:9
+2026-10-12T08:54:57.9193076Z    │
+2026-10-12T08:54:57.9193589Z 72 │         address uptimeFeed_,
+2026-10-12T08:54:57.9194200Z    │         ━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9194654Z    │
+2026-10-12T08:54:57.9195347Z    ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:57.9196094Z 
+2026-10-12T08:54:57.9196869Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:57.9197998Z    ╭▸ contracts/src/ClockBoundVerifier.sol:96:13
+2026-10-12T08:54:57.9198594Z    │
+2026-10-12T08:54:57.9199448Z 96 │         if (block.timestamp > type(uint64).max / 1000) revert InvalidTime();
+2026-10-12T08:54:57.9200408Z    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9200967Z    │
+2026-10-12T08:54:57.9201656Z    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:57.9202142Z 
+2026-10-12T08:54:57.9202542Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:57.9203362Z    ╭▸ contracts/src/ClockBoundVerifier.sol:97:21
+2026-10-12T08:54:57.9203925Z    │
+2026-10-12T08:54:57.9204573Z 97 │         uint64 at = uint64(block.timestamp * 1000);
+2026-10-12T08:54:57.9205361Z    │                     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9236145Z    │
+2026-10-12T08:54:57.9237052Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:57.9237837Z    │       
+2026-10-12T08:54:57.9238522Z    │       // casting to 'uint64' is safe because [explain why]
+2026-10-12T08:54:57.9239387Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:57.9240045Z    │       
+2026-10-12T08:54:57.9240430Z    │       
+2026-10-12T08:54:57.9241111Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:57.9241586Z 
+2026-10-12T08:54:57.9241989Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:57.9242835Z     ╭▸ contracts/src/ClockBoundVerifier.sol:159:26
+2026-10-12T08:54:57.9243423Z     │
+2026-10-12T08:54:57.9244137Z 159 │         uint64 batchId = uint64(settlement.batchCount());
+2026-10-12T08:54:57.9245008Z     │                          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9245560Z     │
+2026-10-12T08:54:57.9246600Z     ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:57.9247395Z     │       
+2026-10-12T08:54:57.9248086Z     │       // casting to 'uint64' is safe because [explain why]
+2026-10-12T08:54:57.9249000Z     │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:57.9249648Z     │       
+2026-10-12T08:54:57.9250047Z     │       
+2026-10-12T08:54:57.9250734Z     ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:57.9251207Z 
+2026-10-12T08:54:57.9251845Z warning[reentrancy-no-eth]: external call can be reentered before `records` is updated
+2026-10-12T08:54:57.9252933Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:175:16
+2026-10-12T08:54:57.9253541Z     │
+2026-10-12T08:54:57.9254232Z 175 │         body = streamsVerifier.verify(full, bytes(""));
+2026-10-12T08:54:57.9255101Z     │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9255647Z     │
+2026-10-12T08:54:57.9256606Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-no-eth
+2026-10-12T08:54:57.9257103Z 
+2026-10-12T08:54:57.9257452Z warning[calls-loop]: external call inside a loop
+2026-10-12T08:54:57.9258294Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:175:16
+2026-10-12T08:54:57.9258892Z     │
+2026-10-12T08:54:57.9259821Z 175 │         body = streamsVerifier.verify(full, bytes(""));
+2026-10-12T08:54:57.9260887Z     │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9261462Z     │
+2026-10-12T08:54:57.9262108Z     ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+2026-10-12T08:54:57.9262559Z 
+2026-10-12T08:54:57.9263643Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9265077Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:148:9
+2026-10-12T08:54:57.9265667Z     │
+2026-10-12T08:54:57.9296792Z 148 │         emit ReportsRegistered(clockCommitment, h);
+2026-10-12T08:54:57.9297714Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9298289Z     │
+2026-10-12T08:54:57.9299003Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9299508Z 
+2026-10-12T08:54:57.9300048Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:57.9301059Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:136:15
+2026-10-12T08:54:57.9301660Z     │
+2026-10-12T08:54:57.9302188Z 136 │             ) revert Evidence();
+2026-10-12T08:54:57.9302840Z     │               ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9303321Z     │
+2026-10-12T08:54:57.9304056Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:57.9304594Z 
+2026-10-12T08:54:57.9305107Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:57.9306312Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:172:90
+2026-10-12T08:54:57.9306941Z     │
+2026-10-12T08:54:57.9308048Z 172 │         if (full.length < 224 || full.length > MAX_FULL_REPORT || full.length % 32 != 0) revert Evidence();
+2026-10-12T08:54:57.9309383Z     │                                                                                          ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9310047Z     │
+2026-10-12T08:54:57.9310808Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:57.9311380Z 
+2026-10-12T08:54:57.9311895Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:57.9312874Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:176:33
+2026-10-12T08:54:57.9313469Z     │
+2026-10-12T08:54:57.9314119Z 176 │         if (body.length != 288) revert Evidence();
+2026-10-12T08:54:57.9314898Z     │                                 ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9315428Z     │
+2026-10-12T08:54:57.9316413Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:57.9316954Z 
+2026-10-12T08:54:57.9317468Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:57.9318435Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:183:11
+2026-10-12T08:54:57.9319037Z     │
+2026-10-12T08:54:57.9319543Z 183 │         ) revert Evidence();
+2026-10-12T08:54:57.9320149Z     │           ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9320599Z     │
+2026-10-12T08:54:57.9321568Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:57.9322352Z 
+2026-10-12T08:54:57.9323259Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:57.9324532Z     ╭▸ contracts/src/DarkPerpSettlement.sol:178:9
+2026-10-12T08:54:57.9325184Z     │
+2026-10-12T08:54:57.9325778Z 178 │         address _enclaveSigner,
+2026-10-12T08:54:57.9347486Z     │         ━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9347975Z     │
+2026-10-12T08:54:57.9348671Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:57.9349177Z 
+2026-10-12T08:54:57.9350062Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:57.9351227Z     ╭▸ contracts/src/DarkPerpSettlement.sol:177:9
+2026-10-12T08:54:57.9351768Z     │
+2026-10-12T08:54:57.9352248Z 177 │         address _sequencer,
+2026-10-12T08:54:57.9352866Z     │         ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9353340Z     │
+2026-10-12T08:54:57.9353980Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:57.9354330Z 
+2026-10-12T08:54:57.9354843Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:57.9355530Z     ╭▸ contracts/src/DarkPerpSettlement.sol:185:9
+2026-10-12T08:54:57.9356118Z     │
+2026-10-12T08:54:57.9356671Z 185 │         address _governance,
+2026-10-12T08:54:57.9357253Z     │         ━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9357703Z     │
+2026-10-12T08:54:57.9358385Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:57.9358877Z 
+2026-10-12T08:54:57.9359642Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:57.9360800Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:181:20
+2026-10-12T08:54:57.9361399Z     │
+2026-10-12T08:54:57.9362590Z 181 │                 || block.timestamp > r.expires || r.price <= 0 || r.bid <= 0 || r.ask <= 0 || r.price > type(int128).max
+2026-10-12T08:54:57.9363727Z     │                    ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9364270Z     │
+2026-10-12T08:54:57.9364942Z     ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:57.9365430Z 
+2026-10-12T08:54:57.9365811Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:57.9366897Z     ╭▸ contracts/src/ChainlinkOracleVerifier.sol:179:20
+2026-10-12T08:54:57.9367500Z     │
+2026-10-12T08:54:57.9368640Z 179 │             uint16(bytes2(r.feedId)) != 3 || r.validFrom == 0 || r.validFrom > r.observed || r.observed > r.expires
+2026-10-12T08:54:57.9369718Z     │                    ━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9370232Z     │
+2026-10-12T08:54:57.9370985Z     ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:57.9371738Z     │       
+2026-10-12T08:54:57.9372414Z     │       // casting to 'bytes2' is safe because [explain why]
+2026-10-12T08:54:57.9373318Z     │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:57.9373946Z     │       
+2026-10-12T08:54:57.9374332Z     │       
+2026-10-12T08:54:57.9375004Z     ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:57.9375487Z 
+2026-10-12T08:54:57.9376104Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:57.9376965Z    ╭▸ contracts/src/mocks/MockZkVerifier.sol:20:38
+2026-10-12T08:54:57.9377538Z    │
+2026-10-12T08:54:57.9378346Z 20 │         return proof.length == 32 && bytes32(proof) == publicCommitment;
+2026-10-12T08:54:57.9379265Z    │                                      ━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9379810Z    │
+2026-10-12T08:54:57.9380552Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:57.9381290Z    │       
+2026-10-12T08:54:57.9381921Z    │       // casting to 'bytes32' is safe because [explain why]
+2026-10-12T08:54:57.9383054Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:57.9383858Z    │       
+2026-10-12T08:54:57.9384242Z    │       
+2026-10-12T08:54:57.9384924Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:57.9385407Z 
+2026-10-12T08:54:57.9386551Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:57.9387789Z     ╭▸ contracts/src/CollateralVault.sol:145:17
+2026-10-12T08:54:57.9388338Z     │
+2026-10-12T08:54:57.9389244Z 145 │     constructor(address _settlement, address _token, address _gatewaySigner) {
+2026-10-12T08:54:57.9390152Z     │                 ━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9390648Z     │
+2026-10-12T08:54:57.9391349Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:57.9391846Z 
+2026-10-12T08:54:57.9393010Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9394367Z     ╭▸ contracts/src/CollateralVault.sol:252:9
+2026-10-12T08:54:57.9394926Z     │
+2026-10-12T08:54:57.9396096Z 252 │         emit Deposit(msg.sender, ownerCommit, amount, depositCount, depositChainTip);
+2026-10-12T08:54:57.9397373Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9398039Z     │
+2026-10-12T08:54:57.9398715Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9399217Z 
+2026-10-12T08:54:57.9400318Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9401659Z     ╭▸ contracts/src/CollateralVault.sol:314:9
+2026-10-12T08:54:57.9402217Z     │
+2026-10-12T08:54:57.9402805Z 314 │         emit Withdrawn(to, amount, nonce);
+2026-10-12T08:54:57.9403532Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9404057Z     │
+2026-10-12T08:54:57.9404747Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9405282Z 
+2026-10-12T08:54:57.9406418Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:57.9407681Z     ╭▸ contracts/src/DarkPerpSettlement.sol:203:23
+2026-10-12T08:54:57.9408252Z     │
+2026-10-12T08:54:57.9409001Z 203 │     function setVault(address _vault) external onlySequencer {
+2026-10-12T08:54:57.9409806Z     │                       ━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9410288Z     │
+2026-10-12T08:54:57.9410966Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:57.9411462Z 
+2026-10-12T08:54:57.9412569Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9413890Z     ╭▸ contracts/src/DarkPerpSettlement.sol:216:9
+2026-10-12T08:54:57.9414450Z     │
+2026-10-12T08:54:57.9415100Z 216 │         emit BondPosted(amount, sequencerBond);
+2026-10-12T08:54:57.9416129Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9416702Z     │
+2026-10-12T08:54:57.9417381Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9417873Z 
+2026-10-12T08:54:57.9418937Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9420270Z     ╭▸ contracts/src/DarkPerpSettlement.sol:232:9
+2026-10-12T08:54:57.9420826Z     │
+2026-10-12T08:54:57.9421480Z 232 │         emit BondWithdrawn(amount, sequencerBond);
+2026-10-12T08:54:57.9422291Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9422827Z     │
+2026-10-12T08:54:57.9423493Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9423986Z 
+2026-10-12T08:54:57.9424573Z warning[uninitialized-local]: local variable is read before being initialized
+2026-10-12T08:54:57.9425788Z     ╭▸ contracts/src/DarkPerpSettlement.sol:343:33
+2026-10-12T08:54:57.9426804Z     │
+2026-10-12T08:54:57.9427738Z 343 │         require(depositsRoot == prefixTip, "deposits: root != L1 chain prefix");
+2026-10-12T08:54:57.9428682Z     │                                 ━━━━━━━━━
+2026-10-12T08:54:57.9429215Z     │
+2026-10-12T08:54:57.9429923Z     ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+2026-10-12T08:54:57.9430430Z 
+2026-10-12T08:54:57.9431191Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:57.9432304Z     ╭▸ contracts/src/DarkPerpSettlement.sol:557:13
+2026-10-12T08:54:57.9432867Z     │
+2026-10-12T08:54:57.9433869Z 557 │         if (block.timestamp < recvTimeMs / 1000 + inclusionDeadlineSecs) revert NotRipe();
+2026-10-12T08:54:57.9435056Z     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9435677Z     │
+2026-10-12T08:54:57.9436587Z     ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:57.9437090Z 
+2026-10-12T08:54:57.9438155Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9439499Z     ╭▸ contracts/src/DarkPerpSettlement.sol:706:13
+2026-10-12T08:54:57.9440067Z     │
+2026-10-12T08:54:57.9440682Z 706 │             emit EthClaimed(msg.sender, amount);
+2026-10-12T08:54:57.9441437Z     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9441955Z     │
+2026-10-12T08:54:57.9442624Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9443110Z 
+2026-10-12T08:54:57.9444191Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9445543Z     ╭▸ contracts/src/DarkPerpSettlement.sol:719:13
+2026-10-12T08:54:57.9446321Z     │
+2026-10-12T08:54:57.9446965Z 719 │             emit UsdcClaimed(msg.sender, amount);
+2026-10-12T08:54:57.9447759Z     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9448279Z     │
+2026-10-12T08:54:57.9448952Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9449446Z 
+2026-10-12T08:54:57.9450029Z warning[uninitialized-local]: local variable is read before being initialized
+2026-10-12T08:54:57.9451014Z     ╭▸ contracts/src/DarkPerpSettlement.sol:731:17
+2026-10-12T08:54:57.9451582Z     │
+2026-10-12T08:54:57.9452345Z 731 │                 acc |= uint256((v >> (8 * i)) & 0xff) << (8 * (31 - i));
+2026-10-12T08:54:57.9453035Z     │                 ━━━
+2026-10-12T08:54:57.9453460Z     │
+2026-10-12T08:54:57.9454147Z     ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+2026-10-12T08:54:57.9454665Z 
+2026-10-12T08:54:57.9455752Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:57.9457602Z    ╭▸ contracts/src/AttestationRegistry.sol:88:9
+2026-10-12T08:54:57.9458402Z    │
+2026-10-12T08:54:57.9459262Z 88 │         emit EnclaveRegistered(address(signer), expectedMeasurementHash);
+2026-10-12T08:54:57.9460335Z    │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:57.9460958Z    │
+2026-10-12T08:54:57.9461653Z    ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:57.9462161Z 
+2026-10-12T08:54:57.9747378Z warning[environment-read-across-mutation]: `block.chainid` may be reused across `vm.chainId`
+2026-10-12T08:54:57.9757282Z     ╭▸ contracts/test/ClockBoundVerifier.t.sol:215:33
+2026-10-12T08:54:57.9757908Z     │
+2026-10-12T08:54:57.9758539Z 215 │         uint256 originalChain = block.chainid;
+2026-10-12T08:54:57.9759271Z     │                                 ━━━━━━━━━━━━━
+2026-10-12T08:54:57.9759785Z     ‡
+2026-10-12T08:54:57.9760510Z 219 │         ClockReorgVm(address(vm)).chainId(originalChain + 1);
+2026-10-12T08:54:57.9761697Z     │         ──────────────────────────────────────────────────── `vm.chainId` changes this environment here
+2026-10-12T08:54:57.9762460Z     │
+2026-10-12T08:54:57.9763025Z     ├ help: capture it with `vm.getChainId()` instead
+2026-10-12T08:54:57.9764030Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:57.9764632Z 
+2026-10-12T08:54:57.9765341Z warning[environment-read-across-mutation]: `block.chainid` may be reused across `vm.chainId`
+2026-10-12T08:54:57.9766649Z     ╭▸ contracts/test/CollateralVault.t.sol:424:33
+2026-10-12T08:54:57.9767203Z     │
+2026-10-12T08:54:57.9767821Z 424 │         uint256 originalChain = block.chainid;
+2026-10-12T08:54:57.9768543Z     │                                 ━━━━━━━━━━━━━
+2026-10-12T08:54:57.9769269Z 425 │         vm.chainId(originalChain + 1);
+2026-10-12T08:54:57.9770161Z     │         ───────────────────────────── `vm.chainId` changes this environment here
+2026-10-12T08:54:57.9770816Z     │
+2026-10-12T08:54:57.9771411Z     ├ help: capture it with `vm.getChainId()` instead
+2026-10-12T08:54:57.9772439Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:57.9773030Z 
+2026-10-12T08:54:57.9782508Z warning[environment-read-across-mutation]: `block.number` may be reused across `vm.roll`
+2026-10-12T08:54:57.9783695Z     ╭▸ contracts/test/DarkPerpSettlement.t.sol:860:17
+2026-10-12T08:54:57.9784290Z     │
+2026-10-12T08:54:57.9784903Z 860 │         vm.roll(block.number + LIVENESS + 1);
+2026-10-12T08:54:57.9786078Z     │         ────────━━━━━━━━━━━━──────────────── `vm.roll` changes this environment here
+2026-10-12T08:54:57.9786775Z     │
+2026-10-12T08:54:57.9787386Z     ├ help: capture it with `vm.getBlockNumber()` instead
+2026-10-12T08:54:57.9788400Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:57.9788998Z 
+2026-10-12T08:54:57.9789664Z warning[environment-read-across-mutation]: `block.number` may be reused across `vm.roll`
+2026-10-12T08:54:57.9790760Z     ╭▸ contracts/test/DarkPerpSettlement.t.sol:919:17
+2026-10-12T08:54:57.9791343Z     │
+2026-10-12T08:54:57.9792002Z 919 │         vm.roll(block.number + CHALLENGE_WINDOW + 1);
+2026-10-12T08:54:57.9793107Z     │         ────────━━━━━━━━━━━━──────────────────────── `vm.roll` changes this environment here
+2026-10-12T08:54:57.9793780Z     │
+2026-10-12T08:54:57.9794381Z     ├ help: capture it with `vm.getBlockNumber()` instead
+2026-10-12T08:54:57.9795393Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:57.9796191Z 
+2026-10-12T08:54:58.0982545Z [1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+2026-10-12T08:54:58.1080795Z [1m[92m     Running[0m unittests src/main.rs (target/debug/deps/gateway-12f823311170bc40)
+2026-10-12T08:54:58.1100771Z 
+2026-10-12T08:54:58.1101125Z running 1 test
+2026-10-12T08:55:10.2210953Z running 1 test
+2026-10-12T08:55:10.2212890Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:55:10.2214734Z [state] genesis engine root 0x45c35f80338a149a3d14d3dd8bfdd959f3dc769427b15c0e65ba817a54156436
+2026-10-12T08:55:10.2216586Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:55:10.2217485Z [state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+2026-10-12T08:55:10.2218472Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:55:10.2219385Z [gate] trading gate OPEN (window 0): pinned observation confirmed our settleBatch on a capitalized post-state
+2026-10-12T08:55:10.2220394Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:55:10.2221382Z [recovery] rolled forward window 3 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+2026-10-12T08:55:10.2274620Z FUNDS_LIFECYCLE {"status":"PASS","elapsedSeconds":12.10040194,"timingScope":"local native/mock flow including HTTP and EVM transactions; excludes SP1 proof timing, clock admission duration and target-chain finality","host":{"os":"linux","arch":"x86_64","cpu":null,"availableParallelism":4,"rustupToolchain":"stable-x86_64-unknown-linux-gnu","anvil":"anvil Version: 1.8.5\nCommit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f\nBuild Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)\nBuild Profile: dist"},"proofBackend":"native replay + real ClockBoundVerifier + MockZkVerifier (NOT SP1)","chainId":31337,"gatewayTransport":"real loopback HTTP","restart":"encrypted snapshot and WAL restoration after mined settlement before local commit; not OS crash","deposits":[{"payer":"0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a","amount":"10000000000","tx":"0x0961a881d3d29880feaecb3c8704886c1ba152787bf0a22f5cb86ff6441ce075"},{"payer":"0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41","amount":"20000000000","tx":"0x12d7a25ba08287cbd78c93f8b942c9b18bb345e43bac4963723edf48e7822743"},{"payer":"0x1563915e194d8cfba1943570603f7606a3115508","amount":"20000000000","tx":"0x659dae06612a199696321fed1e66ff747f2522ae6d5c792cb8dfb88da5fc9ea8"}],"orders":["0xb5808bc11c0fdcb27ba30881b24f67031047bb27035df5979d9e0f6aa257066b","0xc1c0c713ca1f014d80861faa4ca21130c86b5999f097e78cfcab361c7b5bdce1","0x85941bfc1f8c0cec4e18d9cba371fa2fa54b9e246994223fb0eb51e22868130f","0xd126ed724fad173f372d37985037def4bf4f7079e57e29d5fd520bdcad30f8e0"],"batches":[{"batch":0,"tx":"0x17e147f66670d8845713bcf47f9b68e85af3b718a0a374160c020aa8416ad58b","stateRoot":"0x1759df0ad4b37a7e0bc2d176be802b30488b86d01cd7f687dbbe62d6d1a6d667","depositTip":"0x0971b3ff26ce05998abf84a504423a77131a9bc0048f10fd9df9d8d5d6350c78","depositCount":3,"withdrawalsRoot":"0x0000000000000000000000000000000000000000000000000000000000000000","recoveredAfterMining":false,"clock":{"receipt":"0xdad0465e642fe6dfb8fe683cf16c3ffa99ef9d51b6628bc4abcc74fe5e7f0e81","commitment":"0x91b259c33163598c35641138f6b271835a08cecd8b9400fa31acd31a2cd45609","registrationTx":"0x93d0232d6a6aac2e2472098fa1865611c7392081d89ddd6f39c5ee61caa2a913","registrationBlock":"0x07dfc613fe3542690e68e8d87a7cc44811ba7d3e4e2a93c7b428ad8f3a453c14","anchoredAtMs":1791795305000,"timedOps":0,"witnessSha256":"0xbbb280b22e0dacb49f60c42be4797b99597a746c6f82dce3128ff6808e567488","witnessBytes":1879,"filename":"batch-0.witness.bin"}},{"batch":1,"tx":"0x6f6e0030e39d6ba749367314b72ecf963337e992a960f4a5de2702fbf2b8c61d","stateRoot":"0x997e75b039f4107c0adcb281ee374a15912f193e34a9740da0432bfb02fe5601","depositTip":"0x0971b3ff26ce05998abf84a504423a77131a9bc0048f10fd9df9d8d5d6350c78","depositCount":3,"withdrawalsRoot":"0x0000000000000000000000000000000000000000000000000000000000000000","recoveredAfterMining":false,"clock":{"receipt":"0xc6093e7b979ae345a11d27ba9d6733d01165a6207c1731829d09716a37c58178","commitment":"0x9a656689af533b59cd20092c71c8a9bc656dd40829b87d94993ecdb524e07829","registrationTx":"0xdd3cf49d83714a8edf4464ea7cd7ac6eae96ce5ff547c820e84cd9c8e354f3d4","registrationBlock":"0x4f3d6628d7b1be311e3e850fe88f88efbb43109c48c1223138606ac285003a99","anchoredAtMs":1791795306000,"timedOps":16,"witnessSha256":"0xcd5f29c5f1f810a4e3adf73d5201f43af2cf90a0eeb974d7b9aab14818b2c25b","witnessBytes":3885,"filename":"batch-1.witness.bin"}},{"batch":2,"tx":"0xdfd408445ae7e2e002b4fe2a8f282a0a39d16d76efbed7988cdbf9c96bca4d54","stateRoot":"0x6c38aa2c87d5bce31abba22e00b1823fad0f055b397fc2ee684bd8c4a5f75ed0","depositTip":"0x0971b3ff26ce05998abf84a504423a77131a9bc0048f10fd9df9d8d5d6350c78","depositCount":3,"withdrawalsRoot":"0x0000000000000000000000000000000000000000000000000000000000000000","recoveredAfterMining":false,"clock":{"receipt":"0x3a1cd1aab6fd31467e4cb480bf6ddee5af4cc0f2a8e09f3b4275dc5e716b4469","commitment":"0x2728dca07bd4e25be56a7d18ba7af7035816705922fe8c1bfd7895eb053ca20d","registrationTx":"0x2a79f6922628bdb1bfdb9832d219efbea7012a8430cde77a5193bd65be1cab6c","registrationBlock":"0xffd39373ae46700850b3a591d0eb246090c20137ea8d3825016a4e3d5ee3f876","anchoredAtMs":1791795307000,"timedOps":16,"witnessSha256":"0x65101d6dddec299b7ae4e05e61ed32985b94781430cc2e09aa0e20e51aa3a1f3","witnessBytes":3906,"filename":"batch-2.witness.bin"}},{"batch":3,"tx":"0x9bd095a67fc7489f74ce8ea5136f3b9638125b6149260575f8a23a1eb3007d2c","stateRoot":"0xa323e79a635e1fb18ec266644fc63716cacc8ea8e9e08ca2ad74cc89fb53d8bf","depositTip":"0x0971b3ff26ce05998abf84a504423a77131a9bc0048f10fd9df9d8d5d6350c78","depositCount":3,"withdrawalsRoot":"0x619484fc5579105095eca3ed9af343610edc622c7c9c2ae12209cfb2e3eb434a","recoveredAfterMining":true,"clock":{"receipt":"0x3eafb4574f153069e925fa2151d90f2298c6ff531d4a78eff075ea547da346e6","commitment":"0xf1e92e8490b41ff6401408fa361027d1ac6dedc7cffd776245fbb98c79169bdf","registrationTx":"0xa910a9413bb51231cf1ea11e929f3053b74f161271148b0a27349b18a5bcabc2","registrationBlock":"0x6bf459810f1e0ecfc185166855dc967c199b3f678c488255f77b51c55f3a9e40","anchoredAtMs":1791795308000,"timedOps":2,"witnessSha256":"0x81acd7cd150d4e0a859d75194a45910c7df50515203b62a756652a232074c19c","witnessBytes":2185,"filename":"batch-3.witness.bin"}}],"claims":[{"to":"0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41","amount":"10000000000","tx":"0xdda7bb01d99fecc626be1e62c9f347fe36d3255bff6b31d8dcc009831fbe59e9","balanceAfter":"30000000000"},{"to":"0x1563915e194d8cfba1943570603f7606a3115508","amount":"10000000000","tx":"0x31419990360fc9212a338abc84520c3c7535cee698a4c15fc8f344d6675895cf","balanceAfter":"30000000000"}],"contracts":{"token":"0xae519fc2ba8e6ffe6473195c092bf1bae986ff90","vault":"0x6e05f58eedda592f34dd9105b1827f252c509de0","settlement":"0x08425d9df219f93d5763c3e85204cb5b4ce33aaa","clockVerifier":"0x7d73424a8256c0b2ba245e5d5a3de8820e45f390"},"syntheticWitnesses":true,"operatorOutageClaims":{"gatewayStoppedBeforeClaims":true,"retainedClaimData":true,"successfulClaims":2,"scope":"Previously published roots and saved proof data only; no new exit or production service loss claim"},"clockRegistration":"real owned-Anvil registration and adapter verification; test inner verifier; no target finality or production L1 reader claim","clockPolicyMs":{"maxWindow":60000,"skew":60000},"negativeCases":["missing allowance","wrong deposit tuple","replayed deposit authorization","nonexistent deposit credited zero","wrong order signer","duplicate signed order","wrong withdrawal destination","duplicate withdrawal authorization","unsettled withdrawal claim","invalid mock proof","legacy proof rejected by clock adapter","duplicate vault claim"]}
+2026-10-12T08:55:10.2301735Z test funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof ... ok
+2026-10-12T08:55:10.2302115Z 
+2026-10-12T08:55:10.2302876Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 695 filtered out; finished in 12.11stest funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof ... ok
+2026-10-12T08:55:10.2303528Z 
+2026-10-12T08:55:10.2303888Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 695 filtered out; finished in 12.11s
+2026-10-12T08:55:10.2304246Z 
+2026-10-12T08:55:10.2333879Z ##[group]Run forge build --root contracts/vendor/sp1-contracts
+2026-10-12T08:55:10.2334384Z [36;1mforge build --root contracts/vendor/sp1-contracts[0m
+2026-10-12T08:55:10.2335296Z [36;1mARCORA_RUN_MANIFEST_ANVIL=1 ARCORA_MANIFEST_ANVIL_EVIDENCE=/tmp/arcora-local-drills/manifest-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py -v[0m
+2026-10-12T08:55:10.2398453Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:55:10.2398731Z env:
+2026-10-12T08:55:10.2398947Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:55:10.2399236Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:55:10.2399476Z   CARGO_TERM_COLOR: always
+2026-10-12T08:55:10.2399718Z   CACHE_ON_FAILURE: false
+2026-10-12T08:55:10.2400015Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:55:10.2400336Z ##[endgroup]
+2026-10-12T08:55:10.4328341Z Compiling 7 files with Solc 0.8.20
+2026-10-12T08:55:10.7076865Z Solc 0.8.20 finished in 274.83ms
+2026-10-12T08:55:10.7091501Z Compiler run successful!
+2026-10-12T08:55:10.7154805Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:55:10.7156826Z    ╭▸ contracts/vendor/sp1-contracts/src/v6.1.0/SP1VerifierGroth16.sol:57:35
+2026-10-12T08:55:10.7157633Z    │
+2026-10-12T08:55:10.7158330Z 57 │         bytes4 expectedSelector = bytes4(VERIFIER_HASH());
+2026-10-12T08:55:10.7159217Z    │                                   ━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:55:10.7159789Z    │
+2026-10-12T08:55:10.7160536Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:55:10.7161279Z    │       
+2026-10-12T08:55:10.7161918Z    │       // casting to 'bytes4' is safe because [explain why]
+2026-10-12T08:55:10.7162791Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:55:10.7163469Z    │       
+2026-10-12T08:55:10.7163862Z    │       
+2026-10-12T08:55:10.7164536Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:55:10.7165018Z 
+2026-10-12T08:55:10.7165434Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:55:10.7166722Z    ╭▸ contracts/vendor/sp1-contracts/src/SP1VerifierGateway.sol:38:27
+2026-10-12T08:55:10.7167440Z    │
+2026-10-12T08:55:10.7168326Z 38 │         bytes4 selector = bytes4(ISP1VerifierWithHash(verifier).VERIFIER_HASH());
+2026-10-12T08:55:10.7169406Z    │                           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:55:10.7169774Z    │
+2026-10-12T08:55:10.7170195Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:55:10.7170615Z    │       
+2026-10-12T08:55:10.7170973Z    │       // casting to 'bytes4' is safe because [explain why]
+2026-10-12T08:55:10.7171462Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:55:10.7171814Z    │       
+2026-10-12T08:55:10.7172031Z    │       
+2026-10-12T08:55:10.7172409Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:55:10.7172682Z 
+2026-10-12T08:55:10.8447828Z test_actual_deployed_stack_matches_then_frozen_route_fails (test_release_manifest.AnvilTargetTests.test_actual_deployed_stack_matches_then_frozen_route_fails)
+2026-10-12T08:55:14.4035055Z Deploy only to a new child Anvil; no external URL or key is accepted. ... ok
+2026-10-12T08:55:14.4051535Z test_compiled_artifact_binds_both_bytecodes (test_release_manifest.ArtifactTests.test_compiled_artifact_binds_both_bytecodes) ... ok
+2026-10-12T08:55:14.4056435Z test_duplicate_json_keys_are_rejected (test_release_manifest.ArtifactTests.test_duplicate_json_keys_are_rejected) ... ok
+2026-10-12T08:55:14.4153024Z test_even_tracked_dotenv_and_credential_files_are_excluded (test_release_manifest.ArtifactTests.test_even_tracked_dotenv_and_credential_files_are_excluded) ... ok
+2026-10-12T08:55:14.4161076Z test_missing_fields_and_forged_readiness_do_not_pass (test_release_manifest.ArtifactTests.test_missing_fields_and_forged_readiness_do_not_pass) ... ok
+2026-10-12T08:55:14.4181256Z test_new_guest_source_and_build_inputs_require_new_provenance (test_release_manifest.ArtifactTests.test_new_guest_source_and_build_inputs_require_new_provenance) ... ok
+2026-10-12T08:55:14.4187941Z test_path_traversal_absolute_and_parent_symlinks_are_rejected (test_release_manifest.ArtifactTests.test_path_traversal_absolute_and_parent_symlinks_are_rejected) ... ok
+2026-10-12T08:55:14.4199375Z test_stale_compiler_source_is_rejected (test_release_manifest.ArtifactTests.test_stale_compiler_source_is_rejected) ... ok
+2026-10-12T08:55:14.4284066Z test_untracked_new_source_invalidates_inventory (test_release_manifest.ArtifactTests.test_untracked_new_source_invalidates_inventory) ... ok
+2026-10-12T08:55:14.4324075Z test_wrong_compiler_target_and_unlinked_bytecode_are_rejected (test_release_manifest.ArtifactTests.test_wrong_compiler_target_and_unlinked_bytecode_are_rejected) ... ok
+2026-10-12T08:55:14.4326579Z test_bad_types_and_unschedulable_clock_policy_are_rejected (test_release_manifest.ConfigTests.test_bad_types_and_unschedulable_clock_policy_are_rejected) ... ok
+2026-10-12T08:55:14.4329064Z test_legacy_stack_with_new_key_is_still_rejected (test_release_manifest.ConfigTests.test_legacy_stack_with_new_key_is_still_rejected) ... ok
+2026-10-12T08:55:14.4331013Z test_matching_explicit_public_settings (test_release_manifest.ConfigTests.test_matching_explicit_public_settings) ... ok
+2026-10-12T08:55:14.4333019Z test_mock_mode_and_missing_explicit_mode_are_rejected (test_release_manifest.ConfigTests.test_mock_mode_and_missing_explicit_mode_are_rejected) ... ok
+2026-10-12T08:55:14.4334905Z test_old_deployment_key_is_rejected (test_release_manifest.ConfigTests.test_old_deployment_key_is_rejected) ... ok
+2026-10-12T08:55:14.4336876Z test_old_prover_key_or_guest_cannot_be_mixed (test_release_manifest.ConfigTests.test_old_prover_key_or_guest_cannot_be_mixed) ... ok
+2026-10-12T08:55:14.4339205Z test_process_environment_must_match_and_does_not_echo_secrets (test_release_manifest.ConfigTests.test_process_environment_must_match_and_does_not_echo_secrets) ... ok
+2026-10-12T08:55:14.4340630Z test_unknown_or_secret_config_keys_are_rejected_without_echo (test_release_manifest.ConfigTests.test_unknown_or_secret_config_keys_are_rejected_without_echo) ... ok
+2026-10-12T08:55:14.4341851Z test_wrong_gateway_chain_vault_or_clock_is_rejected (test_release_manifest.ConfigTests.test_wrong_gateway_chain_vault_or_clock_is_rejected) ... ok
+2026-10-12T08:55:14.4343352Z test_zero_duplicate_and_malformed_addresses_are_rejected (test_release_manifest.ConfigTests.test_zero_duplicate_and_malformed_addresses_are_rejected) ... ok
+2026-10-12T08:55:14.4346783Z test_changed_opcode_metadata_length_or_repeated_immutable_is_rejected (test_release_manifest.RuntimeTests.test_changed_opcode_metadata_length_or_repeated_immutable_is_rejected) ... ok
+2026-10-12T08:55:14.4349386Z test_exact_runtime_including_consistent_immutable_substitution (test_release_manifest.RuntimeTests.test_exact_runtime_including_consistent_immutable_substitution) ... ok
+2026-10-12T08:55:14.4352032Z test_malformed_overlapping_and_nonzero_placeholder_ranges_are_rejected (test_release_manifest.RuntimeTests.test_malformed_overlapping_and_nonzero_placeholder_ranges_are_rejected) ... ok
+2026-10-12T08:55:14.4383842Z test_all_six_runtimes_bindings_route_and_one_finalized_hash_are_checked (test_release_manifest.TargetTests.test_all_six_runtimes_bindings_route_and_one_finalized_hash_are_checked) ... ok
+2026-10-12T08:55:14.4415540Z test_changed_artifact_or_source_during_observation_blocks (test_release_manifest.TargetTests.test_changed_artifact_or_source_during_observation_blocks) ... ok
+2026-10-12T08:55:14.4531431Z test_each_configured_address_key_clock_and_proof_version_mismatch_blocks (test_release_manifest.TargetTests.test_each_configured_address_key_clock_and_proof_version_mismatch_blocks) ... ok
+2026-10-12T08:55:14.4557420Z test_empty_token_code_blocks_but_token_runtime_is_never_approved (test_release_manifest.TargetTests.test_empty_token_code_blocks_but_token_runtime_is_never_approved) ... ok
+2026-10-12T08:55:14.4577048Z test_invalid_manifest_never_claims_local_identity_or_queries_rpc (test_release_manifest.TargetTests.test_invalid_manifest_never_claims_local_identity_or_queries_rpc) ... ok
+2026-10-12T08:55:14.4601984Z test_missing_code_or_wrong_runtime_blocks (test_release_manifest.TargetTests.test_missing_code_or_wrong_runtime_blocks) ... ok
+2026-10-12T08:55:14.4637164Z test_noncanonical_address_and_truncated_getter_are_rejected (test_release_manifest.TargetTests.test_noncanonical_address_and_truncated_getter_are_rejected) ... ok
+2026-10-12T08:55:14.4696388Z test_route_wrong_frozen_or_noncanonical_cannot_pass (test_release_manifest.TargetTests.test_route_wrong_frozen_or_noncanonical_cannot_pass) ... ok
+2026-10-12T08:55:14.4715734Z test_transport_failure_omits_private_response_text (test_release_manifest.TargetTests.test_transport_failure_omits_private_response_text) ... ok
+2026-10-12T08:55:14.4745793Z test_unconfigured_operator_policy_is_observed_without_approval (test_release_manifest.TargetTests.test_unconfigured_operator_policy_is_observed_without_approval) ... ok
+2026-10-12T08:55:14.4777311Z test_wrong_chain_missing_finality_and_reorganization_have_no_latest_fallback (test_release_manifest.TargetTests.test_wrong_chain_missing_finality_and_reorganization_have_no_latest_fallback) ... ok
+2026-10-12T08:55:14.5659698Z test_bad_envelope_rpc_error_oversize_and_redirect_fail_closed (test_release_manifest.TransportTests.test_bad_envelope_rpc_error_oversize_and_redirect_fail_closed) ... ok
+2026-10-12T08:55:14.5830861Z test_read_allowlist_precedes_transport_and_rejects_credential_urls (test_release_manifest.TransportTests.test_read_allowlist_precedes_transport_and_rejects_credential_urls) ... ok
+2026-10-12T08:55:14.5832446Z 
+2026-10-12T08:55:14.5832999Z ----------------------------------------------------------------------
+2026-10-12T08:55:14.5833823Z Ran 36 tests in 3.738s
+2026-10-12T08:55:14.5834146Z 
+2026-10-12T08:55:14.5834356Z OK
+2026-10-12T08:55:14.6070813Z ##[group]Run ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-local-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v
+2026-10-12T08:55:14.6072558Z [36;1mARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-local-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v[0m
+2026-10-12T08:55:14.6136443Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:55:14.6136725Z env:
+2026-10-12T08:55:14.6136944Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:55:14.6137234Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:55:14.6137475Z   CARGO_TERM_COLOR: always
+2026-10-12T08:55:14.6137726Z   CACHE_ON_FAILURE: false
+2026-10-12T08:55:14.6138027Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:55:14.6138361Z ##[endgroup]
+2026-10-12T08:55:29.6510863Z test_seven_real_contracts_and_safe_candidate_refusals (test_candidate_target_anvil.CandidateTargetAnvilTests.test_seven_real_contracts_and_safe_candidate_refusals) ... ok
+2026-10-12T08:55:29.6512046Z 
+2026-10-12T08:55:29.6512789Z ----------------------------------------------------------------------
+2026-10-12T08:55:29.6513400Z Ran 1 test in 14.946s
+2026-10-12T08:55:29.6513636Z 
+2026-10-12T08:55:29.6513779Z OK
+2026-10-12T08:55:29.6717334Z ##[group]Run python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1
+2026-10-12T08:55:29.6720249Z [36;1mpython3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1[0m
+2026-10-12T08:55:29.6722993Z [36;1mpython3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks state-rpc -- cargo test --locked -p gateway runtime_state_native_cast -- --ignored --nocapture --test-threads=1[0m
+2026-10-12T08:55:29.6796537Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:55:29.6796830Z env:
+2026-10-12T08:55:29.6797053Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:55:29.6797336Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:55:29.6797578Z   CARGO_TERM_COLOR: always
+2026-10-12T08:55:29.6797853Z   CACHE_ON_FAILURE: false
+2026-10-12T08:55:29.6798147Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:55:29.6798487Z ##[endgroup]
+2026-10-12T08:55:40.1431555Z {"argv": ["cargo", "test", "--locked", "-p", "gateway", "runtime_witness_native_cast", "--", "--ignored", "--nocapture", "--test-threads=1"], "cwd": "/home/runner/work/arcora-perp/arcora-perp", "exit_code": 0, "duration_seconds": 10.32, "log_sha256": "958545e17eb12aea7698ed55e9c5e5d752b2f79bf4f1caa85e1861eadb3dc239", "rust_test_summaries": [["ok", "2", "0", "0", "0", "694"]]}
+2026-10-12T08:55:40.1434833Z [1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+2026-10-12T08:55:40.1435698Z [1m[92m     Running[0m unittests src/main.rs (target/debug/deps/gateway-12f823311170bc40)
+2026-10-12T08:55:40.1436379Z 
+2026-10-12T08:55:40.1436492Z running 2 tests
+2026-10-12T08:55:40.1437052Z test l1::witness_tests::runtime_witness_native_cast_agreement_and_disagreement_matrix ... ok
+2026-10-12T08:55:40.1437909Z test l1::witness_tests::runtime_witness_native_cast_failure_at_every_read_redacts_and_never_falls_back ... ok
+2026-10-12T08:55:40.1438334Z 
+2026-10-12T08:55:40.1438703Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 694 filtered out; finished in 10.09s
+2026-10-12T08:55:40.1439060Z 
+2026-10-12T08:55:40.1439066Z 
+2026-10-12T08:56:10.7590535Z {"argv": ["cargo", "test", "--locked", "-p", "gateway", "runtime_state_native_cast", "--", "--ignored", "--nocapture", "--test-threads=1"], "cwd": "/home/runner/work/arcora-perp/arcora-perp", "exit_code": 0, "duration_seconds": 30.474, "log_sha256": "6c39cb1a6f3cd827dd38a4be841ae3943d43706b534ea3af2062380e25995846", "rust_test_summaries": [["ok", "7", "0", "0", "0", "689"]]}
+2026-10-12T08:56:10.7592581Z [1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+2026-10-12T08:56:10.7593428Z [1m[92m     Running[0m unittests src/main.rs (target/debug/deps/gateway-12f823311170bc40)
+2026-10-12T08:56:10.7593808Z 
+2026-10-12T08:56:10.7593924Z running 7 tests
+2026-10-12T08:56:10.7594595Z test l1::state_read_tests::runtime_state_native_cast_challenge_discovery_requires_matching_canonical_logs ... ok
+2026-10-12T08:56:10.7595536Z test l1::state_read_tests::runtime_state_native_cast_deposit_adapter_checks_secondary_code_logs_and_words ... ok
+2026-10-12T08:56:10.7596593Z test l1::state_read_tests::runtime_state_native_cast_gate_vault_claims_terminal_and_bond_positive ... ok
+2026-10-12T08:56:10.7597477Z test l1::state_read_tests::runtime_state_native_cast_prior_page_reorg_and_challenge_deadline_boundaries ... ok
+2026-10-12T08:56:10.7599095Z test l1::state_read_tests::runtime_state_native_cast_refusals_are_all_or_nothing_and_redacted ... [gate] pinned observation read failed (settlement observation: invalid ABI bool for closeOnly) — inconclusive, not resolved
+2026-10-12T08:56:10.7601254Z [gate] pinned observation read failed (settlement observation: witness has not finalized the anchor or lacks required confirmations) — inconclusive, not resolved
+2026-10-12T08:56:10.7602568Z [gate] pinned observation read failed (settlement observation: witness canonical block changed) — inconclusive, not resolved
+2026-10-12T08:56:10.7603627Z [gate] pinned observation read failed (settlement observation: witness disagrees on closeOnly()) — inconclusive, not resolved
+2026-10-12T08:56:10.7604644Z [gate] pinned observation read failed (settlement observation: witness eth_call failed) — inconclusive, not resolved
+2026-10-12T08:56:10.7605171Z ok
+2026-10-12T08:56:10.7605634Z test l1::state_read_tests::runtime_state_native_cast_wind_down_pair_is_hash_pinned ... ok
+2026-10-12T08:56:10.7606560Z test l1::state_read_tests::runtime_state_native_cast_wind_down_refuses_incoherent_or_failed_reads ... ok
+2026-10-12T08:56:10.7606952Z 
+2026-10-12T08:56:10.7607318Z test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 689 filtered out; finished in 30.24s
+2026-10-12T08:56:10.7607687Z 
+2026-10-12T08:56:10.7607693Z 
+2026-10-12T08:56:10.7693935Z ##[group]Run python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks clock-rpc -- cargo test --locked -p gateway runtime_clock_native_cast -- --ignored --nocapture --test-threads=1
+2026-10-12T08:56:10.7695530Z [36;1mpython3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks clock-rpc -- cargo test --locked -p gateway runtime_clock_native_cast -- --ignored --nocapture --test-threads=1[0m
+2026-10-12T08:56:10.7758091Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:56:10.7758366Z env:
+2026-10-12T08:56:10.7758589Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:56:10.7758868Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:56:10.7759116Z   CARGO_TERM_COLOR: always
+2026-10-12T08:56:10.7759363Z   CACHE_ON_FAILURE: false
+2026-10-12T08:56:10.7759663Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:56:10.7760004Z ##[endgroup]
+2026-10-12T08:56:19.0066689Z {"argv": ["cargo", "test", "--locked", "-p", "gateway", "runtime_clock_native_cast", "--", "--ignored", "--nocapture", "--test-threads=1"], "cwd": "/home/runner/work/arcora-perp/arcora-perp", "exit_code": 0, "duration_seconds": 8.085, "log_sha256": "21574cde6ef55e5f9e81dd787990188961b93860ab26eecba70921ea7987a281", "rust_test_summaries": [["ok", "3", "0", "0", "0", "693"]]}
+2026-10-12T08:56:19.0069523Z [1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+2026-10-12T08:56:19.0070721Z [1m[92m     Running[0m unittests src/main.rs (target/debug/deps/gateway-12f823311170bc40)
+2026-10-12T08:56:19.0071278Z 
+2026-10-12T08:56:19.0071437Z running 3 tests
+2026-10-12T08:56:19.0073418Z test l1::clock_binding::rpc_tests::runtime_clock_native_cast_rechecks_receipt_before_broadcast ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:56:19.0075591Z [state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+2026-10-12T08:56:19.0076636Z ok
+2026-10-12T08:56:19.0078867Z test l1::clock_binding::rpc_tests::runtime_clock_native_cast_refuses_wrong_chain_receipt_and_mid_read_reorg ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:56:19.0080901Z [state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+2026-10-12T08:56:19.0082697Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:56:19.0084287Z [state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+2026-10-12T08:56:19.0086320Z [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:56:19.0087892Z [state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+2026-10-12T08:56:19.0088925Z ok
+2026-10-12T08:56:19.0091295Z test l1::clock_binding::rpc_tests::runtime_clock_native_cast_waits_for_finality_without_restamping_or_sending ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+2026-10-12T08:56:19.0093409Z [state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+2026-10-12T08:56:19.0094209Z ok
+2026-10-12T08:56:19.0094398Z 
+2026-10-12T08:56:19.0095042Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 693 filtered out; finished in 7.86s
+2026-10-12T08:56:19.0095678Z 
+2026-10-12T08:56:19.0095687Z 
+2026-10-12T08:56:19.0160942Z ##[group]Run python3 scripts/local-verification/gateway_alert_drill.py --output-dir /tmp/arcora-local-drills/alerts
+2026-10-12T08:56:19.0161864Z [36;1mpython3 scripts/local-verification/gateway_alert_drill.py --output-dir /tmp/arcora-local-drills/alerts[0m
+2026-10-12T08:56:19.0224079Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:56:19.0224347Z env:
+2026-10-12T08:56:19.0224563Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:56:19.0224840Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:56:19.0225079Z   CARGO_TERM_COLOR: always
+2026-10-12T08:56:19.0225332Z   CACHE_ON_FAILURE: false
+2026-10-12T08:56:19.0225620Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:56:19.0226292Z ##[endgroup]
+2026-10-12T08:56:22.7422065Z {"status": "PASS", "exit_code": 0, "duration_seconds": 3.57, "source_unchanged_during_check": true, "rust_test_summaries": [["ok", "6", "0", "0", "0", "690"]]}
+2026-10-12T08:56:22.7531735Z ##[group]Run python3 scripts/local-verification/gateway_ack_crash_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-local-drills/ack-crash
+2026-10-12T08:56:22.7532944Z [36;1mpython3 scripts/local-verification/gateway_ack_crash_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-local-drills/ack-crash[0m
+2026-10-12T08:56:22.7595395Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:56:22.7595665Z env:
+2026-10-12T08:56:22.7596120Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:56:22.7596409Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:56:22.7596645Z   CARGO_TERM_COLOR: always
+2026-10-12T08:56:22.7596892Z   CACHE_ON_FAILURE: false
+2026-10-12T08:56:22.7597181Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:56:22.7597513Z ##[endgroup]
+2026-10-12T08:56:23.5927304Z {"operation": "authorize", "stage": "before-request-body", "signal": 9, "baseline_snapshot_sha256": "d33eea616832906be103d8d550d63d97b439f04b3932623234ff059ecf73fc1f", "barrier": "HTTP 100 Continue; body withheld", "client_final_response_bytes": 0, "client_outcome": "unknown", "snapshot_after_kill_sha256": "d33eea616832906be103d8d550d63d97b439f04b3932623234ff059ecf73fc1f", "restored_encrypted_snapshot": true, "account_balances_positions_order_and_withdraw_nonces_preserved": true, "same_permit_route_repeated": 2, "conflicting_route_status": 400, "lost_permit_automatically_reissued": false, "onchain_send_attempts": 0, "client_resolution": "request body never sent; original baseline permit retained", "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:24.2576850Z {"operation": "authorize", "stage": "response-lost", "signal": 9, "baseline_snapshot_sha256": "b8abd0012460faf660faba8f752a13f9e4f76015b7445172d95bbc1ff9e3ca45", "client_final_response_bytes": 0, "client_outcome": "unknown", "barrier": "real handler complete; response withheld at proxy", "server_status_observed_privately": 200, "snapshot_after_kill_sha256": "9c1854964a7fe519acdf511de81ed0670e1bdedf83d7bcc879eb4f3dd473f925", "restored_encrypted_snapshot": true, "account_balances_positions_order_and_withdraw_nonces_preserved": true, "same_permit_route_repeated": 2, "conflicting_route_status": 400, "lost_permit_automatically_reissued": false, "onchain_send_attempts": 0, "client_resolution": "unresolved lost signature; no blind retry or on-chain send", "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:24.9236336Z {"operation": "authorize", "stage": "ack-received", "signal": 9, "baseline_snapshot_sha256": "8bc81be5f57084c8e2892c46a789c52e8794a232e920a4085f5d8ee126edbb2e", "client_final_response_bytes": 268, "client_outcome": "confirmed", "barrier": "real handler complete; response delivered", "server_status_observed_privately": 200, "snapshot_after_kill_sha256": "c6bde67c3cb1b1c5aa86595b4493e317409a4e9816bde092645aa5b7e3a10167", "restored_encrypted_snapshot": true, "account_balances_positions_order_and_withdraw_nonces_preserved": true, "same_permit_route_repeated": 2, "conflicting_route_status": 400, "lost_permit_automatically_reissued": false, "onchain_send_attempts": 0, "client_resolution": "received authorization retained", "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:25.7463887Z {"operation": "recovery", "stage": "before-request-body", "signal": 9, "baseline_snapshot_sha256": "2ac44877ee1b5d0b903b3510435672c0d704a030220478f8419b6c176459b3d3", "barrier": "HTTP 100 Continue; body withheld", "client_final_response_bytes": 0, "client_outcome": "unknown", "snapshot_after_kill_sha256": "2ac44877ee1b5d0b903b3510435672c0d704a030220478f8419b6c176459b3d3", "restored_encrypted_snapshot": true, "restored_recovery_nonce": 0, "old_key_status": 200, "fresh_resolution_nonce": 1, "original_nonce_replay_status": 400, "client_resolution": "fresh public challenge and new confirmed recovery", "account_balances_positions_order_and_withdraw_nonces_preserved": true, "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:26.5873930Z {"operation": "recovery", "stage": "response-lost", "signal": 9, "baseline_snapshot_sha256": "44e5d21499e13c96d17e4850d2a16e3b68725d01a787ddb6f303d74abd1d0bb0", "client_final_response_bytes": 0, "client_outcome": "unknown", "barrier": "real handler complete; response withheld at proxy", "server_status_observed_privately": 200, "snapshot_after_kill_sha256": "3ed4d1af5047f79123eefc302ae632dad817845c6f5657ace30cd34e0386ab7d", "restored_encrypted_snapshot": true, "restored_recovery_nonce": 1, "old_key_status": 401, "fresh_resolution_nonce": 2, "original_nonce_replay_status": 400, "client_resolution": "fresh public challenge and new confirmed recovery", "account_balances_positions_order_and_withdraw_nonces_preserved": true, "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:27.3159673Z {"operation": "recovery", "stage": "ack-received", "signal": 9, "baseline_snapshot_sha256": "83ce9b1708e96d0cd92642c06f66cee43baea6ef4893dd0e620c86316cb66cdd", "client_final_response_bytes": 206, "client_outcome": "confirmed", "barrier": "real handler complete; response delivered", "server_status_observed_privately": 200, "snapshot_after_kill_sha256": "b5d36aebe2fa54a814e71a65ed16e7cc03468c43a5465dd61643f941789c0fe5", "restored_encrypted_snapshot": true, "restored_recovery_nonce": 1, "old_key_status": 401, "original_nonce_replay_status": 400, "client_resolution": "received replacement key retained", "account_balances_positions_order_and_withdraw_nonces_preserved": true, "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:28.0285729Z {"operation": "cancel", "stage": "before-request-body", "signal": 9, "baseline_snapshot_sha256": "701115657ce7d976366a55912d5b8bb6ed38aa17135cb19a0d426c78d213c1f4", "barrier": "HTTP 100 Continue; body withheld", "client_final_response_bytes": 0, "client_outcome": "unknown", "snapshot_after_kill_sha256": "701115657ce7d976366a55912d5b8bb6ed38aa17135cb19a0d426c78d213c1f4", "restored_encrypted_snapshot": true, "account_balances_positions_order_and_withdraw_nonces_preserved": true, "retry_historical_cancelled_size": "10000000", "repeated_receipt_identical": true, "retry_execution_unchanged": true, "original_receipt_preserved": true, "client_resolution": "durable cancellation reconciled and idempotent retry confirmed", "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:28.7411670Z {"operation": "cancel", "stage": "response-lost", "signal": 9, "baseline_snapshot_sha256": "ddfd0e8d46220f97c0c6e92483871084351e3bff49ddbd6e6230124057055f23", "client_final_response_bytes": 0, "client_outcome": "unknown", "barrier": "real handler complete; response withheld at proxy", "server_status_observed_privately": 200, "snapshot_after_kill_sha256": "30ceedf66d1d84f8f771dc8b89329b376f6d3f9ab9ba7f41c7572c823a56f670", "restored_encrypted_snapshot": true, "account_balances_positions_order_and_withdraw_nonces_preserved": true, "retry_historical_cancelled_size": "10000000", "repeated_receipt_identical": true, "retry_execution_unchanged": true, "original_receipt_preserved": true, "client_resolution": "durable cancellation reconciled and idempotent retry confirmed", "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:29.4680675Z {"operation": "cancel", "stage": "ack-received", "signal": 9, "baseline_snapshot_sha256": "e7cffb5cc5573c1bf4df6eaa1ebcdce03c6564490f49df6f4e7e3788a19c7be8", "client_final_response_bytes": 65, "client_outcome": "confirmed", "barrier": "real handler complete; response delivered", "server_status_observed_privately": 200, "snapshot_after_kill_sha256": "5d7f16363156e818cb9afdde553b38968e42bf0d86d8ebb37b6ec0480832a129", "restored_encrypted_snapshot": true, "account_balances_positions_order_and_withdraw_nonces_preserved": true, "retry_historical_cancelled_size": "10000000", "repeated_receipt_identical": true, "retry_execution_unchanged": true, "original_receipt_preserved": true, "client_resolution": "durable cancellation reconciled and idempotent retry confirmed", "second_sigkill_resolution_retained": true, "status": "PASS"}
+2026-10-12T08:56:29.5859415Z ##[group]Run cargo test --locked -p oracle-feed --features http
+2026-10-12T08:56:29.5859935Z [36;1mcargo test --locked -p oracle-feed --features http[0m
+2026-10-12T08:56:29.5922205Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:56:29.5922475Z env:
+2026-10-12T08:56:29.5922689Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:56:29.5922972Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:56:29.5923217Z   CARGO_TERM_COLOR: always
+2026-10-12T08:56:29.5923471Z   CACHE_ON_FAILURE: false
+2026-10-12T08:56:29.5923779Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:56:29.5924112Z ##[endgroup]
+2026-10-12T08:56:29.6808048Z [1m[92m   Compiling[0m perp-core v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/perp-core)
+2026-10-12T08:56:29.9436209Z [1m[92m   Compiling[0m oracle-feed v0.0.1 (/home/runner/work/arcora-perp/arcora-perp/crates/oracle-feed)
+2026-10-12T08:56:31.1774314Z [1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 1.56s
+2026-10-12T08:56:31.1831258Z [1m[92m     Running[0m unittests src/lib.rs (target/debug/deps/oracle_feed-3ea15f1b76a7fea0)
+2026-10-12T08:56:31.1844660Z 
+2026-10-12T08:56:31.1844950Z running 45 tests
+2026-10-12T08:56:31.1867727Z test crosscheck::tests::configuration_never_invents_thresholds_or_repairs_malformed_values ... ok
+2026-10-12T08:56:31.1869423Z test crosscheck::tests::explicit_symmetric_deviation_is_inclusive_without_rounding_loophole ... ok
+2026-10-12T08:56:31.2257192Z test crosscheck::tests::matching_last_does_not_hide_disagreeing_order_books ... ok
+2026-10-12T08:56:31.2287004Z test crosscheck::tests::both_sources_revalidated_after_second_fetch_and_gateway_queue ... ok
+2026-10-12T08:56:31.2977054Z test crosscheck::tests::older_secondary_cannot_hide_behind_fresher_primary_guest_timestamp ... ok
+2026-10-12T08:56:31.3007190Z test crosscheck::tests::quote_units_and_spot_contracts_are_never_implicitly_substituted ... ok
+2026-10-12T08:56:31.3119963Z test crosscheck::tests::both_source_watermarks_must_advance_and_failure_is_atomic ... ok
+2026-10-12T08:56:31.3150789Z test crosscheck::tests::old_but_advancing_independent_tape_never_becomes_fresh ... ok
+2026-10-12T08:56:31.3203215Z test crosscheck::tests::either_stale_future_zero_negative_confidence_or_wrong_signer_fails ... ok
+2026-10-12T08:56:31.3376937Z test crosscheck::tests::source_identity_is_not_publisher_independence ... ok
+2026-10-12T08:56:31.3397135Z test crosscheck::tests::same_venue_wrong_base_quote_order_or_market_is_not_independent_evidence ... ok
+2026-10-12T08:56:31.3427320Z test crosscheck_http::tests::primary_failure_does_not_contact_secondary_or_return_partial_pair ... ok
+2026-10-12T08:56:31.3428872Z test crosscheck_http::tests::okx_exact_spot_identity_and_source_timestamp_preserved ... ok
+2026-10-12T08:56:31.3430670Z test crosscheck_http::tests::critical_duplicates_escaped_names_trailing_and_oversized_json_rejected ... ok
+2026-10-12T08:56:31.3476683Z test crosscheck::tests::two_venues_preserve_primary_commitment_signature_and_legacy_backup ... ok
+2026-10-12T08:56:31.3537074Z test crosscheck_http::tests::real_second_source_redirect_never_contacts_target ... ok
+2026-10-12T08:56:31.3557371Z test crosscheck_http::tests::real_second_source_declared_eof_and_chunked_size_limits_apply ... ok
+2026-10-12T08:56:31.3626374Z test crosscheck_http::tests::real_second_source_errors_identity_and_partial_body_do_not_yield_primary_success ... ok
+2026-10-12T08:56:31.3740743Z test crosscheck_http::tests::wrong_status_count_kind_base_or_quote_never_falls_back ... ok
+2026-10-12T08:56:31.3787139Z test crosscheck_http::tests::real_two_loopback_sources_feed_same_production_request_path ... ok
+2026-10-12T08:56:31.3857056Z test live::tests::duplicate_critical_keys_including_escaped_keys_are_rejected ... ok
+2026-10-12T08:56:31.4025291Z test live::tests::exact_instrument_and_original_signed_fields_round_trip ... ok
+2026-10-12T08:56:31.4183698Z test live::tests::invalid_status_method_count_or_instrument_is_refused ... ok
+2026-10-12T08:56:31.4206834Z test live::tests::real_http_bounds_declared_chunked_and_eof_delimited_bodies ... ok
+2026-10-12T08:56:31.4214215Z test live::tests::real_http_error_and_truncated_body_never_echo_provider_payload ... ok
+2026-10-12T08:56:31.4229039Z test crosscheck_http::tests::required_fields_wrong_types_books_and_timestamps_rejected ... ok
+2026-10-12T08:56:31.4235042Z test live::tests::real_http_redirect_is_rejected_without_contacting_destination ... ok
+2026-10-12T08:56:31.4248463Z test live::tests::real_http_reads_a_healthy_body_and_parses_its_identity ... ok
+2026-10-12T08:56:31.4277312Z test live::tests::request_receipt_clock_is_checked_and_accounts_for_elapsed_io ... ok
+2026-10-12T08:56:31.4313703Z test live::tests::every_critical_field_is_required_and_typed ... ok
+2026-10-12T08:56:31.4412264Z test live::tests::stale_source_time_remains_stale_instead_of_being_repaired ... ok
+2026-10-12T08:56:31.4462427Z test live::tests::trailing_nonfinite_oversized_and_wrong_instrument_arguments_fail_safely ... ok
+2026-10-12T08:56:31.4584766Z test tests::a_frozen_exchange_timestamp_goes_stale_at_the_gate ... ok
+2026-10-12T08:56:31.4604642Z test tests::absurd_spread_book_is_rejected_by_the_gate ... ok
+2026-10-12T08:56:31.4726797Z test tests::builds_a_valid_transcript_that_passes_the_oracle_gate ... ok
+2026-10-12T08:56:31.4746586Z test tests::fat_finger_last_outside_the_book_is_rejected_by_the_gate ... ok
+2026-10-12T08:56:31.4748558Z test tests::parses_candlesticks_ascending_and_skips_malformed_rows ... ok
+2026-10-12T08:56:31.4749711Z test tests::parses_decimal_prices_exactly ... ok
+2026-10-12T08:56:31.4754379Z test tests::missing_bid_or_ask_refuses_transcript_instead_of_inventing_backup ... ok
+2026-10-12T08:56:31.4755619Z test tests::publish_time_preserves_source_and_refuses_missing_zero_or_future ... ok
+2026-10-12T08:56:31.4781557Z test tests::rejects_nonpositive_or_unparseable_last ... ok
+2026-10-12T08:56:31.4832542Z test tests::signer_configuration_only_falls_back_when_truly_absent ... ok
+2026-10-12T08:56:31.4876672Z test tests::produced_transcript_signature_recovers_to_signer ... ok
+2026-10-12T08:56:31.5791284Z test live::tests::real_http_stalled_body_reaches_overall_timeout ... ok
+2026-10-12T08:56:32.6512123Z test crosscheck_http::tests::real_second_source_missing_transport_or_stalled_body_fails_closed ... ok
+2026-10-12T08:56:32.6513063Z 
+2026-10-12T08:56:32.6513897Z test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+2026-10-12T08:56:32.6515308Z 
+2026-10-12T08:56:32.6518897Z [1m[92m     Running[0m unittests src/bin/probe.rs (target/debug/deps/probe-91ec79f4beeb2e65)
+2026-10-12T08:56:32.6530390Z 
+2026-10-12T08:56:32.6530612Z running 0 tests
+2026-10-12T08:56:32.6530899Z 
+2026-10-12T08:56:32.6531539Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+2026-10-12T08:56:32.6532096Z 
+2026-10-12T08:56:32.6533579Z [1m[92m     Running[0m tests/intake_regressions.rs (target/debug/deps/intake_regressions-0a08c9259bf299b9)
+2026-10-12T08:56:32.6542643Z 
+2026-10-12T08:56:32.6542806Z running 5 tests
+2026-10-12T08:56:32.6567449Z test duplicate_sign_and_exponent_cannot_become_positive_price ... ok
+2026-10-12T08:56:32.6587970Z test crossed_book_is_refused_instead_of_absolutizing_spread ... ok
+2026-10-12T08:56:32.6589029Z test missing_book_cannot_be_replaced_by_last_trade ... ok
+2026-10-12T08:56:32.6596234Z test individually_representable_book_prices_do_not_overflow_midpoint ... ok
+2026-10-12T08:56:32.6624240Z test malformed_or_nonpositive_book_is_not_a_valid_backup ... ok
+2026-10-12T08:56:32.6624569Z 
+2026-10-12T08:56:32.6624970Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+2026-10-12T08:56:32.6625340Z 
+2026-10-12T08:56:32.6626504Z [1m[92m   Doc-tests[0m oracle_feed
+2026-10-12T08:56:34.2137872Z 
+2026-10-12T08:56:34.2138440Z running 0 tests
+2026-10-12T08:56:34.2138672Z 
+2026-10-12T08:56:34.2235482Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+2026-10-12T08:56:34.2236299Z 
+2026-10-12T08:56:34.2460128Z ##[group]Run python3 scripts/local-verification/gateway_restore_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-local-drills/restore
+2026-10-12T08:56:34.2462254Z [36;1mpython3 scripts/local-verification/gateway_restore_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-local-drills/restore[0m
+2026-10-12T08:56:34.2536203Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:56:34.2536487Z env:
+2026-10-12T08:56:34.2536715Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:56:34.2537004Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:56:34.2537241Z   CARGO_TERM_COLOR: always
+2026-10-12T08:56:34.2537488Z   CACHE_ON_FAILURE: false
+2026-10-12T08:56:34.2537786Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:56:34.2538109Z ##[endgroup]
+2026-10-12T08:56:35.8519679Z {"status": "PASS", "refusal_cases": 17, "restore_samples": [{"attempt": 1, "status": "PASS", "checkpoint_sha256": "ce5af3887c6998e62b11a63886f352a0abf2abeea5b8db01d53304f3577b5636", "copy_to_verified_state_seconds": 0.135155, "account_fields_preserved": 8, "original_order_receipt_preserved": true, "revoked_key_status": 401, "recovery_replay_status": 400, "confirmed_observations_lost": 0, "original_configured_path_absent": true}, {"attempt": 2, "status": "PASS", "checkpoint_sha256": "70e8d7153ebae0d521854f9ac4ace593ce946907a832c18cd23bc68b0ddd732b", "copy_to_verified_state_seconds": 0.141978, "account_fields_preserved": 8, "original_order_receipt_preserved": true, "revoked_key_status": 401, "recovery_replay_status": 400, "confirmed_observations_lost": 0, "original_configured_path_absent": true}], "release_gate": "HOLD"}
+2026-10-12T08:56:35.8668642Z ##[group]Run actions/upload-artifact@v4
+2026-10-12T08:56:35.8669230Z with:
+2026-10-12T08:56:35.8669558Z   name: gateway-local-drills
+2026-10-12T08:56:35.8670022Z   path: /tmp/arcora-local-drills
+2026-10-12T08:56:35.8670402Z   if-no-files-found: warn
+2026-10-12T08:56:35.8670867Z   compression-level: 6
+2026-10-12T08:56:35.8671204Z   overwrite: false
+2026-10-12T08:56:35.8671604Z   include-hidden-files: false
+2026-10-12T08:56:35.8671972Z env:
+2026-10-12T08:56:35.8672295Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:56:35.8672751Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:56:35.8673123Z   CARGO_TERM_COLOR: always
+2026-10-12T08:56:35.8673543Z   CACHE_ON_FAILURE: false
+2026-10-12T08:56:35.8673931Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:56:35.8674466Z ##[endgroup]
+2026-10-12T08:56:36.0290257Z (node:15821) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:56:36.0291890Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:56:36.0436267Z With the provided path, there will be 48 files uploaded
+2026-10-12T08:56:36.0456567Z Artifact name is valid!
+2026-10-12T08:56:36.0457304Z Root directory input is valid!
+2026-10-12T08:56:36.2489505Z Beginning upload of artifact content to blob storage
+2026-10-12T08:56:36.3767547Z (node:15821) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:56:36.4620707Z Uploaded bytes 903719
+2026-10-12T08:56:36.4801596Z Finished uploading artifact content to blob storage!
+2026-10-12T08:56:36.4802957Z SHA256 digest of uploaded artifact zip is 5d1aebd3f791b050a14bdc57acbc5a232c846b16965bf87b50a08e69a2a003b3
+2026-10-12T08:56:36.4804254Z Finalizing artifact upload
+2026-10-12T08:56:36.6785149Z Artifact gateway-local-drills.zip successfully finalized. Artifact ID 11736373694
+2026-10-12T08:56:36.6786728Z Artifact gateway-local-drills has been successfully uploaded! Final size is 903719 bytes. Artifact ID is 11736373694
+2026-10-12T08:56:36.6792738Z Artifact download URL: https://github.com/Arcora-labs/arcora-perp/actions/runs/38226405363/artifacts/11736373694
+2026-10-12T08:56:36.6971165Z Post job cleanup.
+2026-10-12T08:56:36.8180823Z (node:15834) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:56:36.8181841Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:56:36.8185529Z Cache hit occurred on the primary key node-cache-Linux-x64-pnpm-af9df8d830b0c5b5d1808040b01b631e357799f05f171003e5291b089c33c269, not saving cache.
+2026-10-12T08:56:36.8284454Z Post job cleanup.
+2026-10-12T08:56:36.9798035Z Pruning is unnecessary.
+2026-10-12T08:56:37.0035832Z Post job cleanup.
+2026-10-12T08:56:37.1507592Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/arcora-perp/arcora-perp --files-from manifest.txt --use-compress-program zstdmt
+2026-10-12T08:56:37.2663725Z Sent 9783 of 9783 (100.0%), 0.2 MBs/sec
+2026-10-12T08:56:37.3833373Z Cache saved with the key: linux-foundry-chain-fork-gateway-local-drills-8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:56:37.3978161Z Post job cleanup.
+2026-10-12T08:56:37.5208844Z Cache up-to-date.
+2026-10-12T08:56:37.5405050Z Post job cleanup.
+2026-10-12T08:56:37.6296805Z [command]/usr/bin/git version
+2026-10-12T08:56:37.6330832Z git version 2.55.0
+2026-10-12T08:56:37.6375325Z Temporarily overriding HOME='/home/runner/work/_temp/31bde63e-971d-4537-b1dd-d5d5756253a4' before making global git config changes
+2026-10-12T08:56:37.6376775Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-12T08:56:37.6381720Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:56:37.6419893Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-12T08:56:37.6456251Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-12T08:56:37.6709259Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-12T08:56:37.6738909Z http.https://github.com/.extraheader
+2026-10-12T08:56:37.6756755Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-12T08:56:37.6800573Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-12T08:56:37.7064241Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-12T08:56:37.7101514Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-12T08:56:37.7494393Z Cleaning up orphan processes
+2026-10-12T08:56:37.7778907Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4, pnpm/action-setup@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

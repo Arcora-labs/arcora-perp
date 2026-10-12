@@ -1,0 +1,55 @@
+{
+  "captured_at": "2026-10-12T09:36:29.720760+00:00",
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "clippy",
+    "--offline",
+    "--locked",
+    "--all-targets",
+    "--manifest-path",
+    "scripts/local-verification/service-identity-harness/Cargo.toml",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 4.461529249999998,
+  "source_sha256_before": {
+    "crates/prover-service/src/main.rs": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548",
+    "crates/prover-service/src/sp1_prover.rs": "d03638a78c7c0c2991425ad4115382dac3df40d69fbb0fb4f244f6a21d6de9d2",
+    "crates/prover-service/src/identity.rs": "f683bdead32fc3a016179967f50f5abab01661640bfdde9629021aea414e40fa",
+    "crates/prover-service/src/identity_tests.rs": "f7828db1877c29944f527890a2008d483e27f89f722de89af78c8285a6c4c761",
+    "scripts/local-verification/service-identity-harness/lib.rs": "bad8dbac05279861fb1e7a9b2224e2bdd22feab2f0e85b76842bcae572df6d0f",
+    "scripts/local-verification/service-identity-harness/build.rs": "fbf3e2c7c04d35033b30df387d25e640ec15faf1c13e5d20d3fd2b909f00d1b7",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d",
+    "crates/service-identity/public.rs": "177aeb9180a1d082d5929ef1b19170dd3fab6ab6ec84ff683f5c6ed9e3489692",
+    "crates/service-identity/build_support.rs": "910a030f4d4d3c6c28d03b216b030d59121d9955cbfaa1e3d1aa961933ee1a02",
+    "scripts/local-verification/service_build_identity.py": "9db5758504a75d9d6fda50dc395463dba0b50fe5406e519801a23547c7220ef8",
+    "scripts/local-verification/candidate_identity_manifest.py": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6"
+  },
+  "source_sha256_after": {
+    "crates/prover-service/src/main.rs": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548",
+    "crates/prover-service/src/sp1_prover.rs": "d03638a78c7c0c2991425ad4115382dac3df40d69fbb0fb4f244f6a21d6de9d2",
+    "crates/prover-service/src/identity.rs": "f683bdead32fc3a016179967f50f5abab01661640bfdde9629021aea414e40fa",
+    "crates/prover-service/src/identity_tests.rs": "f7828db1877c29944f527890a2008d483e27f89f722de89af78c8285a6c4c761",
+    "scripts/local-verification/service-identity-harness/lib.rs": "bad8dbac05279861fb1e7a9b2224e2bdd22feab2f0e85b76842bcae572df6d0f",
+    "scripts/local-verification/service-identity-harness/build.rs": "fbf3e2c7c04d35033b30df387d25e640ec15faf1c13e5d20d3fd2b909f00d1b7",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d",
+    "crates/service-identity/public.rs": "177aeb9180a1d082d5929ef1b19170dd3fab6ab6ec84ff683f5c6ed9e3489692",
+    "crates/service-identity/build_support.rs": "910a030f4d4d3c6c28d03b216b030d59121d9955cbfaa1e3d1aa961933ee1a02",
+    "scripts/local-verification/service_build_identity.py": "9db5758504a75d9d6fda50dc395463dba0b50fe5406e519801a23547c7220ef8",
+    "scripts/local-verification/candidate_identity_manifest.py": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6"
+  },
+  "sources_unchanged": true,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "82900ffc71856553d547620e14b8dfe30d0111ea4b007f67794eb4dac090ecfd",
+  "toolchain": {
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "clippy": "clippy 0.1.99 (b940084d7e 2026-09-28)",
+    "python": "Python 3.14.6"
+  },
+  "scope": "Dependency-light harness imports exact production identity module/public envelope, injects committed reviewedELF fixture, tests owned loopback only. No SDK/backend boot/setup/proving or loaded-service attestation claim."
+}

@@ -1,0 +1,21 @@
+
+running 6 tests
+test service_identity::tests::public_identity_config_hash_is_canonical_and_cannot_approve_a_route ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test public_identity_tests::public_identity_configured_prover_never_requests_a_proof_or_enables_candidate ... ok
+test public_identity_tests::public_identity_owned_socket_serves_same_metadata_and_stops_only_its_listener ... ok
+test public_identity_tests::public_identity_post_retains_bounded_intake_and_cannot_change_state ... ok
+test public_identity_tests::public_identity_actual_router_exposes_only_resolved_public_state_without_mutation ... ok
+test public_identity_tests::public_identity_missing_required_archive_is_unavailable_not_a_legacy_declaration ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 696 filtered out; finished in 0.03s
+

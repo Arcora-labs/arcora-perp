@@ -1,0 +1,16 @@
+
+running 6 tests
+test service_identity::tests::public_identity_config_hash_is_canonical_and_cannot_approve_a_route ... ok
+test identity_tests::actual_router_returns_resolved_public_fields_and_checksums ... ok
+test identity_tests::actual_handler_owned_loopback_get_and_post_remain_public_and_unattested ... ok
+test identity_tests::identity_router_refuses_mutating_methods ... ok
+test identity_tests::repeated_get_is_stable_and_resolved_changes_change_only_public_fingerprint ... ok
+test identity_tests::injected_reviewed_fixture_descriptor_binds_exact_bytes_and_existing_domains ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

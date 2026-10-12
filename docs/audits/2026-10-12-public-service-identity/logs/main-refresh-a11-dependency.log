@@ -1,0 +1,638 @@
+﻿2026-10-12T08:53:53.4276826Z Current runner version: '2.337.0'
+2026-10-12T08:53:53.4292199Z ##[group]Runner Image Provisioner
+2026-10-12T08:53:53.4292706Z Hosted Compute Agent
+2026-10-12T08:53:53.4293260Z Version: 20261002.596
+2026-10-12T08:53:53.4293623Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-12T08:53:53.4294025Z Build Date: 2026-10-02T22:28:27Z
+2026-10-12T08:53:53.4294523Z Worker ID: {a53cae8b-b4dc-4cab-8089-afed0557efbc}
+2026-10-12T08:53:53.4294901Z Region: westus3
+2026-10-12T08:53:53.4295477Z Cloud: Azure
+2026-10-12T08:53:53.4295784Z ##[endgroup]
+2026-10-12T08:53:53.4296534Z ##[group]Operating System
+2026-10-12T08:53:53.4296926Z Ubuntu
+2026-10-12T08:53:53.4297228Z 24.04.5
+2026-10-12T08:53:53.4297558Z LTS
+2026-10-12T08:53:53.4297859Z ##[endgroup]
+2026-10-12T08:53:53.4298165Z ##[group]Runner Image
+2026-10-12T08:53:53.4298606Z Image: ubuntu-24.04
+2026-10-12T08:53:53.4298935Z Version: 20261004.327.1
+2026-10-12T08:53:53.4299676Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261004.327/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-12T08:53:53.4300565Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261004.327
+2026-10-12T08:53:53.4301110Z ##[endgroup]
+2026-10-12T08:53:53.4301708Z ##[group]GITHUB_TOKEN Permissions
+2026-10-12T08:53:53.4303000Z Contents: read
+2026-10-12T08:53:53.4303566Z Metadata: read
+2026-10-12T08:53:53.4303966Z ##[endgroup]
+2026-10-12T08:53:53.4305219Z Secret source: Actions
+2026-10-12T08:53:53.4305803Z Cache mode: write
+2026-10-12T08:53:53.4306323Z Prepare workflow directory
+2026-10-12T08:53:53.4777201Z Prepare all required actions
+2026-10-12T08:53:53.4816177Z Getting action download info
+2026-10-12T08:53:53.7873234Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-12T08:53:54.6094683Z Download action repository 'dtolnay/rust-toolchain@stable' (SHA:686976e191b89faba57d3206551f0f330d8cb249)
+2026-10-12T08:53:54.9595427Z Download action repository 'taiki-e/install-action@cargo-audit' (SHA:977cdbe2e748fc9d5798e3098868c4c4463bf31b)
+2026-10-12T08:53:55.6445917Z Download action repository 'pnpm/action-setup@v4' (SHA:b906affcce14559ad1aafd4ab0e942779e9f58b1)
+2026-10-12T08:53:56.4182604Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-12T08:53:56.5701170Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-12T08:53:56.8236325Z Complete job name: dependency advisories
+2026-10-12T08:53:56.8757912Z ##[group]Run actions/checkout@v4
+2026-10-12T08:53:56.8758215Z with:
+2026-10-12T08:53:56.8758360Z   repository: Arcora-labs/arcora-perp
+2026-10-12T08:53:56.8759832Z   token: ***
+2026-10-12T08:53:56.8759952Z   ssh-strict: true
+2026-10-12T08:53:56.8760067Z   ssh-user: git
+2026-10-12T08:53:56.8760186Z   persist-credentials: true
+2026-10-12T08:53:56.8760324Z   clean: true
+2026-10-12T08:53:56.8760461Z   sparse-checkout-cone-mode: true
+2026-10-12T08:53:56.8760600Z   fetch-depth: 1
+2026-10-12T08:53:56.8760728Z   fetch-tags: false
+2026-10-12T08:53:56.8760844Z   show-progress: true
+2026-10-12T08:53:56.8760965Z   lfs: false
+2026-10-12T08:53:56.8761069Z   submodules: false
+2026-10-12T08:53:56.8761186Z   set-safe-directory: true
+2026-10-12T08:53:56.8761325Z   allow-unsafe-pr-checkout: false
+2026-10-12T08:53:56.8761536Z ##[endgroup]
+2026-10-12T08:53:56.9459786Z Syncing repository: Arcora-labs/arcora-perp
+2026-10-12T08:53:56.9460695Z ##[group]Getting Git version info
+2026-10-12T08:53:56.9460979Z Working directory is '/home/runner/work/arcora-perp/arcora-perp'
+2026-10-12T08:53:56.9461360Z [command]/usr/bin/git version
+2026-10-12T08:53:57.0566102Z git version 2.55.0
+2026-10-12T08:53:57.0579592Z ##[endgroup]
+2026-10-12T08:53:57.0589701Z Temporarily overriding HOME='/home/runner/work/_temp/38374db7-6957-49ed-8953-e712db370342' before making global git config changes
+2026-10-12T08:53:57.0590152Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-12T08:53:57.0593456Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:53:57.0833949Z Deleting the contents of '/home/runner/work/arcora-perp/arcora-perp'
+2026-10-12T08:53:57.0837137Z ##[group]Initializing the repository
+2026-10-12T08:53:57.0840433Z [command]/usr/bin/git init /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:53:57.1313224Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-12T08:53:57.1313749Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-12T08:53:57.1314158Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-12T08:53:57.1314467Z hint: call:
+2026-10-12T08:53:57.1314624Z hint:
+2026-10-12T08:53:57.1314894Z hint: 	git config --global init.defaultBranch <name>
+2026-10-12T08:53:57.1315155Z hint:
+2026-10-12T08:53:57.1315412Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-12T08:53:57.1315798Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-12T08:53:57.1316013Z hint:
+2026-10-12T08:53:57.1316125Z hint: 	git branch -m <name>
+2026-10-12T08:53:57.1316252Z hint:
+2026-10-12T08:53:57.1316422Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-12T08:53:57.1316761Z Initialized empty Git repository in /home/runner/work/arcora-perp/arcora-perp/.git/
+2026-10-12T08:53:57.1323631Z [command]/usr/bin/git remote add origin https://github.com/Arcora-labs/arcora-perp
+2026-10-12T08:53:57.1582583Z ##[endgroup]
+2026-10-12T08:53:57.1582845Z ##[group]Disabling automatic garbage collection
+2026-10-12T08:53:57.1585669Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-12T08:53:57.1614588Z ##[endgroup]
+2026-10-12T08:53:57.1614794Z ##[group]Setting up auth
+2026-10-12T08:53:57.1619218Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-12T08:53:57.1646492Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-12T08:53:57.3446545Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-12T08:53:57.3465904Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-12T08:53:57.3659814Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-12T08:53:57.3689059Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-12T08:53:57.3879758Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-12T08:53:57.3917113Z ##[endgroup]
+2026-10-12T08:53:57.3917663Z ##[group]Fetching the repository
+2026-10-12T08:53:57.3930618Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +8f5e97bc690c1d9a6d796fdc3725526d283e077d:refs/remotes/origin/main
+2026-10-12T08:53:59.0706466Z From https://github.com/Arcora-labs/arcora-perp
+2026-10-12T08:53:59.0706982Z  * [new ref]         8f5e97bc690c1d9a6d796fdc3725526d283e077d -> origin/main
+2026-10-12T08:53:59.0714645Z ##[endgroup]
+2026-10-12T08:53:59.0715002Z ##[group]Determining the checkout info
+2026-10-12T08:53:59.0715403Z ##[endgroup]
+2026-10-12T08:53:59.0717858Z [command]/usr/bin/git sparse-checkout disable
+2026-10-12T08:53:59.0893475Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-12T08:53:59.0920217Z ##[group]Checking out the ref
+2026-10-12T08:53:59.0924195Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-10-12T08:53:59.3118867Z Switched to a new branch 'main'
+2026-10-12T08:53:59.3121270Z branch 'main' set up to track 'origin/main'.
+2026-10-12T08:53:59.3142939Z ##[endgroup]
+2026-10-12T08:53:59.3194083Z [command]/usr/bin/git log -1 --format=%H
+2026-10-12T08:53:59.3205989Z 8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:53:59.3426577Z ##[group]Run dtolnay/rust-toolchain@stable
+2026-10-12T08:53:59.3426765Z with:
+2026-10-12T08:53:59.3426868Z   toolchain: stable
+2026-10-12T08:53:59.3426981Z ##[endgroup]
+2026-10-12T08:53:59.3473418Z ##[start-action display=Parse toolchain version;id=__dtolnay_rust-toolchain.parse]
+2026-10-12T08:53:59.3510774Z ##[group]Run if [[ -z $toolchain ]]; then
+2026-10-12T08:53:59.3511032Z [36;1mif [[ -z $toolchain ]]; then[0m
+2026-10-12T08:53:59.3511319Z [36;1m  # GitHub does not enforce `required: true` inputs itself. https://github.com/actions/runner/issues/1070[0m
+2026-10-12T08:53:59.3511614Z [36;1m  echo "'toolchain' is a required input" >&2[0m
+2026-10-12T08:53:59.3511779Z [36;1m  exit 1[0m
+2026-10-12T08:53:59.3511959Z [36;1melif [[ $toolchain =~ ^stable' '[0-9]+' '(year|month|week|day)s?' 'ago$ ]]; then[0m
+2026-10-12T08:53:59.3512177Z [36;1m  if [[ Linux == macOS ]]; then[0m
+2026-10-12T08:53:59.3512499Z [36;1m    echo "toolchain=1.$((($(date -v-$(sed 's/stable \([0-9]*\) \(.\).*/\1\2/' <<< $toolchain) +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:59.3512765Z [36;1m  else[0m
+2026-10-12T08:53:59.3512982Z [36;1m    echo "toolchain=1.$((($(date --date "${toolchain#stable }" +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:59.3513367Z [36;1m  fi[0m
+2026-10-12T08:53:59.3513554Z [36;1melif [[ $toolchain =~ ^stable' 'minus' '[0-9]+' 'releases?$ ]]; then[0m
+2026-10-12T08:53:59.3513830Z [36;1m  echo "toolchain=1.$((($(date +%s)/60/60/24-16569)/7/6-${toolchain//[^0-9]/}))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:59.3514074Z [36;1melif [[ $toolchain =~ ^1\.[0-9]+$ ]]; then[0m
+2026-10-12T08:53:59.3514347Z [36;1m  echo "toolchain=1.$((i=${toolchain#1.}, c=($(date +%s)/60/60/24-16569)/7/6, i+9*i*(10*i<=c)+90*i*(100*i<=c)))" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:59.3514601Z [36;1melse[0m
+2026-10-12T08:53:59.3514712Z [36;1m  delimiter=EOF[0m
+2026-10-12T08:53:59.3514882Z [36;1m  while [[ $toolchain == *$delimiter* ]]; do delimiter+=_; done[0m
+2026-10-12T08:53:59.3515146Z [36;1m  printf 'toolchain<<%s\n%s\n%s\n' "$delimiter" "$toolchain" "$delimiter" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:53:59.3515358Z [36;1mfi[0m
+2026-10-12T08:53:59.4691917Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:59.4692142Z env:
+2026-10-12T08:53:59.4692276Z   toolchain: stable
+2026-10-12T08:53:59.4692404Z ##[endgroup]
+2026-10-12T08:53:59.4799280Z ##[end-action id=__dtolnay_rust-toolchain.parse;outcome=success;conclusion=success;duration_ms=132]
+2026-10-12T08:53:59.4802142Z ##[start-action display=Set $CARGO_HOME;id=__dtolnay_rust-toolchain.__run]
+2026-10-12T08:53:59.4825345Z ##[group]Run echo CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV
+2026-10-12T08:53:59.4825624Z [36;1mecho CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV[0m
+2026-10-12T08:53:59.4871175Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:59.4871379Z ##[endgroup]
+2026-10-12T08:53:59.4936462Z ##[end-action id=__dtolnay_rust-toolchain.__run;outcome=success;conclusion=success;duration_ms=13]
+2026-10-12T08:53:59.4937929Z ##[start-action display=Install rustup if needed;id=__dtolnay_rust-toolchain.__run_2]
+2026-10-12T08:53:59.4955022Z ##[group]Run if ! command -v rustup &>/dev/null; then
+2026-10-12T08:53:59.4955230Z [36;1mif ! command -v rustup &>/dev/null; then[0m
+2026-10-12T08:53:59.4955639Z [36;1m  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs | sh -s -- --default-toolchain none -y[0m
+2026-10-12T08:53:59.4956022Z [36;1m  echo "$CARGO_HOME/bin" >> $GITHUB_PATH[0m
+2026-10-12T08:53:59.4956178Z [36;1mfi[0m
+2026-10-12T08:53:59.4998793Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:59.4998972Z env:
+2026-10-12T08:53:59.4999086Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:59.4999337Z ##[endgroup]
+2026-10-12T08:53:59.5060651Z ##[end-action id=__dtolnay_rust-toolchain.__run_2;outcome=success;conclusion=success;duration_ms=12]
+2026-10-12T08:53:59.5062010Z ##[start-action display=Install rustup if needed on windows;id=__dtolnay_rust-toolchain.__run_3]
+2026-10-12T08:53:59.5066926Z ##[end-action id=__dtolnay_rust-toolchain.__run_3;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-12T08:53:59.5075596Z ##[start-action display=rustup toolchain install stable;id=__dtolnay_rust-toolchain.__run_4]
+2026-10-12T08:53:59.5088570Z ##[group]Run set -f  # split targets and components on commas and whitespace, without glob expansion
+2026-10-12T08:53:59.5088938Z [36;1mset -f  # split targets and components on commas and whitespace, without glob expansion[0m
+2026-10-12T08:53:59.5089169Z [36;1mflags=()[0m
+2026-10-12T08:53:59.5089324Z [36;1mfor t in ${targets//,/ }; do flags+=(--target "$t"); done[0m
+2026-10-12T08:53:59.5089553Z [36;1mfor c in ${components//,/ }; do flags+=(--component "$c"); done[0m
+2026-10-12T08:53:59.5089836Z [36;1mif [[ $toolchain == nightly && -n $components ]]; then flags+=(--allow-downgrade); fi[0m
+2026-10-12T08:53:59.5090072Z [36;1mlog=$(mktemp)[0m
+2026-10-12T08:53:59.5090205Z [36;1mtrap 'rm -f "$log"' EXIT[0m
+2026-10-12T08:53:59.5090349Z [36;1mfor attempt in 1 2 3 4 5; do[0m
+2026-10-12T08:53:59.5090652Z [36;1m  if rustup toolchain install "$toolchain" "${flags[@]}" --profile minimal --no-self-update --force-non-host 2>&1 | tee "$log"; then[0m
+2026-10-12T08:53:59.5090949Z [36;1m    break[0m
+2026-10-12T08:53:59.5091061Z [36;1m  else[0m
+2026-10-12T08:53:59.5091172Z [36;1m    status=$?[0m
+2026-10-12T08:53:59.5091289Z [36;1m  fi[0m
+2026-10-12T08:53:59.5091450Z [36;1m  if [[ $attempt == 5 ]] || ! grep -Fq 'checksum failed for ' "$log" \[0m
+2026-10-12T08:53:59.5091753Z [36;1m      || ! grep -Fq 'this is likely due to an ongoing update of the official release server' "$log"; then[0m
+2026-10-12T08:53:59.5092000Z [36;1m    exit "$status"[0m
+2026-10-12T08:53:59.5092126Z [36;1m  fi[0m
+2026-10-12T08:53:59.5092323Z [36;1m  echo "Retrying rustup toolchain install in 30 seconds (retry $attempt of 4)" >&2[0m
+2026-10-12T08:53:59.5092546Z [36;1m  sleep 30[0m
+2026-10-12T08:53:59.5092657Z [36;1mdone[0m
+2026-10-12T08:53:59.5136105Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:53:59.5136305Z env:
+2026-10-12T08:53:59.5136418Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:53:59.5136555Z   toolchain: stable
+2026-10-12T08:53:59.5136667Z   targets: 
+2026-10-12T08:53:59.5136770Z   components: 
+2026-10-12T08:53:59.5136899Z   RUSTUP_PERMIT_COPY_RENAME: 1
+2026-10-12T08:53:59.5137032Z ##[endgroup]
+2026-10-12T08:54:01.4175039Z info: syncing channel updates for stable-x86_64-unknown-linux-gnu
+2026-10-12T08:54:01.6143789Z 
+2026-10-12T08:54:01.6205813Z   stable-x86_64-unknown-linux-gnu unchanged - rustc 1.99.0 (b940084d7 2026-09-28)
+2026-10-12T08:54:01.6206244Z 
+2026-10-12T08:54:01.6259970Z ##[end-action id=__dtolnay_rust-toolchain.__run_4;outcome=success;conclusion=success;duration_ms=2118]
+2026-10-12T08:54:01.6265536Z ##[start-action display=rustup default stable;id=__dtolnay_rust-toolchain.__run_5]
+2026-10-12T08:54:01.6277670Z ##[group]Run rustup default "$toolchain" --force-non-host
+2026-10-12T08:54:01.6277900Z [36;1mrustup default "$toolchain" --force-non-host[0m
+2026-10-12T08:54:01.6326632Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:54:01.6326805Z env:
+2026-10-12T08:54:01.6326915Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.6327049Z   toolchain: stable
+2026-10-12T08:54:01.6327160Z ##[endgroup]
+2026-10-12T08:54:01.6412837Z info: using existing install for stable-x86_64-unknown-linux-gnu
+2026-10-12T08:54:01.6550177Z info: default toolchain set to stable-x86_64-unknown-linux-gnu
+2026-10-12T08:54:01.6550344Z 
+2026-10-12T08:54:01.6609396Z   stable-x86_64-unknown-linux-gnu unchanged - rustc 1.99.0 (b940084d7 2026-09-28)
+2026-10-12T08:54:01.6609666Z 
+2026-10-12T08:54:01.6622548Z ##[end-action id=__dtolnay_rust-toolchain.__run_5;outcome=success;conclusion=success;duration_ms=35]
+2026-10-12T08:54:01.6625435Z ##[start-action display=Create cachekey;id=__dtolnay_rust-toolchain.rustc-version]
+2026-10-12T08:54:01.6637510Z ##[group]Run DATE=$(rustc +"$toolchain" --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')
+2026-10-12T08:54:01.6637980Z [36;1mDATE=$(rustc +"$toolchain" --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')[0m
+2026-10-12T08:54:01.6638341Z [36;1mHASH=$(rustc +"$toolchain" --version --verbose | sed -ne 's/^commit-hash: //p')[0m
+2026-10-12T08:54:01.6638616Z [36;1mecho "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT[0m
+2026-10-12T08:54:01.6683303Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:54:01.6683481Z env:
+2026-10-12T08:54:01.6683595Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.6683732Z   toolchain: stable
+2026-10-12T08:54:01.6683845Z ##[endgroup]
+2026-10-12T08:54:01.7163964Z ##[end-action id=__dtolnay_rust-toolchain.rustc-version;outcome=success;conclusion=success;duration_ms=53]
+2026-10-12T08:54:01.7165887Z ##[start-action display=Disable incremental compilation;id=__dtolnay_rust-toolchain.__run_6]
+2026-10-12T08:54:01.7179293Z ##[group]Run if [ -z "${CARGO_INCREMENTAL+set}" ]; then
+2026-10-12T08:54:01.7179511Z [36;1mif [ -z "${CARGO_INCREMENTAL+set}" ]; then[0m
+2026-10-12T08:54:01.7179689Z [36;1m  echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV[0m
+2026-10-12T08:54:01.7179843Z [36;1mfi[0m
+2026-10-12T08:54:01.7229046Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:54:01.7229226Z env:
+2026-10-12T08:54:01.7229338Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.7229473Z ##[endgroup]
+2026-10-12T08:54:01.7290195Z ##[end-action id=__dtolnay_rust-toolchain.__run_6;outcome=success;conclusion=success;duration_ms=12]
+2026-10-12T08:54:01.7291383Z ##[start-action display=Enable colors in Cargo output;id=__dtolnay_rust-toolchain.__run_7]
+2026-10-12T08:54:01.7302668Z ##[group]Run if [ -z "${CARGO_TERM_COLOR+set}" ]; then
+2026-10-12T08:54:01.7302872Z [36;1mif [ -z "${CARGO_TERM_COLOR+set}" ]; then[0m
+2026-10-12T08:54:01.7303199Z [36;1m  echo CARGO_TERM_COLOR=always >> $GITHUB_ENV[0m
+2026-10-12T08:54:01.7303372Z [36;1mfi[0m
+2026-10-12T08:54:01.7345793Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:54:01.7345970Z env:
+2026-10-12T08:54:01.7346080Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.7346215Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:01.7346332Z ##[endgroup]
+2026-10-12T08:54:01.7404979Z ##[end-action id=__dtolnay_rust-toolchain.__run_7;outcome=success;conclusion=success;duration_ms=11]
+2026-10-12T08:54:01.7406897Z ##[start-action display=Enable Cargo sparse registry;id=__dtolnay_rust-toolchain.__run_8]
+2026-10-12T08:54:01.7418721Z ##[group]Run # implemented in 1.66, stabilized in 1.68, made default in 1.70
+2026-10-12T08:54:01.7418986Z [36;1m# implemented in 1.66, stabilized in 1.68, made default in 1.70[0m
+2026-10-12T08:54:01.7419368Z [36;1mif [ -z "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL+set}" -o -f "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol ]; then[0m
+2026-10-12T08:54:01.7419758Z [36;1m  if rustc +"$toolchain" --version --verbose | grep -q '^release: 1\.6[89]\.'; then[0m
+2026-10-12T08:54:01.7420071Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+2026-10-12T08:54:01.7420352Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse >> $GITHUB_ENV[0m
+2026-10-12T08:54:01.7420623Z [36;1m  elif rustc +"$toolchain" --version --verbose | grep -q '^release: 1\.6[67]\.'; then[0m
+2026-10-12T08:54:01.7420925Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+2026-10-12T08:54:01.7421196Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git >> $GITHUB_ENV[0m
+2026-10-12T08:54:01.7421380Z [36;1m  fi[0m
+2026-10-12T08:54:01.7421481Z [36;1mfi[0m
+2026-10-12T08:54:01.7462818Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:54:01.7462992Z env:
+2026-10-12T08:54:01.7463325Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.7463464Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:01.7463582Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:01.7463703Z   toolchain: stable
+2026-10-12T08:54:01.7463810Z ##[endgroup]
+2026-10-12T08:54:01.7701948Z ##[end-action id=__dtolnay_rust-toolchain.__run_8;outcome=success;conclusion=success;duration_ms=29]
+2026-10-12T08:54:01.7705127Z ##[start-action display=Work around spurious network errors in curl 8.0;id=__dtolnay_rust-toolchain.__run_9]
+2026-10-12T08:54:01.7717216Z ##[group]Run # https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation
+2026-10-12T08:54:01.7717613Z [36;1m# https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation[0m
+2026-10-12T08:54:01.7717945Z [36;1mif rustc +"$toolchain" --version --verbose | grep -q '^release: 1\.7[01]\.'; then[0m
+2026-10-12T08:54:01.7718203Z [36;1m  echo CARGO_HTTP_MULTIPLEXING=false >> $GITHUB_ENV[0m
+2026-10-12T08:54:01.7718370Z [36;1mfi[0m
+2026-10-12T08:54:01.7764620Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:54:01.7764798Z env:
+2026-10-12T08:54:01.7764911Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.7765046Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:01.7765166Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:01.7765284Z   toolchain: stable
+2026-10-12T08:54:01.7765395Z ##[endgroup]
+2026-10-12T08:54:01.7914301Z ##[end-action id=__dtolnay_rust-toolchain.__run_9;outcome=success;conclusion=success;duration_ms=20]
+2026-10-12T08:54:01.7917162Z ##[start-action display=rustc +stable --version --verbose;id=__dtolnay_rust-toolchain.__run_10]
+2026-10-12T08:54:01.7928072Z ##[group]Run rustc +"$toolchain" --version --verbose
+2026-10-12T08:54:01.7928267Z [36;1mrustc +"$toolchain" --version --verbose[0m
+2026-10-12T08:54:01.7970659Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-12T08:54:01.7970844Z env:
+2026-10-12T08:54:01.7970954Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.7971093Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:01.7971211Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:01.7971328Z   toolchain: stable
+2026-10-12T08:54:01.7971568Z ##[endgroup]
+2026-10-12T08:54:01.8101719Z rustc 1.99.0 (b940084d7 2026-09-28)
+2026-10-12T08:54:01.8102076Z binary: rustc
+2026-10-12T08:54:01.8102305Z commit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4
+2026-10-12T08:54:01.8102683Z commit-date: 2026-09-28
+2026-10-12T08:54:01.8102923Z host: x86_64-unknown-linux-gnu
+2026-10-12T08:54:01.8103322Z release: 1.99.0
+2026-10-12T08:54:01.8103498Z LLVM version: 23.1.1
+2026-10-12T08:54:01.8118102Z ##[end-action id=__dtolnay_rust-toolchain.__run_10;outcome=success;conclusion=success;duration_ms=20]
+2026-10-12T08:54:01.8196272Z ##[group]Run taiki-e/install-action@cargo-audit
+2026-10-12T08:54:01.8196433Z with:
+2026-10-12T08:54:01.8196537Z   tool: cargo-audit
+2026-10-12T08:54:01.8196646Z   checksum: true
+2026-10-12T08:54:01.8196765Z   fallback: cargo-binstall
+2026-10-12T08:54:01.8196888Z env:
+2026-10-12T08:54:01.8197003Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.8197136Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:01.8197249Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:01.8197366Z ##[endgroup]
+2026-10-12T08:54:01.8201477Z ##[start-action display=Run bail() {;id=__taiki-e_install-action.__run]
+2026-10-12T08:54:01.8230368Z ##[group]Run bail() {
+2026-10-12T08:54:01.8230524Z [36;1mbail() {[0m
+2026-10-12T08:54:01.8230660Z [36;1m  printf '::error::install-action: %s\n' "$*"[0m
+2026-10-12T08:54:01.8230818Z [36;1m  exit 1[0m
+2026-10-12T08:54:01.8230922Z [36;1m}[0m
+2026-10-12T08:54:01.8231107Z [36;1m# If /bin/sh is dash, environment variable containing % is not imported, but is fine[0m
+2026-10-12T08:54:01.8231408Z [36;1m# because it also means that it will not be exposed to subprocess.[0m
+2026-10-12T08:54:01.8231630Z [36;1mif /usr/bin/env | grep -Eq '^BASH_FUNC_'; then[0m
+2026-10-12T08:54:01.8232019Z [36;1m  bail 'bash function injection via BASH_FUNC_ environment variable is not allowed for security reasons'[0m
+2026-10-12T08:54:01.8232270Z [36;1mfi[0m
+2026-10-12T08:54:01.8232390Z [36;1mif ! command -v bash >/dev/null; then[0m
+2026-10-12T08:54:01.8232571Z [36;1m  if grep -Eq '^ID=alpine' /etc/os-release; then[0m
+2026-10-12T08:54:01.8232798Z [36;1m    printf '::group::Install packages required for install-action (bash)\n'[0m
+2026-10-12T08:54:01.8233024Z [36;1m    # NB: sync with apk_install in main.sh[0m
+2026-10-12T08:54:01.8233342Z [36;1m    if command -v sudo >/dev/null; then[0m
+2026-10-12T08:54:01.8233502Z [36;1m      sudo apk --no-cache add bash[0m
+2026-10-12T08:54:01.8233666Z [36;1m    elif command -v doas >/dev/null; then[0m
+2026-10-12T08:54:01.8233830Z [36;1m      doas apk --no-cache add bash[0m
+2026-10-12T08:54:01.8233967Z [36;1m    else[0m
+2026-10-12T08:54:01.8234080Z [36;1m      apk --no-cache add bash[0m
+2026-10-12T08:54:01.8234208Z [36;1m    fi[0m
+2026-10-12T08:54:01.8234323Z [36;1m    printf '::endgroup::\n'[0m
+2026-10-12T08:54:01.8234453Z [36;1m  else[0m
+2026-10-12T08:54:01.8234572Z [36;1m    bail 'this action requires bash'[0m
+2026-10-12T08:54:01.8234711Z [36;1m  fi[0m
+2026-10-12T08:54:01.8234809Z [36;1mfi[0m
+2026-10-12T08:54:01.8234957Z [36;1mbash --noprofile --norc "${GITHUB_ACTION_PATH:?}/main.sh"[0m
+2026-10-12T08:54:01.8235667Z shell: /usr/bin/env -u ENV -u BASH_ENV -u CDPATH -u SHELLOPTS -u BASHOPTS /bin/sh -eu {0}
+2026-10-12T08:54:01.8235879Z env:
+2026-10-12T08:54:01.8235985Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:01.8236116Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:01.8236235Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:01.8236357Z   INPUT_TOOL: cargo-audit
+2026-10-12T08:54:01.8236478Z   INPUT_CHECKSUM: true
+2026-10-12T08:54:01.8236600Z   INPUT_FALLBACK: cargo-binstall
+2026-10-12T08:54:01.8238177Z   DEFAULT_GITHUB_TOKEN: ***
+2026-10-12T08:54:01.8238337Z   ACTION_USER_AGENT: taiki-e/install-action (cargo-audit)
+2026-10-12T08:54:01.8238508Z   RUNNER_OS: Linux
+2026-10-12T08:54:01.8238619Z   RUNNER_ARCH: X64
+2026-10-12T08:54:01.8238727Z ##[endgroup]
+2026-10-12T08:54:01.8396403Z info: host platform: x86_64_linux
+2026-10-12T08:54:01.8513015Z info: installing cargo-audit@latest
+2026-10-12T08:54:01.8649686Z info: downloading https://github.com/rustsec/rustsec/releases/download/cargo-audit/v0.22.2/cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz
+2026-10-12T08:54:02.2402979Z info: verifying sha256 checksum for cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz
+2026-10-12T08:54:02.3373395Z info: cargo-audit installed at /home/runner/.cargo/bin/cargo-audit
+2026-10-12T08:54:02.3375747Z + cargo-audit audit --version
+2026-10-12T08:54:02.3382740Z cargo-audit-audit 0.22.2
+2026-10-12T08:54:02.3384821Z 
+2026-10-12T08:54:02.3393510Z ##[end-action id=__taiki-e_install-action.__run;outcome=success;conclusion=success;duration_ms=519]
+2026-10-12T08:54:02.3397770Z ##[start-action display=Run Set-StrictMode -Version Latest;id=__taiki-e_install-action.__run_2]
+2026-10-12T08:54:02.3399741Z ##[end-action id=__taiki-e_install-action.__run_2;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-12T08:54:02.3417619Z ##[group]Run python3 vendor/dcap-qvl-webpki/verify_provenance.py
+2026-10-12T08:54:02.3417878Z [36;1mpython3 vendor/dcap-qvl-webpki/verify_provenance.py[0m
+2026-10-12T08:54:02.3418083Z [36;1mpython3 vendor/sp1-prover/verify_provenance.py[0m
+2026-10-12T08:54:02.3418292Z [36;1mpython3 scripts/local-verification/check_sp1_release.py[0m
+2026-10-12T08:54:02.3418565Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py[0m
+2026-10-12T08:54:02.3418888Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py[0m
+2026-10-12T08:54:02.3469995Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:02.3470122Z env:
+2026-10-12T08:54:02.3470230Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:02.3470365Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:02.3470481Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:02.3470744Z ##[endgroup]
+2026-10-12T08:54:02.3708803Z {
+2026-10-12T08:54:02.3709014Z   "upstream_files_checked": 29,
+2026-10-12T08:54:02.3709288Z   "unchanged_rust_source_files": 20,
+2026-10-12T08:54:02.3709524Z   "manifest_patch_only": true,
+2026-10-12T08:54:02.3709726Z   "failures": []
+2026-10-12T08:54:02.3709887Z }
+2026-10-12T08:54:02.3992940Z {
+2026-10-12T08:54:02.3993242Z   "upstream_files_checked": 59,
+2026-10-12T08:54:02.3993465Z   "unchanged_rust_source_files": 41,
+2026-10-12T08:54:02.3993701Z   "restored_upstream_license_files": 2,
+2026-10-12T08:54:02.3993933Z   "manifest_patch_only": true,
+2026-10-12T08:54:02.3994137Z   "failures": []
+2026-10-12T08:54:02.3994295Z }
+2026-10-12T08:54:02.4687810Z {
+2026-10-12T08:54:02.4688010Z   "reviewed_sp1_release": "6.1.0",
+2026-10-12T08:54:02.4688273Z   "reviewed_lru_release": "0.18.4",
+2026-10-12T08:54:02.4688686Z   "advisory": "https://github.com/succinctlabs/sp1/security/advisories/GHSA-63x8-x938-vx33",
+2026-10-12T08:54:02.4689098Z   "family_packages_checked": {
+2026-10-12T08:54:02.4689334Z     "crates/sp1-guest": 10,
+2026-10-12T08:54:02.4689541Z     "crates/sp1-host": 47,
+2026-10-12T08:54:02.4689760Z     "crates/prover-service": 47
+2026-10-12T08:54:02.4689962Z   },
+2026-10-12T08:54:02.4690117Z   "passed": true,
+2026-10-12T08:54:02.4690309Z   "errors": [],
+2026-10-12T08:54:02.4690698Z   "scope": "Manifest and lock identity only; guest execution, proof and target verifier require separate evidence."
+2026-10-12T08:54:02.4691131Z }
+2026-10-12T08:54:02.9862569Z ...........
+2026-10-12T08:54:02.9862883Z ----------------------------------------------------------------------
+2026-10-12T08:54:02.9863270Z Ran 11 tests in 0.451s
+2026-10-12T08:54:02.9863349Z 
+2026-10-12T08:54:02.9863401Z OK
+2026-10-12T08:54:03.1220480Z ......
+2026-10-12T08:54:03.1220806Z ----------------------------------------------------------------------
+2026-10-12T08:54:03.1221126Z Ran 6 tests in 0.007s
+2026-10-12T08:54:03.1221244Z 
+2026-10-12T08:54:03.1221308Z OK
+2026-10-12T08:54:03.1330915Z ##[group]Run python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
+2026-10-12T08:54:03.1331309Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py[0m
+2026-10-12T08:54:03.1331655Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py[0m
+2026-10-12T08:54:03.1332009Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_candidate_target_observer.py[0m
+2026-10-12T08:54:03.1332341Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py[0m
+2026-10-12T08:54:03.1332664Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_gateway_restore_drill.py[0m
+2026-10-12T08:54:03.1332987Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_repository_policy.py[0m
+2026-10-12T08:54:03.1333488Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_read_deployment.py[0m
+2026-10-12T08:54:03.1382115Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:03.1382244Z env:
+2026-10-12T08:54:03.1382351Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:03.1382485Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:03.1382601Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:03.1382722Z ##[endgroup]
+2026-10-12T08:54:03.3117698Z s...................................
+2026-10-12T08:54:03.3117959Z ----------------------------------------------------------------------
+2026-10-12T08:54:03.3118167Z Ran 36 tests in 0.108s
+2026-10-12T08:54:03.3118251Z 
+2026-10-12T08:54:03.3118299Z OK (skipped=1)
+2026-10-12T08:54:04.1797656Z ...................
+2026-10-12T08:54:04.1798004Z ----------------------------------------------------------------------
+2026-10-12T08:54:04.1798328Z Ran 19 tests in 0.794s
+2026-10-12T08:54:04.1798453Z 
+2026-10-12T08:54:04.1798522Z OK
+2026-10-12T08:54:09.3449853Z ............................
+2026-10-12T08:54:09.3450266Z ----------------------------------------------------------------------
+2026-10-12T08:54:09.3451241Z Ran 28 tests in 5.092s
+2026-10-12T08:54:09.3451358Z 
+2026-10-12T08:54:09.3451424Z OK
+2026-10-12T08:54:09.5096556Z ...............
+2026-10-12T08:54:09.5096784Z ----------------------------------------------------------------------
+2026-10-12T08:54:09.5096994Z Ran 15 tests in 0.096s
+2026-10-12T08:54:09.5097072Z 
+2026-10-12T08:54:09.5097122Z OK
+2026-10-12T08:54:09.5731815Z .......
+2026-10-12T08:54:09.5732133Z ----------------------------------------------------------------------
+2026-10-12T08:54:09.5732435Z Ran 7 tests in 0.001s
+2026-10-12T08:54:09.5732551Z 
+2026-10-12T08:54:09.5732626Z OK
+2026-10-12T08:54:09.6076535Z ...
+2026-10-12T08:54:09.6076866Z ----------------------------------------------------------------------
+2026-10-12T08:54:09.6077185Z Ran 3 tests in 0.000s
+2026-10-12T08:54:09.6077309Z 
+2026-10-12T08:54:09.6077376Z OK
+2026-10-12T08:54:09.8034422Z ..............................
+2026-10-12T08:54:09.8035094Z ----------------------------------------------------------------------
+2026-10-12T08:54:09.8035619Z Ran 30 tests in 0.145s
+2026-10-12T08:54:09.8035758Z 
+2026-10-12T08:54:09.8035824Z OK
+2026-10-12T08:54:09.8168336Z ##[group]Run set -o pipefail
+2026-10-12T08:54:09.8168519Z [36;1mset -o pipefail[0m
+2026-10-12T08:54:09.8168704Z [36;1mcargo audit --deny unsound --json | tee cargo-audit.json[0m
+2026-10-12T08:54:09.8169005Z [36;1mcargo audit --deny unsound --file crates/sp1-host/Cargo.lock --json | tee cargo-audit-host.json[0m
+2026-10-12T08:54:09.8169371Z [36;1mcargo audit --deny unsound --file crates/sp1-guest/Cargo.lock --json | tee cargo-audit-guest.json[0m
+2026-10-12T08:54:09.8169752Z [36;1mcargo audit --deny unsound --file crates/prover-service/Cargo.lock --json | tee cargo-audit-prover.json[0m
+2026-10-12T08:54:09.8170127Z [36;1mcargo audit --deny unsound --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json[0m
+2026-10-12T08:54:09.8219450Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:09.8219579Z env:
+2026-10-12T08:54:09.8219688Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:09.8219839Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:09.8219991Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:09.8220110Z ##[endgroup]
+2026-10-12T08:54:14.6782630Z {"database":{"advisory-count":1296,"last-commit":"078fd9bd0dbb9e063cd9b704fc9c83e1d3257462","last-updated":"2026-10-12T10:13:28+02:00"},"lockfile":{"dependency-count":262},"settings":{"target_arch":[],"target_os":[],"severity":null,"ignore":[],"informational_warnings":["unmaintained","unsound","notice"]},"vulnerabilities":{"found":false,"count":0,"list":[]},"warnings":{"unmaintained":[{"kind":"unmaintained","package":{"name":"atomic-polyfill","version":"1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4","dependencies":[{"name":"critical-section","version":"1.2.0","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2023-0089","package":"atomic-polyfill","title":"atomic-polyfill is unmaintained","description":"The author has archived the GitHub repository and mentions deprecation in\nproject's\n[README](https://github.com/embassy-rs/atomic-polyfill/blob/48e55c166684f37af0b00fbee5a0809b1a2bae8e/README.md).\n\n## Possible alternatives\n\n * [portable-atomic](https://crates.io/crates/portable-atomic)","date":"2023-07-11","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/embassy-rs/atomic-polyfill/commit/48e55c166684f37af0b00fbee5a0809b1a2bae8e","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}}],"yanked":[{"kind":"yanked","package":{"name":"spin","version":"0.9.8","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67","dependencies":[{"name":"lock_api","version":"0.4.14","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":null,"affected":null,"versions":null}]}}
+2026-10-12T08:54:15.5745420Z {"database":{"advisory-count":1296,"last-commit":"078fd9bd0dbb9e063cd9b704fc9c83e1d3257462","last-updated":"2026-10-12T10:13:28+02:00"},"lockfile":{"dependency-count":537},"settings":{"target_arch":[],"target_os":[],"severity":null,"ignore":[],"informational_warnings":["unmaintained","unsound","notice"]},"vulnerabilities":{"found":false,"count":0,"list":[]},"warnings":{"unmaintained":[{"kind":"unmaintained","package":{"name":"ansi_term","version":"0.12.1","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2","dependencies":[{"name":"winapi","version":"0.3.9","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2021-0139","package":"ansi_term","title":"ansi_term is Unmaintained","description":"The maintainer has advised that this crate is deprecated and will not receive any maintenance.\n\nThe crate does not seem to have much dependencies and may or may not be ok to use as-is.\n\nLast release seems to have been three years ago.\n\n## Possible Alternative(s)\n\n The below list has not been vetted in any way and may or may not contain alternatives;\n\n - [ansiterm](https://crates.io/crates/ansiterm)\n - [anstyle](https://github.com/epage/anstyle)\n - [console](https://crates.io/crates/console)\n - [nu-ansi-term](https://crates.io/crates/nu-ansi-term)\n - [owo-colors](https://crates.io/crates/owo-colors)\n - [stylish](https://crates.io/crates/stylish)\n - [yansi](https://crates.io/crates/yansi)\n\n## Dependency Specific Migration(s)\n\n - [structopt, clap2](https://github.com/clap-rs/clap/discussions/4172)","date":"2021-08-18","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/ogham/rust-ansi-term/issues/72","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"atomic-polyfill","version":"1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4","dependencies":[{"name":"critical-section","version":"1.2.0","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2023-0089","package":"atomic-polyfill","title":"atomic-polyfill is unmaintained","description":"The author has archived the GitHub repository and mentions deprecation in\nproject's\n[README](https://github.com/embassy-rs/atomic-polyfill/blob/48e55c166684f37af0b00fbee5a0809b1a2bae8e/README.md).\n\n## Possible alternatives\n\n * [portable-atomic](https://crates.io/crates/portable-atomic)","date":"2023-07-11","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/embassy-rs/atomic-polyfill/commit/48e55c166684f37af0b00fbee5a0809b1a2bae8e","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"bincode","version":"1.3.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad","dependencies":[{"name":"serde","version":"1.0.229","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2025-0141","package":"bincode","title":"Bincode is unmaintained","description":"Due to a doxxing and harassment incident, the bincode team has taken the decision to cease development permanently.\n\nThe team considers version 1.3.3 a complete version of bincode that is not in need of any updates.\n\n## Alternatives to consider\n\n* [wincode](https://crates.io/crates/wincode)\n* [postcard](https://crates.io/crates/postcard)\n* [bitcode](https://crates.io/crates/bitcode)\n* [rkyv](https://crates.io/crates/rkyv)","date":"2025-12-16","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"derivative","version":"2.2.0","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b","dependencies":[{"name":"proc-macro2","version":"1.0.107","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"quote","version":"1.0.47","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"syn","version":"1.0.109","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2024-0388","package":"derivative","title":"`derivative` is unmaintained; consider using an alternative","description":"The [`derivative`](https://crates.io/crates/derivative) crate is no longer maintained.\nConsider using any alternative, for instance:\n- [derive_more](https://crates.io/crates/derive_more)\n- [derive-where](https://crates.io/crates/derive-where)\n- [educe](https://crates.io/crates/educe)","date":"2024-06-26","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/mcarton/rust-derivative/issues/117","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"number_prefix","version":"0.4.0","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3","replace":null},"advisory":{"id":"RUSTSEC-2025-0119","package":"number_prefix","title":"number_prefix crate is unmaintained","description":"The `number_prefix` crate is no longer actively maintained.  If you rely on this crate, consider switching to a recommended alternative.\n\n## Recommended alternatives\n\n- [`unit-prefix`](https://crates.io/crates/unit-prefix)","date":"2025-11-17","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/ogham/rust-number-prefix/pull/8","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"paste","version":"1.0.15","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a","replace":null},"advisory":{"id":"RUSTSEC-2024-0436","package":"paste","title":"paste - no longer maintained","description":"The creator of the crate `paste` has stated in the [`README.md`](https://github.com/dtolnay/paste/blob/master/README.md) \nthat this project is not longer maintained as well as archived the repository\n\n## Possible Alternative(s)\n\n- [`pastey`]: a fork of paste and is aimed to be a drop-in replacement with additional features for paste crate\n- [`with_builtin_macros`]: crate providing a [superset of `paste`'s functionality including general `macro_rules!` eager expansions](https://docs.rs/with_builtin_macros/0.1.0/with_builtin_macros/macro.with_eager_expansions.html)  and `concat!`/`concat_idents!` macros\n\n[`pastey`]: https://crates.io/crates/pastey\n[`with_builtin_macros`]: https://crates.io/crates/with_builtin_macros","date":"2024-10-07","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/dtolnay/paste","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"proc-macro-error2","version":"2.0.1","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802","dependencies":[{"name":"proc-macro-error-attr2","version":"2.0.0","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"proc-macro2","version":"1.0.107","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"quote","version":"1.0.47","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"syn","version":"2.0.119","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2026-0173","package":"proc-macro-error2","title":"proc-macro-error2 is unmaintained","description":"The author of `proc-macro-error2` has [confirmed](https://github.com/GnomedDev/proc-macro-error-2/issues/17#issuecomment-4643215473) that the crate is no longer maintained and recommends that users migrate away from it.\n\n`proc-macro-error2` was originally created as a maintained fork of [`proc-macro-error`](https://crates.io/crates/proc-macro-error) (see [RUSTSEC-2024-0370](https://rustsec.org/advisories/RUSTSEC-2024-0370)). Both the original crate and this fork are now unmaintained.\n\n## Possible Alternative(s)\n\n- [manyhow](https://crates.io/crates/manyhow)\n- [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)","date":"2026-06-07","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/GnomedDev/proc-macro-error-2/issues/17","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"rustls-pemfile","version":"2.2.0","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50","dependencies":[{"name":"rustls-pki-types","version":"1.15.1","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2025-0134","package":"rustls-pemfile","title":"rustls-pemfile is unmaintained","description":"The rustls-pemfile crate is no longer maintained. The repository has been archived since August\n2025, and users are encouraged to depend directly on the underlying PEM parsing code included\nin rustls-pki-types since 1.9.0. The latest version of rustls-pemfile is in fact a thin wrapper\naround the same code used in rustls-pki-types, so migrating should be straightforward.\n\nThe new API is represented by the [`PemObject`][PemObject] trait, which provides methods for\nreading a single or multiple PEM objects from a file or byte slice.\n\n[PemObject]: https://docs.rs/rustls-pki-types/latest/rustls_pki_types/pem/trait.PemObject.html","date":"2025-11-28","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/rustls/pemfile/issues/61","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}}],"yanked":[{"kind":"yanked","package":{"name":"yoke-derive","version":"0.8.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78","dependencies":[{"name":"proc-macro2","version":"1.0.107","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"quote","version":"1.0.47","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"syn","version":"3.0.6","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"synstructure","version":"0.14.0","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":null,"affected":null,"versions":null}]}}
+2026-10-12T08:54:16.1502313Z {"database":{"advisory-count":1296,"last-commit":"078fd9bd0dbb9e063cd9b704fc9c83e1d3257462","last-updated":"2026-10-12T10:13:28+02:00"},"lockfile":{"dependency-count":161},"settings":{"target_arch":[],"target_os":[],"severity":null,"ignore":[],"informational_warnings":["unmaintained","unsound","notice"]},"vulnerabilities":{"found":false,"count":0,"list":[]},"warnings":{"unmaintained":[{"kind":"unmaintained","package":{"name":"bincode","version":"1.3.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad","dependencies":[{"name":"serde","version":"1.0.229","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2025-0141","package":"bincode","title":"Bincode is unmaintained","description":"Due to a doxxing and harassment incident, the bincode team has taken the decision to cease development permanently.\n\nThe team considers version 1.3.3 a complete version of bincode that is not in need of any updates.\n\n## Alternatives to consider\n\n* [wincode](https://crates.io/crates/wincode)\n* [postcard](https://crates.io/crates/postcard)\n* [bitcode](https://crates.io/crates/bitcode)\n* [rkyv](https://crates.io/crates/rkyv)","date":"2025-12-16","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"derivative","version":"2.2.0","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b","dependencies":[{"name":"proc-macro2","version":"1.0.107","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"quote","version":"1.0.47","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"syn","version":"1.0.109","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2024-0388","package":"derivative","title":"`derivative` is unmaintained; consider using an alternative","description":"The [`derivative`](https://crates.io/crates/derivative) crate is no longer maintained.\nConsider using any alternative, for instance:\n- [derive_more](https://crates.io/crates/derive_more)\n- [derive-where](https://crates.io/crates/derive-where)\n- [educe](https://crates.io/crates/educe)","date":"2024-06-26","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/mcarton/rust-derivative/issues/117","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"paste","version":"1.0.15","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a","replace":null},"advisory":{"id":"RUSTSEC-2024-0436","package":"paste","title":"paste - no longer maintained","description":"The creator of the crate `paste` has stated in the [`README.md`](https://github.com/dtolnay/paste/blob/master/README.md) \nthat this project is not longer maintained as well as archived the repository\n\n## Possible Alternative(s)\n\n- [`pastey`]: a fork of paste and is aimed to be a drop-in replacement with additional features for paste crate\n- [`with_builtin_macros`]: crate providing a [superset of `paste`'s functionality including general `macro_rules!` eager expansions](https://docs.rs/with_builtin_macros/0.1.0/with_builtin_macros/macro.with_eager_expansions.html)  and `concat!`/`concat_idents!` macros\n\n[`pastey`]: https://crates.io/crates/pastey\n[`with_builtin_macros`]: https://crates.io/crates/with_builtin_macros","date":"2024-10-07","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/dtolnay/paste","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}}]}}
+2026-10-12T08:54:17.1697727Z {"database":{"advisory-count":1296,"last-commit":"078fd9bd0dbb9e063cd9b704fc9c83e1d3257462","last-updated":"2026-10-12T10:13:28+02:00"},"lockfile":{"dependency-count":559},"settings":{"target_arch":[],"target_os":[],"severity":null,"ignore":[],"informational_warnings":["unmaintained","unsound","notice"]},"vulnerabilities":{"found":false,"count":0,"list":[]},"warnings":{"unmaintained":[{"kind":"unmaintained","package":{"name":"ansi_term","version":"0.12.1","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2","dependencies":[{"name":"winapi","version":"0.3.9","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2021-0139","package":"ansi_term","title":"ansi_term is Unmaintained","description":"The maintainer has advised that this crate is deprecated and will not receive any maintenance.\n\nThe crate does not seem to have much dependencies and may or may not be ok to use as-is.\n\nLast release seems to have been three years ago.\n\n## Possible Alternative(s)\n\n The below list has not been vetted in any way and may or may not contain alternatives;\n\n - [ansiterm](https://crates.io/crates/ansiterm)\n - [anstyle](https://github.com/epage/anstyle)\n - [console](https://crates.io/crates/console)\n - [nu-ansi-term](https://crates.io/crates/nu-ansi-term)\n - [owo-colors](https://crates.io/crates/owo-colors)\n - [stylish](https://crates.io/crates/stylish)\n - [yansi](https://crates.io/crates/yansi)\n\n## Dependency Specific Migration(s)\n\n - [structopt, clap2](https://github.com/clap-rs/clap/discussions/4172)","date":"2021-08-18","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/ogham/rust-ansi-term/issues/72","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"atomic-polyfill","version":"1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4","dependencies":[{"name":"critical-section","version":"1.2.0","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2023-0089","package":"atomic-polyfill","title":"atomic-polyfill is unmaintained","description":"The author has archived the GitHub repository and mentions deprecation in\nproject's\n[README](https://github.com/embassy-rs/atomic-polyfill/blob/48e55c166684f37af0b00fbee5a0809b1a2bae8e/README.md).\n\n## Possible alternatives\n\n * [portable-atomic](https://crates.io/crates/portable-atomic)","date":"2023-07-11","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/embassy-rs/atomic-polyfill/commit/48e55c166684f37af0b00fbee5a0809b1a2bae8e","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"bincode","version":"1.3.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad","dependencies":[{"name":"serde","version":"1.0.229","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2025-0141","package":"bincode","title":"Bincode is unmaintained","description":"Due to a doxxing and harassment incident, the bincode team has taken the decision to cease development permanently.\n\nThe team considers version 1.3.3 a complete version of bincode that is not in need of any updates.\n\n## Alternatives to consider\n\n* [wincode](https://crates.io/crates/wincode)\n* [postcard](https://crates.io/crates/postcard)\n* [bitcode](https://crates.io/crates/bitcode)\n* [rkyv](https://crates.io/crates/rkyv)","date":"2025-12-16","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"derivative","version":"2.2.0","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b","dependencies":[{"name":"proc-macro2","version":"1.0.107","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"quote","version":"1.0.47","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"syn","version":"1.0.109","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2024-0388","package":"derivative","title":"`derivative` is unmaintained; consider using an alternative","description":"The [`derivative`](https://crates.io/crates/derivative) crate is no longer maintained.\nConsider using any alternative, for instance:\n- [derive_more](https://crates.io/crates/derive_more)\n- [derive-where](https://crates.io/crates/derive-where)\n- [educe](https://crates.io/crates/educe)","date":"2024-06-26","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/mcarton/rust-derivative/issues/117","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"number_prefix","version":"0.4.0","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3","replace":null},"advisory":{"id":"RUSTSEC-2025-0119","package":"number_prefix","title":"number_prefix crate is unmaintained","description":"The `number_prefix` crate is no longer actively maintained.  If you rely on this crate, consider switching to a recommended alternative.\n\n## Recommended alternatives\n\n- [`unit-prefix`](https://crates.io/crates/unit-prefix)","date":"2025-11-17","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/ogham/rust-number-prefix/pull/8","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"paste","version":"1.0.15","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a","replace":null},"advisory":{"id":"RUSTSEC-2024-0436","package":"paste","title":"paste - no longer maintained","description":"The creator of the crate `paste` has stated in the [`README.md`](https://github.com/dtolnay/paste/blob/master/README.md) \nthat this project is not longer maintained as well as archived the repository\n\n## Possible Alternative(s)\n\n- [`pastey`]: a fork of paste and is aimed to be a drop-in replacement with additional features for paste crate\n- [`with_builtin_macros`]: crate providing a [superset of `paste`'s functionality including general `macro_rules!` eager expansions](https://docs.rs/with_builtin_macros/0.1.0/with_builtin_macros/macro.with_eager_expansions.html)  and `concat!`/`concat_idents!` macros\n\n[`pastey`]: https://crates.io/crates/pastey\n[`with_builtin_macros`]: https://crates.io/crates/with_builtin_macros","date":"2024-10-07","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/dtolnay/paste","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"proc-macro-error2","version":"2.0.1","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802","dependencies":[{"name":"proc-macro-error-attr2","version":"2.0.0","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"proc-macro2","version":"1.0.107","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"quote","version":"1.0.47","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"syn","version":"2.0.119","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2026-0173","package":"proc-macro-error2","title":"proc-macro-error2 is unmaintained","description":"The author of `proc-macro-error2` has [confirmed](https://github.com/GnomedDev/proc-macro-error-2/issues/17#issuecomment-4643215473) that the crate is no longer maintained and recommends that users migrate away from it.\n\n`proc-macro-error2` was originally created as a maintained fork of [`proc-macro-error`](https://crates.io/crates/proc-macro-error) (see [RUSTSEC-2024-0370](https://rustsec.org/advisories/RUSTSEC-2024-0370)). Both the original crate and this fork are now unmaintained.\n\n## Possible Alternative(s)\n\n- [manyhow](https://crates.io/crates/manyhow)\n- [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)","date":"2026-06-07","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/GnomedDev/proc-macro-error-2/issues/17","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}},{"kind":"unmaintained","package":{"name":"rustls-pemfile","version":"2.2.0","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50","dependencies":[{"name":"rustls-pki-types","version":"1.15.1","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":{"id":"RUSTSEC-2025-0134","package":"rustls-pemfile","title":"rustls-pemfile is unmaintained","description":"The rustls-pemfile crate is no longer maintained. The repository has been archived since August\n2025, and users are encouraged to depend directly on the underlying PEM parsing code included\nin rustls-pki-types since 1.9.0. The latest version of rustls-pemfile is in fact a thin wrapper\naround the same code used in rustls-pki-types, so migrating should be straightforward.\n\nThe new API is represented by the [`PemObject`][PemObject] trait, which provides methods for\nreading a single or multiple PEM objects from a file or byte slice.\n\n[PemObject]: https://docs.rs/rustls-pki-types/latest/rustls_pki_types/pem/trait.PemObject.html","date":"2025-11-28","aliases":[],"related":[],"collection":"crates","categories":[],"keywords":[],"cvss":null,"informational":"unmaintained","references":[],"source":null,"url":"https://github.com/rustls/pemfile/issues/61","withdrawn":null,"license":"CC0-1.0","expect-deleted":false},"affected":null,"versions":{"patched":[],"unaffected":[]}}],"yanked":[{"kind":"yanked","package":{"name":"yoke-derive","version":"0.8.3","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78","dependencies":[{"name":"proc-macro2","version":"1.0.107","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"quote","version":"1.0.47","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"syn","version":"3.0.6","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"synstructure","version":"0.14.0","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":null,"affected":null,"versions":null}]}}
+2026-10-12T08:54:17.7861186Z {"database":{"advisory-count":1296,"last-commit":"078fd9bd0dbb9e063cd9b704fc9c83e1d3257462","last-updated":"2026-10-12T10:13:28+02:00"},"lockfile":{"dependency-count":274},"settings":{"target_arch":[],"target_os":[],"severity":null,"ignore":[],"informational_warnings":["unmaintained","unsound","notice"]},"vulnerabilities":{"found":false,"count":0,"list":[]},"warnings":{"yanked":[{"kind":"yanked","package":{"name":"chacha20","version":"0.10.1","source":"registry+https://github.com/rust-lang/crates.io-index","checksum":"d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81","dependencies":[{"name":"cfg-if","version":"1.0.4","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"cpufeatures","version":"0.3.0","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"rand_core","version":"0.10.1","source":"registry+https://github.com/rust-lang/crates.io-index"}],"replace":null},"advisory":null,"affected":null,"versions":null}]}}
+2026-10-12T08:54:17.7918728Z ##[group]Run pnpm/action-setup@v4
+2026-10-12T08:54:17.7918872Z with:
+2026-10-12T08:54:17.7918972Z   version: 10
+2026-10-12T08:54:17.7919079Z   dest: ~/setup-pnpm
+2026-10-12T08:54:17.7919191Z   run_install: null
+2026-10-12T08:54:17.7919298Z   cache: false
+2026-10-12T08:54:17.7919413Z   cache_dependency_path: pnpm-lock.yaml
+2026-10-12T08:54:17.7919563Z   package_json_file: package.json
+2026-10-12T08:54:17.7919695Z   standalone: false
+2026-10-12T08:54:17.7919800Z env:
+2026-10-12T08:54:17.7919902Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:17.7920029Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:17.7920142Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:17.7920260Z ##[endgroup]
+2026-10-12T08:54:17.8778665Z ##[group]Running self-installer...
+2026-10-12T08:54:18.1021712Z (node:2400) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:54:18.1022469Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:18.2632670Z Progress: resolved 1, reused 0, downloaded 0, added 0
+2026-10-12T08:54:18.2680816Z Packages: +1
+2026-10-12T08:54:18.2681104Z +
+2026-10-12T08:54:18.5423677Z Progress: resolved 1, reused 0, downloaded 1, added 1, done
+2026-10-12T08:54:18.5848428Z 
+2026-10-12T08:54:18.5848785Z dependencies:
+2026-10-12T08:54:18.5848969Z + pnpm 10.34.7 (12.11.2 is available)
+2026-10-12T08:54:18.5849083Z 
+2026-10-12T08:54:18.5862487Z Done in 602ms
+2026-10-12T08:54:18.6015691Z ##[endgroup]
+2026-10-12T08:54:18.6033548Z Installation Completed!
+2026-10-12T08:54:18.6134229Z ##[group]Run actions/setup-node@v4
+2026-10-12T08:54:18.6134372Z with:
+2026-10-12T08:54:18.6134481Z   node-version: 22
+2026-10-12T08:54:18.6134589Z   cache: pnpm
+2026-10-12T08:54:18.6134735Z   cache-dependency-path: frontend/pnpm-lock.yaml
+2026-10-12T08:54:18.6134897Z   always-auth: false
+2026-10-12T08:54:18.6135012Z   check-latest: false
+2026-10-12T08:54:18.6136300Z   token: ***
+2026-10-12T08:54:18.6136402Z env:
+2026-10-12T08:54:18.6136508Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:18.6136642Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:18.6136760Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:18.6136917Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:18.6137083Z ##[endgroup]
+2026-10-12T08:54:18.7299271Z Found in cache @ /opt/hostedtoolcache/node/22.23.3/x64
+2026-10-12T08:54:18.7302302Z (node:2414) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:54:18.7302697Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:18.7304457Z ##[group]Environment details
+2026-10-12T08:54:21.4598735Z node: v22.23.3
+2026-10-12T08:54:21.4599177Z npm: 10.9.9
+2026-10-12T08:54:21.4599283Z yarn: 1.22.22
+2026-10-12T08:54:21.4599718Z ##[endgroup]
+2026-10-12T08:54:21.4610638Z [command]/home/runner/setup-pnpm/node_modules/.bin/pnpm store path --silent
+2026-10-12T08:54:21.8730731Z /home/runner/setup-pnpm/node_modules/.bin/store/v10
+2026-10-12T08:54:22.1214391Z Cache hit for: node-cache-Linux-x64-pnpm-af9df8d830b0c5b5d1808040b01b631e357799f05f171003e5291b089c33c269
+2026-10-12T08:54:22.1275281Z (node:2414) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:54:23.3274867Z Received 16589585 of 24978193 (66.4%), 15.8 MBs/sec
+2026-10-12T08:54:23.3405051Z Received 24978193 of 24978193 (100.0%), 23.5 MBs/sec
+2026-10-12T08:54:23.3405420Z Cache Size: ~24 MB (24978193 B)
+2026-10-12T08:54:23.3424515Z [command]/usr/bin/tar -xf /home/runner/work/_temp/ebadd90e-6caf-43a2-87c8-a884e71708a2/cache.tzst -P -C /home/runner/work/arcora-perp/arcora-perp --use-compress-program unzstd
+2026-10-12T08:54:23.6216573Z Cache restored successfully
+2026-10-12T08:54:23.6230120Z Cache restored from key: node-cache-Linux-x64-pnpm-af9df8d830b0c5b5d1808040b01b631e357799f05f171003e5291b089c33c269
+2026-10-12T08:54:23.6374289Z ##[group]Run set -o pipefail
+2026-10-12T08:54:23.6374460Z [36;1mset -o pipefail[0m
+2026-10-12T08:54:23.6374604Z [36;1mpnpm install --frozen-lockfile[0m
+2026-10-12T08:54:23.6374787Z [36;1mpnpm audit --prod --json | tee ../pnpm-audit.json[0m
+2026-10-12T08:54:23.6468741Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:23.6468885Z env:
+2026-10-12T08:54:23.6468996Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:23.6469138Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:23.6469260Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:23.6469417Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:23.6469584Z ##[endgroup]
+2026-10-12T08:54:23.8661524Z Lockfile is up to date, resolution step is skipped
+2026-10-12T08:54:23.8783401Z Progress: resolved 1, reused 0, downloaded 0, added 0
+2026-10-12T08:54:23.9046574Z Packages: +123
+2026-10-12T08:54:23.9046941Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+2026-10-12T08:54:24.1299619Z Progress: resolved 123, reused 123, downloaded 0, added 123, done
+2026-10-12T08:54:24.3524715Z 
+2026-10-12T08:54:24.3525177Z dependencies:
+2026-10-12T08:54:24.3525398Z + @noble/ciphers 1.3.0
+2026-10-12T08:54:24.3525631Z + @noble/curves 1.9.0
+2026-10-12T08:54:24.3525779Z + @noble/hashes 1.8.0
+2026-10-12T08:54:24.3525900Z + react 18.3.1
+2026-10-12T08:54:24.3526058Z + react-dom 18.3.1
+2026-10-12T08:54:24.3526130Z 
+2026-10-12T08:54:24.3526187Z devDependencies:
+2026-10-12T08:54:24.3526346Z + @playwright/test 1.58.2
+2026-10-12T08:54:24.3526498Z + @testing-library/dom 10.4.1
+2026-10-12T08:54:24.3526661Z + @testing-library/react 16.3.2
+2026-10-12T08:54:24.3526806Z + @types/node 22.20.4
+2026-10-12T08:54:24.3526932Z + @types/react 18.3.31
+2026-10-12T08:54:24.3527099Z + @types/react-dom 18.3.7
+2026-10-12T08:54:24.3527242Z + @vitejs/plugin-react 4.7.0
+2026-10-12T08:54:24.3527384Z + happy-dom 20.10.6
+2026-10-12T08:54:24.3527509Z + typescript 5.9.3
+2026-10-12T08:54:24.3527626Z + vite 6.4.3
+2026-10-12T08:54:24.3527736Z + vitest 4.1.11
+2026-10-12T08:54:24.3527814Z 
+2026-10-12T08:54:24.3691029Z Done in 698ms using pnpm v10.34.7
+2026-10-12T08:54:25.3231295Z {
+2026-10-12T08:54:25.3231529Z   "actions": [],
+2026-10-12T08:54:25.3231693Z   "advisories": {},
+2026-10-12T08:54:25.3231886Z   "muted": [],
+2026-10-12T08:54:25.3232002Z   "metadata": {
+2026-10-12T08:54:25.3232130Z     "vulnerabilities": {
+2026-10-12T08:54:25.3232271Z       "info": 0,
+2026-10-12T08:54:25.3232384Z       "low": 0,
+2026-10-12T08:54:25.3232499Z       "moderate": 0,
+2026-10-12T08:54:25.3232680Z       "high": 0,
+2026-10-12T08:54:25.3232816Z       "critical": 0
+2026-10-12T08:54:25.3232935Z     },
+2026-10-12T08:54:25.3233170Z     "dependencies": 9,
+2026-10-12T08:54:25.3233396Z     "devDependencies": 0,
+2026-10-12T08:54:25.3233768Z     "optionalDependencies": 0,
+2026-10-12T08:54:25.3233926Z     "totalDependencies": 9
+2026-10-12T08:54:25.3234053Z   }
+2026-10-12T08:54:25.3234156Z }
+2026-10-12T08:54:25.3342807Z ##[group]Run actions/upload-artifact@v4
+2026-10-12T08:54:25.3342963Z with:
+2026-10-12T08:54:25.3344390Z   name: a11-dependency-audits
+2026-10-12T08:54:25.3344581Z   path: cargo-audit.json
+cargo-audit-*.json
+pnpm-audit.json
+
+2026-10-12T08:54:25.3344781Z   if-no-files-found: warn
+2026-10-12T08:54:25.3344917Z   compression-level: 6
+2026-10-12T08:54:25.3345040Z   overwrite: false
+2026-10-12T08:54:25.3345161Z   include-hidden-files: false
+2026-10-12T08:54:25.3345294Z env:
+2026-10-12T08:54:25.3345410Z   CARGO_HOME: /home/runner/.cargo
+2026-10-12T08:54:25.3345551Z   CARGO_INCREMENTAL: 0
+2026-10-12T08:54:25.3345675Z   CARGO_TERM_COLOR: always
+2026-10-12T08:54:25.3345833Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-12T08:54:25.3346007Z ##[endgroup]
+2026-10-12T08:54:25.4398295Z (node:2507) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:54:25.4398796Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:25.4447888Z With the provided path, there will be 6 files uploaded
+2026-10-12T08:54:25.4451379Z Artifact name is valid!
+2026-10-12T08:54:25.4451762Z Root directory input is valid!
+2026-10-12T08:54:25.7832184Z Beginning upload of artifact content to blob storage
+2026-10-12T08:54:25.7985429Z (node:2507) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:54:26.0059759Z Uploaded bytes 10086
+2026-10-12T08:54:26.0630552Z Finished uploading artifact content to blob storage!
+2026-10-12T08:54:26.0631172Z SHA256 digest of uploaded artifact zip is 80d6f33a4e24d854bff4605f9e7fc4c4a187afb36ff634f2197467d1057c5686
+2026-10-12T08:54:26.0632517Z Finalizing artifact upload
+2026-10-12T08:54:26.5657953Z Artifact a11-dependency-audits.zip successfully finalized. Artifact ID 11736167424
+2026-10-12T08:54:26.5658538Z Artifact a11-dependency-audits has been successfully uploaded! Final size is 10086 bytes. Artifact ID is 11736167424
+2026-10-12T08:54:26.5662166Z Artifact download URL: https://github.com/Arcora-labs/arcora-perp/actions/runs/38226405363/artifacts/11736167424
+2026-10-12T08:54:26.5787160Z Post job cleanup.
+2026-10-12T08:54:26.6554484Z (node:2519) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:54:26.6554968Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:26.6556091Z Cache hit occurred on the primary key node-cache-Linux-x64-pnpm-af9df8d830b0c5b5d1808040b01b631e357799f05f171003e5291b089c33c269, not saving cache.
+2026-10-12T08:54:26.6648491Z Post job cleanup.
+2026-10-12T08:54:26.7507405Z Pruning is unnecessary.
+2026-10-12T08:54:26.7636954Z Post job cleanup.
+2026-10-12T08:54:26.8181584Z [command]/usr/bin/git version
+2026-10-12T08:54:26.8219061Z git version 2.55.0
+2026-10-12T08:54:26.8243142Z Temporarily overriding HOME='/home/runner/work/_temp/4f53c9fc-6a30-4c05-9956-cb2da3b3b460' before making global git config changes
+2026-10-12T08:54:26.8243689Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-12T08:54:26.8246710Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:54:26.8307636Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-12T08:54:26.8382638Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-12T08:54:26.8688272Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-12T08:54:26.8734964Z http.https://github.com/.extraheader
+2026-10-12T08:54:26.8766471Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-12T08:54:26.8857872Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-12T08:54:26.9133936Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-12T08:54:26.9167674Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-12T08:54:26.9439109Z Cleaning up orphan processes
+2026-10-12T08:54:26.9617444Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4, pnpm/action-setup@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

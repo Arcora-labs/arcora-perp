@@ -2,7 +2,7 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `0b20e6a4ad7223d394cfb0632507f20c9ed0d776` (#53).
+Bu paketin başlangıç main'i: `8f5e97bc690c1d9a6d796fdc3725526d283e077d` (#54).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -385,6 +385,37 @@ kullanıcı kararıyla ertelenmiştir. GPU'suz offline hazırlık bu gerçek kim
 ve proof'u tahmin ederek kapatamaz. Production HOLD devam eder.
 
 ## Açık işler ve kapanış ölçütleri
+
+#54 readonly target observer, `39d8def8355e3cb945ebc52b7922d2d4d8060b7a`
+head'inde 17/17 esas SUCCESS (+ Preview) sonrası normal merge edildi:
+`8f5e97bc690c1d9a6d796fdc3725526d283e077d`. Test/merge/yerel ağaç
+`87b173f50291a60b1de35ba202db2b4ba3435252`; ardından üç main push koşusu da
+SUCCESS. A01/A10 path filtrelerine girmedi ve başarılı sayılmadı. Korumalar aynı.
+
+Son GPU'suz public-service identity kodu `9c7347870d7212ec2ca66a92729ee5b433ca9efb`
+ile gateway ve mevcut prover'a yalnız `GET /identity` eklendi. Baked public
+kaynak-map SHA, çözülmüş public config ve mevcut prover'ın embedded ELF/captured
+vkey beyanı verilir; evidence kind açıkça `self_reported_unattested` olur.
+Kaynak checksum'u binary/compiler/process attestation değildir. Mevcut backend
+legacy/DPCLK2 kalır; DPCLK3/candidate desteklenmez, gönderim engeli kalkmaz.
+İmza, token, seal root, URL/keystore/archive/snapshot path veya account body
+yayınlanmaz. Eski startup/setup/prove/handshake ve finansal yollar korunur.
+
+Yerel final gateway **679 PASS / 0 FAIL / 23 intentional IGNORE**, yeni Python
+builder/preflight **25 PASS**, prover dependency-light gerçek router/socket
+harness **6 PASS** ve Clippy, workspace Clippy/format, mevcut **148 guard OK
+(bir optional legacy Anvil skip)**. SDK6.1 actual prover-service typecheck'i
+owned registry/target ve committed ELF ile geçti; backend/setup/prove başlatılmadı.
+21 reviewed/9 candidate/AUX2 pinler ve root Cargo manifest/lock aynı kaldı.
+Yeni publication CI/merge bu yerel kayıttan ayrı doğrulanır.
+
+Dosya tabanlı preflight, bağımsız beklenen public build/config/program ile iki
+snapshot'ı karşılaştırır. `DECLARATIONS_MATCH` yalnız beyan/checksum eşleşmesidir;
+candidate compatibility her zaman REFUSED/false, attestation ve approval false,
+release HOLD'dur. [Kılavuz](PUBLIC_SERVICE_IDENTITY.md) ve
+[kanıt paketi](audits/2026-10-12-public-service-identity/README.md).
+Gerçek onaylı target/policy/servis input'ları bulunmadı. Bu yazılım mekanizması
+R02 gerçek deployment/servis kabulünü kapatmaz; discovery ertelemesi korunur.
 
 #53 dual-lease handoff/offline identity, `0d14d01cb31fd90e443ea740d81888517e2459bb`
 yayın head'inde 19/19 esas SUCCESS (+ Preview Comments ek SUCCESS) sonrası

@@ -1,0 +1,149 @@
+{
+  "schema": "arcora-service-identity-independent-preservation/v1",
+  "observed_utc": "2026-10-12T09:56:21.715314+00:00",
+  "baseline_sha256": "18284fe45ba72833851240de940d43960e2caf866a11cbc474c78c158dfa810e",
+  "base_main": "8f5e97bc690c1d9a6d796fdc3725526d283e077d",
+  "tracked_baseline_files": 2793,
+  "tracked_unchanged": 2784,
+  "changed_existing_paths": [
+    ".github/workflows/a11-release-evidence.yml",
+    "crates/gateway/Cargo.toml",
+    "crates/gateway/src/l1.rs",
+    "crates/gateway/src/main.rs",
+    "crates/prover-service/Cargo.lock",
+    "crates/prover-service/Cargo.toml",
+    "crates/prover-service/build.rs",
+    "crates/prover-service/src/main.rs",
+    "crates/prover-service/src/sp1_prover.rs"
+  ],
+  "allowed_existing_paths": [
+    "crates/gateway/Cargo.toml",
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/report_archive_binding.rs",
+    "crates/prover-service/Cargo.toml",
+    "crates/prover-service/Cargo.lock",
+    "crates/prover-service/build.rs",
+    "crates/prover-service/src/main.rs",
+    "crates/prover-service/src/sp1_prover.rs",
+    ".github/workflows/a11-release-evidence.yml",
+    "docs/ACTIVE_WORK.md",
+    ".gitattributes",
+    "crates/gateway/src/l1.rs"
+  ],
+  "unexpected_existing_changes": [],
+  "missing_existing_files": [],
+  "external": [
+    {
+      "name": "primary",
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "dirty_count": 13,
+      "dirty_files_hashed": 13,
+      "checks": {
+        "head": true,
+        "status": true,
+        "staged_binary_diff_sha256": true,
+        "dirty_files": true
+      },
+      "dirty_file_mismatches": [],
+      "passed": true
+    },
+    {
+      "name": "kimi",
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "dirty_count": 7,
+      "dirty_files_hashed": 7,
+      "checks": {
+        "head": true,
+        "status": true,
+        "staged_binary_diff_sha256": true,
+        "dirty_files": true
+      },
+      "dirty_file_mismatches": [],
+      "passed": true
+    },
+    {
+      "name": "dark",
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "dirty_count": 62,
+      "dirty_files_hashed": 62,
+      "checks": {
+        "head": true,
+        "status": true,
+        "staged_binary_diff_sha256": true,
+        "dirty_files": true
+      },
+      "dirty_file_mismatches": [],
+      "passed": true
+    }
+  ],
+  "external_total_dirty_files_hashed": 82,
+  "legacy_full_body_preservation": {
+    "crates/gateway/src/main.rs": {
+      "baseline_sha256": "c455af6d036f99f2d81b7df2a8b77663579409ed4cb144c6e9830c76fbd700cd",
+      "current_sha256": "3e7372ce4c425b6c7dc228316e820749c1efe287ca8d3ab824c9bfdd33bcfe0f",
+      "all_old_lines_byte_preserved": true,
+      "identity_only_added_lines": 6,
+      "old_changes": [],
+      "inserted_block_sha256": "fb5b5e600614f4dad1f4f109b0cf6a05b3bcf35374dba03b0d41cfbccaa2a3ce"
+    },
+    "crates/gateway/src/l1.rs": {
+      "baseline_sha256": "73047824d4b2badc34c1a34b25d6d044be01578e287d27ebddf0815c412c6499",
+      "current_sha256": "50817b4be05214037f22d4cb0e79c4252cdaedff6bbc00e8560b6de993212a08",
+      "all_old_lines_byte_preserved": true,
+      "identity_only_added_lines": 9,
+      "old_changes": [],
+      "inserted_block_sha256": "8b162cf6ffceded13528c0f136e757ba8b819ad46d1cec4441a940a9c7195211"
+    },
+    "crates/prover-service/src/main.rs": {
+      "baseline_sha256": "ac76b7ba7d16dede1b6e9748728c60bca97f46c370d19249a37d5e0a19a44cbc",
+      "current_sha256": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548",
+      "all_old_lines_byte_preserved": true,
+      "identity_only_added_lines": 21,
+      "old_changes": [],
+      "inserted_block_sha256": "1aab5e5a35ea035550460a12b6fe8fabda52999fcbad90ed135bc5594e33620b"
+    },
+    "crates/prover-service/src/sp1_prover.rs": {
+      "baseline_sha256": "149005aaf5ee77b6c712e20bbafc07e04d4a5c82f99facc79815a1ff0622e4b3",
+      "current_sha256": "d03638a78c7c0c2991425ad4115382dac3df40d69fbb0fb4f244f6a21d6de9d2",
+      "all_old_lines_byte_preserved": true,
+      "identity_only_added_lines": 6,
+      "old_changes": [],
+      "inserted_block_sha256": "e118b55394a46b54045713fd5f7c04065fd84e98b2bac6cdc2f988e5789fe66e"
+    }
+  },
+  "unchanged_global_http_policy": true,
+  "pins": {
+    "reviewed21": {
+      "count": 21,
+      "mismatches": [],
+      "passed": true
+    },
+    "candidate9": {
+      "count": 9,
+      "mismatches": [],
+      "passed": true
+    },
+    "candidate_auxiliary2": {
+      "count": 2,
+      "mismatches": [],
+      "passed": true
+    }
+  },
+  "root_cargo_lock": {
+    "sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "baseline_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "byte_unchanged": true
+  },
+  "method": {
+    "read_only_git_metadata_diff_and_base_blobs": true,
+    "baseline_tracked_public_inputs_hashed": true,
+    "published_AK_public_fixture_hash_only": true,
+    "credential_env_or_private_key_config_files_read": false,
+    "new_tests_builds_network_git_or_source_mutations": false
+  },
+  "scope": "All old executable lines preserved plus baseline byte/metadata checks; not newly executing financial flows or accepting a real running service/release.",
+  "passed": true
+}

@@ -1,0 +1,42 @@
+{
+  "documentation_adjustment": "Admission minimum is 1 byte, not 1 MiB. No evidence counts claimed in documentation.",
+  "files_sha256_at_receipt": {
+    "docs/PUBLIC_SERVICE_IDENTITY.md": "498fcd4e22ffdf37b47b8a6bec0a26f47a3a95b30c32d85052d7ad72d09a8aef",
+    "scripts/local-verification/service_identity_preflight.py": "e99e4ffdb9c87732702b8f51b2cb89c45b2c30f164e91af063caaa3fe7efd947",
+    "scripts/local-verification/test_service_identity_preflight.py": "5ebd28c0aa35ae7d1749d924b82b4191c6d98528dd571e5168256e3a7c7c567b"
+  },
+  "recorded_at_utc": "2026-10-12T09:41:21.205600+00:00",
+  "repair": {
+    "cause": "TemporaryDirectory paths on macOS traverse symlinked /var, rejected by the strict public-path guard.",
+    "changed": "Only new test fixture parents resolve to canonical owned temporary directories; removed unused new test import. Checker symlink guard unchanged.",
+    "checker_sha256_before_and_after_repair": "e99e4ffdb9c87732702b8f51b2cb89c45b2c30f164e91af063caaa3fe7efd947"
+  },
+  "runs": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3.12 -m unittest discover -s scripts/local-verification -p test_service_identity_preflight.py -v",
+      "exit_code": 1,
+      "result": {
+        "errors": 2,
+        "passed": 14,
+        "tests": 16
+      },
+      "source_hashes_recorded_before_and_after": false,
+      "stdout_stderr": "target/candidate-service-validation-20261012/preflight/unit-initial.log",
+      "stdout_stderr_sha256": "e66167311eeef2a692493a24f36e9bf72d3adaf3aa615c5421bd7abcfa991c3a"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3.12 -m unittest discover -s scripts/local-verification -p test_service_identity_preflight.py -v",
+      "exit_code": 0,
+      "result": {
+        "errors": 0,
+        "passed": 16,
+        "tests": 16
+      },
+      "source_hashes_recorded_before_and_after": false,
+      "stdout_stderr": "target/candidate-service-validation-20261012/preflight/unit-fixture-repair1.log",
+      "stdout_stderr_sha256": "ef32e16d712ec95021a033fe322b6af24a9ef9f6b0b648a0e996aeced50f8fd9"
+    }
+  ],
+  "schema": "arcora-public-service-preflight-owned-smoke/v1",
+  "scope": "Explicit synthetic public expectations and snapshots; no network, service launch, setup, proof, secrets, Cargo or Git writes. Parent final verification remains separate."
+}

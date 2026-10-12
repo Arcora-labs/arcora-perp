@@ -1,0 +1,5 @@
+   Compiling zmij v1.0.21
+   Compiling itoa v1.0.18
+   Compiling serde_json v1.0.150
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.85s

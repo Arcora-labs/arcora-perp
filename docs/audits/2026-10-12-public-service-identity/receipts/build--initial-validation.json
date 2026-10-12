@@ -1,0 +1,20 @@
+[
+  {
+    "command": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "scripts/local-verification",
+      "-p",
+      "test_service_build_identity.py",
+      "-v"
+    ],
+    "exit_code": 1,
+    "elapsed_seconds": 0.13224775000000003,
+    "observed_utc": "2026-10-12T09:25:46.120123+00:00",
+    "log": "target/candidate-service-validation-20261012/build/unit-initial.log",
+    "log_sha256": "f9d7f5196e29b0603b35dd8026f71df72fb1ba3ddf18f0fecb7b89af3c6f83f1"
+  }
+]

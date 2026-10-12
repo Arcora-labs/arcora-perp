@@ -43,6 +43,11 @@ baked checksum to newly added sources merely because Cargo reused a binary.
 Guest/core sources, existing ELF/vkey pins and candidate/v2 schemas remain
 separate from this host-only descriptor.
 
+Both host builds require `python3` on the build PATH to resolve to Python 3.11+
+for the existing public-inventory modules. The helper fails rather than baking
+a substitute checksum when that prerequisite is missing. This requirement does
+not make Python part of the running identity handler.
+
 The prover descriptor has exactly `sdk_version: 6.1.0`, `elf_sha256`, `elf_bytes`,
 `program_vkey` and `supported_witness_domains: ["legacy", "DPCLK2"]`. Its ELF
 checksum is taken from the actual `include_elf!("perp-core-guest")` bytes used

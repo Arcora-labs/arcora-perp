@@ -1,0 +1,117 @@
+{
+  "verified_at": "2026-10-12T09:37:53.241223+00:00",
+  "passed": true,
+  "owned_source_sha256": {
+    "crates/prover-service/src/main.rs": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548",
+    "crates/prover-service/src/sp1_prover.rs": "d03638a78c7c0c2991425ad4115382dac3df40d69fbb0fb4f244f6a21d6de9d2",
+    "crates/prover-service/src/identity.rs": "f683bdead32fc3a016179967f50f5abab01661640bfdde9629021aea414e40fa",
+    "crates/prover-service/src/identity_tests.rs": "f7828db1877c29944f527890a2008d483e27f89f722de89af78c8285a6c4c761",
+    "scripts/local-verification/service-identity-harness/lib.rs": "bad8dbac05279861fb1e7a9b2224e2bdd22feab2f0e85b76842bcae572df6d0f",
+    "scripts/local-verification/service-identity-harness/build.rs": "fbf3e2c7c04d35033b30df387d25e640ec15faf1c13e5d20d3fd2b909f00d1b7",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d"
+  },
+  "harness_tests": {
+    "passed": 6,
+    "failed": 0,
+    "ignored": 0,
+    "new_prover_tests": 5,
+    "shared_envelope_tests": 1,
+    "execution_seconds": 0.08,
+    "total_seconds": 11.441128583
+  },
+  "clippy": {
+    "passed": true,
+    "seconds": 4.461529249999998,
+    "toolchain": {
+      "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+      "clippy": "clippy 0.1.99 (b940084d7e 2026-09-28)",
+      "python": "Python 3.14.6"
+    }
+  },
+  "legacy_preservation": {
+    "prove_handler": {
+      "byte_equal": true,
+      "baseline_sha256": "731d0289751f73ecdb6e3ebe2f4d758ca6a16b4bf113946df04662d2898826cb",
+      "current_sha256": "731d0289751f73ecdb6e3ebe2f4d758ca6a16b4bf113946df04662d2898826cb"
+    },
+    "existing_identity_vkey_measurement": {
+      "byte_equal": true,
+      "baseline_sha256": "803fe6238723dcff9bdbd7e79c642bb19f5e9c4953eda79f4fe523bcae7ebcfb",
+      "current_sha256": "803fe6238723dcff9bdbd7e79c642bb19f5e9c4953eda79f4fe523bcae7ebcfb"
+    },
+    "handshake_and_attest": {
+      "byte_equal": true,
+      "baseline_sha256": "d93a3c9136e2da80da991c1440252fde7dc30449706ca9775ea1bbbb723271ee",
+      "current_sha256": "d93a3c9136e2da80da991c1440252fde7dc30449706ca9775ea1bbbb723271ee"
+    },
+    "shutdown_lifecycle": {
+      "byte_equal": true,
+      "baseline_sha256": "dec37fb4045d15058f3acc708f75dc2bacee07f2e0aff969751881986bebed45",
+      "current_sha256": "dec37fb4045d15058f3acc708f75dc2bacee07f2e0aff969751881986bebed45"
+    },
+    "full_existing_backend_setup_vkey_prove_impls": {
+      "byte_equal": true,
+      "baseline_sha256": "f5a4f56a97eb126709633bf48599c702c7567f8e10466d469728f3c58e3d48fd",
+      "current_sha256": "f5a4f56a97eb126709633bf48599c702c7567f8e10466d469728f3c58e3d48fd"
+    }
+  },
+  "artifacts": {
+    "harness-tests.stdout.log": {
+      "bytes": 794,
+      "sha256": "1b5a5451f28d66f044cb8e26f0d372433f970ae8bd4c9fdd7a9ebf53e700bf2e"
+    },
+    "harness-tests.stderr.log": {
+      "bytes": 2287,
+      "sha256": "d501b135a6e6de0d7172a317b0080caa655b1143d858a045e16f8bf2a4e23971"
+    },
+    "harness-tests.json": {
+      "bytes": 4067,
+      "sha256": "f48282d7022ec8bf630af0d5b21428e565a0ece88eabf6586e0441a64475b77b"
+    },
+    "harness-clippy.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "harness-clippy.stderr.log": {
+      "bytes": 1826,
+      "sha256": "82900ffc71856553d547620e14b8dfe30d0111ea4b007f67794eb4dac090ecfd"
+    },
+    "harness-clippy.json": {
+      "bytes": 4102,
+      "sha256": "98f7e3f02cf7e30294c1f2f66b9a8f47176340f8c455e3c93fc4a0d55c54b93c"
+    },
+    "harness-toolchain.json": {
+      "bytes": 507,
+      "sha256": "0653f376bc5e3f356aced1dee7c62713799beb3bffd8a9d36911391fb192889f"
+    },
+    "legacy-paths-comparison.json": {
+      "bytes": 1845,
+      "sha256": "0ddf5288e8818b2b9e09ec25fdc7d9342252b29fc1dd63c06703e4640336f2fe"
+    },
+    "owned-source-freeze.json": {
+      "bytes": 1706,
+      "sha256": "cb2e1d71586554437bea2e255866e491873975fd8089cdf60981fd9bf820a56d"
+    },
+    "harness-lock-minimal-retain.json": {
+      "bytes": 681,
+      "sha256": "7938f1323029a1da2f9f87867d8ab498aff862ef20aa603d95921c0f6c9952d0"
+    }
+  },
+  "api": {
+    "route": "GET /identity",
+    "cache_control": "no-store",
+    "post_status": 405,
+    "service": "prover",
+    "supported_witness_domains": [
+      "legacy",
+      "DPCLK2"
+    ],
+    "candidate_submission_supported": false,
+    "candidate_submission_enabled": false,
+    "evidence_kind": "self_reported_unattested",
+    "release_gate": "HOLD"
+  },
+  "scope": "Exact production identity module/public envelope in dependency-light harness. Program descriptor injected from existing reviewed ELF fixture (525824 bytes, df59a19...), not a loaded prover service. No SP1 SDK/backend boot/setup/prove, no handshake, no attestation or proving support upgrade. Actual service &*ELF +app.vkey path is source-linked and requires parent-owned actual service typecheck."
+}

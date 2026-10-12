@@ -1,0 +1,47 @@
+{
+  "command": [
+    "python3.11",
+    "scripts/local-verification/service_build_identity.py",
+    "--root",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+    "--output",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/build/own-source-current/service-build-identity.json"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 0.19924816698767245,
+  "observed_utc": "2026-10-12T09:30:39.537253+00:00",
+  "log": "target/candidate-service-validation-20261012/build/own-source-current-helper.log",
+  "log_sha256": "f49c0f8390af0e793c140a27f67dfcd4e105b748e049a162b4f186c76b25b9d3",
+  "output": "target/candidate-service-validation-20261012/build/own-source-current/service-build-identity.json",
+  "output_sha256": "c7e74465fd67552fe88019adffb03d1ddb8e58132a45a32b5a426c6ff02576c9",
+  "identity": {
+    "algorithm": "sha256-canonical-source-map-v1",
+    "schema": "arcora-service-build-identity/v1",
+    "source_files": 368,
+    "source_sha256": "ce6cbdf57d4648616938566c8efbd226748cd2990e7fe9c44e8e0962efe087d7"
+  },
+  "source_stable_at_readback": true,
+  "owned_source_sha256": {
+    "scripts/local-verification/service_build_identity.py": "9db5758504a75d9d6fda50dc395463dba0b50fe5406e519801a23547c7220ef8",
+    "scripts/local-verification/test_service_build_identity.py": "5a97faef560445fa58449db8ba4091e050a8b4d7823f86e376c04638c671644b",
+    "crates/service-identity/build_support.rs": "910a030f4d4d3c6c28d03b216b030d59121d9955cbfaa1e3d1aa961933ee1a02",
+    "crates/gateway/build.rs": "fdbff27e59be59916b71cf04b4b75ec79c79d3ccdb4fd9cadc73691a2212958c",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "crates/prover-service/build.rs": "64ee87f789ebd7bc9bed0849481a5b892aa26bed1bc3cc8b1aab133f92fb458b",
+    "crates/prover-service/Cargo.toml": "5b28c2dac8c8543f193ca142bd372a2c1c92f25a577cc71ca40bac9103daed48",
+    "crates/prover-service/Cargo.lock": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e"
+  },
+  "root_toml_lock_byte_identical_to_head": {
+    "Cargo.toml": {
+      "baseline_head_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "actual_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa"
+    },
+    "Cargo.lock": {
+      "baseline_head_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+      "actual_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5"
+    }
+  },
+  "builder_git_calls": 0,
+  "receipt_wrapper_readonly_git_baseline_check": true,
+  "meaning": "Current local public-file snapshot at helper time, not final package source freeze, compiler or running-process attestation; no GPU/setup/proof."
+}
