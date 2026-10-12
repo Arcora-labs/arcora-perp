@@ -1,0 +1,15 @@
+{
+  "result_sha256": "bf8316e0ec29ca8bce83638e18dd1d8e300cb94df695c590c330c520b0129d27",
+  "compile_exit": 0,
+  "before_public_sha256": "8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5",
+  "after_public_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "normal_requests": 1,
+  "brace_requests": 2,
+  "brace_low_level": {
+    "body": "{\"owned_fixture\":1}\n__DPHTTP_STATUS__401{\"owned_fixture\":2}",
+    "json_parser_accepted": false,
+    "kind": "OK"
+  },
+  "owned_file_GET_both_wrappers": "ACCEPTED_BASELINE",
+  "baseline_archives_unchanged": true
+}

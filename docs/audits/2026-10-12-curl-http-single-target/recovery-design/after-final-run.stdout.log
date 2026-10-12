@@ -1,0 +1,14 @@
+{
+  "result_sha256": "7ebc55bb6dfe30807af018116866e9934c241d5f8e00b8e9226ee972e1550bf0",
+  "compile_exit": 0,
+  "before_public_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "after_public_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "normal_requests": 1,
+  "brace_requests": 1,
+  "brace_low_level": {
+    "error": "Unauthorized",
+    "kind": "ERROR"
+  },
+  "owned_file_GET_both_wrappers": "REFUSED_AFTER",
+  "baseline_archives_unchanged": true
+}

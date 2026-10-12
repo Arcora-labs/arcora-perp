@@ -1,0 +1,153 @@
+{
+  "schema": "arcora-legacy-curl-request-admission-independent-audit/v1",
+  "captured_at": "2026-10-12T20:19:50.363923+00:00",
+  "base_head": "c56a6114fbc2a43be8e3b414fef00be91f5efa5f",
+  "actual_head_at_capture": "c56a6114fbc2a43be8e3b414fef00be91f5efa5f",
+  "tracked_status_at_capture": "",
+  "source_files": {
+    "crates/gateway/src/main.rs": {
+      "base_sha256": "470225bdc9f3c9a5e9cd1a4350cd7100eeeeaddbf670b1786ac4033ed546a5aa",
+      "bytes": 810798,
+      "current_matches_base": true
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "base_sha256": "2f219fe3d9bbfc3e2e2f72950fd75e6fc9207d840d678a56e2934f9086471d51",
+      "bytes": 76224,
+      "current_matches_base": true
+    },
+    "crates/prover-service/src/main.rs": {
+      "base_sha256": "c0100f0d2afe12ebf0091de6bf86fb2b8e0d2649b27ef4be6cb7aedd4979e23b",
+      "bytes": 25054,
+      "current_matches_base": true
+    },
+    "crates/service-transport/curl.rs": {
+      "base_sha256": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+      "bytes": 7799,
+      "current_matches_base": true
+    },
+    "crates/gateway/src/http_transport_tests.rs": {
+      "base_sha256": "e4c47568fdaa5340680af524f41bb5b4ebc6df3698ea0c84e501cda082b458c0",
+      "bytes": 9824,
+      "current_matches_base": true
+    },
+    "crates/service-transport/curl_tests.rs": {
+      "base_sha256": "ddf9b02178296431171c866f4e5dc9683449081c037408d01c5a22ce9f40bf98",
+      "bytes": 16298,
+      "current_matches_base": true
+    },
+    "crates/prover-service/src/admission.rs": {
+      "base_sha256": "411db9185d40a20f32aef81bc485fe2b4dc7d6ae220f25cbf302a5eb4032b703",
+      "bytes": 14982,
+      "current_matches_base": true
+    },
+    "crates/gateway/src/service_policy.rs": {
+      "base_sha256": "f8cbcdf5d68e99008f3f89e6e93dc0edb50f57bb38cdc7ca47b8b20c711faa0e",
+      "bytes": 19430,
+      "current_matches_base": true
+    },
+    "crates/attestation/src/handshake.rs": {
+      "base_sha256": "fb5a3c94c75eac3aba4fed356750d9cce3bcd547ba1773d749ece14468af4a1d",
+      "bytes": 11117,
+      "current_matches_base": true
+    },
+    "crates/sequencer/src/lib.rs": {
+      "base_sha256": "04ea88b2e96ff6407496aadb5ff110c549d40a333372234c1648551fbb65487a",
+      "bytes": 137647,
+      "current_matches_base": true
+    },
+    "docs/CURL_RESPONSE_LIMITS.md": {
+      "base_sha256": "f1e7e8be017f415ec62d45d45d9ec0a0ed38197e18a423289821b62597cf8338",
+      "bytes": 3999,
+      "current_matches_base": true
+    }
+  },
+  "scope": "Read-only public-source audit; no curl, endpoint, service, binary, Cargo, proof, quote or live RPC execution.",
+  "trust_model": {
+    "url_origins": [
+      "PROVER_URL operator configuration",
+      "GATEWAY_URL operator configuration"
+    ],
+    "request_user_selects_endpoint": false,
+    "peer_supplies_session_token": false,
+    "token_source": "Locally generated 0x-prefixed 32-byte lowercase hex, or fixed non-production DEV_INSECURE token.",
+    "command": "Direct Command argv; -q first and -- endpoint delimiter; no shell.",
+    "acceptance": "Transport success does not bypass quote measurement/challenge, contributory DH, expiry, replay or proof/settlement checks. Production HOLD and DPCLK3 live-proving refusal unchanged."
+  },
+  "selected_narrow_issue": {
+    "id": "HTTP-ENDPOINT-PROTOCOL-GLOB-ADMISSION",
+    "confidence": "High for missing source controls; runtime effects not executed here.",
+    "severity": "Trusted operator configuration correctness / outbound action restriction; not remotely controlled critical SSRF.",
+    "call_sites": [
+      "gateway main http_get_json_command",
+      "prover main http_get_json_command",
+      "gateway prover_client prove_curl_args"
+    ],
+    "facts": [
+      "Three curl argv builders lack --globoff and HTTP(S) --proto allowlist.",
+      "-q and -- prevent configuration/option injection, not URL expansion or protocol selection."
+    ],
+    "precondition": "Operator/deployment configuration supplies a glob-capable or non-HTTP URL; no public request or peer field currently selects the URL.",
+    "minimal_change": "Add --globoff and --proto =http,https to all three builders, preserving -q first, -- URL delimiter, suffix/base contract, no-follow redirect and 401 behavior.",
+    "acceptance": [
+      "Owned-loopback valid HTTP and schemeless HTTP remain accepted.",
+      "Glob URL cannot expand into multiple owned requests.",
+      "Non-HTTP source is refused without body/URL leaking into public diagnostics.",
+      "Both GET wrappers remain identical; three argv paths contain matching flags.",
+      "Only typed complete bounded 401 triggers exactly one existing re-handshake."
+    ],
+    "status": "Proposal only; root owns implementation and native evidence."
+  },
+  "remaining_scoped_candidates": [
+    {
+      "id": "BASE-SUFFIX-QUERY-FRAGMENT",
+      "source_fact": "Literal /attest or /prove is appended after the complete configured base string.",
+      "examples": [
+        {
+          "base": "http://127.0.0.1:8091/base#note",
+          "constructed_prove": "http://127.0.0.1:8091/base#note/prove"
+        },
+        {
+          "base": "http://127.0.0.1:8091/base?x=1",
+          "constructed_prove": "http://127.0.0.1:8091/base?x=1/prove"
+        }
+      ],
+      "impact": "Suffix can belong to fragment/query rather than request path; trusted config misrouting/availability, not attestation bypass.",
+      "selected_patch_fixes_this": false
+    },
+    {
+      "id": "OUTBOUND-POST-INPUT-BYTES",
+      "source_fact": "curl Limits only bounds stdout/stderr/time; http_post_command has no body.len pre-spawn cap.",
+      "receiver_max_bytes": 536870912,
+      "gateway_inbound_default_bytes": 2097152,
+      "gateway_inbound_max_bytes": 8388608,
+      "calibration": "Individual user request limits do not bound accumulated/full-state witness. No remote OOM exploit demonstrated. A later post-serialization cap would not bound earlier postcard/seal/hex/JSON allocations. Response-sized 1/4MiB input cap is not justified.",
+      "selected_patch_fixes_this": false
+    },
+    {
+      "id": "BEARER-ARGV-LOCAL-VISIBILITY",
+      "source_fact": "Generated bearer is in curl Authorization argv.",
+      "precondition": "Local observer able to inspect process command line; not an asserted remote HTTP exposure.",
+      "selected_patch_fixes_this": false
+    },
+    {
+      "id": "HEADER-INPUT-GRAMMAR",
+      "source_fact": "Generic token setter/helper accepts arbitrary strings, but current production chain generates fixed safe tokens locally.",
+      "calibration": "No peer-supplied CRLF bearer injection is reachable through the inspected handshake.",
+      "selected_patch_fixes_this": false
+    }
+  ],
+  "existing_tests": {
+    "executed_here": false,
+    "modified": false,
+    "inspected": "Shared 7 regular response/cleanup tests, gateway 8 response/status/resource tests, and prover_client flags/bearer/status tests; no explicit protocol/glob regression located. Previous passing runs are historical evidence, not a new execution."
+  },
+  "preserve": [
+    "Root Cargo/manifest/guest/core/ELF/vkey pins",
+    "Production/candidate HOLD",
+    "Response/stderr/deadline and child cleanup bounds",
+    "Redacted errors",
+    "None/mock/dev/strict production and exact typed 401 retry",
+    "Existing operator proxy environment behavior; no DNS allowlist introduced"
+  ],
+  "result": "Flags-only implementation direction supported; other candidates remain open and unproven."
+}

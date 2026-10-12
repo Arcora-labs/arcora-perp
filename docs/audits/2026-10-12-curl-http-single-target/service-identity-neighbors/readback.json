@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/opt/homebrew/bin/python3.12",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts/local-verification",
+    "-p",
+    "test_service_*.py",
+    "-v"
+  ],
+  "production_release": "HOLD",
+  "schema": "arcora-service-identity-local-readback/v1",
+  "source_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "stderr_sha256": "43dc6ee7be381a8aa1d045a300f904214f902e035e03177bf61423321eeb0bdf",
+  "unittest_passed": 25,
+  "verification_sha256": "b5fc55701183697f5d898e8b54bf107786a1e41a6eb510618cb5c3849e9002a9"
+}

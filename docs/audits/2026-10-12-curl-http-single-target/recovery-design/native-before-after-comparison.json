@@ -1,0 +1,93 @@
+{
+  "schema": "arcora-request-admission-native-before-after-comparison/v1",
+  "created_at": "2026-10-12T20:27:13.362178+00:00",
+  "result": "PASS",
+  "base": "c56a6114fbc2a43be8e3b414fef00be91f5efa5f",
+  "before_result_sha256": "bf8316e0ec29ca8bce83638e18dd1d8e300cb94df695c590c330c520b0129d27",
+  "after_result_sha256": "7ebc55bb6dfe30807af018116866e9934c241d5f8e00b8e9226ee972e1550bf0",
+  "before_source_count": 378,
+  "before_source_sha256": "8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5",
+  "after_source_count": 378,
+  "after_source_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "after_source_before_after_exactly_equal": true,
+  "base_archives_still_exact": true,
+  "both_GET_function_bodies_exactly_equal_at_each_cut": true,
+  "native_curl": "/usr/bin/curl",
+  "native_curl_version": "curl 8.7.1 (x86_64-apple-darwin25.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.68.1",
+  "normal_control": {
+    "body_bytes": 163840,
+    "same_body_sha256": "ece332d5a8bd5bbbfbb24397d48d3ff24f1c5bb6e9aabed1f920c93763003450",
+    "requests_before": 1,
+    "requests_after": 1,
+    "status_before": 200,
+    "status_after": 200,
+    "valid_JSON_before": true,
+    "valid_JSON_after": true
+  },
+  "brace_glob": {
+    "before_requests": [
+      {
+        "target": "POST /casea/prove HTTP/1.1",
+        "body_bytes": 163840,
+        "body_sha256": "ece332d5a8bd5bbbfbb24397d48d3ff24f1c5bb6e9aabed1f920c93763003450",
+        "wire_sha256": "b9d2880889fbcde0f43e4127c82dcaf09d929c640b84ef1fbc0ef12e50329fcd",
+        "response_status": 401
+      },
+      {
+        "target": "POST /caseb/prove HTTP/1.1",
+        "body_bytes": 163840,
+        "body_sha256": "ece332d5a8bd5bbbfbb24397d48d3ff24f1c5bb6e9aabed1f920c93763003450",
+        "wire_sha256": "d58aaa895d413c3e95d8748ccb7c8789a29410fe19853996f02b9dde91324d7b",
+        "response_status": 200
+      }
+    ],
+    "before_returned": {
+      "body": "{\"owned_fixture\":1}\n__DPHTTP_STATUS__401{\"owned_fixture\":2}",
+      "json_parser_accepted": false,
+      "kind": "OK"
+    },
+    "after_requests": [
+      {
+        "target": "POST /case{a,b}/prove HTTP/1.1",
+        "body_bytes": 163840,
+        "body_sha256": "ece332d5a8bd5bbbfbb24397d48d3ff24f1c5bb6e9aabed1f920c93763003450",
+        "wire_sha256": "8457e17c15a880ca03f278fcfe6250d682f1aefd704a8dc5295ec80c7dddcdb6",
+        "response_status": 401
+      }
+    ],
+    "after_returned": {
+      "error": "Unauthorized",
+      "kind": "ERROR"
+    },
+    "meaning": "BASE sent two same-body/synthetic-bearer POSTs from one configured URL; final 200 obscured first 401 in low-level status parsing, although higher JSON decoder refused. AFTER sends exactly one literal braces path and preserves first typed Unauthorized."
+  },
+  "owned_public_file_GET": {
+    "gateway-get": {
+      "before": {
+        "kind": "OK",
+        "value": {
+          "owned_public_fixture": true
+        }
+      },
+      "after": {
+        "error": "attestation HTTP transport exit exit status: 1",
+        "kind": "ERROR"
+      }
+    },
+    "prover-get": {
+      "before": {
+        "kind": "OK",
+        "value": {
+          "owned_public_fixture": true
+        }
+      },
+      "after": {
+        "error": "attestation HTTP transport exit exit status: 1",
+        "kind": "ERROR"
+      }
+    }
+  },
+  "historical_helper_repair_sha256": "57f9781b88a5395b19e7487dfd2e2e0ce457ae71a6b2edcc6b96682641359e00",
+  "history": "Initial AFTER helper incorrectly asserted a generic diagnostic string. Exact source returned the correct transport refusal. Helper-only exact text repair; initial raw output and traceback retained, then fresh unchanged-source final pass. No production repair or weakened acceptance.",
+  "scope": "Exact low-level Rust GET/POST source functions compiled with cached real serde_json and native /usr/bin/curl. Caller-owned loopback peer and owned public JSON only; no HTTP service backend, SP1 setup/prove, attestation/quote, real tokens, discovery, or release acceptance. Config URL remains trusted operator input. Default Command executable resolution from trusted PATH is unchanged. No bearer CRLF run and no arbitrary body-cap policy. BASE working map changed concurrently due parent-owned four source edits; archived BASE never changed."
+}

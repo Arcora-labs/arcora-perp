@@ -1,0 +1,41 @@
+{
+  "schema": "arcora-owned-reproducer-helper-repair/v1",
+  "created_at": "2026-10-12T20:26:01.927774+00:00",
+  "source_unchanged": true,
+  "source_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "cause": "Owned AFTER harness asserted invented GET error text instead of exact existing source diagnostic; actual refusal already worked. No application source fix.",
+  "old_expected": "GET transport failure",
+  "actual_returned": {
+    "error": "attestation HTTP transport exit exit status: 1",
+    "kind": "ERROR"
+  },
+  "repair": "Exact source-prescribed attestation HTTP transport exit exit status: 1. Retain failed initial attempt; rerun same fixture in fresh final output.",
+  "preserved_files_sha256": {
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-curl.rs": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-snapshot.json": "de7587be391bc9246a0544b1f469c8dca1d340eebe32fd270468a0614d887ac7",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-sources/crates--gateway--src--http_transport_tests.rs": "80d67c94b7f0f4672e00570ef6a3738754b8cb98e463782fd8e1e4714740069a",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-sources/crates--gateway--src--main.rs": "635f738621e3fa7825a360ce8b5eddd77d161d029e1dd8e71f353a843b593b1f",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-sources/crates--gateway--src--prover_client.rs": "c2581f23359a3a0c74670333ff1ac181b4d1996b2c0bdfdebd7255fbf89b293d",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-sources/crates--prover-service--src--main.rs": "112e9e6313eac8f06348daba67a4e2d640cf8a2b0381b75fa6d0b9d4ac138c03",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-sources/crates--service-transport--curl.rs": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/base-sources/crates--service-transport--curl_tests.rs": "ddf9b02178296431171c866f4e5dc9683449081c037408d01c5a22ce9f40bf98",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/brace-glob.request-0.bin": "45d93255ceb02dc5d0de5038de1830e8f8bfee707759ce27ecf20103e42d8e3f",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/brace-glob.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/brace-glob.stdout.log": "6519ffda540ebb569cca61dec6e06b3ff281060c0f810a551c181d2b46a2bed2",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/compile.json": "693f60ab7907bf46d51f64158a80a8041fc8004bacab22c3a17a6b3c8707afe0",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/compile.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/compile.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/gateway-get.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/gateway-get.stdout.log": "a875ca5f2ec4108b05d3592a56261d011fdbb28c9fa7cdf354ef04759c7c249c",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/normal160k.request-0.bin": "42769f99f60c80d84d633ebab2bbaff7d765d259aa8382bc081976acc20cf9cd",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/normal160k.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/normal160k.stdout.log": "4d4fcb95000b7d292c60c1164ab18bca6bdcc273e0c13870cd1477be1d473d48",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/probe.rs": "168133c17e8b6bf61d5209cd3ed93a4aeab9793d0d828d4a13c0ed9406645e78",
+    "target/request-admission-validation-20261012/recovery-design/after-native-public-probe/public-response.json": "075d122d5014b424c107d78b52b9745a2be6bd4a65060622b32aa66f26206bcf"
+  },
+  "outside_logs_sha256": {
+    "target/request-admission-validation-20261012/recovery-design/after-run.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/request-admission-validation-20261012/recovery-design/after-run.stderr.log": "70be742f0f93075f8deeb1fac710c157a9a49487dd93c1eba91b10e74c70a4df",
+    "target/request-admission-validation-20261012/recovery-design/run_after_probe.py": "e28f3753a237958250e4671988700052d29e65a1c34ed8d3156d4b6de4f7aa30"
+  }
+}

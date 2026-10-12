@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/recovery-design/run_after_probe.py", line 72, in <module>
+    results[role]=execute(role,role,'file://'+str(public));assert results[role]['returned']=={'kind':'ERROR','error':'GET transport failure'}
+                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

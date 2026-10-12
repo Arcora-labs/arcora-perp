@@ -1,0 +1,20 @@
+{
+  "schema": "arcora-request-admission-independent-byte-preservation/v1",
+  "captured_at": "2026-10-12T20:25:49.142899+00:00",
+  "passed": true,
+  "baseline_sha256": "9b7edbbb9bc20646c9d7a0266cabbef5ee7b6e80babafdfd0d82e561a6eb9030",
+  "freeze_sha256": "4c5b725159e9f0c6a16aadc7fb3cf7f746f11cded10a6b9d70c38e2a1b3bf709",
+  "independent_source_qa_sha256": "d9a15da293414cc34450038c83396cd4e1e713549984afc5a1f14f5a3bea8797",
+  "covered_source_count": 378,
+  "actual_changed_public_source_paths": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/prover_client.rs",
+    "crates/prover-service/src/main.rs"
+  ],
+  "other_public_sources_exact_old_baseline_hash": 374,
+  "head_only_non_inventory_pins_exact_baseline": {
+    "scripts/tee-capture/Cargo.lock": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e"
+  },
+  "scope": "Byte hashes of all 378 public covered inputs compared to pristine post-PR59 baseline; only authorized four differ. Supplemental tee lock separately pinned, unchanged. No tracked edits or runtime test."
+}

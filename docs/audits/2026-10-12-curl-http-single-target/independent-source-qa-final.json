@@ -1,0 +1,181 @@
+{
+  "schema": "arcora-legacy-curl-request-admission-independent-source-qa/v1",
+  "captured_at": "2026-10-12T20:25:21.433563+00:00",
+  "passed": true,
+  "actual_head": "c56a6114fbc2a43be8e3b414fef00be91f5efa5f",
+  "base_head": "c56a6114fbc2a43be8e3b414fef00be91f5efa5f",
+  "source_freeze_sha256": "4c5b725159e9f0c6a16aadc7fb3cf7f746f11cded10a6b9d70c38e2a1b3bf709",
+  "source_count": 378,
+  "source_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "actual_diff_paths": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/prover_client.rs",
+    "crates/prover-service/src/main.rs"
+  ],
+  "actual_numstat": [
+    "90\t0\tcrates/gateway/src/http_transport_tests.rs",
+    "5\t0\tcrates/gateway/src/main.rs",
+    "4\t0\tcrates/gateway/src/prover_client.rs",
+    "5\t0\tcrates/prover-service/src/main.rs"
+  ],
+  "exact_reconstruction": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "old_8_test_file_bytes_exact_prefix": true,
+      "new_test_count": 4,
+      "old_file_sha256": "e4c47568fdaa5340680af524f41bb5b4ebc6df3698ea0c84e501cda082b458c0",
+      "added_lines": 90
+    },
+    "crates/gateway/src/main.rs": {
+      "only_literal_flag_comment_insertion": true,
+      "reconstructed_full_file_equals_base": true,
+      "inserted_lines": 5,
+      "base_sha256": "470225bdc9f3c9a5e9cd1a4350cd7100eeeeaddbf670b1786ac4033ed546a5aa",
+      "current_sha256": "635f738621e3fa7825a360ce8b5eddd77d161d029e1dd8e71f353a843b593b1f"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "only_literal_flag_comment_insertion": true,
+      "reconstructed_full_file_equals_base": true,
+      "inserted_lines": 4,
+      "base_sha256": "2f219fe3d9bbfc3e2e2f72950fd75e6fc9207d840d678a56e2934f9086471d51",
+      "current_sha256": "c2581f23359a3a0c74670333ff1ac181b4d1996b2c0bdfdebd7255fbf89b293d"
+    },
+    "crates/prover-service/src/main.rs": {
+      "only_literal_flag_comment_insertion": true,
+      "reconstructed_full_file_equals_base": true,
+      "inserted_lines": 5,
+      "base_sha256": "c0100f0d2afe12ebf0091de6bf86fb2b8e0d2649b27ef4be6cb7aedd4979e23b",
+      "current_sha256": "112e9e6313eac8f06348daba67a4e2d640cf8a2b0381b75fa6d0b9d4ac138c03"
+    }
+  },
+  "all_non_4_tracked_git_paths_unchanged": {
+    "total_tracked": 3299,
+    "unchanged": 3295,
+    "public_covered_sources_additionally_hashed_unchanged": 374,
+    "no_other_git_diff": true
+  },
+  "existing_inline_test_counts": {
+    "crates/gateway/src/main.rs": {
+      "plain": 164,
+      "tokio": 11,
+      "all_original_test_bodies_and_assertions_byte_identical": true
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "plain": 32,
+      "tokio": 0,
+      "all_original_test_bodies_and_assertions_byte_identical": true
+    }
+  },
+  "existing_test_preservation": "All current 196 plain + 11 tokio inline tests remain byte-identical; the inherited 195 plain set plus PR59 added status test are all included. Previous provisional 12-async classification was corrected; no code assertion changed.",
+  "existing_caller_test_bodies": 8,
+  "new_caller_test_bodies": 4,
+  "shared_runner_byte_unchanged": true,
+  "get_wrappers_identical": {
+    "bytes": 1067,
+    "sha256": "e955b15f22e8b92c045e21feb55e5a304b82e2ff13452681fc3584a1925d509e"
+  },
+  "pins": {
+    "candidate_auxiliary_test_sources_sha256": {
+      "count": 2,
+      "matched": true
+    },
+    "candidate_sources_sha256": {
+      "count": 9,
+      "matched": true
+    },
+    "reviewed_v2_sources_sha256": {
+      "count": 21,
+      "matched": true
+    }
+  },
+  "unchanged_root_service_manifests_locks": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "crates/prover-service/Cargo.toml": "5b28c2dac8c8543f193ca142bd372a2c1c92f25a577cc71ca40bac9103daed48",
+    "crates/prover-service/Cargo.lock": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d"
+  },
+  "artifacts_exact_base": {
+    "contracts/integration/fixtures/clock-v2-verified/guest.elf": {
+      "bytes": 525824,
+      "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/program-vkey.bin": {
+      "bytes": 32,
+      "sha256": "5d6af308d886b93f41bb947993fcbe4f20b755d7e0eb9bf134ef2dc99104f21e"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof-evidence.json": {
+      "bytes": 1907,
+      "sha256": "224704d958a9d5246abace7d0df424d10afd67fb74db113bc399290e56c16486"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/clock.witness.bin": {
+      "bytes": 1274,
+      "sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof.bin": {
+      "bytes": 356,
+      "sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof.sdk.json": {
+      "bytes": 1997,
+      "sha256": "9028b9ce9be2e4a2957101f78727565e345a00e58a970d5383113e6182770c05"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/public-values.bin": {
+      "bytes": 32,
+      "sha256": "f366fab4eac85e885e3f18fc826b8421d4fe29897b223734cee7b15885cffaee"
+    },
+    "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf": {
+      "bytes": 540704,
+      "sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f"
+    },
+    "contracts/integration/fixtures/chainlink-candidate-v1/metadata.json": {
+      "bytes": 1562,
+      "sha256": "d0a1be2b345f688b3bd102dbd6d5d6512aae1caaae6a996ba9f8b8fe411dd696"
+    }
+  },
+  "actual_prover_check": {
+    "receipt_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/receipt.json",
+    "receipt_sha256": "57f357f55fccb569a740592f04992a57c72688f2c180cb647df3e3d1de658475",
+    "passed": true,
+    "command": [
+      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+      "check",
+      "--offline",
+      "--locked",
+      "--manifest-path",
+      "crates/prover-service/Cargo.toml",
+      "--bin",
+      "prover-service"
+    ],
+    "toolchain": {
+      "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+      "python": "Python 3.14.6",
+      "protoc": "libprotoc 29.3"
+    },
+    "exit_code": 0,
+    "elapsed_seconds": 15.00030108296778,
+    "source_before_after_equal": true,
+    "old_runner_receipt_stdout_stderr_unchanged": true,
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr_sha256": "a6141132aadeb0854e1f159b70cc240ef12f3d6048591d570ffd297a1f01cfef",
+    "exact_binary_no_rustup_sync": true
+  },
+  "reviewed_semantics": [
+    "-q remains first; -- URL delimiter remains.",
+    "Exactly --globoff and --proto =http,https added; no redirects enabled.",
+    "GET --fail and POST explicit status/typed 401 remain unchanged.",
+    "No shared runner, deadlines, response limits, token/body grammar, parser or custody/proof gate changes.",
+    "New tests assert literal request targets, compatible schemeless HTTP and owned-file protocol refusal/redaction."
+  ],
+  "remaining_scope": [
+    "Configured query/fragment suffix composition remains unvalidated.",
+    "Outbound request body byte cap and pre-serialization allocation policy remain unmodified.",
+    "Bearer argv local visibility remains."
+  ],
+  "executions_by_auditor": "Actual standalone prover source/API check only, offline locked, existing owned cache and reviewed include_elf reused, guest build skipped. No gateway tests/native HTTP/backend/setup/quote/prove/services/network executed by auditor this turn; root results remain separate.",
+  "production_release": "HOLD",
+  "findings": []
+}

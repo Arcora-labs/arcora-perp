@@ -265,3 +265,93 @@ fn prover_decode_errors_do_not_echo_remote_values() {
     let response = format!("{{\"commitment\":{{\"{canary}\":0}},\"proof\":\"0x00\"}}");
     assert!(!format!("{:?}", parse_prove_resp(&response).unwrap_err()).contains(canary));
 }
+
+#[test]
+fn get_glob_characters_are_one_literal_http_target() {
+    for path in ["/case{a,b}/attest", "/case[1-2]/attest"] {
+        let (url, peer) = fixture(200, b"{\"synthetic\":true}".to_vec(), Framing::Length);
+        let response = crate::http_get_json_command(&format!("{url}{path}"), curl());
+        let exchange = peer.join().unwrap();
+        assert!(exchange.response_complete);
+        assert!(exchange
+            .request
+            .starts_with(format!("GET {path} HTTP/1.1\r\n").as_bytes()));
+        assert_eq!(response.unwrap()["synthetic"], true);
+    }
+}
+
+#[test]
+fn post_glob_characters_are_one_literal_http_target() {
+    for path in ["/case{a,b}", "/case[1-2]"] {
+        let (url, peer) = fixture(200, b"{\"synthetic\":true}".to_vec(), Framing::Length);
+        let body = "synthetic-single-target-body";
+        let response = http_post_command(
+            &format!("{url}{path}"),
+            body,
+            5,
+            Some("synthetic-bearer"),
+            curl(),
+        );
+        let exchange = peer.join().unwrap();
+        assert!(exchange.response_complete);
+        assert!(exchange
+            .request
+            .starts_with(format!("POST {path}/prove HTTP/1.1\r\n").as_bytes()));
+        assert!(exchange.request.ends_with(body.as_bytes()));
+        assert_eq!(response.unwrap(), "{\"synthetic\":true}");
+    }
+}
+
+#[test]
+fn scheme_less_loopback_http_remains_compatible() {
+    let (url, peer) = fixture(200, b"{\"synthetic\":true}".to_vec(), Framing::Length);
+    let response = crate::http_get_json_command(url.strip_prefix("http://").unwrap(), curl());
+    assert!(peer.join().unwrap().response_complete);
+    assert_eq!(response.unwrap()["synthetic"], true);
+
+    let (url, peer) = fixture(200, b"{\"synthetic\":true}".to_vec(), Framing::Length);
+    let response = http_post_command(url.strip_prefix("http://").unwrap(), "{}", 5, None, curl());
+    assert!(peer.join().unwrap().response_complete);
+    assert_eq!(response.unwrap(), "{\"synthetic\":true}");
+}
+
+#[test]
+fn file_protocol_cannot_supply_attestation_or_receive_proof_body() {
+    // Only an owned public fixture is used; no operator files are read.
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("arcora-http-only-{}-{nonce}", std::process::id()));
+    std::fs::create_dir(&dir).unwrap();
+    struct OwnedDir(std::path::PathBuf);
+    impl Drop for OwnedDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _owned = OwnedDir(dir.clone());
+    let bytes = b"{\"synthetic-public-canary\":true}";
+    let file = dir.join("prove");
+    std::fs::write(&file, bytes).unwrap();
+    let url = format!("file://{}", file.display());
+    let get_error = crate::http_get_json_command(&url, curl()).unwrap_err();
+    assert!(get_error.starts_with("attestation HTTP transport exit "));
+    assert!(!get_error.contains("synthetic-public-canary"));
+    assert!(!get_error.contains(&url));
+
+    let post_error = http_post_command(
+        &format!("file://{}", dir.display()),
+        "synthetic-proof-input",
+        5,
+        Some("synthetic-bearer"),
+        curl(),
+    )
+    .unwrap_err();
+    assert!(matches!(post_error, ProverClientError::Http(ref message)
+        if message.starts_with("prover HTTP transport exit ")
+        && !message.contains("synthetic-bearer")
+        && !message.contains("synthetic-proof-input")
+        && !message.contains("synthetic-public-canary")));
+    assert_eq!(std::fs::read(file).unwrap(), bytes);
+}

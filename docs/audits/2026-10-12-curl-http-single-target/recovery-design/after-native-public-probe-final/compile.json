@@ -1,0 +1,32 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "--edition=2021",
+    "--crate-name",
+    "owned_request_admission_after",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/recovery-design/after-native-public-probe-final/probe.rs",
+    "-L",
+    "dependency=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps",
+    "--extern",
+    "serde_json=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libserde_json-1f00db33053c319f.rlib",
+    "-o",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/recovery-design/after-native-public-probe-final/probe"
+  ],
+  "exit_code": 0,
+  "seconds": 2.873012791038491,
+  "source_sha256": "168133c17e8b6bf61d5209cd3ed93a4aeab9793d0d828d4a13c0ed9406645e78",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "extracted_function_sha256": {
+    "http_get_json": "d715b5be7740313f607c281baa204e5037ca64bf326a7a17e032f6c3ea55627e",
+    "http_get_json_command": "e64e4030b182c28f88f77f2468ef9fdf5f8ea8fe23b24bbb7baa5915a3985dd0"
+  },
+  "post_function_sha256": {
+    "prove_curl_args": "5c06b6dcb0f70fa5e865da3cf4d884978af2276f53d7873ab8f18c35cd3aa9ef",
+    "split_status": "1bf9daab1b8ebec040e0932d251a1360ed48b6df75ae31c0651dd714e12400c3",
+    "http_post": "88143fe0666758a6dfa87b922628b134320029a106c5e6a3445c407484a8e437",
+    "http_post_command": "75fd3fa002b06f679a57fce31faf50078e62d85ee4b7d2008d3160bfe9f9dd48"
+  },
+  "both_GET_bodies_byte_identical": true,
+  "serde_rlib_sha256": "26a1f894e935b4cc6cb47070d30802071e3c735b071c532f3d41f2d96c36a215"
+}
