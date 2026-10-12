@@ -26,6 +26,15 @@ mod observation;
 use clock_binding::ClockConfig;
 use observation::{abi_bool, abi_u128, abi_u64, CanonicalRead};
 
+impl L1 {
+    /// Resolved public configuration only: no RPC, key, URL or registration read.
+    pub(crate) fn public_clock_identity(&self) -> Option<(u64, [u8; 20])> {
+        self.clock
+            .as_ref()
+            .map(|clock| (clock.chain_id, clock.verifier))
+    }
+}
+
 /// keccak256("Deposit(address,bytes32,uint256,uint64,bytes32)") — the vault's deposit
 /// log topic0 for the SEC-019 event `Deposit(address indexed from, bytes32 indexed
 /// ownerCommit, uint256 amount, uint64 id, bytes32 newTip)`. Recomputed for the new

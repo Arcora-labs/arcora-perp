@@ -107,9 +107,14 @@ mod order_log;
 #[cfg(test)]
 mod price_lifecycle_tests;
 mod prover_client;
+mod public_identity;
+#[cfg(test)]
+mod public_identity_tests;
 mod recovery_checkpoint;
 mod report_archive_binding;
 mod rollback_journal;
+#[path = "../../service-identity/public.rs"]
+mod service_identity;
 mod service_policy;
 #[cfg(test)]
 mod service_policy_integration_tests;
@@ -8172,6 +8177,7 @@ fn build_router_with_policy(
 ) -> Router {
     let mut router = Router::new()
         .route("/api/state", get(get_state))
+        .route("/identity", get(public_identity::get))
         // SEC-020 Task 4: this host's quote for the peer's handshake half —
         // read-only, unauthenticated by design (a quote is public evidence).
         .route("/attest", get(get_attest))

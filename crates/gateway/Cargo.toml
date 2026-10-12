@@ -57,3 +57,6 @@ tokio = { version = "1", features = ["test-util"] }
 # S1: real-socket /v1/ws tests (session revocation after API-key rotation).
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+
+[build-dependencies]
+serde_json = "1"

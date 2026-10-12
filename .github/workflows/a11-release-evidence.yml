@@ -26,6 +26,8 @@ jobs:
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
           python3 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py
           python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_observer.py
+          python3 -m unittest discover -s scripts/local-verification -p test_service_build_identity.py
+          python3 -m unittest discover -s scripts/local-verification -p test_service_identity_preflight.py
           python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py
           python3 -m unittest discover -s scripts/local-verification -p test_gateway_restore_drill.py
           python3 -m unittest discover -s scripts/local-verification -p test_repository_policy.py
@@ -56,6 +58,25 @@ jobs:
             cargo-audit.json
             cargo-audit-*.json
             pnpm-audit.json
+  public-service-identity:
+    name: public service identity (no proving)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scripts/local-verification/service-identity-harness
+      - name: Check the exact public handler sources are formatted
+        run: cargo fmt --manifest-path scripts/local-verification/service-identity-harness/Cargo.toml --check
+      - name: Owned HTTP service identity fixtures without SDK or backend startup
+        run: cargo test --locked --manifest-path scripts/local-verification/service-identity-harness/Cargo.toml -- --nocapture
+      - name: Lint the dependency-light identity surface
+        run: cargo clippy --locked --manifest-path scripts/local-verification/service-identity-harness/Cargo.toml --all-targets -- -D warnings
   release-regression:
     name: release regression
     runs-on: ubuntu-latest
