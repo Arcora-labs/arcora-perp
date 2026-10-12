@@ -1,0 +1,709 @@
+{
+  "schema": "arcora-candidate-public-input-inventory/v1",
+  "observed_utc": "2026-10-12T09:10:40.038498+00:00",
+  "checkout": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "head": "8f5e97bc690c1d9a6d796fdc3725526d283e077d",
+  "method": {
+    "tracked_public_files_only": true,
+    "original_checkouts_filenames_only": true,
+    "dotenv_read": false,
+    "secret_key_credential_files_read": false,
+    "process_environment_read": false,
+    "running_processes_inspected": false,
+    "rpc_calls": 0,
+    "http_service_calls": 0,
+    "feed_discovery": false,
+    "transactions": false,
+    "builds_tests_or_services_started": false,
+    "source_git_mutations": false,
+    "running_service_identity_verified": false
+  },
+  "public_source_sha256": {
+    "contracts/deployments/base-sepolia.json": {
+      "sha256": "d666470e5b52af47a10e1bfd06ef5ed70a95cc146a7e0b33a50706988c2e528e",
+      "bytes": 6167
+    },
+    "docs/audits/2026-10-09-remaining-work/manifest-public-config.example.json": {
+      "sha256": "dd0b5a3369423bf85bd593fa3fee9cad9cade3869bac66109d0a2775e824aa9b",
+      "bytes": 1195
+    },
+    "docs/audits/2026-10-12-chainlink-offline-finalization/identity-demo/synthetic-public-config.json": {
+      "sha256": "fe9d0252c9b3597b86d1caa0c2eb17689976160efa7a40e39e5ddedd334c22fe",
+      "bytes": 1920
+    },
+    "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/owned-public-config.json": {
+      "sha256": "812e7ef45fa491c281ecfd650c3294e90d9e4a27ca8fb030b7c93adce9786184",
+      "bytes": 1918
+    },
+    "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/expected-public-policy.json": {
+      "sha256": "5164d11364b66f61439865dbdde4e0c5828da92d2b3137c0bf029c96f50e2760",
+      "bytes": 888
+    },
+    "docs/CHAINLINK_CANDIDATE_IDENTITY.md": {
+      "sha256": "0cc6680381be3377d16c48481dac6f56ec1d60969824707a3d1d48e595fa082b",
+      "bytes": 7715
+    },
+    "docs/CHAINLINK_TARGET_OBSERVER.md": {
+      "sha256": "14e9543dc2a9608991aa28a1c8319aca1c3bb6a1afb2c27bc96fbbd25d04ffb7",
+      "bytes": 9747
+    },
+    "docs/ACTIVE_WORK.md": {
+      "sha256": "3af9d3f501513d32707ec89d1aa766cc601e5d7389071df44f0f24e99378706c",
+      "bytes": 33636
+    },
+    "docs/RELEASE_MANIFEST.md": {
+      "sha256": "6f494804dc87156e6697a005cc56b2034ba1898740c3d66bd91351d042f9890a",
+      "bytes": 12397
+    },
+    "docs/REDEPLOY-CC-RUNBOOK.md": {
+      "sha256": "fbd9ad96f5a968f4be1c7c29a194f9b4871fa48d5c4b5da173e6c74cd7a59283",
+      "bytes": 16533
+    },
+    "crates/gateway/README.md": {
+      "sha256": "1fdca9159ce93dadfd2f58f6ccc68632f31099016763b9937a3971945205e426",
+      "bytes": 7690
+    },
+    "crates/prover-service/README.md": {
+      "sha256": "505539828fe172215f2db6ae300196374caf732753f7e48d1b7bed3937117e16",
+      "bytes": 3257
+    },
+    "crates/prover-service/src/main.rs": {
+      "sha256": "ac76b7ba7d16dede1b6e9748728c60bca97f46c370d19249a37d5e0a19a44cbc",
+      "bytes": 24056
+    },
+    "crates/prover-service/build.rs": {
+      "sha256": "7fd92f8513312a71c50c125f096625f5e322c6acf1544b75fc08e73a913b6664",
+      "bytes": 182
+    },
+    "crates/gateway/src/main.rs": {
+      "sha256": "c455af6d036f99f2d81b7df2a8b77663579409ed4cb144c6e9830c76fbd700cd",
+      "bytes": 809979
+    },
+    "crates/gateway/src/report_archive_binding.rs": {
+      "sha256": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+      "bytes": 45586
+    },
+    "crates/gateway/src/l1.rs": {
+      "sha256": "73047824d4b2badc34c1a34b25d6d044be01578e287d27ebddf0815c412c6499",
+      "bytes": 70216
+    }
+  },
+  "public_configuration_filename_search": [
+    "docs/audits/2026-10-09-remaining-work/manifest-public-config.example.json",
+    "docs/audits/2026-10-10-cpu-gates/evidence/anvil-operator-policy-final.json",
+    "docs/audits/2026-10-12-chainlink-offline-finalization/identity-demo/synthetic-public-config.json",
+    "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/expected-public-policy.json",
+    "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/owned-public-config.json",
+    "scripts/local-verification/test_operator_policy.py"
+  ],
+  "public_inputs": [
+    {
+      "path": "contracts/deployments/base-sepolia.json",
+      "classification": "historical_legacy_public_deployment_record",
+      "declared_network": "base-sepolia",
+      "declared_chain_id": 84532,
+      "declared_date": "2026-07-11",
+      "declared_rpc": "https://sepolia.base.org",
+      "declared_frontend_gateway": "https://perp.arcoralabs.xyz",
+      "contracts": {
+        "DarkPerpSettlement": "0x08695Aa7127AA50E164042Dc1328E8079A3a4f6F",
+        "CollateralVault": "0x57e951F6a378E00e4F1b26510380E089D7c07b8B",
+        "SP1ZkVerifier": "0x8012F3b35B9884f86a3F8f39B79e82eC410E1160",
+        "MockUSDC": "0x8a52d127b556465F613766b903B717e19b3eaE7B"
+      },
+      "program_vkey": "0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed",
+      "candidate_approved": false,
+      "current_chain_or_service_observed": false,
+      "missing_candidate_graph_roles": [
+        "clock_verifier",
+        "oracle_wrapper",
+        "verifier_proxy",
+        "uptime_feed"
+      ],
+      "note": "Four-address July record; no fresh target/runtime/service observation; historical narrative is not current authority."
+    },
+    {
+      "path": "docs/audits/2026-10-09-remaining-work/manifest-public-config.example.json",
+      "classification": "synthetic_local_reviewed_v2_example",
+      "chain_id": 31337,
+      "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+      "candidate_approved": false
+    },
+    {
+      "path": "docs/audits/2026-10-12-chainlink-offline-finalization/identity-demo/synthetic-public-config.json",
+      "classification": "synthetic_offline_candidate_declaration",
+      "chain_id": 84532,
+      "addresses": {
+        "clock_verifier": "0x0000000000000000000000000000000000001100",
+        "oracle_wrapper": "0x0000000000000000000000000000000000001101",
+        "settlement": "0x0000000000000000000000000000000000001102",
+        "sp1_adapter": "0x0000000000000000000000000000000000001103",
+        "sp1_gateway": "0x0000000000000000000000000000000000001104",
+        "sp1_verifier": "0x0000000000000000000000000000000000001105",
+        "token": "0x0000000000000000000000000000000000001106",
+        "uptime_feed": "0x0000000000000000000000000000000000001107",
+        "vault": "0x0000000000000000000000000000000000001108",
+        "verifier_proxy": "0x0000000000000000000000000000000000001109"
+      },
+      "candidate_approved": false,
+      "real_target_observed": false
+    },
+    {
+      "path": "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/owned-public-config.json",
+      "classification": "owned_disposable_anvil_public_config",
+      "chain_id": 84532,
+      "network": 0,
+      "addresses": {
+        "clock_verifier": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "oracle_wrapper": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+        "settlement": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6",
+        "sp1_adapter": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "sp1_gateway": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "sp1_verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+        "token": "0x8a791620dd6260079bf849dc5567adc3f2fdc318",
+        "uptime_feed": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "vault": "0x610178da211fef7d417bc0e6fed39f05609ad788",
+        "verifier_proxy": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+      },
+      "expected_runtime_code_hashes": {
+        "clock_verifier": "0x520d51ed5b7b9a4fb94638c8d88165b85fe519e60838ac52523575f30b78ed83",
+        "oracle_wrapper": "0xa53d94e03fe1c35b11f9598b7f576f3ccb7b9e4fbb004ee18cd6aebf314be55e",
+        "settlement": "0xfcf990184f9457fdc61cb6443bc54033dc6ec6e0495a09673bd9f85eed691445",
+        "sp1_adapter": "0xdc57f23b513fec1c37d6835af05a25511dfbca1bb127f576d9ec61b19116f487",
+        "sp1_gateway": "0xf860eeb60c082c8ae9ca70d3c121f33ab45364b9ef7deb21cf61d269208e1061",
+        "sp1_verifier": "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+        "token": "0xbdde6a01df409ebbb239944bc0f6d50906df7617f45d2c3a6a1cec295349877f",
+        "uptime_feed": "0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162",
+        "vault": "0xcf902c7b8d13345d4f63a64a25e4e2a1ceacf46a13c5a08a43eea8c44ffc3be7",
+        "verifier_proxy": "0x858ed0f5fd301e0945c3e383f84e15b8b096f9c0dc00a567ad60cc81a81a9ed8"
+      },
+      "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+      "clock": {
+        "clock_skew_ms": 0,
+        "max_window_ms": 2000
+      },
+      "oracle_policy_hash": "0x3131313131313131313131313131313131313131313131313131313131313131",
+      "sequencer_grace_seconds": 10,
+      "candidate_approved": false,
+      "public_chain_target_observed": false,
+      "scope": "Seven real contract artifacts plus mocked token/DON proxy/uptime on owned local Anvil; declared chain ID84532 does not imply Base Sepolia deployment."
+    },
+    {
+      "path": "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/expected-public-policy.json",
+      "classification": "owned_disposable_anvil_operator_policy",
+      "public_policy": {
+        "operator_policy": {
+          "clock_verifier": {
+            "configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          },
+          "settlement": {
+            "challenge_bond_wei": 1000,
+            "challenge_window_blocks": 50,
+            "enclave_signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "final_settle_grace_blocks": 10,
+            "governance": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "inclusion_deadline_seconds": 600,
+            "liveness_timeout_blocks": 100,
+            "sequencer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          },
+          "sp1_gateway": {
+            "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          },
+          "vault": {
+            "gateway_signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+          }
+        },
+        "oracle_configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "runtime_hash_algorithm": "keccak256-evm",
+        "schema": "arcora-chainlink-target-policy/v1"
+      },
+      "operator_approved": false,
+      "economic_policy_approved": false
+    }
+  ],
+  "candidate_fixed_local_program": {
+    "elf_path": "contracts/integration/fixtures/chainlink-candidate-v1",
+    "elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+    "historical_program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+    "witness_domain": "DPCLK3",
+    "inner_clock_proof_version": 2,
+    "fresh_build_setup_proof_service_claim": false
+  },
+  "tracked_service_interface": {
+    "gateway": {
+      "source": "crates/gateway/src/main.rs",
+      "documentation": "crates/gateway/README.md",
+      "documented_default_bind": "0.0.0.0:8080",
+      "documented_override_name": "PORT",
+      "existing_public_state_route": "/api/state",
+      "authoritative_candidate_identity_endpoint_found": false,
+      "public_config_names": [
+        "PROVER_URL",
+        "L1_CHAIN_ID",
+        "L1_SETTLEMENT",
+        "L1_VAULT",
+        "L1_USDC",
+        "CLOCK_BOUND_VERIFIER",
+        "L1_RPC",
+        "L1_RPC_WITNESS",
+        "L1_ALLOW_MOCK_PROOF",
+        "DARKPERP_CHAINLINK_ARCHIVE",
+        "DARKPERP_CHAINLINK_ARCHIVE_DIR",
+        "DARKPERP_CHAINLINK_POLICY_JSON"
+      ],
+      "candidate_submission": "runtime explicitly HOLD/unsupported; test-only offline coordinator is not live route"
+    },
+    "prover": {
+      "source": "crates/prover-service/src/main.rs",
+      "build_source": "crates/prover-service/build.rs",
+      "documentation": "crates/prover-service/README.md",
+      "documented_default_bind": "127.0.0.1:8091",
+      "documented_override_name": "PROVER_BIND",
+      "read_routes": {
+        "/vkey": "single backend-derived vkey field",
+        "/measurement": "single measurement field"
+      },
+      "attestation_route": "/attest",
+      "proof_mutation_route_not_called": "/prove",
+      "build_target": "../sp1-guest (existing perp-core-guest, separate from chainlink candidate ELF)",
+      "identity_gaps": [
+        "No public ELF SHA or candidate witness-domain identity response",
+        "No checked running binary/source/build/config/target pins endpoint",
+        "No candidate-specific program-service bridge or proof route accepted by this inventory"
+      ]
+    },
+    "deployment_service_manifests_found": false,
+    "actual_runtime_config_values_read": false,
+    "warning": "Documentation defaults and historical service narratives are not verified running endpoint configuration."
+  },
+  "missing_authoritative_public_inputs": [
+    "Explicit operator-approved Base/Base Sepolia target configuration: ten distinct addresses and current full deployed runtime Keccak hashes.",
+    "Approved oracle policy hash, wrapper proxy, uptime feed, grace and clock limits; these cannot be promoted from mock fixtures or discovered by this task.",
+    "Separate approved target operator policy: sequencing/enclave/governance/gateway/configurator/owner authorities and economic/liveness values.",
+    "Explicit anonymous root-path RPC endpoint selected for read-only target observation, with acceptance trust boundary understood.",
+    "Explicit public gateway/prover endpoints and expected running binary/source/ELF/vkey/domain/config identities; no credential material.",
+    "Fresh current-checkout candidate manifest and resulting read-only target observation for actual approved inputs; historical local manifests remain historical.",
+    "Independent live DON/uptime, service attestation/key-release, proof/custody/operator acceptance; observer identity equality never closes these gates."
+  ],
+  "original_checkouts": [
+    {
+      "label": "primary",
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "dirty_file_count": 13,
+      "dirty_filenames_only": [
+        {
+          "status": " M",
+          "path": "crates/chainlink-streams-client/src/lib.rs"
+        },
+        {
+          "status": " M",
+          "path": "crates/chainlink-streams-client/src/transport_tests.rs"
+        },
+        {
+          "status": " M",
+          "path": "docs/ACTIVE_WORK.md"
+        },
+        {
+          "status": " M",
+          "path": "docs/CHAINLINK_STREAMS_CLIENT.md"
+        },
+        {
+          "status": "??",
+          "path": "crates/chainlink-streams-client/src/report_archive.rs"
+        },
+        {
+          "status": "??",
+          "path": "crates/chainlink-streams-client/src/report_archive_tests.rs"
+        },
+        {
+          "status": "??",
+          "path": "crates/chainlink-streams-client/src/report_pair.rs"
+        },
+        {
+          "status": "??",
+          "path": "docs/CHAINLINK_REPORT_ARCHIVE.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-10-10-chainlink-report-archive/README.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-10-10-chainlink-report-archive/client-release.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-10-10-chainlink-report-archive/publication-state.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-10-10-chainlink-report-archive/verification.json"
+        }
+      ],
+      "tracked_config_filenames_only": [
+        "contracts/deployments/base-sepolia.json",
+        "contracts/script/Deploy.s.sol",
+        "contracts/script/DeployGuard.sol",
+        "contracts/test/DeployGuard.t.sol",
+        "contracts/test/DeployVerifierEnv.t.sol",
+        "crates/chainlink-oracle/tests/fixtures/replay-v1/manifest.json",
+        "crates/gateway/src/listen_config.rs",
+        "docs/REDEPLOY-CC-RUNBOOK.md",
+        "docs/RELEASE_MANIFEST.md",
+        "docs/ui-migration/2026-10-07/deploy-labs.log",
+        "docs/ui-migration/2026-10-07/deploy-perp.log",
+        "docs/ui-migration/2026-10-07/labs-redesign/deploy.log",
+        "frontend/playwright.config.ts",
+        "frontend/tests/browser/vite.config.ts",
+        "frontend/tsconfig.json",
+        "frontend/vite.config.ts",
+        "frontend/vitest.config.ts",
+        "scripts/local-verification/read_deployment.py",
+        "scripts/local-verification/release_manifest.py",
+        "scripts/local-verification/test_read_deployment.py",
+        "scripts/local-verification/test_release_manifest.py"
+      ],
+      "contents_read": false
+    },
+    {
+      "label": "kimi",
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "dirty_file_count": 7,
+      "dirty_filenames_only": [
+        {
+          "status": "M ",
+          "path": "docs/ACTIVE_WORK.md"
+        },
+        {
+          "status": "M ",
+          "path": "docs/CHAINLINK_REPORT_ARCHIVE.md"
+        },
+        {
+          "status": "M ",
+          "path": "docs/CHAINLINK_STREAMS_CLIENT.md"
+        },
+        {
+          "status": "M ",
+          "path": "docs/audits/2026-10-11-chainlink-archive-gateway-binding/README.md"
+        },
+        {
+          "status": "A ",
+          "path": "docs/audits/2026-10-11-chainlink-archive-gateway-binding/evidence-recheck.json"
+        },
+        {
+          "status": "A ",
+          "path": "docs/audits/2026-10-11-chainlink-archive-gateway-binding/final-verification.json"
+        },
+        {
+          "status": "A ",
+          "path": "docs/audits/2026-10-11-chainlink-archive-gateway-binding/historical-notes.md"
+        }
+      ],
+      "tracked_config_filenames_only": [
+        "contracts/deployments/base-sepolia.json",
+        "contracts/script/Deploy.s.sol",
+        "contracts/script/DeployGuard.sol",
+        "contracts/test/DeployGuard.t.sol",
+        "contracts/test/DeployVerifierEnv.t.sol",
+        "crates/chainlink-oracle/tests/fixtures/replay-v1/manifest.json",
+        "crates/gateway/src/listen_config.rs",
+        "docs/REDEPLOY-CC-RUNBOOK.md",
+        "docs/RELEASE_MANIFEST.md",
+        "docs/ui-migration/2026-10-07/deploy-labs.log",
+        "docs/ui-migration/2026-10-07/deploy-perp.log",
+        "docs/ui-migration/2026-10-07/labs-redesign/deploy.log",
+        "frontend/playwright.config.ts",
+        "frontend/tests/browser/vite.config.ts",
+        "frontend/tsconfig.json",
+        "frontend/vite.config.ts",
+        "frontend/vitest.config.ts",
+        "scripts/local-verification/read_deployment.py",
+        "scripts/local-verification/release_manifest.py",
+        "scripts/local-verification/test_read_deployment.py",
+        "scripts/local-verification/test_release_manifest.py"
+      ],
+      "contents_read": false
+    },
+    {
+      "label": "dark",
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "dirty_file_count": 62,
+      "dirty_filenames_only": [
+        {
+          "status": " M",
+          "path": "crates/gateway/src/deposit_ingestion.rs"
+        },
+        {
+          "status": " M",
+          "path": "crates/gateway/src/deposit_ingestion/tests.rs"
+        },
+        {
+          "status": " M",
+          "path": "crates/gateway/src/execution_regression_tests.rs"
+        },
+        {
+          "status": " M",
+          "path": "crates/gateway/src/l1.rs"
+        },
+        {
+          "status": " M",
+          "path": "crates/gateway/src/main.rs"
+        },
+        {
+          "status": " M",
+          "path": "crates/gateway/src/snapshot.rs"
+        },
+        {
+          "status": " M",
+          "path": "crates/perp-core/tests/lifecycle.rs"
+        },
+        {
+          "status": " M",
+          "path": "frontend/src/api/client.ts"
+        },
+        {
+          "status": " M",
+          "path": "frontend/src/api/realClient.test.ts"
+        },
+        {
+          "status": " M",
+          "path": "frontend/src/api/realClient.ts"
+        },
+        {
+          "status": " M",
+          "path": "frontend/src/components/RecoveryPanel.test.tsx"
+        },
+        {
+          "status": " M",
+          "path": "frontend/src/components/RecoveryPanel.tsx"
+        },
+        {
+          "status": "??",
+          "path": "RobinX-Game-v0.1.zip"
+        },
+        {
+          "status": "??",
+          "path": "codex-session-01a0b067-e313-72b1-98be-46f653d0344c.md"
+        },
+        {
+          "status": "??",
+          "path": "crates/gateway/src/wind_down.rs"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/a01-loopback.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/build.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/checks.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/ci-pipeline.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/clippy.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/forge.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/frontend-repro.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/frontend-repro.test.ts.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/frontend.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/gateway-repro.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/gateway-repros.patch"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/graph-check.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/graph-contract.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/graph-release-report.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/main-ci-jobs.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/main-ci.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/manifest.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/npm-audit.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/npm-prod-audit.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/pr18-ci.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/profile-probe.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/profile-probe.rs.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/public-smoke.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/remaining-test-discovery.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/rust-audit.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-evidence/rust.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-fresh-audit.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/build.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/clippy-final.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/clippy.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/contracts-emergency.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/fmt.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/format-result.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/frontend.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/gateway-final.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/gateway.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/graph-check.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/graph-contract.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/graph-report.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/insolvency.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/manifest.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/review.txt"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/source-identity.json"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation-evidence/wind-down.log"
+        },
+        {
+          "status": "??",
+          "path": "docs/audits/2026-09-24-remediation.md"
+        },
+        {
+          "status": "??",
+          "path": "frontend/src/api/accountLifecycle.test.ts"
+        },
+        {
+          "status": "??",
+          "path": "kimi-seeklogo-small.png"
+        }
+      ],
+      "tracked_config_filenames_only": [
+        "contracts/deployments/base-sepolia.json",
+        "contracts/script/Deploy.s.sol",
+        "contracts/script/DeployGuard.sol",
+        "contracts/test/DeployGuard.t.sol",
+        "contracts/test/DeployVerifierEnv.t.sol",
+        "docs/REDEPLOY-CC-RUNBOOK.md",
+        "frontend/tsconfig.json",
+        "frontend/vite.config.ts"
+      ],
+      "contents_read": false
+    }
+  ],
+  "decision": {
+    "authoritative_real_candidate_public_config_found": false,
+    "authoritative_real_candidate_operator_policy_found": false,
+    "authoritative_running_candidate_service_config_found": false,
+    "release_gate": "HOLD",
+    "discovery_deferred_by_user": true,
+    "recommended_software_boundary": "New offline/read-only service-identity tooling and tests using explicit public declarations; do not reuse legacy target or Anvil policy as live approvals."
+  }
+}

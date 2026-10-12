@@ -1,0 +1,23 @@
+[package]
+name = "arcora-service-identity-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+axum = "=0.7.9"
+hex = "=0.4.3"
+serde_json = "=1.0.150"
+sha2 = "=0.10.9"
+tokio = { version = "=1.52.3", features = ["macros", "rt-multi-thread", "net", "io-util", "sync", "time"] }
+
+[dev-dependencies]
+tower = { version = "=0.5.3", features = ["util"] }
+
+[build-dependencies]
+serde_json = "=1.0.150"
+
+[workspace]

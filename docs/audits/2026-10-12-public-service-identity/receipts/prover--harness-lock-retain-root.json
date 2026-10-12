@@ -1,0 +1,28 @@
+{
+  "recorded_at": "2026-10-12T09:33:01.113764+00:00",
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "tree",
+    "--offline",
+    "--manifest-path",
+    "scripts/local-verification/service-identity-harness/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 0.324777166,
+  "initial_harness_sha256": "d8ef159945a0129acb7e35bf9dc5d5e2350f7859c925e3ca876e4265dbf50b9c",
+  "root_lock_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+  "final_harness_sha256": "f6e4e3556579a58a7780fa737bf4d23d2dbfb6e1216a34b735908d44ddf226f5",
+  "outside_root_lock_versions": {
+    "parking_lot": [
+      "0.12.5"
+    ],
+    "parking_lot_core": [
+      "0.9.12"
+    ],
+    "redox_syscall": [
+      "0.5.18"
+    ]
+  },
+  "root_lock_unchanged": true,
+  "scope": "Resolution only, no compilation: initial offline generation selected newer cached transitive packages; root lock was copied and resolver retained compatible existing versions as required."
+}

@@ -1,0 +1,4 @@
+     Locking 3 packages to highest compatible versions
+      Adding parking_lot v0.12.5
+      Adding parking_lot_core v0.9.12
+      Adding redox_syscall v0.5.18

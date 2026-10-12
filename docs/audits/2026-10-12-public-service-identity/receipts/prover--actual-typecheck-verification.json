@@ -1,0 +1,237 @@
+{
+  "verified_at": "2026-10-12T09:59:42.627311+00:00",
+  "passed": true,
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "check",
+    "--offline",
+    "--locked",
+    "--manifest-path",
+    "crates/prover-service/Cargo.toml",
+    "--bin",
+    "prover-service"
+  ],
+  "elapsed_seconds": 90.481059416,
+  "toolchain": {
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "python": "Python 3.14.6",
+    "protoc": "libprotoc 29.3"
+  },
+  "recorded_source_count": 24,
+  "source_before_after_equal": true,
+  "protected_source_count": 35,
+  "protected_base": "8f5e97bc690c1d9a6d796fdc3725526d283e077d",
+  "protected_sources": {
+    "Cargo.toml": {
+      "sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "bytes": 1303,
+      "equal_base": true
+    },
+    "Cargo.lock": {
+      "sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+      "bytes": 61374,
+      "equal_base": true
+    },
+    "crates/perp-core/Cargo.toml": {
+      "sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+      "bytes": 1807,
+      "equal_base": true
+    },
+    "crates/perp-core/README.md": {
+      "sha256": "a16df4038b43fd5c5d2d4ee86c03ff65b7787428e5beaf287b8aeedfd5ff7565",
+      "bytes": 1187,
+      "equal_base": true
+    },
+    "crates/perp-core/src/clock.rs": {
+      "sha256": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+      "bytes": 5275,
+      "equal_base": true
+    },
+    "crates/perp-core/src/commitment.rs": {
+      "sha256": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+      "bytes": 14030,
+      "equal_base": true
+    },
+    "crates/perp-core/src/engine.rs": {
+      "sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+      "bytes": 64121,
+      "equal_base": true
+    },
+    "crates/perp-core/src/error.rs": {
+      "sha256": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+      "bytes": 6103,
+      "equal_base": true
+    },
+    "crates/perp-core/src/fixed.rs": {
+      "sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+      "bytes": 3658,
+      "equal_base": true
+    },
+    "crates/perp-core/src/funding.rs": {
+      "sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+      "bytes": 11639,
+      "equal_base": true
+    },
+    "crates/perp-core/src/hash.rs": {
+      "sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+      "bytes": 13978,
+      "equal_base": true
+    },
+    "crates/perp-core/src/lib.rs": {
+      "sha256": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+      "bytes": 2695,
+      "equal_base": true
+    },
+    "crates/perp-core/src/market.rs": {
+      "sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+      "bytes": 15224,
+      "equal_base": true
+    },
+    "crates/perp-core/src/merkle.rs": {
+      "sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+      "bytes": 32537,
+      "equal_base": true
+    },
+    "crates/perp-core/src/note.rs": {
+      "sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+      "bytes": 3880,
+      "equal_base": true
+    },
+    "crates/perp-core/src/nullifier.rs": {
+      "sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+      "bytes": 4814,
+      "equal_base": true
+    },
+    "crates/perp-core/src/oracle.rs": {
+      "sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+      "bytes": 20415,
+      "equal_base": true
+    },
+    "crates/perp-core/src/order.rs": {
+      "sha256": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+      "bytes": 11364,
+      "equal_base": true
+    },
+    "crates/perp-core/src/position.rs": {
+      "sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+      "bytes": 19562,
+      "equal_base": true
+    },
+    "crates/perp-core/src/state.rs": {
+      "sha256": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+      "bytes": 22683,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/a06_wind_down.rs": {
+      "sha256": "9145f16150b1046794152850d9a5eebf66b5371ada844c721e0378ec02acdb1f",
+      "bytes": 4487,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/clock_anchor_vectors.rs": {
+      "sha256": "3de954ef1c622ed668aefd0246f6cd791f13f7f4823af4b852d1a124947b84fd",
+      "bytes": 1641,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/fuzz.rs": {
+      "sha256": "41ac4ba33e9ae9f8150d5c54395789f6f874b9f7fc70e512d3339f0eb482f7f0",
+      "bytes": 15924,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/lifecycle.rs": {
+      "sha256": "3eb6dd8aa95f0a39e495746bce02b8db67c36fae09324beba3992436d3200a47",
+      "bytes": 66644,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/local_s4.rs": {
+      "sha256": "56bd984b2b97afde830a2d1d350c03ce34f140d0aad4580dde05142efd40b904",
+      "bytes": 1875,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/oracle_trust_boundary.rs": {
+      "sha256": "f4ff71cabfa1f0c1fc2fa5f1c7816b13a9003bdb8cf3226bea590066e09405f8",
+      "bytes": 2027,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/rejection_boundary.rs": {
+      "sha256": "bed0ee3dd9224901ff402e99b90245afa95aae38917f499aafd1fdab006afd8a",
+      "bytes": 4089,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/sec022_fill_band.rs": {
+      "sha256": "67f043efea43a3e7b6f7b7553542841dc02be8a1822e434ec30419de4c8707f3",
+      "bytes": 24599,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/serde_witness.rs": {
+      "sha256": "6043300a8e735f3ce1845938b9bfa5c8aace25bc0e294d7d0329c064fbfc95f6",
+      "bytes": 12670,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/spend_binding.rs": {
+      "sha256": "e2a0e8e156501b35676587708dfe1c8ac9a4e807cd0e25a34eef92c17fb67883",
+      "bytes": 2794,
+      "equal_base": true
+    },
+    "crates/perp-core/tests/wind_down_policy.rs": {
+      "sha256": "40e5c6653bb94fc8f624b961f92f1cf3217a5c0775b93b685bde359fd50e862b",
+      "bytes": 2447,
+      "equal_base": true
+    },
+    "crates/sp1-guest/.gitignore": {
+      "sha256": "44c92e3a70ad3307b7056871c2bdb096d8bfa9373f5bf06a79bb6324a20ff2fb",
+      "bytes": 8,
+      "equal_base": true
+    },
+    "crates/sp1-guest/Cargo.lock": {
+      "sha256": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+      "bytes": 38998,
+      "equal_base": true
+    },
+    "crates/sp1-guest/Cargo.toml": {
+      "sha256": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+      "bytes": 649,
+      "equal_base": true
+    },
+    "crates/sp1-guest/src/main.rs": {
+      "sha256": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c",
+      "bytes": 2024,
+      "equal_base": true
+    }
+  },
+  "harness_versions_outside_root": {},
+  "compiler_sp1_elf_directive": {
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "bytes": 525824,
+    "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+    "guest_build_skipped": true,
+    "directive_file": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/debug/build/prover-service-35476488a5d7068b/output",
+    "directive_sha256": "e04caba6d88f670bda14bce898806881fa19010e19fea26958e4683779fda3ba"
+  },
+  "compiler_generated_build_identity": {
+    "algorithm": "sha256-canonical-source-map-v1",
+    "schema": "arcora-service-build-identity/v1",
+    "source_files": 371,
+    "source_sha256": "7fd564c8bf0ec2bd3434635a06ff046e9faec759996c78a2c6db47ed85b5619d"
+  },
+  "compiler_generated_build_identity_sha256": "cc1cc8da456cdfc5d7d1c51978d4f1b45bb643e18b6d488be9451806c5f40b33",
+  "artifacts": {
+    "actual-typecheck.json": {
+      "bytes": 9622,
+      "sha256": "37f6c3605c4e8fa6342a86f1d28300532e81c9c8ad1a3b80b9bc63de81e30a42"
+    },
+    "actual-typecheck.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-typecheck.stderr.log": {
+      "bytes": 17468,
+      "sha256": "0f0d2c82c01e0e514aab65a97a4af515abbf1dd9abe8c70772e11c51f41aa5ba"
+    },
+    "actual-typecheck-preparation.json": {
+      "bytes": 2599,
+      "sha256": "5545fb4be3fa1a1d95c832ba1179bc676d2beb4e55f296f2ffb9532039da83f3"
+    }
+  },
+  "scope": "GPU-free actual prover-service production TYPECHECK only; realSDK6.1 APIs compile. Existing reviewedELF in ownedtarget, own shadowCARGO_HOME, no actual service/backend/setup/prove/handshake or release acceptance. Registry native helper reused only as compile override and never executed."
+}

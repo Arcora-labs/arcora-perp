@@ -12,6 +12,12 @@ use std::sync::Arc;
 
 const ELF: Elf = include_elf!("perp-core-guest");
 
+/// Describe the embedded bytes and the key captured by the existing backend
+/// setup. Reading this descriptor never constructs a client or runs setup/prove.
+pub(crate) fn program_descriptor(vkey: &str) -> serde_json::Value {
+    crate::identity::program_descriptor(&*ELF, vkey)
+}
+
 /// Type aliases for the concrete SP1 CPU client + proving key. The `CpuProver`/
 /// `SP1ProvingKey` types are confirmed at build time on the SP1 prover machine (GB10).
 type Client = sp1_sdk::cpu::CpuProver;

@@ -1,0 +1,26 @@
+test_service_build_identity (unittest.loader._FailedTest) ... ERROR
+
+======================================================================
+ERROR: test_service_build_identity (unittest.loader._FailedTest)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_service_build_identity
+Traceback (most recent call last):
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/loader.py", line 436, in _find_test_path
+    module = self._get_module_from_name(name)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/loader.py", line 377, in _get_module_from_name
+    __import__(name)
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_service_build_identity.py", line 11, in <module>
+    import service_build_identity as build
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_build_identity.py", line 15, in <module>
+    import candidate_identity_manifest as identity
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 15, in <module>
+    import release_manifest as legacy
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/release_manifest.py", line 21, in <module>
+    sys.exit("Release preflight requires Python 3.11+ (tomllib).")
+SystemExit: Release preflight requires Python 3.11+ (tomllib).
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

@@ -1,0 +1,16 @@
+{
+  "recorded_at": "2026-10-12T09:33:43.056134+00:00",
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "tree",
+    "--offline",
+    "--manifest-path",
+    "scripts/local-verification/service-identity-harness/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "root_lock_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+  "final_harness_sha256": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d",
+  "outside_root_lock_versions": {},
+  "root_lock_unchanged": true,
+  "scope": "Minimal harness Tokio features only; no new dependency versions outside existing root lock, no compilation/backend."
+}

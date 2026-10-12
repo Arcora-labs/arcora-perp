@@ -1,0 +1,21 @@
+test_cli_unknown_arguments_never_echo_and_has_no_http_mode (test_service_identity_preflight.PreflightTests.test_cli_unknown_arguments_never_echo_and_has_no_http_mode) ... ok
+test_current_nullable_development_config_matches_when_explicitly_expected (test_service_identity_preflight.PreflightTests.test_current_nullable_development_config_matches_when_explicitly_expected) ... ok
+test_each_build_field_and_type_mismatch_refuses (test_service_identity_preflight.PreflightTests.test_each_build_field_and_type_mismatch_refuses) ... ok
+test_each_program_field_mismatch_refuses (test_service_identity_preflight.PreflightTests.test_each_program_field_mismatch_refuses) ... ok
+test_file_change_before_publication_writes_blocked (test_service_identity_preflight.PreflightTests.test_file_change_before_publication_writes_blocked) ... ok
+test_foreign_versions_and_wrong_roles_refuse (test_service_identity_preflight.PreflightTests.test_foreign_versions_and_wrong_roles_refuse) ... ok
+test_full_match_is_self_report_only_and_candidate_refused (test_service_identity_preflight.PreflightTests.test_full_match_is_self_report_only_and_candidate_refused) ... ok
+test_gateway_types_addresses_and_required_archive_refuse (test_service_identity_preflight.PreflightTests.test_gateway_types_addresses_and_required_archive_refuse) ... ok
+test_hash_is_recomputed_before_comparing_independent_expectation (test_service_identity_preflight.PreflightTests.test_hash_is_recomputed_before_comparing_independent_expectation) ... ok
+test_json_duplicate_depth_nonfinite_and_bound_refuse (test_service_identity_preflight.PreflightTests.test_json_duplicate_depth_nonfinite_and_bound_refuse) ... ok
+test_missing_or_private_fields_never_default_or_echo (test_service_identity_preflight.PreflightTests.test_missing_or_private_fields_never_default_or_echo) ... ok
+test_offline_public_files_match_and_output_never_clobbered (test_service_identity_preflight.PreflightTests.test_offline_public_files_match_and_output_never_clobbered) ... ok
+test_private_paths_and_symlinks_refuse_before_reads (test_service_identity_preflight.PreflightTests.test_private_paths_and_symlinks_refuse_before_reads) ... ok
+test_prover_admission_types_and_bounds_refuse (test_service_identity_preflight.PreflightTests.test_prover_admission_types_and_bounds_refuse) ... ok
+test_scope_and_capability_promotions_or_bool_aliases_refuse (test_service_identity_preflight.PreflightTests.test_scope_and_capability_promotions_or_bool_aliases_refuse) ... ok
+test_semantic_input_change_during_comparison_refuses (test_service_identity_preflight.PreflightTests.test_semantic_input_change_during_comparison_refuses) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.112s
+
+OK

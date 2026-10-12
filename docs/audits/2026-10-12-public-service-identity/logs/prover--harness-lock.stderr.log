@@ -1,0 +1,5 @@
+     Locking 72 packages to highest compatible versions
+      Adding axum v0.7.9 (available: v0.8.8)
+      Adding generic-array v0.14.7 (available: v0.14.9)
+      Adding serde_json v1.0.150 (available: v1.0.151)
+      Adding tokio v1.52.3 (available: v1.53.1)

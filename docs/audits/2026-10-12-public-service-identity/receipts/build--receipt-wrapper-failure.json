@@ -1,0 +1,7 @@
+{
+  "operation": "first helper receipt instrumentation",
+  "error": "KeyError Cargo.lock: Cargo.lock is not a reviewed guest source-map key; helper itself completed and wrote canonical artifact",
+  "helper_output": "target/candidate-service-validation-20261012/build/own-source/service-build-identity.json",
+  "helper_log": "target/candidate-service-validation-20261012/build/own-source-helper.log",
+  "source_repair_required": false
+}

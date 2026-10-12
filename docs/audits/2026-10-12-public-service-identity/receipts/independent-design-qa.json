@@ -1,0 +1,175 @@
+{
+  "schema": "arcora-public-service-independent-design-qa/v1",
+  "observed_utc": "2026-10-12T09:43:24.805733+00:00",
+  "source_sha256": {
+    "crates/service-identity/public.rs": "177aeb9180a1d082d5929ef1b19170dd3fab6ab6ec84ff683f5c6ed9e3489692",
+    "crates/gateway/src/public_identity.rs": "2388718907d436ca689b953393d796a1dd8080f9e61e0189fd96fc2af8fff956",
+    "crates/gateway/src/public_identity_tests.rs": "6d23a8e320af039391c0ab2c0f3ad687edbb4c75131c4237d07214dd68467f5e",
+    "crates/gateway/src/main.rs": "3e7372ce4c425b6c7dc228316e820749c1efe287ca8d3ab824c9bfdd33bcfe0f",
+    "crates/gateway/src/l1.rs": "50817b4be05214037f22d4cb0e79c4252cdaedff6bbc00e8560b6de993212a08",
+    "crates/gateway/src/service_policy.rs": "f8cbcdf5d68e99008f3f89e6e93dc0edb50f57bb38cdc7ca47b8b20c711faa0e",
+    "crates/gateway/src/clock_admission.rs": "1af4b733f271408c4ccdcf849d09380718525024a0bd946bdc94d7c4e8008354",
+    "crates/gateway/src/clock_client.rs": "ec1ce362b4ac286dc5b7574cb59bd05c9725d819a38933cb7e8a71b8f844482e",
+    "crates/prover-service/src/identity.rs": "f683bdead32fc3a016179967f50f5abab01661640bfdde9629021aea414e40fa",
+    "crates/prover-service/src/identity_tests.rs": "f7828db1877c29944f527890a2008d483e27f89f722de89af78c8285a6c4c761",
+    "crates/prover-service/src/main.rs": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548",
+    "crates/prover-service/src/sp1_prover.rs": "d03638a78c7c0c2991425ad4115382dac3df40d69fbb0fb4f244f6a21d6de9d2",
+    "scripts/local-verification/service_identity_preflight.py": "e99e4ffdb9c87732702b8f51b2cb89c45b2c30f164e91af063caaa3fe7efd947",
+    "scripts/local-verification/test_service_identity_preflight.py": "5ebd28c0aa35ae7d1749d924b82b4191c6d98528dd571e5168256e3a7c7c567b",
+    "scripts/local-verification/service_build_identity.py": "9db5758504a75d9d6fda50dc395463dba0b50fe5406e519801a23547c7220ef8",
+    "scripts/local-verification/test_service_build_identity.py": "5a97faef560445fa58449db8ba4091e050a8b4d7823f86e376c04638c671644b",
+    "crates/service-identity/build_support.rs": "910a030f4d4d3c6c28d03b216b030d59121d9955cbfaa1e3d1aa961933ee1a02",
+    "scripts/local-verification/service-identity-harness/build.rs": "fbf3e2c7c04d35033b30df387d25e640ec15faf1c13e5d20d3fd2b909f00d1b7",
+    "docs/PUBLIC_SERVICE_IDENTITY.md": "1abf0aa7b05d2475592a0f5c21b306270c9c56188352a83ad3379406d1fa7954"
+  },
+  "method": {
+    "read_only_source_review": true,
+    "python_ast_parse_only": true,
+    "new_tests_or_builds_run": false,
+    "network_http_rpc_calls": 0,
+    "proof_setup_or_handshake_run": false,
+    "environment_or_secret_files_read": false,
+    "source_or_git_mutation": false,
+    "owned_build_code_independence": "Own build helper inspected as composition review only; previous owned nine unit tests are not new independent execution evidence."
+  },
+  "scope": "Current typed public endpoint/checker boundary, not real service load, compiler/process attestation, public target/operator acceptance, DPCLK3 compatibility, live proof or production release.",
+  "checks": {
+    "gateway": {
+      "public_resolved_state_only": true,
+      "public_addresses_normalized": true,
+      "l1_urls_keys_paths_omitted": true,
+      "archive_try_lock_unavailable_refusal": true,
+      "missing_required_archive_refusal": true,
+      "proof_clock_registration_handshake_not_called": true,
+      "getter_clock_enabled_current_production_impl_is_constant_bool": true,
+      "successful_GET_cache_control": "no-store",
+      "existing_global_origin_admission_clock_body_middleware_retained": true,
+      "unsupported_methods_reach_existing_intake_policy_before_method_fallback": "pending actual focused verification"
+    },
+    "prover": {
+      "route_state_is_public_clone_without_backend_session_handles": true,
+      "actual_production_ELF_is_same_const_used_by_setup": true,
+      "vkey_is_captured_existing_startup_setup_value": true,
+      "request_does_not_start_setup_handshake_attest_or_prove": true,
+      "current_domains": [
+        "legacy",
+        "DPCLK2"
+      ],
+      "DPCLK3_supported": false,
+      "successful_GET_cache_control": "no-store",
+      "GET_POST_router_tests_present_but_not_run_in_this_audit": true,
+      "fixture_tests_honestly_label_injected_reviewed_ELF_not_loaded_service": true
+    },
+    "canonical": {
+      "recursive_object_key_sort_in_rust": true,
+      "current_schema_all_strings_ASCII_hex_or_fixed_literals": true,
+      "current_schema_numeric_values_integer_not_float": true,
+      "Rust_Python_current_public_config_canonical_domain_matches_by_source": true,
+      "generic_future_Unicode_float_interchange_proven": false,
+      "note": "Rust UTF8 string serialization differs from Python default ensure_ascii for arbitrary non-ASCII Values; current strict endpoint/checker schema admits no such dynamic strings."
+    },
+    "checker": {
+      "offline_supplied_public_files_only": true,
+      "independent_expected_fields_not_bootstrapped_from_responses": true,
+      "exact_roles_schema_field_sets_types": true,
+      "config_hash_recomputed_before_independent_expected_comparison": true,
+      "false_capabilities_scope_HOLD_enforced": true,
+      "candidate_compatibility_always_refused": true,
+      "input_content_identity_recheck": true,
+      "output_exclusive_no_clobber": true,
+      "diagnostics_no_input_value_echo": true,
+      "bounds": {
+        "input_bytes": 65536,
+        "source_files": 8192,
+        "declared_ELF_bytes": 67108864,
+        "json_depth_from_existing_parser": 64
+      },
+      "cooperative_filesystem_checks_not_hostile_transaction": true
+    },
+    "build_composition": {
+      "existing_public_source_inventory_reused": true,
+      "no_Git_or_credential_environment_query_in_python_builder": true,
+      "private_generated_cache_paths_excluded_before_source_content_reads": true,
+      "exact_file_watches_and_directories_without_excluded_descendants": true,
+      "broad_root_crates_vendor_watches_not_added": true,
+      "new_layout_explicit_rebuild_required_documented": true,
+      "checksum_helper_time_not_compiler_process_attestation_documented": true,
+      "Python311_prerequisite_from_existing_importer": true
+    }
+  },
+  "findings": [
+    {
+      "id": "Q1",
+      "severity": "pending_new_test_failure",
+      "path": "crates/gateway/src/public_identity_tests.rs",
+      "symbol": "public_identity_post_cannot_poll_body_or_change_state",
+      "finding": "New panic-on-body-poll POST test conflicts with unchanged global enforce_origin middleware, which buffers all admitted bodies before method fallback. Runtime remains nonmutating; this is an incorrect zero-intake assertion until actual focused execution resolves it.",
+      "evidence": "crates/gateway/src/service_policy.rs enforce_origin to_bytes(body) and main build_router_with_policy layer apply to identity path",
+      "recommended_scope": "Confirm root focused result; if reproduced, change only new test to bounded intake plus405/no mutation, preserving existing middleware."
+    }
+  ],
+  "documentation_notes": [
+    {
+      "path": "docs/PUBLIC_SERVICE_IDENTITY.md",
+      "note": "Checker declared ELF-size cap64MiB is not currently stated in guide; label as parser/current-schema bound rather than prover capacity."
+    }
+  ],
+  "parser_checks": {
+    "scripts/local-verification/service_identity_preflight.py": {
+      "syntax_parsed": true,
+      "imports": [
+        "argparse",
+        "hashlib",
+        "json",
+        "pathlib",
+        "re",
+        "stat",
+        "sys",
+        "candidate_identity_manifest"
+      ]
+    },
+    "scripts/local-verification/test_service_identity_preflight.py": {
+      "syntax_parsed": true,
+      "imports": [
+        "hashlib",
+        "json",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "unittest",
+        "unittest.mock",
+        "service_identity_preflight"
+      ]
+    },
+    "scripts/local-verification/service_build_identity.py": {
+      "syntax_parsed": true,
+      "imports": [
+        "argparse",
+        "os",
+        "pathlib",
+        "re",
+        "sys",
+        "tempfile",
+        "candidate_identity_manifest"
+      ]
+    },
+    "scripts/local-verification/test_service_build_identity.py": {
+      "syntax_parsed": true,
+      "imports": [
+        "contextlib",
+        "io",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "unittest",
+        "unittest",
+        "service_build_identity"
+      ]
+    }
+  },
+  "test_results_claimed_by_this_audit": null,
+  "status": "REVIEW_WITH_PENDING_TEST_FINDING",
+  "release_gate": "HOLD"
+}

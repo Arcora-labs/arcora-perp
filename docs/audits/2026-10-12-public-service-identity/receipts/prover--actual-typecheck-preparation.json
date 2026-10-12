@@ -1,0 +1,58 @@
+{
+  "prepared_at": "2026-10-12T09:54:29.505006+00:00",
+  "registry_clones": [
+    {
+      "kind": "src",
+      "command": [
+        "/bin/cp",
+        "-cR",
+        "/Users/huseyinarslan/.cargo/registry/src",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-home/registry/src"
+      ],
+      "exit_code": 0,
+      "seconds": 12.469156458,
+      "stderr": ""
+    },
+    {
+      "kind": "cache",
+      "command": [
+        "/bin/cp",
+        "-cR",
+        "/Users/huseyinarslan/.cargo/registry/cache",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-home/registry/cache"
+      ],
+      "exit_code": 0,
+      "seconds": 0.36045866599999954,
+      "stderr": ""
+    },
+    {
+      "kind": "index",
+      "command": [
+        "/bin/cp",
+        "-cR",
+        "/Users/huseyinarslan/.cargo/registry/index",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-home/registry/index"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4574259170000001,
+      "stderr": ""
+    }
+  ],
+  "elf": {
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "bytes": 525824,
+    "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+    "origin": "existing committed reviewed fixture, no guest build"
+  },
+  "protoc": {
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/protoc",
+    "sha256": "bdc43e54153911f625a50baf7d4f6bc05008712964141baedd5a61122f93a016",
+    "origin": "copied existing owned /tmp tool, no install"
+  },
+  "native_runner": {
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/sp1-native-runner-existing",
+    "sha256": "a6bdc20e0666c6f68ba8965c7dbed87ba0fa067548800cc053f1a26c6c61b680",
+    "origin": "copied existing cached SDK6.1.0 helper, compile override only; never executed"
+  },
+  "scope": "Fresh owned registry COW shadow, no copied credentials/config, no mutation to SDK source/global cache/guest/source/pins. Only owned target contains ELF/tool copies."
+}

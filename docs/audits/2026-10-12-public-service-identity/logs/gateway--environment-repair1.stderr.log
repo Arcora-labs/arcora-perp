@@ -1,0 +1,8 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.50s
+     Running unittests src/main.rs (target/debug/deps/gateway-161891a33a9c724c)
+
+thread 'public_identity_tests::public_identity_post_cannot_poll_body_or_change_state' (14994409) panicked at crates/gateway/src/public_identity_tests.rs:89:13:
+identity POST must never poll a request body
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `-p gateway --bin gateway`

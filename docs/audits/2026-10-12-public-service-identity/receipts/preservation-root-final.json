@@ -1,0 +1,131 @@
+{
+  "schema": "arcora-service-identity-root-final-preservation/v1",
+  "observed_utc": "2026-10-12T10:08:16.035096+00:00",
+  "base_main": "8f5e97bc690c1d9a6d796fdc3725526d283e077d",
+  "baseline_path": "target/candidate-service-validation-20261012/baseline.json",
+  "baseline_sha256": "18284fe45ba72833851240de940d43960e2caf866a11cbc474c78c158dfa810e",
+  "tracked_baseline_files": 2793,
+  "tracked_unchanged": 2782,
+  "allowed_existing_paths": [
+    ".gitattributes",
+    ".github/workflows/a11-release-evidence.yml",
+    "crates/gateway/Cargo.toml",
+    "crates/gateway/src/l1.rs",
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/report_archive_binding.rs",
+    "crates/prover-service/Cargo.lock",
+    "crates/prover-service/Cargo.toml",
+    "crates/prover-service/build.rs",
+    "crates/prover-service/src/main.rs",
+    "crates/prover-service/src/sp1_prover.rs",
+    "docs/ACTIVE_WORK.md"
+  ],
+  "changed_existing_paths": [
+    ".gitattributes",
+    ".github/workflows/a11-release-evidence.yml",
+    "crates/gateway/Cargo.toml",
+    "crates/gateway/src/l1.rs",
+    "crates/gateway/src/main.rs",
+    "crates/prover-service/Cargo.lock",
+    "crates/prover-service/Cargo.toml",
+    "crates/prover-service/build.rs",
+    "crates/prover-service/src/main.rs",
+    "crates/prover-service/src/sp1_prover.rs",
+    "docs/ACTIVE_WORK.md"
+  ],
+  "unexpected_existing_changes": [],
+  "missing_existing_files": [],
+  "external": [
+    {
+      "name": "primary",
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "dirty_file_count": 13,
+      "dirty_files_hashed": 13,
+      "checks": {
+        "head_unchanged": true,
+        "status_unchanged": true,
+        "staged_binary_diff_unchanged": true,
+        "dirty_file_hashes_unchanged": true
+      },
+      "dirty_file_mismatches": [],
+      "passed": true
+    },
+    {
+      "name": "kimi",
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "dirty_file_count": 7,
+      "dirty_files_hashed": 7,
+      "checks": {
+        "head_unchanged": true,
+        "status_unchanged": true,
+        "staged_binary_diff_unchanged": true,
+        "dirty_file_hashes_unchanged": true
+      },
+      "dirty_file_mismatches": [],
+      "passed": true
+    },
+    {
+      "name": "dark",
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "dirty_file_count": 62,
+      "dirty_files_hashed": 62,
+      "checks": {
+        "head_unchanged": true,
+        "status_unchanged": true,
+        "staged_binary_diff_unchanged": true,
+        "dirty_file_hashes_unchanged": true
+      },
+      "dirty_file_mismatches": [],
+      "passed": true
+    }
+  ],
+  "external_total_dirty_files_hashed": 82,
+  "root_manifests": {
+    "Cargo.toml": {
+      "baseline_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "actual_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "byte_unchanged": true
+    },
+    "Cargo.lock": {
+      "baseline_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+      "actual_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+      "byte_unchanged": true
+    }
+  },
+  "pins": {
+    "reviewed21": {
+      "count": 21,
+      "mismatches": [],
+      "passed": true
+    },
+    "candidate9": {
+      "count": 9,
+      "mismatches": [],
+      "passed": true
+    },
+    "auxiliary2": {
+      "count": 2,
+      "mismatches": [],
+      "passed": true
+    }
+  },
+  "covered_source_inventory": {
+    "source_files": 371,
+    "source_sha256": "7fd564c8bf0ec2bd3434635a06ff046e9faec759996c78a2c6db47ed85b5619d",
+    "expected_source_files": 371,
+    "expected_source_sha256": "7fd564c8bf0ec2bd3434635a06ff046e9faec759996c78a2c6db47ed85b5619d",
+    "matches_frozen": true
+  },
+  "method": {
+    "tracked_sources_and_public_baseline_inputs_hashed": true,
+    "existing_published_AK_public_fixture_hash_only": true,
+    "credential_env_or_private_key_files_read": false,
+    "read_only_git_metadata_only": true,
+    "tests_builds_rpc_http_or_mutations": false
+  },
+  "scope": "Fresh static preservation/source-map check only; not new test execution, attestation, proof, service/target/custody acceptance or production release.",
+  "passed": true
+}

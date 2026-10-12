@@ -3,6 +3,11 @@
 //! key-release). `POST /prove` takes a sealed witness, opens+derives+proves+zeroizes, and
 //! returns the 6 roots, the commitment, and the real Groth16 proof.
 mod admission;
+mod identity;
+#[cfg(test)]
+mod identity_tests;
+#[path = "../../service-identity/public.rs"]
+mod service_identity;
 #[cfg(all(test, unix))]
 mod shutdown_tests;
 mod sp1_prover;
@@ -43,6 +48,7 @@ struct App {
     admission: Gate,
     limits: Limits,
     prover: AttestedProver<Sp1GnarkProver>,
+    identity: identity::PublicIdentity,
     vkey: String,
     measurement: Digest,
     /// SEC-020 Phase-2 (C3): this prover's per-boot ephemeral x25519 DH PUBLIC
@@ -83,6 +89,12 @@ struct ProveResp {
 
 fn hx(b: &[u8]) -> String {
     format!("0x{}", hex::encode(b))
+}
+
+impl FromRef<Arc<App>> for identity::PublicIdentity {
+    fn from_ref(app: &Arc<App>) -> Self {
+        app.identity.clone()
+    }
 }
 
 impl FromRef<Arc<App>> for Gate {
@@ -445,6 +457,14 @@ async fn main() {
         admission: admission.clone(),
         limits: limits.clone(),
         prover: AttestedProver::from_boxed(backend, seal_provider),
+        identity: identity::PublicIdentity::resolved(
+            sp1_prover::program_descriptor(&program_vkey),
+            m,
+            dev_insecure,
+            limits.max_concurrent,
+            limits.body_bytes,
+            limits.body_timeout,
+        ),
         vkey: program_vkey,
         measurement: m,
         pv_pub,
@@ -453,6 +473,7 @@ async fn main() {
         nv: NvidiaCcAttestor::detect(),
     });
     let router = Router::new()
+        .merge(identity::routes())
         .route("/prove", post(prove))
         .route("/vkey", get(vkey))
         .route("/measurement", get(measurement_ep))

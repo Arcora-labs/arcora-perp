@@ -1,0 +1,258 @@
+{
+  "acceptance_cases": [
+    "Public GET is read-only and bounded; no /prove, attest/handshake, registration, account or L1 method called.",
+    "Endpoint projection uses already selected public state; absent target/prover fields remain null/unknown, not synthesized defaults.",
+    "Source fingerprint changes on meaningful source/Cargo/lock/helper/addition changes; no source metadata-only GitHEAD equality gate.",
+    "ELF digest covers loaded bytes; wrong supplied ELF/key fails comparator and does not trigger setup/prove.",
+    "Current legacy/DPCLK2 prover is refused for DPCLK3 candidate acceptance before any proving/submission callback.",
+    "Strict role/version/key/domain/config matching; duplicate/extra fields and malformed/bounded responses fail.",
+    "No secrets or caller paths in payload/log; configured raw credentials and tokens never serialized.",
+    "Public identity and normal/missing/mock/candidate archive modes return honest self-report/HOLD, with no readiness or attestation promotion.",
+    "Owned in-process/loopback handler and build-helper tests establish software behavior only; no fake guest/build or auth escape to launch production prover."
+  ],
+  "actual_ELF_API_primary_source": {
+    "checked_from": "Installed6.1 local primary Rust sources, read-only; no SDK invocation or build performed.",
+    "include_macro": "sp1-build-6.1.0/src/lib.rs232-235 include_elf uses Elf::Static(include_bytes!(SP1_ELF_<name>))",
+    "primitive": "sp1-primitives-6.1.0/src/types.rs69 Elf::{Static(&static[u8]),Dynamic(Arc<[u8]>)},96 Deref<Target=[u8]>",
+    "recommended_byte_access": "SHA256(&*ELF); use same ELF constant supplied to client.setup(ELF).",
+    "sdk_reexport": "sp1-sdk-6.1.0/src/lib.rs69 pub use sp1_primitives::Elf"
+  },
+  "allowed_write": "Only this new ignored design artifact.",
+  "approved_actual_candidate_service_config_found": false,
+  "base_context": "Last confirmed main8f5e97bc690c1d9a6d796fdc3725526d283e077d after normal PR54 merge; source implementation may proceed separately after this design.",
+  "current_surfaces": [
+    {
+      "file": "crates/gateway/src/main.rs",
+      "gaps": [
+        "no role/build source fingerprint",
+        "no resolved public prover mode/capabilities",
+        "no ELF/vkey/config identity response"
+      ],
+      "locations": [
+        "3755 v1_status_json",
+        "7506 get_v1_status",
+        "8242 /v1/system/status",
+        "7687 get_state",
+        "8174 /api/state",
+        "825 get_attest"
+      ],
+      "note": "Do not use account-rich /api/state as service-identity payload; status is not build attestation.",
+      "public_data": [
+        "chainId",
+        "vault",
+        "mode",
+        "window/batch counters",
+        "settlement health",
+        "clock admission",
+        "optional attestation summary"
+      ]
+    },
+    {
+      "file": "crates/prover-service/src/main.rs",
+      "gaps": [
+        "no GET identity",
+        "no source fingerprint",
+        "no embedded ELF hash",
+        "no explicit supported witness/program kind",
+        "no usable service-wide readiness identity"
+      ],
+      "locations": [
+        "38 measurement placeholder",
+        "135 vkey",
+        "138 measurement_ep",
+        "295 attest",
+        "456-459 routes",
+        "335-336 backend setup/key",
+        "425-440 seal provider selection"
+      ],
+      "note": "measurement() is the fixed0xAB software placeholder. /attest is fail-closed; do not call /prove or weaken its session gate for preflight.",
+      "routes": [
+        "POST /prove",
+        "GET /vkey",
+        "GET /measurement",
+        "GET /attest"
+      ]
+    },
+    {
+      "backend": "SP1 CPU client with included perp-core-guest, legacy/DPCLK2; current candidate DPCLK3 unsupported",
+      "file": "crates/prover-service/src/sp1_prover.rs",
+      "locations": [
+        "13 const ELF",
+        "Sp1GnarkProver::new() setup and actual measured key",
+        "57-58 legacy/DPCLK2 witness comment"
+      ]
+    },
+    {
+      "file": "crates/attestation/src/nvidia_cc.rs",
+      "locations": [
+        "quote",
+        "verify",
+        "probe_cc_enabled"
+      ],
+      "note": "No successful CC backend path; production prover lacks an attested session and refuses startup. A public identity response cannot close this hardware/key-release gate."
+    }
+  ],
+  "interpretation": {
+    "actual_observed_process": "No process or endpoint observed in this design; future GET proves only that an endpoint returned bytes at a time.",
+    "attested_identity": "Requires independent binary/app measurement and nonce-bound verified attestation plus approved expected configuration; not supplied by these endpoints.",
+    "gates_remaining": [
+      "approved public target/policy/service declarations",
+      "real target and service observation",
+      "real DON/uptime health acceptance",
+      "fresh wallet/candidate proof and settlement/claim",
+      "NVIDIA CC/key release",
+      "independent review/custody/capacity/finality/recovery acceptance"
+    ],
+    "self_reported_identity": "Baked source fingerprint and actual ELF/key/config projection are useful declarations from that process; a proxy or malicious process can imitate them."
+  },
+  "kind": "read-only source/config inspection and minimal host-only implementation proposal",
+  "minimal_useful_packet": {
+    "available_archive_accessors": "report_archive_binding.rs:636 policy(),640 policy_binding()",
+    "build_fingerprint": "Canonical sorted public source-map SHA256 generated into OUT_DIR/service-build-identity.json and baked through include_str. Include the helper/generator, role host sources, relevant dependency sources, public Cargo manifests/locks. No GitHEAD identity requirement or caller-supplied fingerprint env override.",
+    "build_hooks": [
+      "New gateway/build.rs",
+      "Augment prover-service/build.rs while preserving existing sp1_build::build_program(\"../sp1-guest\") exactly"
+    ],
+    "cache_requirement": "Register public source directories/files and Cargo/lock/helper inputs for rerun, so added relevant files change fingerprint; exclude target/out/cache/dotenv/credential paths.",
+    "core_and_pins": "Root Cargo.toml is one of21 reviewed pins. Host main/build modules and standalone prover-service host manifests can change without changing21 reviewed/9 candidate runtime/2 auxiliary pins; guest/core/ELF/vkey untouched. sha2 runtime direct dependency needed only in prover-service; already present in gateway.",
+    "goal": "Read-only identity endpoints expose actual resolved public role/build/program/config facts currently missing, without enabling candidate transport or submission.",
+    "needed_L1_accessor": "Narrow readonly public clock config getter for immutable L1 clock.verifier/chain_id. Do not expose L1 RPC URLs, keystore paths/passwords or nonces.",
+    "privacy_omissions": [
+      "keys",
+      "seal root",
+      "session token/secret",
+      "raw environment",
+      "account/note state",
+      "keystore/archive/snapshot/attestation paths",
+      "credential-bearing URLs",
+      "quote bundle"
+    ],
+    "runtime_gateway_config": "Project already resolved Gw/App/L1 fields: chain/vault/settlement/token/clock verifier, actual none/mock/http prover kind, archive enabled plus policy().hash()/policy_binding(). No new RPC calls or environment reread inside GET.",
+    "runtime_prover_program": "Hash the actual included ELF bytes, not the reviewed fixture path; key comes from existing setup backend.vkey(). Publish legacy/DPCLK2 capability honestly, candidate_supported=false.",
+    "serialization_fields": [
+      "schema",
+      "role",
+      "evidence_kind=self_reported_unattested",
+      "build source fingerprint",
+      "resolved public config and its canonical hash",
+      "actual program ELF/key/wire where applicable",
+      "candidate_supported=false",
+      "candidate_submission_enabled=false",
+      "release_gate=HOLD"
+    ],
+    "shared_module": "Source-only pure DTO/helper module included by #[path] from both hosts, e.g. crates/service-identity/public.rs; do not add a root workspace member.",
+    "status_limits": "Do not infer ready/attested/approved from HTTP200, configured backend, measurement placeholder or source fingerprint. Preserve legacy submission state rather than declaring every legacy route disabled.",
+    "subsequent_comparator": "A strict anonymous bounded GET-only preflight may compare supplied expected build/config/ELF/key with two stable role responses. No actual approved service inputs exist yet; comparison is self-report matching and endpoint response observation, not process attestation."
+  },
+  "no_builds_or_tests": true,
+  "no_environment_or_secret_files_read": true,
+  "no_git_mutations": true,
+  "no_network_calls": true,
+  "no_source_edits": true,
+  "public_inputs_located": [
+    {
+      "classification": "Historical July pre-clock deployment/public domain record, not current candidate approval.",
+      "current_network_or_process_observed": false,
+      "missing": [
+        "ClockBoundVerifier",
+        "ChainlinkOracleVerifier",
+        "current service source/ELF/config identity"
+      ],
+      "old_key": "0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed",
+      "path": "contracts/deployments/base-sepolia.json"
+    },
+    {
+      "classification": "Stopped owned Anvil fixture; seven real local artifacts and mock token/DON/uptime. Not an approved public target.",
+      "path": "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/owned-public-config.json",
+      "service_endpoints_present": false
+    },
+    {
+      "classification": "Caller-owned local fixture policy, not independent operator or live economic approval.",
+      "path": "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/expected-public-policy.json"
+    }
+  ],
+  "release_gate": "HOLD",
+  "reviewed_source_fingerprints": [
+    {
+      "path": "contracts/deployments/base-sepolia.json",
+      "sha256": "d666470e5b52af47a10e1bfd06ef5ed70a95cc146a7e0b33a50706988c2e528e",
+      "size_bytes": 6167
+    },
+    {
+      "path": "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/owned-public-config.json",
+      "sha256": "812e7ef45fa491c281ecfd650c3294e90d9e4a27ca8fb030b7c93adce9786184",
+      "size_bytes": 1918
+    },
+    {
+      "path": "docs/audits/2026-10-12-chainlink-target-observer/cli-demo/expected-public-policy.json",
+      "sha256": "5164d11364b66f61439865dbdde4e0c5828da92d2b3137c0bf029c96f50e2760",
+      "size_bytes": 888
+    },
+    {
+      "path": "crates/gateway/src/main.rs",
+      "sha256": "c455af6d036f99f2d81b7df2a8b77663579409ed4cb144c6e9830c76fbd700cd",
+      "size_bytes": 809979
+    },
+    {
+      "path": "crates/gateway/src/prover_client.rs",
+      "sha256": "daacb0e32df1d2b551e677c1b39312839e5a9dcf9f38e7e5e38a7fe878a487c9",
+      "size_bytes": 74863
+    },
+    {
+      "path": "crates/gateway/src/l1.rs",
+      "sha256": "73047824d4b2badc34c1a34b25d6d044be01578e287d27ebddf0815c412c6499",
+      "size_bytes": 70216
+    },
+    {
+      "path": "crates/gateway/src/l1/clock_binding.rs",
+      "sha256": "0300e1869cce4fc5d63606bf217e936533c95dd5c434b05c8fdc2c9318b435ac",
+      "size_bytes": 14473
+    },
+    {
+      "path": "crates/gateway/src/report_archive_binding.rs",
+      "sha256": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+      "size_bytes": 45586
+    },
+    {
+      "path": "crates/prover-service/src/main.rs",
+      "sha256": "ac76b7ba7d16dede1b6e9748728c60bca97f46c370d19249a37d5e0a19a44cbc",
+      "size_bytes": 24056
+    },
+    {
+      "path": "crates/prover-service/src/sp1_prover.rs",
+      "sha256": "149005aaf5ee77b6c712e20bbafc07e04d4a5c82f99facc79815a1ff0622e4b3",
+      "size_bytes": 4668
+    },
+    {
+      "path": "crates/prover-service/build.rs",
+      "sha256": "7fd92f8513312a71c50c125f096625f5e322c6acf1544b75fc08e73a913b6664",
+      "size_bytes": 182
+    },
+    {
+      "path": "crates/prover-service/Cargo.toml",
+      "sha256": "050659e24acb67fdc7774a64fd807575ecaa01f0f57c7a2cf7715d5f0f6ae730",
+      "size_bytes": 1154
+    },
+    {
+      "path": "crates/attestation/src/nvidia_cc.rs",
+      "sha256": "6d8d2f3697d13b4b45500abe7387e56374d32b9c4ebe6938f8c5739ab6a1bd9c",
+      "size_bytes": 3182
+    },
+    {
+      "path": "scripts/local-verification/candidate_identity_manifest.py",
+      "sha256": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6",
+      "size_bytes": 18111
+    },
+    {
+      "path": "scripts/local-verification/release_manifest.py",
+      "sha256": "c9dbcadd5d2fcead58938d81ff2755cf2e326cf29c2cee9ba8a56dcae1aaebf2",
+      "size_bytes": 31698
+    },
+    {
+      "path": "scripts/local-verification/verify_clock_proof.py",
+      "sha256": "6399cdcecd6ad022257ffad32bb66c7082aa83469d929c48bd4caa36777128b5",
+      "size_bytes": 10859
+    }
+  ],
+  "schema": "arcora-candidate-service-design/v1"
+}

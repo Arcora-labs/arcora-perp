@@ -1,0 +1,14 @@
+test_build_artifact_is_canonical_replaceable_and_not_a_source_input (test_service_build_identity.ServiceBuildIdentityTests.test_build_artifact_is_canonical_replaceable_and_not_a_source_input) ... ok
+test_changed_and_added_public_inputs_require_new_identity (test_service_build_identity.ServiceBuildIdentityTests.test_changed_and_added_public_inputs_require_new_identity) ... ok
+test_cli_success_emits_only_public_rerun_paths (test_service_build_identity.ServiceBuildIdentityTests.test_cli_success_emits_only_public_rerun_paths) ... ok
+test_exact_canonical_source_map_not_commit_or_file_order (test_service_build_identity.ServiceBuildIdentityTests.test_exact_canonical_source_map_not_commit_or_file_order) ... ok
+test_excluded_private_generated_and_cache_inputs_are_never_opened (test_service_build_identity.ServiceBuildIdentityTests.test_excluded_private_generated_and_cache_inputs_are_never_opened) ... ok
+test_failed_generation_keeps_previous_artifact_and_has_no_fallback (test_service_build_identity.ServiceBuildIdentityTests.test_failed_generation_keeps_previous_artifact_and_has_no_fallback) ... ok
+test_missing_bounded_or_malformed_inventory_refuses (test_service_build_identity.ServiceBuildIdentityTests.test_missing_bounded_or_malformed_inventory_refuses) ... ok
+test_output_symlink_cannot_replace_foreign_data (test_service_build_identity.ServiceBuildIdentityTests.test_output_symlink_cannot_replace_foreign_data) ... ok
+test_public_symlink_refuses_without_reading_its_target (test_service_build_identity.ServiceBuildIdentityTests.test_public_symlink_refuses_without_reading_its_target) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.063s
+
+OK

@@ -1,0 +1,47 @@
+{
+  "schema": "arcora-service-identity-gateway-smoke-v1",
+  "observed_utc": "2026-10-12T09:40:39.076661+00:00",
+  "command": [
+    "/Users/huseyinarslan/.cargo/bin/cargo",
+    "+1.99.0",
+    "test",
+    "--locked",
+    "-p",
+    "gateway",
+    "public_identity",
+    "--",
+    "--nocapture"
+  ],
+  "exit_code": 101,
+  "elapsed_seconds": 14.223690291983075,
+  "source_before": {
+    "crates/gateway/src/main.rs": "3e7372ce4c425b6c7dc228316e820749c1efe287ca8d3ab824c9bfdd33bcfe0f",
+    "crates/gateway/src/l1.rs": "50817b4be05214037f22d4cb0e79c4252cdaedff6bbc00e8560b6de993212a08",
+    "crates/gateway/src/public_identity.rs": "2388718907d436ca689b953393d796a1dd8080f9e61e0189fd96fc2af8fff956",
+    "crates/gateway/src/public_identity_tests.rs": "6d23a8e320af039391c0ab2c0f3ad687edbb4c75131c4237d07214dd68467f5e",
+    "crates/service-identity/public.rs": "177aeb9180a1d082d5929ef1b19170dd3fab6ab6ec84ff683f5c6ed9e3489692",
+    "crates/service-identity/build_support.rs": "910a030f4d4d3c6c28d03b216b030d59121d9955cbfaa1e3d1aa961933ee1a02",
+    "crates/gateway/build.rs": "fdbff27e59be59916b71cf04b4b75ec79c79d3ccdb4fd9cadc73691a2212958c",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "scripts/local-verification/service_build_identity.py": "9db5758504a75d9d6fda50dc395463dba0b50fe5406e519801a23547c7220ef8"
+  },
+  "source_after": {
+    "crates/gateway/src/main.rs": "3e7372ce4c425b6c7dc228316e820749c1efe287ca8d3ab824c9bfdd33bcfe0f",
+    "crates/gateway/src/l1.rs": "50817b4be05214037f22d4cb0e79c4252cdaedff6bbc00e8560b6de993212a08",
+    "crates/gateway/src/public_identity.rs": "2388718907d436ca689b953393d796a1dd8080f9e61e0189fd96fc2af8fff956",
+    "crates/gateway/src/public_identity_tests.rs": "6d23a8e320af039391c0ab2c0f3ad687edbb4c75131c4237d07214dd68467f5e",
+    "crates/service-identity/public.rs": "177aeb9180a1d082d5929ef1b19170dd3fab6ab6ec84ff683f5c6ed9e3489692",
+    "crates/service-identity/build_support.rs": "910a030f4d4d3c6c28d03b216b030d59121d9955cbfaa1e3d1aa961933ee1a02",
+    "crates/gateway/build.rs": "fdbff27e59be59916b71cf04b4b75ec79c79d3ccdb4fd9cadc73691a2212958c",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "scripts/local-verification/service_build_identity.py": "9db5758504a75d9d6fda50dc395463dba0b50fe5406e519801a23547c7220ef8"
+  },
+  "watched_sources_unchanged": true,
+  "stdout_sha256": "99fa68dc470f9d157fb6c12099317432c44ad0b27fca071355ced076414b646c",
+  "stderr_sha256": "53dadee49d4e086308fa8b1b4095719a65679c42f7d9aac2c985b690b8711009",
+  "production_release": "HOLD"
+}

@@ -1,0 +1,942 @@
+﻿2026-10-12T08:53:52.8732730Z Current runner version: '2.337.0'
+2026-10-12T08:53:52.8752310Z ##[group]Runner Image Provisioner
+2026-10-12T08:53:52.8752866Z Hosted Compute Agent
+2026-10-12T08:53:52.8753301Z Version: 20261002.596
+2026-10-12T08:53:52.8753679Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-12T08:53:52.8754445Z Build Date: 2026-10-02T22:28:27Z
+2026-10-12T08:53:52.8754860Z Worker ID: {8c594962-6213-47dc-91de-775c43f37a51}
+2026-10-12T08:53:52.8755299Z Region: centralus
+2026-10-12T08:53:52.8755682Z Cloud: Azure
+2026-10-12T08:53:52.8756264Z ##[endgroup]
+2026-10-12T08:53:52.8757339Z ##[group]Operating System
+2026-10-12T08:53:52.8757855Z Ubuntu
+2026-10-12T08:53:52.8758285Z 24.04.5
+2026-10-12T08:53:52.8758745Z LTS
+2026-10-12T08:53:52.8759166Z ##[endgroup]
+2026-10-12T08:53:52.8759638Z ##[group]Runner Image
+2026-10-12T08:53:52.8760194Z Image: ubuntu-24.04
+2026-10-12T08:53:52.8760696Z Version: 20261004.327.1
+2026-10-12T08:53:52.8761776Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261004.327/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-12T08:53:52.8763097Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261004.327
+2026-10-12T08:53:52.8764004Z ##[endgroup]
+2026-10-12T08:53:52.8764889Z ##[group]GITHUB_TOKEN Permissions
+2026-10-12T08:53:52.8767108Z Contents: read
+2026-10-12T08:53:52.8767616Z Metadata: read
+2026-10-12T08:53:52.8768126Z ##[endgroup]
+2026-10-12T08:53:52.8770011Z Secret source: Actions
+2026-10-12T08:53:52.8770833Z Cache mode: write
+2026-10-12T08:53:52.8771618Z Prepare workflow directory
+2026-10-12T08:53:52.9305306Z Prepare all required actions
+2026-10-12T08:53:52.9336586Z Getting action download info
+2026-10-12T08:53:53.1837861Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-12T08:53:53.2929576Z Download action repository 'foundry-rs/foundry-toolchain@v1' (SHA:908c540300062bd5a7e473851cdb4282204cee09)
+2026-10-12T08:53:53.8467912Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-12T08:53:54.0683734Z Complete job name: foundry release gate
+2026-10-12T08:53:54.1161429Z ##[group]Run actions/checkout@v4
+2026-10-12T08:53:54.1161868Z with:
+2026-10-12T08:53:54.1162137Z   repository: Arcora-labs/arcora-perp
+2026-10-12T08:53:54.1164278Z   token: ***
+2026-10-12T08:53:54.1164531Z   ssh-strict: true
+2026-10-12T08:53:54.1164787Z   ssh-user: git
+2026-10-12T08:53:54.1165052Z   persist-credentials: true
+2026-10-12T08:53:54.1165336Z   clean: true
+2026-10-12T08:53:54.1165601Z   sparse-checkout-cone-mode: true
+2026-10-12T08:53:54.1166028Z   fetch-depth: 1
+2026-10-12T08:53:54.1166285Z   fetch-tags: false
+2026-10-12T08:53:54.1166549Z   show-progress: true
+2026-10-12T08:53:54.1166824Z   lfs: false
+2026-10-12T08:53:54.1167074Z   submodules: false
+2026-10-12T08:53:54.1167339Z   set-safe-directory: true
+2026-10-12T08:53:54.1167641Z   allow-unsafe-pr-checkout: false
+2026-10-12T08:53:54.1168029Z ##[endgroup]
+2026-10-12T08:53:54.1813877Z Syncing repository: Arcora-labs/arcora-perp
+2026-10-12T08:53:54.1815217Z ##[group]Getting Git version info
+2026-10-12T08:53:54.1816081Z Working directory is '/home/runner/work/arcora-perp/arcora-perp'
+2026-10-12T08:53:54.1816863Z [command]/usr/bin/git version
+2026-10-12T08:53:54.1881780Z git version 2.55.0
+2026-10-12T08:53:54.1895695Z ##[endgroup]
+2026-10-12T08:53:54.1906300Z Temporarily overriding HOME='/home/runner/work/_temp/5f559224-ae6e-4cab-9e75-d4e8a81a52bf' before making global git config changes
+2026-10-12T08:53:54.1907836Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-12T08:53:54.1910213Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:53:54.1953933Z Deleting the contents of '/home/runner/work/arcora-perp/arcora-perp'
+2026-10-12T08:53:54.1960489Z ##[group]Initializing the repository
+2026-10-12T08:53:54.1961865Z [command]/usr/bin/git init /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:53:54.2110967Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-12T08:53:54.2112690Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-12T08:53:54.2114030Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-12T08:53:54.2115002Z hint: call:
+2026-10-12T08:53:54.2116264Z hint:
+2026-10-12T08:53:54.2117055Z hint: 	git config --global init.defaultBranch <name>
+2026-10-12T08:53:54.2117874Z hint:
+2026-10-12T08:53:54.2118709Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-12T08:53:54.2119868Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-12T08:53:54.2120884Z hint:
+2026-10-12T08:53:54.2121545Z hint: 	git branch -m <name>
+2026-10-12T08:53:54.2122254Z hint:
+2026-10-12T08:53:54.2123161Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-12T08:53:54.2124510Z Initialized empty Git repository in /home/runner/work/arcora-perp/arcora-perp/.git/
+2026-10-12T08:53:54.2127401Z [command]/usr/bin/git remote add origin https://github.com/Arcora-labs/arcora-perp
+2026-10-12T08:53:54.2168737Z ##[endgroup]
+2026-10-12T08:53:54.2169682Z ##[group]Disabling automatic garbage collection
+2026-10-12T08:53:54.2172075Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-12T08:53:54.2201154Z ##[endgroup]
+2026-10-12T08:53:54.2202036Z ##[group]Setting up auth
+2026-10-12T08:53:54.2206340Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-12T08:53:54.2234417Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-12T08:53:54.2528155Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-12T08:53:54.2556436Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-12T08:53:54.2729193Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-12T08:53:54.2756809Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-12T08:53:54.2927613Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-12T08:53:54.2960825Z ##[endgroup]
+2026-10-12T08:53:54.2961470Z ##[group]Fetching the repository
+2026-10-12T08:53:54.2966866Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +8f5e97bc690c1d9a6d796fdc3725526d283e077d:refs/remotes/origin/main
+2026-10-12T08:53:56.2157020Z From https://github.com/Arcora-labs/arcora-perp
+2026-10-12T08:53:56.2157889Z  * [new ref]         8f5e97bc690c1d9a6d796fdc3725526d283e077d -> origin/main
+2026-10-12T08:53:56.2161032Z ##[endgroup]
+2026-10-12T08:53:56.2161599Z ##[group]Determining the checkout info
+2026-10-12T08:53:56.2162202Z ##[endgroup]
+2026-10-12T08:53:56.2166704Z [command]/usr/bin/git sparse-checkout disable
+2026-10-12T08:53:56.2215243Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-12T08:53:56.2244186Z ##[group]Checking out the ref
+2026-10-12T08:53:56.2247863Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-10-12T08:53:56.4567272Z Switched to a new branch 'main'
+2026-10-12T08:53:56.4570528Z branch 'main' set up to track 'origin/main'.
+2026-10-12T08:53:56.4593721Z ##[endgroup]
+2026-10-12T08:53:56.4637758Z [command]/usr/bin/git log -1 --format=%H
+2026-10-12T08:53:56.4661329Z 8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:53:56.4910586Z ##[group]Run foundry-rs/foundry-toolchain@v1
+2026-10-12T08:53:56.4910797Z with:
+2026-10-12T08:53:56.4910907Z   version: stable
+2026-10-12T08:53:56.4911028Z   network: ethereum
+2026-10-12T08:53:56.4911139Z   cache: true
+2026-10-12T08:53:56.4911492Z   cache-key: contracts-8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:53:56.4911699Z   cache-restore-keys: contracts-
+2026-10-12T08:53:56.4911842Z ##[endgroup]
+2026-10-12T08:53:56.5741098Z Installing Foundry (version: stable)
+2026-10-12T08:53:56.5742727Z Downloading foundryup installer from foundry-rs/foundryup@a27902ef04dcb43061fabf343365cb5afc95fc48...
+2026-10-12T08:53:56.6421370Z Running foundryup installer...
+2026-10-12T08:53:57.3370725Z Running: foundryup 
+2026-10-12T08:53:59.1179358Z Added /home/runner/.foundry/bin to PATH
+2026-10-12T08:53:59.1180098Z Primary key: linux-foundry-chain-fork-contracts-8f5e97bc690c1d9a6d796fdc3725526d283e077d
+2026-10-12T08:53:59.1185231Z Restore keys: linux-foundry-chain-fork-contracts-
+2026-10-12T08:53:59.2588308Z Cache hit for restore-key: linux-foundry-chain-fork-contracts-0b20e6a4ad7223d394cfb0632507f20c9ed0d776
+2026-10-12T08:53:59.5835139Z Received 9823 of 9823 (100.0%), 0.1 MBs/sec
+2026-10-12T08:53:59.5835409Z Cache Size: ~0 MB (9823 B)
+2026-10-12T08:53:59.5852887Z [command]/usr/bin/tar -xf /home/runner/work/_temp/c39a42c9-afa2-4d1d-9ade-56ebcad641e3/cache.tzst -P -C /home/runner/work/arcora-perp/arcora-perp --use-compress-program unzstd
+2026-10-12T08:53:59.5913205Z Cache restored successfully
+2026-10-12T08:53:59.5916343Z Cache restored from key: linux-foundry-chain-fork-contracts-0b20e6a4ad7223d394cfb0632507f20c9ed0d776
+2026-10-12T08:53:59.5916708Z Running: forge --version
+2026-10-12T08:53:59.5968965Z forge Version: 1.8.5
+2026-10-12T08:53:59.5969254Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:53:59.5969596Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:53:59.5969880Z Build Profile: dist
+2026-10-12T08:53:59.5974582Z Running: cast --version
+2026-10-12T08:53:59.6040730Z cast Version: 1.8.5
+2026-10-12T08:53:59.6040957Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:53:59.6041179Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:53:59.6041374Z Build Profile: dist
+2026-10-12T08:53:59.6046830Z Running: anvil --version
+2026-10-12T08:53:59.6083084Z anvil Version: 1.8.5
+2026-10-12T08:53:59.6083350Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:53:59.6083566Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:53:59.6083754Z Build Profile: dist
+2026-10-12T08:53:59.6086671Z Running: chisel --version
+2026-10-12T08:53:59.6118195Z chisel Version: 1.8.5
+2026-10-12T08:53:59.6118440Z Commit SHA: 51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f
+2026-10-12T08:53:59.6118761Z Build Timestamp: 2026-10-05T17:18:54.332175693Z (1791220734)
+2026-10-12T08:53:59.6119034Z Build Profile: dist
+2026-10-12T08:53:59.6671482Z ##[group]Run forge build
+2026-10-12T08:53:59.6671701Z [36;1mforge build[0m
+2026-10-12T08:53:59.7376359Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:53:59.7376552Z ##[endgroup]
+2026-10-12T08:54:00.2423408Z Compiling 40 files with Solc 0.8.24
+2026-10-12T08:54:03.9418888Z Solc 0.8.24 finished in 3.70s
+2026-10-12T08:54:03.9482416Z Compiler run successful with warnings:
+2026-10-12T08:54:03.9482812Z Warning (2519): This declaration shadows an existing declaration.
+2026-10-12T08:54:03.9483269Z    --> test/ChainlinkNativeContractBridge.t.sol:128:10:
+2026-10-12T08:54:03.9483579Z     |
+2026-10-12T08:54:03.9483880Z 128 |         (bool ready, uint80 round, uint64 started) = x.oracle.uptimeStatus();
+2026-10-12T08:54:03.9484261Z     |          ^^^^^^^^^^
+2026-10-12T08:54:03.9484497Z Note: The shadowed declaration is here:
+2026-10-12T08:54:03.9484828Z    --> test/ChainlinkNativeContractBridge.t.sol:186:5:
+2026-10-12T08:54:03.9485126Z     |
+2026-10-12T08:54:03.9485585Z 186 |     function ready(T.SourceData memory d, T.VectorData memory v) internal returns (Stack memory x) {
+2026-10-12T08:54:03.9486311Z     |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:03.9486577Z 
+2026-10-12T08:54:03.9486832Z Warning (2018): Function state mutability can be restricted to pure
+2026-10-12T08:54:03.9487172Z  --> test/DeployGuard.t.sol:9:5:
+2026-10-12T08:54:03.9487587Z   |
+2026-10-12T08:54:03.9487740Z 9 |     function test_testnets_allow_the_mock_verifier() public {
+2026-10-12T08:54:03.9487986Z   |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:03.9488148Z 
+2026-10-12T08:54:03.9488246Z Warning (2018): Function state mutability can be restricted to pure
+2026-10-12T08:54:03.9488451Z   --> test/DeployGuard.t.sol:15:5:
+2026-10-12T08:54:03.9488592Z    |
+2026-10-12T08:54:03.9488756Z 15 |     function test_real_value_chains_block_the_mock_verifier() public {
+2026-10-12T08:54:03.9489021Z    |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:03.9489360Z 
+2026-10-12T08:54:03.9489514Z Warning (2018): Function state mutability can be restricted to view
+2026-10-12T08:54:03.9489723Z   --> test/Fuzz.t.sol:90:5:
+2026-10-12T08:54:03.9489853Z    |
+2026-10-12T08:54:03.9490076Z 90 |     function testFuzz_inclusion_leaf_is_not_an_internal_node(uint256 batchId, bytes32 orderHash) public {
+2026-10-12T08:54:03.9490409Z    |     ^ (Relevant source part starts here and spans across multiple lines).
+2026-10-12T08:54:03.9490563Z 
+2026-10-12T08:54:04.0029737Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:04.0056596Z    ╭▸ src/mocks/MockZkVerifier.sol:20:38
+2026-10-12T08:54:04.0057049Z    │
+2026-10-12T08:54:04.0086469Z 20 │         return proof.length == 32 && bytes32(proof) == publicCommitment;
+2026-10-12T08:54:04.0086954Z    │                                      ━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0087226Z    │
+2026-10-12T08:54:04.0087605Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:04.0087969Z    │       
+2026-10-12T08:54:04.0088257Z    │       // casting to 'bytes32' is safe because [explain why]
+2026-10-12T08:54:04.0088659Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:04.0089133Z    │       
+2026-10-12T08:54:04.0089315Z    │       
+2026-10-12T08:54:04.0089660Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:04.0089909Z 
+2026-10-12T08:54:04.0090269Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:04.0116753Z    ╭▸ src/SequencerUptime.sol:26:85
+2026-10-12T08:54:04.0146273Z    │
+2026-10-12T08:54:04.0156529Z 26 │                 || words[1] != 0 || words[2] == 0 || words[2] > type(uint64).max || words[2] > block.timestamp
+2026-10-12T08:54:04.0186658Z    │                                                                                     ━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0226487Z    │
+2026-10-12T08:54:04.0227649Z    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:04.0227938Z 
+2026-10-12T08:54:04.0228199Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:04.0228694Z    ╭▸ src/SequencerUptime.sol:31:13
+2026-10-12T08:54:04.0228921Z    │
+2026-10-12T08:54:04.0229280Z 31 │         if (block.timestamp - words[2] <= graceSeconds) return (false, epoch);
+2026-10-12T08:54:04.0229731Z    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0229994Z    │
+2026-10-12T08:54:04.0230259Z    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:04.0230483Z 
+2026-10-12T08:54:04.0230624Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:04.0230923Z    ╭▸ src/SequencerUptime.sol:16:55
+2026-10-12T08:54:04.0231069Z    │
+2026-10-12T08:54:04.0231320Z 16 │         bytes memory request = abi.encodeWithSelector(bytes4(keccak256("latestRoundData()")));
+2026-10-12T08:54:04.0231664Z    │                                                       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0231847Z    │
+2026-10-12T08:54:04.0232043Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:04.0232259Z    │       
+2026-10-12T08:54:04.0232436Z    │       // casting to 'bytes4' is safe because [explain why]
+2026-10-12T08:54:04.0232824Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:04.0233011Z    │       
+2026-10-12T08:54:04.0233169Z    │       
+2026-10-12T08:54:04.0233384Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:04.0233529Z 
+2026-10-12T08:54:04.0233612Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:04.0233826Z    ╭▸ src/SequencerUptime.sol:32:23
+2026-10-12T08:54:04.0233973Z    │
+2026-10-12T08:54:04.0234141Z 32 │         epoch = Epoch(uint80(words[0]), uint64(words[2]));
+2026-10-12T08:54:04.0234349Z    │                       ━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0234503Z    │
+2026-10-12T08:54:04.0234696Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:04.0234905Z    │       
+2026-10-12T08:54:04.0235071Z    │       // casting to 'uint80' is safe because [explain why]
+2026-10-12T08:54:04.0235308Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:04.0235502Z    │       
+2026-10-12T08:54:04.0235613Z    │       
+2026-10-12T08:54:04.0235791Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:04.0236103Z 
+2026-10-12T08:54:04.0236196Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:04.0236406Z    ╭▸ src/SequencerUptime.sol:32:41
+2026-10-12T08:54:04.0236551Z    │
+2026-10-12T08:54:04.0236714Z 32 │         epoch = Epoch(uint80(words[0]), uint64(words[2]));
+2026-10-12T08:54:04.0236940Z    │                                         ━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0237101Z    │
+2026-10-12T08:54:04.0237296Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:04.0237502Z    │       
+2026-10-12T08:54:04.0237666Z    │       // casting to 'uint64' is safe because [explain why]
+2026-10-12T08:54:04.0237901Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:04.0238080Z    │       
+2026-10-12T08:54:04.0238192Z    │       
+2026-10-12T08:54:04.0238375Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:04.0238513Z 
+2026-10-12T08:54:04.0238711Z warning[missing-events-access-control]: `settlement` is changed without an event but is used for access control
+2026-10-12T08:54:04.0239029Z    ╭▸ src/ClockBoundVerifier.sol:62:9
+2026-10-12T08:54:04.0239200Z    │
+2026-10-12T08:54:04.0239327Z 62 │         settlement = target;
+2026-10-12T08:54:04.0239490Z    │         ━━━━━━━━━━
+2026-10-12T08:54:04.0239615Z    │
+2026-10-12T08:54:04.0239826Z    ╰ help: https://getfoundry.sh/forge/linting/missing-events-access-control
+2026-10-12T08:54:04.0239997Z 
+2026-10-12T08:54:04.0240310Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:04.0240636Z     ╭▸ src/CollateralVault.sol:145:17
+2026-10-12T08:54:04.0240784Z     │
+2026-10-12T08:54:04.0241003Z 145 │     constructor(address _settlement, address _token, address _gatewaySigner) {
+2026-10-12T08:54:04.0241261Z     │                 ━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0241407Z     │
+2026-10-12T08:54:04.0241596Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:04.0241746Z 
+2026-10-12T08:54:04.0241937Z warning[missing-events-access-control]: `clockVerifier` is changed without an event but is used for access control
+2026-10-12T08:54:04.0242263Z    ╭▸ src/ChainlinkOracleVerifier.sol:99:9
+2026-10-12T08:54:04.0242417Z    │
+2026-10-12T08:54:04.0242545Z 99 │         clockVerifier = clock_;
+2026-10-12T08:54:04.0242718Z    │         ━━━━━━━━━━━━━
+2026-10-12T08:54:04.0242844Z    │
+2026-10-12T08:54:04.0243056Z    ╰ help: https://getfoundry.sh/forge/linting/missing-events-access-control
+2026-10-12T08:54:04.0243224Z 
+2026-10-12T08:54:04.0243457Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0243813Z     ╭▸ src/CollateralVault.sol:252:9
+2026-10-12T08:54:04.0243989Z     │
+2026-10-12T08:54:04.0244316Z 252 │         emit Deposit(msg.sender, ownerCommit, amount, depositCount, depositChainTip);
+2026-10-12T08:54:04.0244664Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0244861Z     │
+2026-10-12T08:54:04.0245050Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0245196Z 
+2026-10-12T08:54:04.0245389Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:04.0245714Z    ╭▸ src/ChainlinkOracleVerifier.sol:72:9
+2026-10-12T08:54:04.0245870Z    │
+2026-10-12T08:54:04.0246128Z 72 │         address uptimeFeed_,
+2026-10-12T08:54:04.0246301Z    │         ━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0246436Z    │
+2026-10-12T08:54:04.0246615Z    ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:04.0246762Z 
+2026-10-12T08:54:04.0246989Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0247355Z     ╭▸ src/CollateralVault.sol:314:9
+2026-10-12T08:54:04.0247501Z     │
+2026-10-12T08:54:04.0247645Z 314 │         emit Withdrawn(to, amount, nonce);
+2026-10-12T08:54:04.0247845Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0247997Z     │
+2026-10-12T08:54:04.0248177Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0248320Z 
+2026-10-12T08:54:04.0248484Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:04.0248783Z    ╭▸ src/ClockBoundVerifier.sol:96:13
+2026-10-12T08:54:04.0248935Z    │
+2026-10-12T08:54:04.0249134Z 96 │         if (block.timestamp > type(uint64).max / 1000) revert InvalidTime();
+2026-10-12T08:54:04.0249401Z    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0249564Z    │
+2026-10-12T08:54:04.0249740Z    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:04.0249889Z 
+2026-10-12T08:54:04.0249974Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:04.0250184Z    ╭▸ src/ClockBoundVerifier.sol:97:21
+2026-10-12T08:54:04.0250330Z    │
+2026-10-12T08:54:04.0250489Z 97 │         uint64 at = uint64(block.timestamp * 1000);
+2026-10-12T08:54:04.0250708Z    │                     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0250866Z    │
+2026-10-12T08:54:04.0251057Z    ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:04.0251276Z    │       
+2026-10-12T08:54:04.0251552Z    │       // casting to 'uint64' is safe because [explain why]
+2026-10-12T08:54:04.0251791Z    │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:04.0251974Z    │       
+2026-10-12T08:54:04.0252090Z    │       
+2026-10-12T08:54:04.0252267Z    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:04.0252405Z 
+2026-10-12T08:54:04.0252489Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:04.0252792Z     ╭▸ src/ClockBoundVerifier.sol:159:26
+2026-10-12T08:54:04.0252945Z     │
+2026-10-12T08:54:04.0253117Z 159 │         uint64 batchId = uint64(settlement.batchCount());
+2026-10-12T08:54:04.0253354Z     │                          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0253518Z     │
+2026-10-12T08:54:04.0253715Z     ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:04.0253930Z     │       
+2026-10-12T08:54:04.0254103Z     │       // casting to 'uint64' is safe because [explain why]
+2026-10-12T08:54:04.0254351Z     │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:04.0254534Z     │       
+2026-10-12T08:54:04.0254653Z     │       
+2026-10-12T08:54:04.0254832Z     ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:04.0254973Z 
+2026-10-12T08:54:04.0255107Z warning[reentrancy-no-eth]: external call can be reentered before `records` is updated
+2026-10-12T08:54:04.0255393Z     ╭▸ src/ChainlinkOracleVerifier.sol:175:16
+2026-10-12T08:54:04.0255555Z     │
+2026-10-12T08:54:04.0255722Z 175 │         body = streamsVerifier.verify(full, bytes(""));
+2026-10-12T08:54:04.0256155Z     │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0256320Z     │
+2026-10-12T08:54:04.0256506Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-no-eth
+2026-10-12T08:54:04.0256648Z 
+2026-10-12T08:54:04.0256722Z warning[calls-loop]: external call inside a loop
+2026-10-12T08:54:04.0256933Z     ╭▸ src/ChainlinkOracleVerifier.sol:175:16
+2026-10-12T08:54:04.0257091Z     │
+2026-10-12T08:54:04.0257266Z 175 │         body = streamsVerifier.verify(full, bytes(""));
+2026-10-12T08:54:04.0257497Z     │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0257655Z     │
+2026-10-12T08:54:04.0257820Z     ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+2026-10-12T08:54:04.0257954Z 
+2026-10-12T08:54:04.0258186Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0258560Z     ╭▸ src/ChainlinkOracleVerifier.sol:148:9
+2026-10-12T08:54:04.0258717Z     │
+2026-10-12T08:54:04.0258878Z 148 │         emit ReportsRegistered(clockCommitment, h);
+2026-10-12T08:54:04.0259109Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0259268Z     │
+2026-10-12T08:54:04.0259449Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0259594Z 
+2026-10-12T08:54:04.0259702Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:04.0260062Z     ╭▸ src/ChainlinkOracleVerifier.sol:136:15
+2026-10-12T08:54:04.0260222Z     │
+2026-10-12T08:54:04.0260354Z 136 │             ) revert Evidence();
+2026-10-12T08:54:04.0260546Z     │               ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0260689Z     │
+2026-10-12T08:54:04.0260878Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:04.0261042Z 
+2026-10-12T08:54:04.0261150Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:04.0261395Z     ╭▸ src/ChainlinkOracleVerifier.sol:172:90
+2026-10-12T08:54:04.0261554Z     │
+2026-10-12T08:54:04.0261820Z 172 │         if (full.length < 224 || full.length > MAX_FULL_REPORT || full.length % 32 != 0) revert Evidence();
+2026-10-12T08:54:04.0262193Z     │                                                                                          ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0262387Z     │
+2026-10-12T08:54:04.0262584Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:04.0262740Z 
+2026-10-12T08:54:04.0262847Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:04.0263091Z     ╭▸ src/ChainlinkOracleVerifier.sol:176:33
+2026-10-12T08:54:04.0263249Z     │
+2026-10-12T08:54:04.0263408Z 176 │         if (body.length != 288) revert Evidence();
+2026-10-12T08:54:04.0263707Z     │                                 ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0263864Z     │
+2026-10-12T08:54:04.0264052Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:04.0264206Z 
+2026-10-12T08:54:04.0264309Z warning[require-revert-in-loop]: `require` or `revert` inside a loop
+2026-10-12T08:54:04.0264554Z     ╭▸ src/ChainlinkOracleVerifier.sol:183:11
+2026-10-12T08:54:04.0264717Z     │
+2026-10-12T08:54:04.0264845Z 183 │         ) revert Evidence();
+2026-10-12T08:54:04.0265012Z     │           ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0265149Z     │
+2026-10-12T08:54:04.0265343Z     ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+2026-10-12T08:54:04.0265495Z 
+2026-10-12T08:54:04.0265686Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:04.0266178Z     ╭▸ src/DarkPerpSettlement.sol:185:9
+2026-10-12T08:54:04.0266415Z     │
+2026-10-12T08:54:04.0266614Z 185 │         address _governance,
+2026-10-12T08:54:04.0266882Z     │         ━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0267028Z     │
+2026-10-12T08:54:04.0267207Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:04.0267356Z 
+2026-10-12T08:54:04.0267546Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:04.0267866Z     ╭▸ src/DarkPerpSettlement.sol:178:9
+2026-10-12T08:54:04.0268018Z     │
+2026-10-12T08:54:04.0268146Z 178 │         address _enclaveSigner,
+2026-10-12T08:54:04.0268322Z     │         ━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0268460Z     │
+2026-10-12T08:54:04.0268648Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:04.0268796Z 
+2026-10-12T08:54:04.0268983Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:04.0269304Z     ╭▸ src/DarkPerpSettlement.sol:177:9
+2026-10-12T08:54:04.0269462Z     │
+2026-10-12T08:54:04.0269589Z 177 │         address _sequencer,
+2026-10-12T08:54:04.0269753Z     │         ━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0269889Z     │
+2026-10-12T08:54:04.0270067Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:04.0270209Z 
+2026-10-12T08:54:04.0270370Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:04.0270673Z     ╭▸ src/ChainlinkOracleVerifier.sol:181:20
+2026-10-12T08:54:04.0270836Z     │
+2026-10-12T08:54:04.0271269Z 181 │                 || block.timestamp > r.expires || r.price <= 0 || r.bid <= 0 || r.ask <= 0 || r.price > type(int128).max
+2026-10-12T08:54:04.0271576Z     │                    ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0271734Z     │
+2026-10-12T08:54:04.0271912Z     ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:04.0272053Z 
+2026-10-12T08:54:04.0272140Z warning[unsafe-typecast]: typecast can truncate values
+2026-10-12T08:54:04.0272367Z     ╭▸ src/ChainlinkOracleVerifier.sol:179:20
+2026-10-12T08:54:04.0272526Z     │
+2026-10-12T08:54:04.0272795Z 179 │             uint16(bytes2(r.feedId)) != 3 || r.validFrom == 0 || r.validFrom > r.observed || r.observed > r.expires
+2026-10-12T08:54:04.0273082Z     │                    ━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0273227Z     │
+2026-10-12T08:54:04.0273420Z     ├ note: consider disabling this lint if you're certain the cast is safe
+2026-10-12T08:54:04.0273640Z     │       
+2026-10-12T08:54:04.0273810Z     │       // casting to 'bytes2' is safe because [explain why]
+2026-10-12T08:54:04.0274059Z     │       // forge-lint: disable-next-line(unsafe-typecast)
+2026-10-12T08:54:04.0274245Z     │       
+2026-10-12T08:54:04.0274364Z     │       
+2026-10-12T08:54:04.0274546Z     ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+2026-10-12T08:54:04.0274687Z 
+2026-10-12T08:54:04.0274876Z warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+2026-10-12T08:54:04.0275282Z     ╭▸ src/DarkPerpSettlement.sol:203:23
+2026-10-12T08:54:04.0275439Z     │
+2026-10-12T08:54:04.0275622Z 203 │     function setVault(address _vault) external onlySequencer {
+2026-10-12T08:54:04.0275846Z     │                       ━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0276145Z     │
+2026-10-12T08:54:04.0276330Z     ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+2026-10-12T08:54:04.0276474Z 
+2026-10-12T08:54:04.0276704Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0277072Z     ╭▸ src/DarkPerpSettlement.sol:216:9
+2026-10-12T08:54:04.0277226Z     │
+2026-10-12T08:54:04.0277382Z 216 │         emit BondPosted(amount, sequencerBond);
+2026-10-12T08:54:04.0277599Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0277754Z     │
+2026-10-12T08:54:04.0277936Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0278090Z 
+2026-10-12T08:54:04.0278316Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0278674Z     ╭▸ src/DarkPerpSettlement.sol:232:9
+2026-10-12T08:54:04.0278826Z     │
+2026-10-12T08:54:04.0278984Z 232 │         emit BondWithdrawn(amount, sequencerBond);
+2026-10-12T08:54:04.0279212Z     │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0279369Z     │
+2026-10-12T08:54:04.0279547Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0279690Z 
+2026-10-12T08:54:04.0279909Z warning[uninitialized-local]: local variable is read before being initialized
+2026-10-12T08:54:04.0280169Z     ╭▸ src/DarkPerpSettlement.sol:343:33
+2026-10-12T08:54:04.0280320Z     │
+2026-10-12T08:54:04.0280535Z 343 │         require(depositsRoot == prefixTip, "deposits: root != L1 chain prefix");
+2026-10-12T08:54:04.0280791Z     │                                 ━━━━━━━━━
+2026-10-12T08:54:04.0280950Z     │
+2026-10-12T08:54:04.0281134Z     ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+2026-10-12T08:54:04.0281284Z 
+2026-10-12T08:54:04.0281442Z warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+2026-10-12T08:54:04.0281733Z     ╭▸ src/DarkPerpSettlement.sol:557:13
+2026-10-12T08:54:04.0281886Z     │
+2026-10-12T08:54:04.0282117Z 557 │         if (block.timestamp < recvTimeMs / 1000 + inclusionDeadlineSecs) revert NotRipe();
+2026-10-12T08:54:04.0282431Z     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0282617Z     │
+2026-10-12T08:54:04.0282795Z     ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+2026-10-12T08:54:04.0282931Z 
+2026-10-12T08:54:04.0283158Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0283600Z     ╭▸ src/DarkPerpSettlement.sol:706:13
+2026-10-12T08:54:04.0283754Z     │
+2026-10-12T08:54:04.0283906Z 706 │             emit EthClaimed(msg.sender, amount);
+2026-10-12T08:54:04.0284121Z     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0284279Z     │
+2026-10-12T08:54:04.0284459Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0284602Z 
+2026-10-12T08:54:04.0284825Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0285181Z     ╭▸ src/DarkPerpSettlement.sol:719:13
+2026-10-12T08:54:04.0285339Z     │
+2026-10-12T08:54:04.0285493Z 719 │             emit UsdcClaimed(msg.sender, amount);
+2026-10-12T08:54:04.0285708Z     │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0285864Z     │
+2026-10-12T08:54:04.0286191Z     ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0286335Z 
+2026-10-12T08:54:04.0286465Z warning[uninitialized-local]: local variable is read before being initialized
+2026-10-12T08:54:04.0286720Z     ╭▸ src/DarkPerpSettlement.sol:731:17
+2026-10-12T08:54:04.0286870Z     │
+2026-10-12T08:54:04.0287053Z 731 │                 acc |= uint256((v >> (8 * i)) & 0xff) << (8 * (31 - i));
+2026-10-12T08:54:04.0287260Z     │                 ━━━
+2026-10-12T08:54:04.0287385Z     │
+2026-10-12T08:54:04.0287569Z     ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+2026-10-12T08:54:04.0287719Z 
+2026-10-12T08:54:04.0287949Z warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+2026-10-12T08:54:04.0288305Z    ╭▸ src/AttestationRegistry.sol:88:9
+2026-10-12T08:54:04.0288455Z    │
+2026-10-12T08:54:04.0288658Z 88 │         emit EnclaveRegistered(address(signer), expectedMeasurementHash);
+2026-10-12T08:54:04.0288951Z    │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-12T08:54:04.0289138Z    │
+2026-10-12T08:54:04.0289321Z    ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+2026-10-12T08:54:04.0289462Z 
+2026-10-12T08:54:04.0380206Z warning[environment-read-across-mutation]: `block.chainid` may be reused across `vm.chainId`
+2026-10-12T08:54:04.0380517Z     ╭▸ test/ClockBoundVerifier.t.sol:215:33
+2026-10-12T08:54:04.0380678Z     │
+2026-10-12T08:54:04.0380832Z 215 │         uint256 originalChain = block.chainid;
+2026-10-12T08:54:04.0381034Z     │                                 ━━━━━━━━━━━━━
+2026-10-12T08:54:04.0381189Z     ‡
+2026-10-12T08:54:04.0381365Z 219 │         ClockReorgVm(address(vm)).chainId(originalChain + 1);
+2026-10-12T08:54:04.0381781Z     │         ──────────────────────────────────────────────────── `vm.chainId` changes this environment here
+2026-10-12T08:54:04.0381995Z     │
+2026-10-12T08:54:04.0382152Z     ├ help: capture it with `vm.getChainId()` instead
+2026-10-12T08:54:04.0382435Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:04.0382616Z 
+2026-10-12T08:54:04.0384582Z warning[environment-read-across-mutation]: `block.chainid` may be reused across `vm.chainId`
+2026-10-12T08:54:04.0384874Z     ╭▸ test/CollateralVault.t.sol:424:33
+2026-10-12T08:54:04.0385025Z     │
+2026-10-12T08:54:04.0385179Z 424 │         uint256 originalChain = block.chainid;
+2026-10-12T08:54:04.0385378Z     │                                 ━━━━━━━━━━━━━
+2026-10-12T08:54:04.0385569Z 425 │         vm.chainId(originalChain + 1);
+2026-10-12T08:54:04.0385812Z     │         ───────────────────────────── `vm.chainId` changes this environment here
+2026-10-12T08:54:04.0386143Z     │
+2026-10-12T08:54:04.0386308Z     ├ help: capture it with `vm.getChainId()` instead
+2026-10-12T08:54:04.0386579Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:04.0386755Z 
+2026-10-12T08:54:04.0397248Z warning[environment-read-across-mutation]: `block.number` may be reused across `vm.roll`
+2026-10-12T08:54:04.0397677Z     ╭▸ test/DarkPerpSettlement.t.sol:860:17
+2026-10-12T08:54:04.0397889Z     │
+2026-10-12T08:54:04.0398037Z 860 │         vm.roll(block.number + LIVENESS + 1);
+2026-10-12T08:54:04.0398293Z     │         ────────━━━━━━━━━━━━──────────────── `vm.roll` changes this environment here
+2026-10-12T08:54:04.0398489Z     │
+2026-10-12T08:54:04.0398654Z     ├ help: capture it with `vm.getBlockNumber()` instead
+2026-10-12T08:54:04.0398934Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:04.0399106Z 
+2026-10-12T08:54:04.0399254Z warning[environment-read-across-mutation]: `block.number` may be reused across `vm.roll`
+2026-10-12T08:54:04.0399547Z     ╭▸ test/DarkPerpSettlement.t.sol:919:17
+2026-10-12T08:54:04.0399702Z     │
+2026-10-12T08:54:04.0399864Z 919 │         vm.roll(block.number + CHALLENGE_WINDOW + 1);
+2026-10-12T08:54:04.0400149Z     │         ────────━━━━━━━━━━━━──────────────────────── `vm.roll` changes this environment here
+2026-10-12T08:54:04.0400352Z     │
+2026-10-12T08:54:04.0400521Z     ├ help: capture it with `vm.getBlockNumber()` instead
+2026-10-12T08:54:04.0400799Z     ╰ help: https://getfoundry.sh/forge/linting/environment-read-across-mutation
+2026-10-12T08:54:04.0400976Z 
+2026-10-12T08:54:04.1183999Z ##[group]Run forge test -vvv
+2026-10-12T08:54:04.1184206Z [36;1mforge test -vvv[0m
+2026-10-12T08:54:04.1250629Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:04.1250785Z ##[endgroup]
+2026-10-12T08:54:04.3796487Z No files changed, compilation skipped
+2026-10-12T08:54:04.3929065Z 
+2026-10-12T08:54:04.3929958Z Ran 8 tests for test/AttestationRegistry.t.sol:AttestationRegistryTest
+2026-10-12T08:54:04.3930596Z [PASS] test_accepts_sw_hardening_needed() (gas: 430975)
+2026-10-12T08:54:04.3931078Z [PASS] test_register_rejects_a_non_owner() (gas: 362582)
+2026-10-12T08:54:04.3931627Z [PASS] test_registers_a_current_matching_enclave() (gas: 433519)
+2026-10-12T08:54:04.3932110Z [PASS] test_rejects_a_degraded_tcb() (gas: 404423)
+2026-10-12T08:54:04.3932589Z [PASS] test_rejects_a_measurement_mismatch() (gas: 402629)
+2026-10-12T08:54:04.3933110Z [PASS] test_rejects_an_rtmr_mismatch() (gas: 402875)
+2026-10-12T08:54:04.3933676Z [PASS] test_rejects_an_unverified_quote() (gas: 399086)
+2026-10-12T08:54:04.3934249Z [PASS] test_rejects_truncated_report_data() (gas: 366440)
+2026-10-12T08:54:04.3935193Z Suite result: ok. 8 passed; 0 failed; 0 skipped; finished in 1.67ms (986.01µs CPU time)
+2026-10-12T08:54:04.4166401Z 
+2026-10-12T08:54:04.4167314Z Ran 20 tests for test/ChainlinkSequencerUptime.t.sol:ChainlinkSequencerUptimeTest
+2026-10-12T08:54:04.4194051Z [PASS] test_uptime_constructor_requires_feed_code_and_nonzero_explicit_grace() (gas: 722488)
+2026-10-12T08:54:04.4216453Z [PASS] test_uptime_delayed_registration_cannot_launder_grace_period_execution() (gas: 828989)
+2026-10-12T08:54:04.4236326Z [PASS] test_uptime_down_prevents_registration_atomically() (gas: 820296)
+2026-10-12T08:54:04.4266277Z [PASS] test_uptime_empty_evidence_cannot_masquerade_as_price_free() (gas: 343166)
+2026-10-12T08:54:04.4296265Z [PASS] test_uptime_exact_retry_does_not_bypass_current_outage() (gas: 1050339)
+2026-10-12T08:54:04.4296840Z [PASS] test_uptime_external_verifier_status_change_reverts_entire_registration() (gas: 7429096)
+2026-10-12T08:54:04.4326438Z [PASS] test_uptime_grace_exact_boundary_is_not_ready() (gas: 825785)
+2026-10-12T08:54:04.4356482Z [PASS] test_uptime_noncanonical_unknown_status_and_invalid_time_fail_closed() (gas: 2305298)
+2026-10-12T08:54:04.4386305Z [PASS] test_uptime_old_unchanged_status_is_not_a_stale_price() (gas: 1077541)
+2026-10-12T08:54:04.4386927Z [PASS] test_uptime_one_second_after_grace_accepts_original_operation() (gas: 1114956)
+2026-10-12T08:54:04.4416319Z [PASS] test_uptime_pre_outage_proof_cannot_be_revived_in_new_epoch() (gas: 1112138)
+2026-10-12T08:54:04.4416856Z [PASS] test_uptime_price_free_batch_does_not_depend_on_feed_liveness() (gas: 538429)
+2026-10-12T08:54:04.4417432Z [PASS] test_uptime_price_free_wind_down_and_final_exit_keep_actual_contract_routes() (gas: 1086057)
+2026-10-12T08:54:04.4418067Z [PASS] test_uptime_registration_after_recovery_refuses_pre_recovery_operations() (gas: 801117)
+2026-10-12T08:54:04.4418654Z [PASS] test_uptime_retry_cannot_repin_record_to_another_healthy_epoch() (gas: 1023257)
+2026-10-12T08:54:04.4419203Z [PASS] test_uptime_revert_empty_short_and_oversized_replies_are_rejected() (gas: 6372457)
+2026-10-12T08:54:04.4419785Z [PASS] test_uptime_round_change_even_with_equal_timestamp_cannot_reuse_record() (gas: 1016535)
+2026-10-12T08:54:04.4420336Z [PASS] test_uptime_settlement_rechecks_after_report_registration() (gas: 1044950)
+2026-10-12T08:54:04.4420878Z [PASS] test_uptime_start_change_even_with_equal_round_cannot_reuse_record() (gas: 1016652)
+2026-10-12T08:54:04.4421455Z [PASS] test_uptime_unavailable_at_settlement_fails_closed_without_state_change() (gas: 1008592)
+2026-10-12T08:54:04.4422058Z Suite result: ok. 20 passed; 0 failed; 0 skipped; finished in 25.26ms (24.45ms CPU time)
+2026-10-12T08:54:04.4422370Z 
+2026-10-12T08:54:04.4422622Z Ran 7 tests for test/ChainlinkCandidateProtocol.t.sol:ChainlinkCandidateProtocolTest
+2026-10-12T08:54:04.4423173Z [PASS] test_native_liquidation_abi_and_mock_contract_lifecycle() (gas: 4176065)
+2026-10-12T08:54:04.4424170Z [PASS] test_native_normal_abi_and_mock_contract_lifecycle() (gas: 4345000)
+2026-10-12T08:54:04.4424650Z [PASS] test_omitted_and_extra_actual_entries_fail_atomically() (gas: 3838874)
+2026-10-12T08:54:04.4425155Z [PASS] test_registered_actual_entries_cannot_settle_in_different_epoch() (gas: 4243058)
+2026-10-12T08:54:04.4425701Z [PASS] test_reordered_registered_material_cannot_replace_original() (gas: 4326442)
+2026-10-12T08:54:04.4426367Z [PASS] test_same_bodies_different_signature_container_refuses_replacement() (gas: 4553735)
+2026-10-12T08:54:04.4426908Z [PASS] test_wrong_clock_endpoint_refuses_reports_and_settlement() (gas: 3662492)
+2026-10-12T08:54:04.4427416Z Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 25.81ms (24.99ms CPU time)
+2026-10-12T08:54:04.4446171Z 
+2026-10-12T08:54:04.4456255Z Ran 23 tests for test/ClockBoundVerifier.t.sol:ClockBoundVerifierTest
+2026-10-12T08:54:04.4477557Z [PASS] test_actual_settlement_requires_registration() (gas: 72647)
+2026-10-12T08:54:04.4507514Z [PASS] test_batch_time_monotonicity_crosses_settlement() (gas: 422939)
+2026-10-12T08:54:04.4536303Z [PASS] test_bound_proof_settles_through_existing_entrypoint() (gas: 362969)
+2026-10-12T08:54:04.4536841Z [PASS] test_clock_does_not_accept_future_batch() (gas: 54303)
+2026-10-12T08:54:04.4566506Z [PASS] test_clock_does_not_replace_root_continuity() (gas: 57230)
+2026-10-12T08:54:04.4597092Z [PASS] test_legacy_proof_cannot_bypass_registered_clock() (gas: 274500)
+2026-10-12T08:54:04.4606279Z [PASS] test_only_bound_settlement_can_call_verify() (gas: 208937)
+2026-10-12T08:54:04.4626497Z [PASS] test_previous_anchor_cannot_be_used_for_next_batch() (gas: 409051)
+2026-10-12T08:54:04.4656265Z [PASS] test_price_free_window_has_canonical_zero_bounds() (gas: 421747)
+2026-10-12T08:54:04.4686232Z [PASS] test_proof_delay_keeps_original_receipt() (gas: 433559)
+2026-10-12T08:54:04.4688763Z [PASS] test_rebinding_is_impossible() (gas: 34365)
+2026-10-12T08:54:04.4716281Z [PASS] test_refuses_backdated_window() (gas: 75279)
+2026-10-12T08:54:04.4746179Z [PASS] test_refuses_future_window() (gas: 75342)
+2026-10-12T08:54:04.4746510Z [PASS] test_refuses_overlong_window() (gas: 74868)
+2026-10-12T08:54:04.4746827Z [PASS] test_refuses_reversed_window() (gas: 74761)
+2026-10-12T08:54:04.4747228Z [PASS] test_registration_is_immutable_even_with_valid_new_clock() (gas: 268966)
+2026-10-12T08:54:04.4747692Z [PASS] test_registration_requires_role_authorization() (gas: 48664)
+2026-10-12T08:54:04.4748185Z [PASS] test_reorg_removes_anchor_and_old_proof_cannot_authorize_new_receipt() (gas: 846652)
+2026-10-12T08:54:04.4748653Z [PASS] test_solidity_v2_encoding_matches_rust() (gas: 983)
+2026-10-12T08:54:04.4749075Z [PASS] test_stored_receipt_cannot_replay_after_chain_id_change() (gas: 432861)
+2026-10-12T08:54:04.4749571Z [PASS] test_terminal_settlement_and_exit_also_require_bound_proofs() (gas: 827920)
+2026-10-12T08:54:04.4750001Z [PASS] test_time_overflow_rejected() (gas: 77306)
+2026-10-12T08:54:04.4750365Z [PASS] test_wrong_manifest_cannot_replace_same_batch() (gas: 237883)
+2026-10-12T08:54:04.4750835Z Suite result: ok. 23 passed; 0 failed; 0 skipped; finished in 5.23ms (4.82ms CPU time)
+2026-10-12T08:54:04.4751149Z 
+2026-10-12T08:54:04.4751376Z Ran 15 tests for test/ChainlinkOracleVerifier.t.sol:ChainlinkOracleVerifierTest
+2026-10-12T08:54:04.4769758Z [PASS] test_bad_verified_body_is_refused() (gas: 1181312)
+2026-10-12T08:54:04.4776295Z [PASS] test_both_reports_are_required_and_partial_failure_is_atomic() (gas: 770673)
+2026-10-12T08:54:04.4796276Z [PASS] test_clock_cannot_be_rebound() (gas: 34259)
+2026-10-12T08:54:04.4826279Z [PASS] test_clock_or_report_registration_cannot_be_omitted() (gas: 769115)
+2026-10-12T08:54:04.4856306Z [PASS] test_different_payload_cannot_replace_registered_evidence() (gas: 974347)
+2026-10-12T08:54:04.4866269Z [PASS] test_exact_retry_is_immutable_even_after_report_expiry() (gas: 1155691)
+2026-10-12T08:54:04.4886287Z [PASS] test_expired_or_future_report_is_refused() (gas: 1135232)
+2026-10-12T08:54:04.4916743Z [PASS] test_new_bound_route_reaches_real_settlement_with_mock_don_and_sp1() (gas: 1052218)
+2026-10-12T08:54:04.4946294Z [PASS] test_no_oracle_operation_path_still_requires_new_bound_proof() (gas: 547015)
+2026-10-12T08:54:04.4946971Z [PASS] test_plain_v2_proof_is_rejected_even_after_reports_registered() (gas: 977517)
+2026-10-12T08:54:04.4976360Z [PASS] test_registrar_and_verifier_caller_are_bound() (gas: 933309)
+2026-10-12T08:54:04.5006373Z [PASS] test_rust_solidity_policy_evidence_and_bound_vectors_match() (gas: 4044)
+2026-10-12T08:54:04.5036436Z [PASS] test_wrong_batch_phase_or_changed_chain_is_refused() (gas: 1091296)
+2026-10-12T08:54:04.5037048Z [PASS] test_wrong_operation_time_is_refused() (gas: 725434)
+2026-10-12T08:54:04.5037479Z [PASS] test_zero_or_extra_evidence_cannot_hide_timed_ops() (gas: 308907)
+2026-10-12T08:54:04.5037973Z Suite result: ok. 15 passed; 0 failed; 0 skipped; finished in 9.37ms (8.69ms CPU time)
+2026-10-12T08:54:04.5038316Z 
+2026-10-12T08:54:04.5038455Z Ran 4 tests for test/Integration.t.sol:IntegrationTest
+2026-10-12T08:54:04.5038834Z [PASS] test_bond_floor_immune_to_donations() (gas: 432371)
+2026-10-12T08:54:04.5039235Z [PASS] test_deposit_settle_then_claim_from_vault() (gas: 859170)
+2026-10-12T08:54:04.5039648Z [PASS] test_settle_requires_a_bond_scaled_to_tvl() (gas: 1025619)
+2026-10-12T08:54:04.5040063Z [PASS] test_withdrawals_only_from_settled_batches() (gas: 336518)
+2026-10-12T08:54:04.5040529Z Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 2.04ms (1.61ms CPU time)
+2026-10-12T08:54:04.5040832Z 
+2026-10-12T08:54:04.5040981Z Ran 5 tests for test/SP1ZkVerifier.t.sol:SP1ZkVerifierTest
+2026-10-12T08:54:04.5041316Z [PASS] test_immutables_pinned() (gas: 13003)
+2026-10-12T08:54:04.5041635Z [PASS] test_verify_false_on_bad_proof() (gas: 139475)
+2026-10-12T08:54:04.5041998Z [PASS] test_verify_false_on_wrong_commitment() (gas: 137197)
+2026-10-12T08:54:04.5066292Z [PASS] test_verify_false_on_wrong_vkey() (gas: 131387)
+2026-10-12T08:54:04.5096288Z [PASS] test_verify_true_on_matching_proof() (gas: 139788)
+2026-10-12T08:54:04.5097196Z Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 437.44µs (302.50µs CPU time)
+2026-10-12T08:54:04.5097525Z 
+2026-10-12T08:54:04.5097702Z Ran 23 tests for test/CollateralVault.t.sol:CollateralVaultTest
+2026-10-12T08:54:04.5098166Z [PASS] test_a_bad_signature_does_not_consume_the_authorization() (gas: 346977)
+2026-10-12T08:54:04.5098625Z [PASS] test_a_distinct_authorization_still_deposits() (gas: 456834)
+2026-10-12T08:54:04.5099091Z [PASS] test_a_failed_transfer_leaves_the_authorization_usable() (gas: 373634)
+2026-10-12T08:54:04.5099565Z [PASS] test_claim_against_settled_root() (gas: 550103)
+2026-10-12T08:54:04.5126341Z [PASS] test_claim_with_bad_proof_rejected() (gas: 405506)
+2026-10-12T08:54:04.5156323Z [PASS] test_constructor_rejects_zero_gateway_signer() (gas: 6346)
+2026-10-12T08:54:04.5166571Z [PASS] test_depositTipAt_records_every_prefix() (gas: 578073)
+2026-10-12T08:54:04.5166989Z [PASS] test_deposit_accrues_total() (gas: 331032)
+2026-10-12T08:54:04.5167341Z [PASS] test_deposit_advances_chain_matching_rust_KAT() (gas: 562848)
+2026-10-12T08:54:04.5167730Z [PASS] test_deposit_chain_is_order_sensitive() (gas: 520015)
+2026-10-12T08:54:04.5168078Z [PASS] test_deposit_id_is_pre_increment_count() (gas: 309309)
+2026-10-12T08:54:04.5168334Z [PASS] test_deposit_leaf_encoding() (gas: 1152)
+2026-10-12T08:54:04.5168536Z [PASS] test_deposit_requires_approval() (gas: 146808)
+2026-10-12T08:54:04.5168744Z [PASS] test_deposit_requires_gateway_signature() (gas: 204118)
+2026-10-12T08:54:04.5168997Z [PASS] test_deposit_with_valid_gateway_sig_advances_chain_to_KAT() (gas: 540352)
+2026-10-12T08:54:04.5169260Z [PASS] test_failed_deposit_does_not_advance_chain() (gas: 157254)
+2026-10-12T08:54:04.5169514Z [PASS] test_local_s4_signature_cannot_cross_vault_or_chain() (gas: 454235)
+2026-10-12T08:54:04.5169785Z [PASS] test_older_published_root_is_still_claimable() (gas: 616287)
+2026-10-12T08:54:04.5170022Z [PASS] test_only_settlement_publishes_root() (gas: 32699)
+2026-10-12T08:54:04.5170444Z [PASS] test_replayed_authorization_is_refused() (gas: 382463)
+2026-10-12T08:54:04.5170687Z [PASS] test_sig_is_bound_to_from_ownerCommit_amount() (gas: 521069)
+2026-10-12T08:54:04.5170901Z [PASS] test_two_leaf_merkle_claim() (gas: 510848)
+2026-10-12T08:54:04.5171108Z [PASS] test_zero_root_is_never_a_valid_claim_root() (gas: 71260)
+2026-10-12T08:54:04.5171376Z Suite result: ok. 23 passed; 0 failed; 0 skipped; finished in 7.47ms (6.92ms CPU time)
+2026-10-12T08:54:04.5171552Z 
+2026-10-12T08:54:04.5171635Z Ran 4 tests for test/CrossLayer.t.sol:CrossLayerTest
+2026-10-12T08:54:04.5171862Z [PASS] test_a06_wind_down_phase_one_commitment_matches_rust() (gas: 7818)
+2026-10-12T08:54:04.5172095Z [PASS] test_public_commitment_matches_rust() (gas: 6185)
+2026-10-12T08:54:04.5172316Z [PASS] test_real_rust_receipt_passes_ecrecover() (gas: 158698)
+2026-10-12T08:54:04.5172531Z [PASS] test_receipt_digest_matches_rust() (gas: 10203)
+2026-10-12T08:54:04.5172869Z Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 726.92µs (485.85µs CPU time)
+2026-10-12T08:54:04.5173049Z 
+2026-10-12T08:54:04.5173151Z Ran 1 test for test/DeployVerifierEnv.t.sol:DeployVerifierEnvTest
+2026-10-12T08:54:04.5173371Z [PASS] test_verifier_env_override() (gas: 28475594)
+2026-10-12T08:54:04.5173621Z Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.30ms (2.09ms CPU time)
+2026-10-12T08:54:04.5173797Z 
+2026-10-12T08:54:04.5173961Z Ran 15 tests for test/ChainlinkNativeContractBridge.t.sol:ChainlinkNativeContractBridgeTest
+2026-10-12T08:54:04.5174282Z [PASS] test_all_seven_native_root_mutations_refuse_settlement() (gas: 6372130)
+2026-10-12T08:54:04.5174523Z [PASS] test_capture_liquidation_context() (gas: 4770193)
+2026-10-12T08:54:04.5174688Z Logs:
+2026-10-12T08:54:04.5183013Z   liquidation: 0x0000000000000000000000000000000000000000000000000000000000014a340000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0cb889707d426a7a386870a03bc70d1b06975980000000000000000000000001d1499e622d69689cdf9004d05ec547d650ff211000000000000000000000000c7183455a4c133ae270771860664b6b7ec320bb1000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a0000000000000000000000002e234dae75c793f67a35089c9d99245e1c58470b0000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f0000000000000000000000005991a2df15a8f6a256d3ec51e99254cd3fb576a9000000000000000000000000a4ad4f68d0b91cfd19687c881e50f3a00242828c7a696950b4f5e582f1e4f52e5405b7ad93328b8951e21cab91d01f92d0bc62383bd09793165b758cb494db98ca920ef701d383ec37e6ec2a4052276aa2f88ceb62787106ade36c8a38e82be6df1eef4d83451b6f65fe0ef8d78ee57f4266c829a76343fc004628673c47e0e66d10dd6d6f305a418256a268f6646a228cc7e0dad56f4ddc2f56975a65f76bea2d73ef9ef919367b2971ebeb7ee72da271f8b20b06a648dd559448677178eb5d73ddd2384a1edf2be24cfb3d2cc641c98d69d5b182d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162e01e20b2fbea3d4f38df5a4e7b89c3f2e3a22f6e4baeb650964e86d18522016400000000000000000000000000000000000000000000000000000000001e8868000000000000000000000000000000000000000000000000000000000000271000000000000000000000000000000000000000000000000000000000000007d0000000000000000000000000000000000000000000000102030405060708090a00000000000000000000000000000000000000000000000000000000000003e8000000000000000000000000000000000000000000000000000000000000003c8bfeafc830724d950d41cf42485a9e729f5871ee5b29d8132c14e2381834e1a8c5e49fb55c41b53b2fe093d417911669ac907bf2653195223274734a5a5ffa5aba6b4cd72a38db1c4b0188b9eff98e41022dffceca7dd5de5ff47b0f5adb0337f7dc2d83e3dab565df22bbf976ac97db52ac010f23bec475d92315b0c63054c8838e511e4830062b4c478f7a0147acd4816e7be666f420951714a5b588f3fb1e0000000000000000000000000000000000000000000000000000000000000009c636f302abf2cd534baa683356c6543b356ea81b8fc62b5188edb58b22693458006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590
+2026-10-12T08:54:04.5191197Z 
+2026-10-12T08:54:04.5191272Z [PASS] test_capture_normal_context() (gas: 4905237)
+2026-10-12T08:54:04.5191436Z Logs:
+2026-10-12T08:54:04.5199524Z   normal-lifecycle: 0x0000000000000000000000000000000000000000000000000000000000014a340000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0cb889707d426a7a386870a03bc70d1b06975980000000000000000000000001d1499e622d69689cdf9004d05ec547d650ff211000000000000000000000000c7183455a4c133ae270771860664b6b7ec320bb1000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a0000000000000000000000002e234dae75c793f67a35089c9d99245e1c58470b0000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f0000000000000000000000005991a2df15a8f6a256d3ec51e99254cd3fb576a9000000000000000000000000a4ad4f68d0b91cfd19687c881e50f3a00242828c7a696950b4f5e582f1e4f52e5405b7ad93328b8951e21cab91d01f92d0bc62383bd09793165b758cb494db98ca920ef701d383ec37e6ec2a4052276aa2f88ceb62787106ade36c8a38e82be6df1eef4d83451b6f65fe0ef8d78ee57f4266c829a76343fc004628673c47e0e66d10dd6d6f305a418256a268f6646a228cc7e0dad56f4ddc2f56975a65f76bea2d73ef9ef919367b2971ebeb7ee72da271f8b20b06a648dd559448677178eb5d73ddd2384a1edf2be24cfb3d2cc641c98d69d5b182d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162fedee7125688e05520a475f6d479a6749a215cab4135a4859fc3cb074457b57800000000000000000000000000000000000000000000000000000000001e8868000000000000000000000000000000000000000000000000000000000000271000000000000000000000000000000000000000000000000000000000000007d0000000000000000000000000000000000000000000000102030405060708090a00000000000000000000000000000000000000000000000000000000000003e8000000000000000000000000000000000000000000000000000000000000003cee21feabe44c2c90926113b386c729e478a70ff41bed0919d526014f9197286f81333aa435a05202ded54c0e8efd0e924490ef32296e2aeb81f1a8fa0d7a9c218f23160f0a0ff9d004c4c78a25877fc84f4e50e8263b46115695f1d212f9e937256171682dea83b3e27550a45be485205aef4367a4c6edf996ca7c6a408ebded838e511e4830062b4c478f7a0147acd4816e7be666f420951714a5b588f3fb1e000000000000000000000000000000000000000000000000000000000000000937a168caed4266e25f5c0d4959b86a6247c66dd25eb409fd782aed04b917bd4d006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590
+2026-10-12T08:54:04.5207575Z 
+2026-10-12T08:54:04.5207683Z [PASS] test_changed_chain_refuses_original_native_proof() (gas: 5949482)
+2026-10-12T08:54:04.5207990Z [PASS] test_changed_full_uint80_epoch_and_started_at_refuse_original_native_proof() (gas: 6477672)
+2026-10-12T08:54:04.5208351Z [PASS] test_native_liquidation_roots_commitment_and_mock_contract_settlement() (gas: 5986651)
+2026-10-12T08:54:04.5208684Z [PASS] test_native_normal_roots_commitment_and_mock_contract_settlement() (gas: 6182939)
+2026-10-12T08:54:04.5208991Z [PASS] test_native_prefix_count_eight_or_ten_is_refused_by_strict_mock() (gas: 5982422)
+2026-10-12T08:54:04.5209293Z [PASS] test_omitted_extra_native_reports_fail_without_partial_records() (gas: 5287257)
+2026-10-12T08:54:04.5209611Z [PASS] test_other_deployed_targets_cannot_use_exported_native_proof() (gas: 11781887)
+2026-10-12T08:54:04.5209915Z [PASS] test_other_valid_evm_anchor_cannot_use_exported_native_proof() (gas: 5890676)
+2026-10-12T08:54:04.5210207Z [PASS] test_real_sp1_adapter_rejects_wrong_exact_tuple_fields() (gas: 6580273)
+2026-10-12T08:54:04.5210495Z [PASS] test_same_body_signature_sibling_cannot_replace_original_record() (gas: 6203049)
+2026-10-12T08:54:04.5210821Z [PASS] test_same_body_signature_sibling_fails_exact_don_before_initial_registration() (gas: 5303842)
+2026-10-12T08:54:04.5211183Z [PASS] test_same_time_reordered_native_material_cannot_use_original_native_proof() (gas: 6056871)
+2026-10-12T08:54:04.5211517Z Suite result: ok. 15 passed; 0 failed; 0 skipped; finished in 84.62ms (84.04ms CPU time)
+2026-10-12T08:54:04.5211692Z 
+2026-10-12T08:54:04.5211776Z Ran 2 tests for test/DeployGuard.t.sol:DeployGuardTest
+2026-10-12T08:54:04.5211998Z [PASS] test_real_value_chains_block_the_mock_verifier() (gas: 1133)
+2026-10-12T08:54:04.5212237Z [PASS] test_testnets_allow_the_mock_verifier() (gas: 970)
+2026-10-12T08:54:04.5212551Z Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 80.90µs (24.79µs CPU time)
+2026-10-12T08:54:04.5212726Z 
+2026-10-12T08:54:04.5212839Z Ran 50 tests for test/DarkPerpSettlement.t.sol:DarkPerpSettlementTest
+2026-10-12T08:54:04.5213307Z [PASS] testFuzz_same_block_refund_follows_transaction_order(uint8,bool,bool) (runs: 256, μ: 709366, ~: 675691)
+2026-10-12T08:54:04.5213632Z [PASS] test_a06_finalExit_rejects_before_phase_one() (gas: 130547)
+2026-10-12T08:54:04.5213875Z [PASS] test_a06_finalExit_reverts_non_governance() (gas: 360342)
+2026-10-12T08:54:04.5214126Z [PASS] test_a06_finalSettle_rejects_ordinary_phase_zero_proof() (gas: 157761)
+2026-10-12T08:54:04.5214412Z [PASS] test_a06_final_settle_is_one_shot_and_phase_two_exit_is_repeatable() (gas: 696476)
+2026-10-12T08:54:04.5214692Z [PASS] test_a06_settleBatch_rejects_phase_one_proof() (gas: 86673)
+2026-10-12T08:54:04.5214944Z [PASS] test_answer_by_rejection_requires_membership() (gas: 398454)
+2026-10-12T08:54:04.5215192Z [PASS] test_answer_forced_inclusion_refunds_challenger() (gas: 464892)
+2026-10-12T08:54:04.5215441Z [PASS] test_answer_presettled_forfeits_to_sequencer() (gas: 468529)
+2026-10-12T08:54:04.5215674Z [PASS] test_answer_refund_is_pull_not_push() (gas: 484236)
+2026-10-12T08:54:04.5216024Z [PASS] test_answer_rejected_when_batch_lacks_order() (gas: 398433)
+2026-10-12T08:54:04.5216302Z [PASS] test_answer_with_batch_settled_after_challenge_succeeds() (gas: 436012)
+2026-10-12T08:54:04.5216557Z [PASS] test_bad_receipt_signature_rejected() (gas: 60419)
+2026-10-12T08:54:04.5216773Z [PASS] test_cannot_withdraw_bond_after_slash() (gas: 505866)
+2026-10-12T08:54:04.5217001Z [PASS] test_cannot_withdraw_bond_below_required_floor() (gas: 617529)
+2026-10-12T08:54:04.5217234Z [PASS] test_challenge_allowed_after_ripe() (gas: 187199)
+2026-10-12T08:54:04.5217432Z [PASS] test_challenge_requires_bond() (gas: 44957)
+2026-10-12T08:54:04.5217644Z [PASS] test_challenge_reverts_before_ripe() (gas: 59633)
+2026-10-12T08:54:04.5217879Z [PASS] test_declared_rejection_membership_answers_challenge() (gas: 458601)
+2026-10-12T08:54:04.5218207Z [PASS] test_deposit_blocked_in_close_only() (gas: 404636)
+2026-10-12T08:54:04.5218414Z [PASS] test_finalSettle_publish_then_claim() (gas: 724622)
+2026-10-12T08:54:04.5218629Z [PASS] test_finalSettle_reverts_before_grace() (gas: 133290)
+2026-10-12T08:54:04.5218853Z [PASS] test_finalSettle_reverts_non_governance() (gas: 130202)
+2026-10-12T08:54:04.5219086Z [PASS] test_finalSettle_reverts_when_not_closeOnly() (gas: 65412)
+2026-10-12T08:54:04.5219304Z [PASS] test_finalSettle_works_when_slashed() (gas: 511277)
+2026-10-12T08:54:04.5219520Z [PASS] test_inclusion_answered_clears_challenge() (gas: 454901)
+2026-10-12T08:54:04.5219742Z [PASS] test_inclusion_unanswered_slashes_bond() (gas: 665969)
+2026-10-12T08:54:04.5219961Z [PASS] test_liveness_triggers_close_only() (gas: 90323)
+2026-10-12T08:54:04.5220207Z [PASS] test_local_s4_non_sequencer_cannot_configure_bond_or_settle() (gas: 120193)
+2026-10-12T08:54:04.5220463Z [PASS] test_non_canonical_signature_rejected() (gas: 52884)
+2026-10-12T08:54:04.5220682Z [PASS] test_public_commitment_7word_matches_rust() (gas: 6376)
+2026-10-12T08:54:04.5220923Z [PASS] test_rejection_answer_postdating_challenge_refunds() (gas: 449611)
+2026-10-12T08:54:04.5221198Z [PASS] test_rejection_answer_presettled_forfeits_to_sequencer() (gas: 468869)
+2026-10-12T08:54:04.5221479Z [PASS] test_reopened_challenge_uses_current_settlement_boundary() (gas: 711306)
+2026-10-12T08:54:04.5221759Z [PASS] test_same_block_forced_inclusion_refunds_challenger() (gas: 488063)
+2026-10-12T08:54:04.5222016Z [PASS] test_same_block_late_rejection_refunds_challenger() (gas: 487990)
+2026-10-12T08:54:04.5222287Z [PASS] test_same_block_presettled_rejection_forfeits_to_sequencer() (gas: 468565)
+2026-10-12T08:54:04.5222563Z [PASS] test_settleBatch_selector_matches_nine_param_signature() (gas: 458)
+2026-10-12T08:54:04.5222835Z [PASS] test_settle_accepts_a_proven_prefix_while_head_moved() (gas: 910687)
+2026-10-12T08:54:04.5223066Z [PASS] test_settle_advances_root() (gas: 170084)
+2026-10-12T08:54:04.5223272Z [PASS] test_settle_at_l1_deposit_head_succeeds() (gas: 886254)
+2026-10-12T08:54:04.5223483Z [PASS] test_settle_binds_withdrawals_root() (gas: 264744)
+2026-10-12T08:54:04.5223768Z [PASS] test_settle_blocked_in_close_only() (gas: 121797)
+2026-10-12T08:54:04.5223969Z [PASS] test_settle_rejects_bad_prev_root() (gas: 75665)
+2026-10-12T08:54:04.5224165Z [PASS] test_settle_rejects_bad_proof() (gas: 133472)
+2026-10-12T08:54:04.5224377Z [PASS] test_settle_reverts_on_deposit_root_mismatch() (gas: 581022)
+2026-10-12T08:54:04.5224608Z [PASS] test_settle_reverts_on_wrong_prefix_root() (gas: 798863)
+2026-10-12T08:54:04.5224849Z [PASS] test_slash_after_closeOnly_does_not_reset_grace() (gas: 578161)
+2026-10-12T08:54:04.5225072Z [PASS] test_withdraw_excess_bond() (gas: 295944)
+2026-10-12T08:54:04.5225286Z [PASS] test_zero_value_deposit_cannot_stall_settlement() (gas: 803893)
+2026-10-12T08:54:04.5225557Z Suite result: ok. 50 passed; 0 failed; 0 skipped; finished in 123.88ms (135.74ms CPU time)
+2026-10-12T08:54:08.1618434Z 
+2026-10-12T08:54:08.1619125Z Ran 1 test for test/SettlementInvariant.t.sol:SettlementInvariantTest
+2026-10-12T08:54:08.1619526Z [PASS]
+2026-10-12T08:54:08.1619736Z SettlementInvariantTest invariants:
+2026-10-12T08:54:08.1620045Z [PASS] invariant_honest_sequencer_is_never_griefed
+2026-10-12T08:54:08.1620344Z [PASS] invariant_honest_sequencer_not_slashed
+2026-10-12T08:54:08.1620719Z  SettlementInvariantTest invariants (runs: 256, calls: 128000, reverts: 25480)
+2026-10-12T08:54:08.1620970Z 
+2026-10-12T08:54:08.1621784Z ╭----------+--------------+-------+---------+----------╮
+2026-10-12T08:54:08.1622117Z | Contract | Selector     | Calls | Reverts | Discards |
+2026-10-12T08:54:08.1622424Z +======================================================+
+2026-10-12T08:54:08.1622648Z | Handler  | actAnswer    | 25963 | 0       | 0        |
+2026-10-12T08:54:08.1622846Z |----------+--------------+-------+---------+----------|
+2026-10-12T08:54:08.1623037Z | Handler  | actChallenge | 25670 | 0       | 0        |
+2026-10-12T08:54:08.1623602Z |----------+--------------+-------+---------+----------|
+2026-10-12T08:54:08.1623802Z | Handler  | actRoll      | 25416 | 0       | 0        |
+2026-10-12T08:54:08.1624017Z |----------+--------------+-------+---------+----------|
+2026-10-12T08:54:08.1624221Z | Handler  | actSettle    | 25471 | 0       | 0        |
+2026-10-12T08:54:08.1624413Z |----------+--------------+-------+---------+----------|
+2026-10-12T08:54:08.1624609Z | Handler  | init         | 25480 | 25480   | 0        |
+2026-10-12T08:54:08.1624853Z ╰----------+--------------+-------+---------+----------╯
+2026-10-12T08:54:08.1624975Z 
+2026-10-12T08:54:08.1625107Z Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 3.74s (3.73s CPU time)
+2026-10-12T08:54:08.7855356Z 
+2026-10-12T08:54:08.7857152Z Ran 1 test for test/VaultInvariant.t.sol:VaultInvariantTest
+2026-10-12T08:54:08.7857503Z [PASS]
+2026-10-12T08:54:08.7857690Z VaultInvariantTest invariants:
+2026-10-12T08:54:08.7857924Z [PASS] invariant_balance_bounded
+2026-10-12T08:54:08.7858205Z [PASS] invariant_vault_is_solvent
+2026-10-12T08:54:08.7858505Z  VaultInvariantTest invariants (runs: 256, calls: 128000, reverts: 42684)
+2026-10-12T08:54:08.7858782Z 
+2026-10-12T08:54:08.7859412Z ╭----------+-----------+-------+---------+----------╮
+2026-10-12T08:54:08.7859947Z | Contract | Selector  | Calls | Reverts | Discards |
+2026-10-12T08:54:08.7860329Z +===================================================+
+2026-10-12T08:54:08.7860614Z | Handler  | claimLast | 42756 | 0       | 0        |
+2026-10-12T08:54:08.7860889Z |----------+-----------+-------+---------+----------|
+2026-10-12T08:54:08.7861313Z | Handler  | init      | 42684 | 42684   | 0        |
+2026-10-12T08:54:08.7861753Z |----------+-----------+-------+---------+----------|
+2026-10-12T08:54:08.7862135Z | Handler  | publish   | 42560 | 0       | 0        |
+2026-10-12T08:54:08.7862504Z ╰----------+-----------+-------+---------+----------╯
+2026-10-12T08:54:08.7862675Z 
+2026-10-12T08:54:08.7862858Z Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 4.29s (4.29s CPU time)
+2026-10-12T08:54:08.7863139Z 
+2026-10-12T08:54:08.7863229Z Ran 4 tests for test/Fuzz.t.sol:FuzzTest
+2026-10-12T08:54:08.7864087Z [PASS] testFuzz_claim_only_exact_leaf(address,uint96,uint96) (runs: 256, μ: 304360, ~: 304468)
+2026-10-12T08:54:08.7864567Z [PASS] testFuzz_inclusion_leaf_distinct(uint256,bytes32,uint256,bytes32) (runs: 256, μ: 14538, ~: 14538)
+2026-10-12T08:54:08.7864952Z [PASS] testFuzz_inclusion_leaf_is_not_an_internal_node(uint256,bytes32) (runs: 256, μ: 6222, ~: 6222)
+2026-10-12T08:54:08.7865657Z [PASS] testFuzz_settle_binds_roots(bytes32,bytes32,bytes32,bytes32) (runs: 256, μ: 196316, ~: 196614)
+2026-10-12T08:54:08.7866608Z Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 4.35s (4.35s CPU time)
+2026-10-12T08:54:08.7868881Z 
+2026-10-12T08:54:08.7869240Z Ran 16 test suites in 4.40s (12.67s CPU time): 183 tests passed, 0 failed, 0 skipped (183 total tests)
+2026-10-12T08:54:08.8180135Z ##[group]Run python3 scripts/local-verification/verify_real_proof.py --guards-only --output-dir /tmp/arcora-real-verifier-guards
+2026-10-12T08:54:08.8180672Z [36;1mpython3 scripts/local-verification/verify_real_proof.py --guards-only --output-dir /tmp/arcora-real-verifier-guards[0m
+2026-10-12T08:54:08.8231429Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:08.8231587Z ##[endgroup]
+2026-10-12T08:54:10.2888440Z {"status": "PASS", "kind": "real-sp1-verifier-guards", "passed": 8, "application_proof_accepted": false, "report": "/tmp/arcora-real-verifier-guards/verification.json"}
+2026-10-12T08:54:10.2958834Z ##[group]Run python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
+2026-10-12T08:54:10.2959245Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py[0m
+2026-10-12T08:54:10.2959628Z [36;1mpython3 scripts/local-verification/verify_clock_fixture.py --output-dir /tmp/arcora-clock-real-proof[0m
+2026-10-12T08:54:10.3010022Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:10.3010356Z ##[endgroup]
+2026-10-12T08:54:10.3760486Z ......
+2026-10-12T08:54:10.3760849Z ----------------------------------------------------------------------
+2026-10-12T08:54:10.3761181Z Ran 6 tests in 0.007s
+2026-10-12T08:54:10.3761309Z 
+2026-10-12T08:54:10.3761380Z OK
+2026-10-12T08:54:11.7853400Z {"fixed_constructor_addresses": true, "full_production_lifecycle": false, "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5", "guest_source_sha256": {"Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa", "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c", "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7", "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92", "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e", "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6", "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd", "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781", "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9", "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5", "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d", "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6", "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423", "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78", "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2", "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7", "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66", "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388", "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3", "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85", "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"}, "local_evm_only": true, "mock_proof_used": false, "mock_token_used": true, "production_deployed": false, "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353", "proof_sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89", "public_commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e", "real_cryptographic_proof_verified": true, "scope": "Actual SP1 verifier, clock adapter, settlement and synthetic vault withdrawal; not full HTTP/order/production lifecycle.", "sdk_verification_claimed": false, "status": "PASS", "synthetic_zero_payer": true, "tests": {"ClockBoundRealProofTest": 6, "SP1RealProofTest": 10, "SP1RealVerifierGuardTest": 8}}
+2026-10-12T08:54:11.7943531Z ##[group]Run actions/upload-artifact@v4
+2026-10-12T08:54:11.7943708Z with:
+2026-10-12T08:54:11.7943832Z   name: a11-clock-real-proof
+2026-10-12T08:54:11.7943985Z   path: /tmp/arcora-clock-real-proof
+2026-10-12T08:54:11.7944143Z   if-no-files-found: warn
+2026-10-12T08:54:11.7944287Z   compression-level: 6
+2026-10-12T08:54:11.7944414Z   overwrite: false
+2026-10-12T08:54:11.7944541Z   include-hidden-files: false
+2026-10-12T08:54:11.7944682Z ##[endgroup]
+2026-10-12T08:54:11.8985090Z (node:2519) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:54:11.8985598Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:11.9028111Z With the provided path, there will be 5 files uploaded
+2026-10-12T08:54:11.9034624Z Artifact name is valid!
+2026-10-12T08:54:11.9035152Z Root directory input is valid!
+2026-10-12T08:54:12.2025145Z Beginning upload of artifact content to blob storage
+2026-10-12T08:54:12.2235588Z (node:2519) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:54:12.3935571Z Uploaded bytes 3686
+2026-10-12T08:54:12.4408806Z Finished uploading artifact content to blob storage!
+2026-10-12T08:54:12.4409319Z SHA256 digest of uploaded artifact zip is 3b52d5e07cfd543ce1c600789402586832a13737a31e19b9ca9b670ff4242f1d
+2026-10-12T08:54:12.4410225Z Finalizing artifact upload
+2026-10-12T08:54:12.7010045Z Artifact a11-clock-real-proof.zip successfully finalized. Artifact ID 11736687961
+2026-10-12T08:54:12.7011053Z Artifact a11-clock-real-proof has been successfully uploaded! Final size is 3686 bytes. Artifact ID is 11736687961
+2026-10-12T08:54:12.7015186Z Artifact download URL: https://github.com/Arcora-labs/arcora-perp/actions/runs/38226405363/artifacts/11736687961
+2026-10-12T08:54:12.7151130Z ##[group]Run python3 -m unittest discover -s contracts/integration -p 'test_*.py'
+2026-10-12T08:54:12.7151463Z [36;1mpython3 -m unittest discover -s contracts/integration -p 'test_*.py'[0m
+2026-10-12T08:54:12.7201759Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:12.7201908Z ##[endgroup]
+2026-10-12T08:54:12.9100456Z .............
+2026-10-12T08:54:12.9100771Z ----------------------------------------------------------------------
+2026-10-12T08:54:12.9101005Z Ran 13 tests in 0.138s
+2026-10-12T08:54:12.9101099Z 
+2026-10-12T08:54:12.9101154Z OK
+2026-10-12T08:54:12.9245738Z ##[group]Run python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
+2026-10-12T08:54:12.9246265Z [36;1mpython3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py[0m
+2026-10-12T08:54:12.9298676Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:12.9298835Z ##[endgroup]
+2026-10-12T08:54:12.9998163Z ......
+2026-10-12T08:54:12.9998440Z ----------------------------------------------------------------------
+2026-10-12T08:54:12.9998673Z Ran 6 tests in 0.017s
+2026-10-12T08:54:12.9998760Z 
+2026-10-12T08:54:12.9998817Z OK
+2026-10-12T08:54:13.0137261Z ##[group]Run python3 scripts/local-verification/verify_clock_proof.py --artifact-dir contracts/integration/fixtures/clock-v2-verified --output-dir /tmp/arcora-clock-complete-proof
+2026-10-12T08:54:13.0137981Z [36;1mpython3 scripts/local-verification/verify_clock_proof.py --artifact-dir contracts/integration/fixtures/clock-v2-verified --output-dir /tmp/arcora-clock-complete-proof[0m
+2026-10-12T08:54:13.0190136Z shell: /usr/bin/bash -e {0}
+2026-10-12T08:54:13.0190304Z ##[endgroup]
+2026-10-12T08:54:13.1380157Z {"status": "PASS", "kind": "clock-v2-real-sp1-target-verification", "local_evm_only": true, "mock_proof_used": false, "production_deployed": false, "full_token_lifecycle": false, "clock_adapter_full_lifecycle": false, "clock_adapter_synthetic_settlement_verified": true, "synthetic_vault_claim_verified": true, "mock_token_used": true, "fixture_address_constructors": true, "synthetic_zero_payer_impersonated": true, "application_proof_accepted": true, "scope": "Real clock-v2 proof through SP1 verifier, clock adapter, actual settlement and vault; fixed synthetic addresses and a mock token, not live payer provenance or full order/HTTP/production lifecycle.", "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5", "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353", "public_commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e", "tests": {"ClockBoundRealProofTest": 6, "SP1RealProofTest": 10, "SP1RealVerifierGuardTest": 8}, "input_artifacts": {"proof-evidence.json": {"sha256": "224704d958a9d5246abace7d0df424d10afd67fb74db113bc399290e56c16486", "size_bytes": 1907}, "clock.witness.bin": {"sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f", "size_bytes": 1274}, "guest.elf": {"sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5", "size_bytes": 525824}, "program-vkey.bin": {"sha256": "5d6af308d886b93f41bb947993fcbe4f20b755d7e0eb9bf134ef2dc99104f21e", "size_bytes": 32}, "proof.bin": {"sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89", "size_bytes": 356}, "public-values.bin": {"sha256": "f366fab4eac85e885e3f18fc826b8421d4fe29897b223734cee7b15885cffaee", "size_bytes": 32}, "proof.sdk.json": {"sha256": "9028b9ce9be2e4a2957101f78727565e345a00e58a970d5383113e6182770c05", "size_bytes": 1997}}, "runner_sha256": "6399cdcecd6ad022257ffad32bb66c7082aa83469d929c48bd4caa36777128b5", "guest_sources_sha256": {"Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa", "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c", "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7", "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92", "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e", "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6", "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd", "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781", "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9", "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5", "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d", "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6", "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423", "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78", "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2", "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7", "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66", "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388", "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3", "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85", "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"}, "source_sha256": {"scripts/local-verification/verify_clock_proof.py": "6399cdcecd6ad022257ffad32bb66c7082aa83469d929c48bd4caa36777128b5", "scripts/local-verification/verify_real_proof.py": "523a34365c1cc36a4c946321ebdda02a6b65ecfc0bf97fa91bb842f86719843d", "contracts/integration/ClockBoundRealProof.t.sol": "6da463b6cbb2710604ad51ceb68a4612ba89c6abc0aac34a55462a9af7409565", "contracts/integration/RealSP1TestBase.sol": "caa282d511ee9c55dd9867dda78830244d33ac27a6294a51f88384a53f66ce94", "contracts/integration/SP1RealProof.t.sol": "99276963ae99ea5fae6f79fcc7e0337c0cd875e4548c006b6454119ee752a098", "contracts/integration/SP1RealVerifierGuard.t.sol": "083a6eed433353b6c983fe8e733a25fe78a81935265242a752c9ad725026eb6b", "contracts/src/SP1ZkVerifier.sol": "f73bf945ec0be9a134bfb43269ba2517e091daa1f25553e846670d8b47056a68", "contracts/src/ClockBoundVerifier.sol": "0138de9d98ab3b9a2cbbe0b2f3dca5d30d1c0ee491c1c157736bab6699a02135", "contracts/src/DarkPerpSettlement.sol": "510e9ae8a21d4e34989969b0767d40bc80b6ff400cd95e754be481f5cb036f94", "contracts/src/CollateralVault.sol": "b4104f6197691960e062c36391801d35a05e8f49e1354f04bf6cd2b441f0ff60"}, "compiled_contracts": {"upstream_verifier": {"artifact_path": "out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json", "artifact_sha256": "baf5863b906904b51a2dfb684bc21a4dc147ab0b2c15021fb1e45dbbc6f51c0f", "compiler": "0.8.20+commit.a1b79de6", "creation_bytecode_sha256": "36c6488fc23bd3976d816e25c0c5b6aa638878e9493ccdac452d5c7604b7ce77", "deployed_bytecode_template_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9", "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."}, "upstream_gateway": {"artifact_path": "out/sp1-upstream/SP1VerifierGateway.sol/SP1VerifierGateway.json", "artifact_sha256": "e8bdc916a7fb3922edfcd7f1f565d750550c99db6af933b2ea1ebcb576ce6eef", "compiler": "0.8.20+commit.a1b79de6", "creation_bytecode_sha256": "47723ad4dd3b21eb622af635bfd4b5584e021c95808f5b5d9d812650705f1e14", "deployed_bytecode_template_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84", "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."}, "sp1_adapter": {"artifact_path": "out/SP1ZkVerifier.sol/SP1ZkVerifier.json", "artifact_sha256": "8ec8ae353cf8f80bc8e83e6d42d36fb7e73f956b7720bed3c6a726183315fbba", "compiler": "0.8.24+commit.e11b9ed9", "creation_bytecode_sha256": "546169311f83a2a97005f36dc75f8a627dbdf94c9ba4964ae1b3117baa3bd7f7", "deployed_bytecode_template_sha256": "add231cac455e09802b0076ad285a6c35cc81d3840465dd2e5285ba058deb70e", "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."}, "clock_adapter": {"artifact_path": "out/ClockBoundVerifier.sol/ClockBoundVerifier.json", "artifact_sha256": "a7c8c67c122701b2f5a61ff7f5e18905dd5cb624286033e3729ad20ba56e9da7", "compiler": "0.8.24+commit.e11b9ed9", "creation_bytecode_sha256": "04a9bf600698bc325670de79649356140ca149a28556dd01d66ec2136334a9bc", "deployed_bytecode_template_sha256": "b89424d0efa5fdc9a4653656bd2809322e64ab1dd83d38e949c0c9927875f17e", "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."}, "settlement": {"artifact_path": "out/DarkPerpSettlement.sol/DarkPerpSettlement.json", "artifact_sha256": "08669761ebdaea06ef9b407ce1a678b357ceedf27f7bbb199dc884e734622001", "compiler": "0.8.24+commit.e11b9ed9", "creation_bytecode_sha256": "794dfa87cfc2f2c75ddd6a21ddee4ba3ac099736126c53694ee9a567f0305735", "deployed_bytecode_template_sha256": "52bfc39d17fbae366bd2d2a961a42bcd041a86dd41a801bc737a6d1f7b2c61b1", "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."}, "vault": {"artifact_path": "out/CollateralVault.sol/CollateralVault.json", "artifact_sha256": "1acd75a16f5301e3e212eaebf3e0f46b1ae4e54d5183440495adbe2f8565671a", "compiler": "0.8.24+commit.e11b9ed9", "creation_bytecode_sha256": "6f70f0f4c131d8e6e0a13c1f2410bea3117411d55ff72cded5170f17c38de9a1", "deployed_bytecode_template_sha256": "ba64b32b1ae376a008a51a1eaf25d494d217835f3477af442730f868a276028f", "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."}}, "vendor_upstreams": [{"repository": "https://github.com/succinctlabs/sp1-contracts", "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c", "tag": "v6.1.0", "archive_url": "https://codeload.github.com/succinctlabs/sp1-contracts/tar.gz/2ac5ecbbe473421a963d67e55f182e9a36576f7c", "archive_sha256": "f9466b50856007220cc8e10cb9bd02a162c779ab0efc74668fe2906e4a8116a5"}, {"repository": "https://github.com/OpenZeppelin/openzeppelin-contracts", "commit": "dbb6104ce834628e473d2173bbc9d47f81a9eec3", "tag": "v5.0.2", "archive_url": "https://codeload.github.com/OpenZeppelin/openzeppelin-contracts/tar.gz/dbb6104ce834628e473d2173bbc9d47f81a9eec3", "archive_sha256": "4a9c091852052f4319173629e0bf0b5cdf7a39d70e5e2298a7a6a149eff9f385"}]}
+2026-10-12T08:54:13.1473562Z ##[group]Run actions/upload-artifact@v4
+2026-10-12T08:54:13.1473840Z with:
+2026-10-12T08:54:13.1474050Z   name: a11-real-verifier-and-clock-proof
+2026-10-12T08:54:13.1474722Z   path: /tmp/arcora-real-verifier-guards
+/tmp/arcora-clock-real-proof
+/tmp/arcora-clock-complete-proof
+
+2026-10-12T08:54:13.1475201Z   if-no-files-found: warn
+2026-10-12T08:54:13.1475426Z   compression-level: 6
+2026-10-12T08:54:13.1475629Z   overwrite: false
+2026-10-12T08:54:13.1475828Z   include-hidden-files: false
+2026-10-12T08:54:13.1476221Z ##[endgroup]
+2026-10-12T08:54:13.2518711Z (node:2753) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-12T08:54:13.2519268Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-12T08:54:13.2596147Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-10-12T08:54:13.2597584Z The least common ancestor is /tmp. This will be the root directory of the artifact
+2026-10-12T08:54:13.2598231Z With the provided path, there will be 17 files uploaded
+2026-10-12T08:54:13.2601021Z Artifact name is valid!
+2026-10-12T08:54:13.2601342Z Root directory input is valid!
+2026-10-12T08:54:13.5286619Z Beginning upload of artifact content to blob storage
+2026-10-12T08:54:13.5536867Z (node:2753) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-12T08:54:13.7158600Z Uploaded bytes 14626
+2026-10-12T08:54:13.7554227Z Finished uploading artifact content to blob storage!
+2026-10-12T08:54:13.7554783Z SHA256 digest of uploaded artifact zip is 45dc716e14e6e11e28d355ac4cb8de4c45e7a8871de1bbefa03757c7dac61dc7
+2026-10-12T08:54:13.7556266Z Finalizing artifact upload
+2026-10-12T08:54:14.0135358Z Artifact a11-real-verifier-and-clock-proof.zip successfully finalized. Artifact ID 11736333246
+2026-10-12T08:54:14.0136335Z Artifact a11-real-verifier-and-clock-proof has been successfully uploaded! Final size is 14626 bytes. Artifact ID is 11736333246
+2026-10-12T08:54:14.0141033Z Artifact download URL: https://github.com/Arcora-labs/arcora-perp/actions/runs/38226405363/artifacts/11736333246
+2026-10-12T08:54:14.0275180Z Post job cleanup.
+2026-10-12T08:54:14.1194474Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/arcora-perp/arcora-perp --files-from manifest.txt --use-compress-program zstdmt
+2026-10-12T08:54:14.2667688Z Failed to save: Unable to reserve cache with key linux-foundry-chain-fork-contracts-8f5e97bc690c1d9a6d796fdc3725526d283e077d, another job may be creating this cache.
+2026-10-12T08:54:14.2780822Z Post job cleanup.
+2026-10-12T08:54:14.3346677Z [command]/usr/bin/git version
+2026-10-12T08:54:14.3367140Z git version 2.55.0
+2026-10-12T08:54:14.3394034Z Temporarily overriding HOME='/home/runner/work/_temp/7a4d2510-4b2b-4fee-bd28-6dc6040cbb24' before making global git config changes
+2026-10-12T08:54:14.3394450Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-12T08:54:14.3396673Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/arcora-perp/arcora-perp
+2026-10-12T08:54:14.3428462Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-12T08:54:14.3458539Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-12T08:54:14.3654244Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-12T08:54:14.3682789Z http.https://github.com/.extraheader
+2026-10-12T08:54:14.3693404Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-12T08:54:14.3722457Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-12T08:54:14.3912978Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-12T08:54:14.3941872Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-12T08:54:14.4232118Z Cleaning up orphan processes
+2026-10-12T08:54:14.4440540Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

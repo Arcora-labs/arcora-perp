@@ -1,0 +1,8 @@
+{
+  "change": "Documentation-only clarification: 1-byte to 64-MiB elf_bytes is a parser refusal bound, not measured proving capacity; canonical Rust/Python correspondence is restricted to the current ASCII fixed schema. Checker/test source frozen hashes unchanged.",
+  "files_sha256": {
+    "docs/PUBLIC_SERVICE_IDENTITY.md": "1abf0aa7b05d2475592a0f5c21b306270c9c56188352a83ad3379406d1fa7954",
+    "scripts/local-verification/service_identity_preflight.py": "e99e4ffdb9c87732702b8f51b2cb89c45b2c30f164e91af063caaa3fe7efd947",
+    "scripts/local-verification/test_service_identity_preflight.py": "5ebd28c0aa35ae7d1749d924b82b4191c6d98528dd571e5168256e3a7c7c567b"
+  }
+}

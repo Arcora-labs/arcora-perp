@@ -1,0 +1,99 @@
+{
+  "schema": "arcora-service-identity-independent-q1-closure/v1",
+  "observed_utc": "2026-10-12T09:57:29.300426+00:00",
+  "finding_id": "Q1",
+  "status": "CLOSED",
+  "initial_qa": {
+    "path": "target/candidate-service-validation-20261012/independent-design-qa.json",
+    "sha256": "5b3f5a69b7872d6e7e13d7d74400d469158fec00ba414344f065f4aaeaf24796",
+    "retained_unchanged": true
+  },
+  "failure_then_repair_evidence": {
+    "failed_before": {
+      "receipt": "target/candidate-service-validation-20261012/gateway/environment-repair1.json",
+      "receipt_sha256": "d2c0b6273da1b3e38e4bdf7ad9d515e1e5936af17a5232eb49815f29d1ba4eb0",
+      "exit_code": 101,
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "public_identity",
+        "--",
+        "--nocapture"
+      ],
+      "elapsed_seconds": 14.223690291983075,
+      "counts": {
+        "passed": 5,
+        "failed": 1,
+        "ignored": 0
+      },
+      "raw_logs": {
+        "stdout": {
+          "path": "target/candidate-service-validation-20261012/gateway/environment-repair1.stdout.log",
+          "sha256": "99fa68dc470f9d157fb6c12099317432c44ad0b27fca071355ced076414b646c"
+        },
+        "stderr": {
+          "path": "target/candidate-service-validation-20261012/gateway/environment-repair1.stderr.log",
+          "sha256": "53dadee49d4e086308fa8b1b4095719a65679c42f7d9aac2c985b690b8711009"
+        }
+      }
+    },
+    "passed_after": {
+      "receipt": "target/candidate-service-validation-20261012/gateway/post-intake-repair1.json",
+      "receipt_sha256": "215ac64862a467812dc440ae8e32b11f77c7085c5a22711b3a46266453cda30b",
+      "exit_code": 0,
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "public_identity",
+        "--",
+        "--nocapture"
+      ],
+      "elapsed_seconds": 8.565390417003073,
+      "counts": {
+        "passed": 6,
+        "failed": 0,
+        "ignored": 0
+      },
+      "raw_logs": {
+        "stdout": {
+          "path": "target/candidate-service-validation-20261012/gateway/post-intake-repair1.stdout.log",
+          "sha256": "6afdd75176d8428030baeaf6f586b614bd43243e743110c7f0b7e7d910e8a897"
+        },
+        "stderr": {
+          "path": "target/candidate-service-validation-20261012/gateway/post-intake-repair1.stderr.log",
+          "sha256": "f9007da00e3333e4be60b8f8f05250c4caa4b9545e3006f68784546ab4c842b5"
+        }
+      }
+    }
+  },
+  "current_test_source": {
+    "path": "crates/gateway/src/public_identity_tests.rs",
+    "sha256": "ae61efbe3c385167a9e9e2d5a3f8cabf3d693c3265ec25884d2d0de6fe498d04",
+    "matches_passed_source": true
+  },
+  "resolved_semantics": {
+    "existing_global_bounded_body_intake_preserved": true,
+    "POST_small_body_after_existing_intake": 405,
+    "POST17_bytes_with_owned_limit16": 413,
+    "gateway_financial_state_unchanged_in_both_test_assertions": true,
+    "zero_body_poll_claim_removed": true,
+    "identity_GET_handler_or_existing_middleware_changed_by_repair": false,
+    "new_test_only_repair": true
+  },
+  "current_tested_sources_match_owner_receipt": true,
+  "preservation_receipt": {
+    "path": "target/candidate-service-validation-20261012/preservation-independent-final.json",
+    "sha256": "d25a63b47f2f16c3c0a3fd3d7361e1379fd13224e17d28f30a42118c2f82ca90",
+    "passed": true
+  },
+  "execution_scope": "Reviewed actual root-owned six-test result and raw logs, plus current source hashes. This agent ran no Cargo/test/network call and does not claim live service, fresh proof or attestation acceptance.",
+  "release_gate": "HOLD"
+}
