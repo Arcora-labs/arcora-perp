@@ -1,0 +1,299 @@
+{
+  "schema": "arcora-owned-outbound-body-native-probe/v1",
+  "observed_at": "2026-10-13T18:30:56.317213+00:00",
+  "passed": true,
+  "source_count": 378,
+  "source_sha256": "927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d",
+  "source_before_after_equal": true,
+  "base5archive_unchanged": true,
+  "source_snapshot_sha256": "d8e01c96a7a01e124905d47ba0a136ecc5e54441a716a267b3ce8f6470dcea65",
+  "extraction_sha256": "fc29f0c1083438c43a2cd0b822aa4a23e7c5ff4ed2ee321687c73e3b9b8d2d67",
+  "compile": {
+    "command": [
+      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+      "--edition=2021",
+      "--crate-name",
+      "owned_outbound_body_probe",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/probe.rs",
+      "-L",
+      "dependency=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps",
+      "--extern",
+      "prover=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libprover-2b500ed69166089e.rlib",
+      "--extern",
+      "postcard=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libpostcard-1948e1f842373c4d.rlib",
+      "--extern",
+      "serde_json=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libserde_json-1f00db33053c319f.rlib",
+      "-o",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/probe"
+    ],
+    "exit_code": 0,
+    "seconds": 0.9074973339447752,
+    "probe_source_sha256": "cfb3d9479a94d426b4f1b5b41deb2628c79c7c3e20e4ad9a66570822e8ada193",
+    "libs_sha256": {
+      "prover": "c399e53b6489d6da6178a901331d7d4067b0299ff2683754daee10f2a2188294",
+      "postcard": "720ae4e5d6784fc021f6d7163777ec26984c2a3ab54f6271c8e95429e5c6fb66",
+      "serde_json": "26a1f894e935b4cc6cb47070d30802071e3c735b071c532f3d41f2d96c36a215"
+    },
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "native_curl": "/usr/bin/curl",
+  "curl_version": "curl 8.7.1 (x86_64-apple-darwin25.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.68.1\nRelease-Date: 2024-03-27\nProtocols: dict file ftp ftps gopher gophers http https imap imaps ipfs ipns ldap ldaps mqtt pop3 pop3s rtsp smb smbs smtp smtps telnet tftp\nFeatures: alt-svc AsynchDNS GSS-API HSTS HTTP2 HTTPS-proxy IPv6 Kerberos Largefile libz MultiSSL NTLM SPNEGO SSL threadsafe UnixSockets\n",
+  "HTTP_cases": {
+    "ascii-exact": {
+      "exit_code": 0,
+      "seconds": 0.2974487079773098,
+      "stdout_sha256": "263e7053cea1346b64927f180efc993efecced86b0e98825937d42bec2fb2910",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "returned": {
+        "body_bytes": 163840,
+        "body_chars": 163840,
+        "budget": 163840,
+        "returned": {
+          "JSON_response_accepted": true,
+          "body": "{\"owned_fixture\":1}",
+          "kind": "OK"
+        }
+      },
+      "wrapper_sha256": "d77d0b9be6b4aa7cfdd56b6e5425f4db77f1014b4522ea73311c03a4da264de6",
+      "child_started": true,
+      "requests": [
+        {
+          "method_target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 163840,
+          "body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695",
+          "wire_sha256": "cbe5dcd6bdf887c67b11cc77820fe363ed66a7a24318a95856d8abe73a4059f4",
+          "synthetic_bearer_exact": true,
+          "response_status": 200
+        }
+      ],
+      "actual_request_count": 1,
+      "public_input_body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695"
+    },
+    "ascii-plus1": {
+      "exit_code": 0,
+      "seconds": 0.10215491696726531,
+      "stdout_sha256": "dc4142572bbb3b1f1614365350bf37f380568440d0dac9e7f7ed8b5a766e2674",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "returned": {
+        "body_bytes": 163841,
+        "body_chars": 163841,
+        "budget": 163840,
+        "returned": {
+          "error": "Http(\"HTTP request exceeds byte limit\")",
+          "kind": "ERROR"
+        }
+      },
+      "wrapper_sha256": "0d433439e78725e7899c80482d7ae26dc1bbfe2e2bc73fe90e9ad1db7fe200f8",
+      "child_started": false,
+      "requests": [],
+      "actual_request_count": 0,
+      "public_input_body_sha256": "f6ac8f48da55f7b580f87a14514eb9f7bba35fcbb324ab59e763ee0c07cd287a"
+    },
+    "utf8-exact": {
+      "exit_code": 0,
+      "seconds": 0.3155475000385195,
+      "stdout_sha256": "3085f352495bdebc6d6870dddab2be5a629c852c8d82db0da086c62f9e489693",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "returned": {
+        "body_bytes": 18,
+        "body_chars": 14,
+        "budget": 18,
+        "returned": {
+          "JSON_response_accepted": true,
+          "body": "{\"owned_fixture\":1}",
+          "kind": "OK"
+        }
+      },
+      "wrapper_sha256": "b05110c73a77a6ec166f6a8503e3b6caf6a41e03b3854cc1826e26b1d6fb911e",
+      "child_started": true,
+      "requests": [
+        {
+          "method_target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 18,
+          "body_sha256": "8c7c5be17a66609a1b937b6d88dbac67e6da273c07e0f82b7a507924fd136e55",
+          "wire_sha256": "b54b770a554cf956d3805a6499f8240064223289290c0e2512da8821abb5bf9a",
+          "synthetic_bearer_exact": true,
+          "response_status": 200
+        }
+      ],
+      "actual_request_count": 1,
+      "public_input_body_sha256": "8c7c5be17a66609a1b937b6d88dbac67e6da273c07e0f82b7a507924fd136e55"
+    },
+    "utf8-char-limit": {
+      "exit_code": 0,
+      "seconds": 0.10224595898762345,
+      "stdout_sha256": "b65060729004116e5ce31faaabc5c964cda836c46098543e28a1860c3f2caf08",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "returned": {
+        "body_bytes": 18,
+        "body_chars": 14,
+        "budget": 14,
+        "returned": {
+          "error": "Http(\"HTTP request exceeds byte limit\")",
+          "kind": "ERROR"
+        }
+      },
+      "wrapper_sha256": "ac2f6b02db10ca118c83626d2b4403938a39d4061405e25c6aed29a19cca34e9",
+      "child_started": false,
+      "requests": [],
+      "actual_request_count": 0,
+      "public_input_body_sha256": "8c7c5be17a66609a1b937b6d88dbac67e6da273c07e0f82b7a507924fd136e55"
+    },
+    "zero-budget": {
+      "exit_code": 0,
+      "seconds": 0.1021320839645341,
+      "stdout_sha256": "19cf572ef03ba3779cbebafb22c9c5882571b197fa3e19dc0e8d97bd7cce7d79",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "returned": {
+        "body_bytes": 11,
+        "body_chars": 11,
+        "budget": 0,
+        "returned": {
+          "error": "Http(\"invalid HTTP transport limits\")",
+          "kind": "ERROR"
+        }
+      },
+      "wrapper_sha256": "fe14afdfb7bb8aa0ad747ce5dfe955f5a3bf34619d7fd9de88acb7a5c8e30926",
+      "child_started": false,
+      "requests": [],
+      "actual_request_count": 0,
+      "public_input_body_sha256": "c62f8e5e8c654983cbed2ed1cc64692fac9315a4db44aca9d1514ad9a333ef2f"
+    },
+    "typed401": {
+      "exit_code": 0,
+      "seconds": 0.31074520794209093,
+      "stdout_sha256": "767ec5f5bedbbdf35260a82acc8fa060d95b4de4a89526f730036b8c5d9f3214",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "returned": {
+        "body_bytes": 11,
+        "body_chars": 11,
+        "budget": 11,
+        "returned": {
+          "error": "Unauthorized",
+          "kind": "ERROR"
+        }
+      },
+      "wrapper_sha256": "29444aaffb3f490f3154723a96b07aeaf3d31fd68b6e63b3868390d1970d5ba2",
+      "child_started": true,
+      "requests": [
+        {
+          "method_target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 11,
+          "body_sha256": "c62f8e5e8c654983cbed2ed1cc64692fac9315a4db44aca9d1514ad9a333ef2f",
+          "wire_sha256": "3fed6e8b19230838ebe7b2f738259ef3cfdf37eb471b15ba5527516d2c68d7c6",
+          "synthetic_bearer_exact": true,
+          "response_status": 401
+        }
+      ],
+      "actual_request_count": 1,
+      "public_input_body_sha256": "c62f8e5e8c654983cbed2ed1cc64692fac9315a4db44aca9d1514ad9a333ef2f"
+    }
+  },
+  "actual_HTTP_requests": 3,
+  "refused_cases_zerochild_zerorequest": [
+    "ascii-plus1",
+    "utf8-char-limit",
+    "zero-budget"
+  ],
+  "isolated_cuts_and_numeric_size_helpers": {
+    "actual_exact": {
+      "NOT_real_sealed_container_acceptance": true,
+      "budget": 467,
+      "kind": "isolated_actual_wire_guard_cut",
+      "phases": [
+        "public_wire_buffer_available",
+        "continuation_sentinel_before_hex"
+      ],
+      "result": "Ok(467)",
+      "wire_bytes": 226
+    },
+    "actual_over": {
+      "NOT_real_sealed_container_acceptance": true,
+      "budget": 466,
+      "kind": "isolated_actual_wire_guard_cut",
+      "phases": [
+        "public_wire_buffer_available"
+      ],
+      "result": "Err(Http(\"HTTP request exceeds byte limit\"))",
+      "wire_bytes": 226
+    },
+    "early_exact": {
+      "NOT_full_keyrelease_or_sealing_execution": true,
+      "budget": 467,
+      "kind": "isolated_early_guard_cut",
+      "phases": [
+        "public_plaintext_allocated",
+        "continuation_sentinel_after_early_guard"
+      ],
+      "plaintext_bytes": 128,
+      "result": "Ok(467)"
+    },
+    "early_over": {
+      "NOT_full_keyrelease_or_sealing_execution": true,
+      "budget": 466,
+      "kind": "isolated_early_guard_cut",
+      "phases": [
+        "public_plaintext_allocated"
+      ],
+      "plaintext_bytes": 128,
+      "result": "Err(Http(\"HTTP request exceeds byte limit\"))"
+    },
+    "pure": {
+      "max_numeric_boundary": "Ok(())",
+      "max_numeric_plus1": "Err(RequestBodyLimit)",
+      "numeric_only_no_largeallocation": true,
+      "plaintext_usize_MAX_overflow": "Err(RequestBodyLimit)",
+      "shared_JSON_ceil": 536870912,
+      "wire_multiplication_edge_overflow": "Err(RequestBodyLimit)",
+      "wire_usize_MAX_overflow": "Err(RequestBodyLimit)"
+    },
+    "small_sizes": [
+      {
+        "JSON": 209,
+        "p": 0,
+        "predicted": 209,
+        "wire": 97
+      },
+      {
+        "JSON": 211,
+        "p": 1,
+        "predicted": 211,
+        "wire": 98
+      },
+      {
+        "JSON": 463,
+        "p": 127,
+        "predicted": 463,
+        "wire": 224
+      },
+      {
+        "JSON": 467,
+        "p": 128,
+        "predicted": 467,
+        "wire": 226
+      },
+      {
+        "JSON": 8403,
+        "p": 4096,
+        "predicted": 8403,
+        "wire": 4194
+      },
+      {
+        "JSON": 32977,
+        "p": 16383,
+        "predicted": 32977,
+        "wire": 16481
+      },
+      {
+        "JSON": 32981,
+        "p": 16384,
+        "predicted": 32981,
+        "wire": 16483
+      }
+    ]
+  },
+  "cuts_stdout_sha256": "4c49fecc2bb7a92c1a7e8179c941b2628e5ca8b58b84e3aa522de0455e807382",
+  "cuts_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "scope": "AFTER only exact frozen source/helper/full POST function with small injected test budgets and nativecurl/ownedloopback/syntheticbearer. 512MiB and usize-overflow cases pure integers ONLY, no hugeallocation or current512MiB request acceptance claim. Isolated synthetic plaintext/wire guard snippets use inert continuation sentinels, NOT wholehandshake/keyrelease/crypto sealing proofs. Plaintext is allocated before early cut; post-serialization guards do not prevent prior allocations. Typed401 tested at lowlevel only, no rehandshake/backend/prove/boot/env/config/privatecredentials/realendpoint. Originalbase archives preserved, no invented beforefailure."
+}

@@ -350,6 +350,26 @@ fn seal_witness_with_clock(
     session_secret: Option<&[u8; 32]>,
     clock: Option<&perp_core::clock::ClockContext>,
 ) -> Result<String, ProverClientError> {
+    seal_witness_with_clock_and_body_limit(
+        w,
+        root,
+        measurement,
+        session_secret,
+        clock,
+        crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES,
+    )
+}
+
+/// Plaintext has already been allocated. Refuse its checked wire expansion
+/// before hashing the nonce, releasing a seal key, or allocating the seal/hex.
+fn seal_witness_with_clock_and_body_limit(
+    w: &WindowWitness,
+    root: &[u8; 32],
+    measurement: &Digest,
+    session_secret: Option<&[u8; 32]>,
+    clock: Option<&perp_core::clock::ClockContext>,
+    body_limit: usize,
+) -> Result<String, ProverClientError> {
     let bytes = match clock {
         None => postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest)),
         Some(c) => postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, c)).map(|body| {
@@ -359,6 +379,10 @@ fn seal_witness_with_clock(
         }),
     }
     .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
+    let predicted_body_bytes = sealed_request_json_bytes(bytes.len())
+        .map_err(|e| ProverClientError::Http(e.to_string()))?;
+    crate::curl_transport::check_request_body_bytes(predicted_body_bytes, body_limit)
+        .map_err(|e| ProverClientError::Http(e.to_string()))?;
     // Secret-keyed, content-derived nonce (see `seal_nonce`): keyed with `root` so the
     // clear nonce is not a plaintext-confirmation oracle, while identical re-seals still
     // reproduce it (rollback/retry-safe, no two-time pad).
@@ -379,6 +403,11 @@ fn seal_witness_with_clock(
     .ok_or(ProverClientError::Seal)?;
     let out = postcard::to_allocvec(&sealed)
         .map_err(|e| ProverClientError::Decode(format!("sealed encode: {e}")))?;
+    // Check the actual serialized envelope too, before hex/JSON expansion.
+    let actual_body_bytes =
+        prove_request_json_bytes(out.len()).map_err(|e| ProverClientError::Http(e.to_string()))?;
+    crate::curl_transport::check_request_body_bytes(actual_body_bytes, body_limit)
+        .map_err(|e| ProverClientError::Http(e.to_string()))?;
     let mut hexed = String::with_capacity(2 + out.len() * 2);
     hexed.push_str("0x");
     for b in &out {
@@ -453,6 +482,34 @@ pub fn parse_prove_resp(json: &str) -> Result<RemoteProveResp, ProverClientError
 /// ourselves instead.
 const STATUS_SENTINEL: &str = "__DPHTTP_STATUS__";
 const MAX_PROVE_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Current SealedWitness postcard shape: a varint-prefixed ciphertext Vec,
+/// then three fixed 32-byte digests. Ciphertext length equals plaintext length.
+fn sealed_request_json_bytes(
+    plaintext_bytes: usize,
+) -> Result<usize, crate::curl_transport::Error> {
+    let mut remaining = plaintext_bytes;
+    let mut prefix = 1usize;
+    while remaining >= 128 {
+        remaining >>= 7;
+        prefix += 1;
+    }
+    let wire_bytes = plaintext_bytes
+        .checked_add(prefix)
+        .and_then(|bytes| bytes.checked_add(96))
+        .ok_or(crate::curl_transport::Error::RequestBodyLimit)?;
+    prove_request_json_bytes(wire_bytes)
+}
+
+/// Exact ASCII JSON for {"sealed":"0x<hex>"}; no payload is allocated here.
+fn prove_request_json_bytes(
+    sealed_wire_bytes: usize,
+) -> Result<usize, crate::curl_transport::Error> {
+    sealed_wire_bytes
+        .checked_mul(2)
+        .and_then(|bytes| bytes.checked_add(15))
+        .ok_or(crate::curl_transport::Error::RequestBodyLimit)
+}
 
 /// Curl argv for a `/prove` POST. Factored out so the transport-hardening flags are
 /// unit-testable. Beyond the wall-clock `--max-time`:
@@ -550,7 +607,25 @@ pub(super) fn http_post_command(
     body: &str,
     timeout_secs: u64,
     bearer: Option<&str>,
+    command: std::process::Command,
+) -> Result<String, ProverClientError> {
+    http_post_command_with_body_limit(
+        url,
+        body,
+        timeout_secs,
+        bearer,
+        command,
+        crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES,
+    )
+}
+
+pub(super) fn http_post_command_with_body_limit(
+    url: &str,
+    body: &str,
+    timeout_secs: u64,
+    bearer: Option<&str>,
     mut command: std::process::Command,
+    body_limit: usize,
 ) -> Result<String, ProverClientError> {
     use crate::curl_transport::{self, Limits};
     use std::time::Duration;
@@ -559,6 +634,8 @@ pub(super) fn http_post_command(
         .filter(|_| timeout_secs > 0)
         .ok_or_else(|| ProverClientError::Http("invalid HTTP transport timeout".into()))?;
     let endpoint = curl_transport::service_endpoint(url, "/prove")
+        .map_err(|e| ProverClientError::Http(e.to_string()))?;
+    curl_transport::check_request_body_bytes(body.len(), body_limit)
         .map_err(|e| ProverClientError::Http(e.to_string()))?;
     command.args(prove_curl_args(&endpoint, timeout_secs, bearer));
     let out = curl_transport::run(
@@ -1734,5 +1811,128 @@ mod clock_pipeline_tests {
         let (w, _) = tests_support::sample_window();
         let c = client(&w);
         assert!(MockProverClient.prove_clocked(&w, &c.c).is_err());
+    }
+}
+
+#[cfg(test)]
+mod request_body_tests {
+    use super::*;
+    use crate::curl_transport::{check_request_body_bytes, Error, MAX_PROVE_REQUEST_BODY_BYTES};
+
+    #[test]
+    fn expansion_matches_exact_small_sealed_postcard_and_json() {
+        for payload_bytes in [0usize, 1, 31, 127, 128, 4096, 16383, 16384] {
+            // Synthetic ciphertext container, not an authenticated seal.
+            let ciphertext = vec![0x35u8; payload_bytes];
+            let wire =
+                postcard::to_allocvec(&(&ciphertext, &[0x11u8; 32], &[0x22u8; 32], &[0x33u8; 32]))
+                    .unwrap();
+            let envelope: prover::SealedWitness = postcard::from_bytes(&wire).unwrap();
+            let actual_wire = postcard::to_allocvec(&envelope).unwrap();
+            assert_eq!(actual_wire, wire);
+            assert_eq!(envelope.ciphertext_len(), payload_bytes);
+            let mut hexed = String::from("0x");
+            for byte in actual_wire.iter() {
+                hexed.push_str(&format!("{byte:02x}"));
+            }
+            let actual_body = serde_json::json!({"sealed": hexed}).to_string();
+            assert_eq!(
+                sealed_request_json_bytes(payload_bytes),
+                Ok(actual_body.len())
+            );
+            assert_eq!(
+                prove_request_json_bytes(actual_wire.len()),
+                Ok(actual_body.len())
+            );
+        }
+    }
+
+    #[test]
+    fn integer_ceiling_and_overflow_checks_need_no_large_payload() {
+        let largest_plaintext = 268_435_348usize;
+        let below = sealed_request_json_bytes(largest_plaintext).unwrap();
+        let above = sealed_request_json_bytes(largest_plaintext + 1).unwrap();
+        assert_eq!(below, 536_870_911);
+        assert_eq!(above, 536_870_913);
+        assert_eq!(below, MAX_PROVE_REQUEST_BODY_BYTES - 1);
+        assert_eq!(above, MAX_PROVE_REQUEST_BODY_BYTES + 1);
+        assert_eq!(
+            check_request_body_bytes(below, MAX_PROVE_REQUEST_BODY_BYTES),
+            Ok(())
+        );
+        assert_eq!(
+            check_request_body_bytes(above, MAX_PROVE_REQUEST_BODY_BYTES),
+            Err(Error::RequestBodyLimit)
+        );
+        for plaintext_bytes in [usize::MAX / 2, usize::MAX] {
+            assert_eq!(
+                sealed_request_json_bytes(plaintext_bytes),
+                Err(Error::RequestBodyLimit)
+            );
+        }
+        assert_eq!(
+            prove_request_json_bytes(usize::MAX / 2),
+            Err(Error::RequestBodyLimit)
+        );
+        assert_eq!(
+            prove_request_json_bytes((usize::MAX - 15) / 2),
+            Ok(usize::MAX)
+        );
+    }
+
+    #[test]
+    fn small_witness_exact_budgets_preserve_legacy_and_clocked_seals() {
+        use perp_core::clock::{ClockContext, TimeBounds};
+        let (witness, _) = tests_support::sample_window();
+        let mut post = witness.pre_state.clone();
+        let derived = derive_roots(&mut post, &witness.ops, &witness.manifest).unwrap();
+        let bounds = TimeBounds::derive(&witness.ops).unwrap();
+        let clock = ClockContext {
+            chain_id: 84532,
+            verifier: [1; 20],
+            settlement: [2; 20],
+            batch_id: witness.batch_id,
+            previous_root: derived.prev_state_root,
+            base_commitment: derived.commitment::<Keccak256>(),
+            phase: derived.wind_down_phase,
+            first_ms: bounds.first_ms,
+            last_ms: bounds.last_ms,
+            timed_ops: bounds.count,
+            anchored_at_ms: bounds.last_ms,
+            max_window_ms: 60_000,
+            clock_skew_ms: 2_000,
+        };
+        let root = [0x71; 32];
+        let measurement = [0x21; 32];
+        let secret = [0x42; 32];
+        for clock in [None, Some(&clock)] {
+            for session_secret in [None, Some(&secret)] {
+                let expected =
+                    seal_witness_with_clock(&witness, &root, &measurement, session_secret, clock)
+                        .unwrap();
+                let budget = serde_json::json!({"sealed": &expected}).to_string().len();
+                let actual = seal_witness_with_clock_and_body_limit(
+                    &witness,
+                    &root,
+                    &measurement,
+                    session_secret,
+                    clock,
+                    budget,
+                )
+                .unwrap();
+                assert_eq!(actual, expected);
+                let error = seal_witness_with_clock_and_body_limit(
+                    &witness,
+                    &root,
+                    &measurement,
+                    session_secret,
+                    clock,
+                    budget - 1,
+                )
+                .unwrap_err();
+                assert!(matches!(error, ProverClientError::Http(ref message)
+                    if message == "HTTP request exceeds byte limit"));
+            }
+        }
     }
 }

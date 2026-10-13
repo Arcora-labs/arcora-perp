@@ -1,0 +1,148 @@
+{
+  "Python_actual_passed": 25,
+  "checks": {
+    "clippy": {
+      "elapsed_seconds": 3.3923163750441745,
+      "files": {
+        "stderr.log": {
+          "bytes": 186,
+          "sha256": "6d43bd12c2aef5b4532ee6e8ba6982919d97e1f03193afe177ef958948efbf7c"
+        },
+        "stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "verification.json": {
+          "bytes": 90259,
+          "sha256": "e9f9ce4532cabae590cefe188324774bbe53e4366c832545a39d83d5e1a4d95d"
+        }
+      },
+      "test_summaries": []
+    },
+    "format": {
+      "elapsed_seconds": 0.6942164580104873,
+      "files": {
+        "stderr.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "verification.json": {
+          "bytes": 90192,
+          "sha256": "3805434dbe81ded762c14cc47b6a6f26ff9b73a6f134790f832cc6c938829291"
+        }
+      },
+      "test_summaries": []
+    },
+    "http-transport": {
+      "elapsed_seconds": 10.65755170804914,
+      "files": {
+        "stderr.log": {
+          "bytes": 267,
+          "sha256": "2de33e98a05fb7d36e6a40db6de4c96f446803ef845daef92f8de000e1ea6131"
+        },
+        "stdout.log": {
+          "bytes": 1789,
+          "sha256": "c8bffd0e970bdfa638c4809f4c8b5d7768d856ffb1bcca14b9901cb14320aa5d"
+        },
+        "verification.json": {
+          "bytes": 90356,
+          "sha256": "0dd0940b952ad6526112a0bf89c876d75c51df929e7a0fa3504fa7e68bcab2f9"
+        }
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 19,
+          "state": "ok"
+        }
+      ]
+    },
+    "prover-client": {
+      "elapsed_seconds": 0.6860858330037445,
+      "files": {
+        "stderr.log": {
+          "bytes": 153,
+          "sha256": "07378cba357d81f6b357a37a35f1869509296067af26cf1284a8b92906049a7d"
+        },
+        "stdout.log": {
+          "bytes": 6470,
+          "sha256": "257f35defd78ef62b9dc80c8fb50f13dce4177c2d751061bb42c5bbbbec54b81"
+        },
+        "verification.json": {
+          "bytes": 90352,
+          "sha256": "ea9ffe4ccd4bcf56017d9b2560cfc2895a31e437b03025660a7deb6e568821d0"
+        }
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 35,
+          "state": "ok"
+        }
+      ]
+    },
+    "prover-typecheck": {
+      "elapsed_seconds": 3.043273749994114,
+      "no_backend_setup_prove": true,
+      "offline_locked": true,
+      "passed": true,
+      "receipt_sha256": "4385892aff9bb4b463cceee199b3cb5b0164dbef1812223c258af4a54225d8ef"
+    },
+    "service-identity": {
+      "elapsed_seconds": 0.34976870799437165,
+      "files": {
+        "stderr.log": {
+          "bytes": 4346,
+          "sha256": "70188593410c7772a0b5c39ead172998b786139f6899ebd02cc1acba529a1e30"
+        },
+        "stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "verification.json": {
+          "bytes": 90236,
+          "sha256": "38fe975fec5434a5c860c3354cf1fc8ec182f2bc41a4deb9759b22a5f6439131"
+        }
+      },
+      "test_summaries": []
+    },
+    "shared-transport": {
+      "elapsed_seconds": 2.2243970000417903,
+      "files": {
+        "stderr.log": {
+          "bytes": 153,
+          "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+        },
+        "stdout.log": {
+          "bytes": 1275,
+          "sha256": "3a19e383f0dca0bf1680c6f880be56f90fe3d0d9d722d02d2578261345e42616"
+        },
+        "verification.json": {
+          "bytes": 90360,
+          "sha256": "4229ea12e220fd5ed8940364181478488a50a8da244b355355ea4fa5b07021bb"
+        }
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 1,
+          "passed": 10,
+          "state": "ok"
+        }
+      ]
+    }
+  },
+  "expected_publication_gateway_count_only": 749,
+  "full_gateway_locally_rerun": false,
+  "passed": true,
+  "production_release": "HOLD",
+  "schema": "arcora-outbound-body-local-summary/v1",
+  "source_count": 378,
+  "source_sha256": "927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d"
+}

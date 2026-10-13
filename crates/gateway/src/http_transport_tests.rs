@@ -426,3 +426,80 @@ fn direct_full_url_get_query_support_remains_unchanged() {
         .starts_with(b"GET /resource?x=1 HTTP/1.1\r\n"));
     assert_eq!(response.unwrap()["synthetic"], true);
 }
+
+#[test]
+fn post_injected_body_limit_refuses_before_process_creation() {
+    let error = crate::prover_client::http_post_command_with_body_limit(
+        "http://127.0.0.1:1",
+        "synthetic-private-body",
+        1,
+        Some("synthetic-private-bearer"),
+        Command::new("arcora-owned-nonexistent-body-limit-command"),
+        4,
+    )
+    .unwrap_err();
+    assert!(matches!(error, ProverClientError::Http(ref message)
+        if message == "HTTP request exceeds byte limit"));
+}
+
+#[test]
+fn post_exact_body_byte_limit_preserves_unicode_body_and_bearer() {
+    let body = "éé";
+    assert_eq!(body.len(), 4);
+    let (url, peer) = fixture(200, b"{}".to_vec(), Framing::Length);
+    let response = crate::prover_client::http_post_command_with_body_limit(
+        &url,
+        body,
+        2,
+        Some("synthetic-body-budget-token"),
+        curl(),
+        4,
+    );
+    let exchange = peer.join().unwrap();
+    assert!(exchange.response_complete);
+    assert!(exchange.request.starts_with(b"POST /prove HTTP/1.1\r\n"));
+    let header_end = exchange
+        .request
+        .windows(4)
+        .position(|bytes| bytes == b"\r\n\r\n")
+        .unwrap()
+        + 4;
+    assert_eq!(&exchange.request[header_end..], body.as_bytes());
+    assert!(exchange.request[..header_end]
+        .windows(b"Authorization: Bearer synthetic-body-budget-token".len())
+        .any(|bytes| bytes == b"Authorization: Bearer synthetic-body-budget-token"));
+    assert_eq!(response.unwrap(), "{}");
+}
+
+#[cfg(unix)]
+#[test]
+fn post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let directory = std::env::temp_dir().join(format!(
+        "arcora-body-budget-{}-{}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let marker = directory.join("child");
+    let mut command = Command::new("/bin/sh");
+    command
+        .args([
+            "-c",
+            "printf child > \"$1\"; shift; exec curl \"$@\"",
+            "arcora-owned-body-budget",
+        ])
+        .arg(&marker);
+    let error =
+        crate::prover_client::http_post_command_with_body_limit(&url, "éé", 1, None, command, 3)
+            .unwrap_err();
+    assert!(matches!(error, ProverClientError::Http(ref message)
+        if message == "HTTP request exceeds byte limit"));
+    assert!(!marker.exists(), "owned child started before body refusal");
+    assert!(
+        matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+    );
+    std::fs::remove_dir(directory).unwrap();
+}

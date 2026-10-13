@@ -1,0 +1,25 @@
+{
+  "base": "c33e3824c2557a32f796dd6234aa6f504f1c93c2",
+  "files": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "bytes": 16195,
+      "sha256": "e4fd5ae5674dc5fedb2b0d13edfcbd6750e08d10244849b8c22936e8de47eb4b"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 76448,
+      "sha256": "36b8ae2f5455cf7009a29827c662a5fa6b0931346ddb9a38624028fb2f5e0179"
+    },
+    "crates/prover-service/src/admission.rs": {
+      "bytes": 14982,
+      "sha256": "411db9185d40a20f32aef81bc485fe2b4dc7d6ae220f25cbf302a5eb4032b703"
+    },
+    "crates/service-transport/curl.rs": {
+      "bytes": 8461,
+      "sha256": "7d6d1c02af1ca25bf75bd77320e16b993f0f414df454f75c5ce393bdf6f02e68"
+    },
+    "crates/service-transport/curl_tests.rs": {
+      "bytes": 18535,
+      "sha256": "bb9960678769022c868505f71e770cd4ae43a81b235217fc7499401d170dfb87"
+    }
+  }
+}

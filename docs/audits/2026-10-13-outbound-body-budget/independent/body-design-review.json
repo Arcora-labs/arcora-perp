@@ -1,0 +1,52 @@
+{
+  "base": "c33e3824c2557a32f796dd6234aa6f504f1c93c2",
+  "base_source_sha256": {
+    "crates/gateway/src/http_transport_tests.rs": "e4fd5ae5674dc5fedb2b0d13edfcbd6750e08d10244849b8c22936e8de47eb4b",
+    "crates/gateway/src/prover_client.rs": "36b8ae2f5455cf7009a29827c662a5fa6b0931346ddb9a38624028fb2f5e0179",
+    "crates/prover-service/src/admission.rs": "411db9185d40a20f32aef81bc485fe2b4dc7d6ae220f25cbf302a5eb4032b703",
+    "crates/prover/src/lib.rs": "01521fa9dd705f609fe53f877c166db0e4b7e75d4e94f30cde8806473ae0f309",
+    "crates/service-transport/curl.rs": "7d6d1c02af1ca25bf75bd77320e16b993f0f414df454f75c5ce393bdf6f02e68",
+    "crates/service-transport/curl_tests.rs": "bb9960678769022c868505f71e770cd4ae43a81b235217fc7499401d170dfb87"
+  },
+  "blocking_findings": [],
+  "captured_at": "2026-10-13T18:20:46.280282+00:00",
+  "evidence_scope_requirements": [
+    "Small injected HTTP caller limit proves actual refusal before curl child and peer request.",
+    "Fixed512MiB direct run guard is supported by source binding and cheap integer-boundary tests; do not claim a real512MiB subprocess test unless actually run.",
+    "Predicted plaintext-size check occurs after plaintext allocation; no pre-serialization/RSS/proving-capacity claim.",
+    "Post-wire check occurs after seal and wire allocations; it prevents hex/JSON expansion only.",
+    "Matching global receiver ceiling is not knowledge of an independently approved peer lower configuration.",
+    "Eight small actual postcard format fixtures plus existing model witness normal equality bind the formula without allocating giant payloads."
+  ],
+  "historical_source_count": 378,
+  "historical_source_sha256": "e399e633da9ddac4827bc615b7285e6203f0d7424df71be370cea78b12192dbd",
+  "integer_boundary_only": {
+    "at_next_plaintext_json_bytes": 536870913,
+    "at_plaintext_maximum_json_bytes": 536870911,
+    "exact_limit_json_size_unreachable_for_this_hex_format": true,
+    "limit": 536870912,
+    "maximum_plaintext_for_existing_wire_layout": 268435348,
+    "maximum_sealed_wire_bytes": 268435448,
+    "no_payload_allocation_for_large_values": true,
+    "reason": "Encoded JSON length is odd15+2C, while 512MiB is even; inclusive generic guard still accepts exactly limit bytes."
+  },
+  "observed_source_facts": [
+    "Existing receiver default and maximum are 512*1024*1024 encoded request-body bytes; a lower configured limit remains possible.",
+    "SealedWitness ciphertext length equals plaintext length and wire struct has ciphertext Vec plus three32-byte Digest fields.",
+    "Gateway plaintext includes clock wire prefix before nonce/seal.",
+    "Current sealing serializes plaintext, derives nonce, seals, serializes SealedWitness, hex-encodes, then prove_http builds compact one-field JSON before POST.",
+    "admission.rs is beside curl_transport in the prover binary, making a shared pub(crate) const alias dependency-safe.",
+    "Existing shared run borrows the input slice; no whole body copy in stdin worker."
+  ],
+  "passed": true,
+  "proposed_guards_review": [
+    "Pure request len/limit inclusive byte guard with fixed diagnostic and checked arithmetic.",
+    "After allocated plaintext but before nonce, provider key derivation and sealing, use checked forecast C=P+varint(P)+96; compact JSON=15+2C.",
+    "After actual postcard SealedWitness output allocation but before hex allocation, check actual serialized wire length via checked encoded JSON forecast.",
+    "Check final body.len() in HTTP caller and fixed common run before spawning.",
+    "Keep production budget equal to existing receiver ceiling, preserving other timeout/endpoint/response cap/secret/401 semantics."
+  ],
+  "review_kind": "Read-only baseline and proposed design review; not a final implementation or test acceptance",
+  "schema": "arcora-outbound-body-design-review/v1",
+  "scope": "Only new ignored review receipt written. Exact Git baseline blobs read. No source/old/outside mutation, private configuration/env discovery, backend/GPU/prove, real endpoint, or financial operation."
+}

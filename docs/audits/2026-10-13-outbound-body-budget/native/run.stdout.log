@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "result_sha256": "232bea3dff6c2b79be0607341de65c98b7c648cbc2c0bd6d5215519a85447d6b",
+  "source_before_after_equal": true,
+  "source": "378/927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d",
+  "HTTP_cases": 6,
+  "actual_requests": 3,
+  "zerochild_zerorequest_refusals": [
+    "ascii-plus1",
+    "utf8-char-limit",
+    "zero-budget"
+  ],
+  "early_cut_true_scope": "isolated sentinel only, plaintext alreadyallocated"
+}

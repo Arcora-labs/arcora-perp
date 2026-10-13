@@ -1,0 +1,128 @@
+{
+  "actual_prover_typecheck": {
+    "elapsed_seconds": 3.043273749994114,
+    "exit_code": 0,
+    "no_backend_setup_prove": true,
+    "offline_locked": true,
+    "previous_evidence_count": 12,
+    "previous_evidence_same": true,
+    "receipt_sha256": "4385892aff9bb4b463cceee199b3cb5b0164dbef1812223c258af4a54225d8ef",
+    "source_before_after_same": true
+  },
+  "actual_syntax_check": {
+    "command": [
+      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+      "--check",
+      "--edition",
+      "2021",
+      "crates/gateway/src/http_transport_tests.rs",
+      "crates/gateway/src/prover_client.rs",
+      "crates/prover-service/src/admission.rs",
+      "crates/service-transport/curl.rs",
+      "crates/service-transport/curl_tests.rs"
+    ],
+    "exit_code": 0,
+    "receipt_sha256": "04ea2da97aa891b532ca5a768771d860a19d713a50c7031de85bc6dc331856ea"
+  },
+  "base": "c33e3824c2557a32f796dd6234aa6f504f1c93c2",
+  "captured_at": "2026-10-13T18:34:47.317678+00:00",
+  "changed_public_sources": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/gateway/src/prover_client.rs",
+    "crates/prover-service/src/admission.rs",
+    "crates/service-transport/curl.rs",
+    "crates/service-transport/curl_tests.rs"
+  ],
+  "diff": {
+    "added_lines": 316,
+    "deleted_lines": 1,
+    "files": 5
+  },
+  "entire_gateway_client_exact_reverse_reconstruction": true,
+  "entire_shared_curl_exact_reverse_reconstruction": true,
+  "expected_full_gateway_counts_not_actual_local_execution": {
+    "failed": 0,
+    "ignored": 24,
+    "passed": 749
+  },
+  "findings": [],
+  "guard_semantics": [
+    "Inclusive positive encoded byte budget; zero injection configuration refusal; fixed non-sensitive diagnostics.",
+    "Checked P+varint(P)+96 wire and15+2C JSON lengths; large values evaluated as integers without payload allocations.",
+    "Predicted guard after allocated plaintext and before nonce/provider/seal.",
+    "Actual postcard wire guard after seal/wire allocation and before hex/JSON expansion.",
+    "Final byte-length caller check before argv construction and subprocess; common borrowed-input guard before spawn.",
+    "Default gateway and prover receiver ceiling remain512MiB; peer effective config may be lower.",
+    "Old timeout, endpoint, pipe supervisor, captures, response parsing, one401 retry, provider secret and nonce paths unchanged."
+  ],
+  "old_HTTP_and_shared_test_sources_exact_prefixes": true,
+  "old_gateway_client_test_section_byte_exact": true,
+  "old_seal_and_POST_bodies_exact_after_guard_removal": true,
+  "passed": true,
+  "preserved_prior_immutable_files_except_five_authorized_sources": 2525,
+  "production_release": "HOLD",
+  "protected_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "receiver_alias_only_and_value_unchanged": true,
+  "remaining_sources_byte_exact": 373,
+  "schema": "arcora-outbound-body-source-qa/v1",
+  "scope": "Independent exact frozen-source readback, actual rustfmt syntax and offline locked prover-service typecheck. Test count749 is source-defined full-suite expectation until CI logs independently show it. No plaintext preallocation/RSS/proving capacity guarantee. Only new ignored evidence written; no private config/env discovery, backend/GPU/prove, real endpoint, financial operation, source/old/outside mutation.",
+  "source_count": 378,
+  "source_defined_tests": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "added_names": [
+        "post_injected_body_limit_refuses_before_process_creation",
+        "post_exact_body_byte_limit_preserves_unicode_body_and_bearer",
+        "post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request"
+      ],
+      "all_old_test_source_byte_exact": true,
+      "new_test_functions": 19,
+      "old_test_functions": 16
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "added_names": [
+        "expansion_matches_exact_small_sealed_postcard_and_json",
+        "integer_ceiling_and_overflow_checks_need_no_large_payload",
+        "small_witness_exact_budgets_preserve_legacy_and_clocked_seals"
+      ],
+      "all_old_test_source_byte_exact": true,
+      "new_test_functions": 35,
+      "old_test_functions": 32
+    },
+    "crates/service-transport/curl_tests.rs": {
+      "added_names": [
+        "request_body_limits_are_inclusive_positive_and_do_not_allocate_payloads"
+      ],
+      "all_old_test_source_byte_exact": true,
+      "new_test_functions": 11,
+      "old_test_functions": 10
+    }
+  },
+  "source_freeze_sha256": "be27b1ae971e095d59d92fae575951ff3677865cf286377ef318daa5bea0dc92",
+  "source_sha256": "927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d",
+  "unchanged_eight_manifests_and_locks": {
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "crates/prover-service/Cargo.lock": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e",
+    "crates/prover-service/Cargo.toml": "5b28c2dac8c8543f193ca142bd372a2c1c92f25a577cc71ca40bac9103daed48",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312",
+    "scripts/tee-capture/Cargo.lock": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e"
+  },
+  "unchanged_identical_GET_wrapper_sha256": "286d85282684235e2ee77e1c568903c04c723ca6ce2ecd7910b0cce3d1ac1650",
+  "unchanged_nine_binary_proof_and_program_artifacts": {
+    "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+    "contracts/integration/fixtures/chainlink-candidate-v1/metadata.json": "d0a1be2b345f688b3bd102dbd6d5d6512aae1caaae6a996ba9f8b8fe411dd696",
+    "contracts/integration/fixtures/clock-v2-verified/clock.witness.bin": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f",
+    "contracts/integration/fixtures/clock-v2-verified/guest.elf": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+    "contracts/integration/fixtures/clock-v2-verified/program-vkey.bin": "5d6af308d886b93f41bb947993fcbe4f20b755d7e0eb9bf134ef2dc99104f21e",
+    "contracts/integration/fixtures/clock-v2-verified/proof-evidence.json": "224704d958a9d5246abace7d0df424d10afd67fb74db113bc399290e56c16486",
+    "contracts/integration/fixtures/clock-v2-verified/proof.bin": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89",
+    "contracts/integration/fixtures/clock-v2-verified/proof.sdk.json": "9028b9ce9be2e4a2957101f78727565e345a00e58a970d5383113e6182770c05",
+    "contracts/integration/fixtures/clock-v2-verified/public-values.bin": "f366fab4eac85e885e3f18fc826b8421d4fe29897b223734cee7b15885cffaee"
+  }
+}

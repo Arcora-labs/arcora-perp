@@ -1,0 +1,41 @@
+{
+  "PR61_copied": 381,
+  "PR61_ledger_sha256": "a7d4645dec1fa76a8e08bf9430513e755431701717b24a41c4ad76b43da0687e",
+  "all_main_push_jobs_success": true,
+  "authorized_prior_source_replacements": 6,
+  "base": "c33e3824c2557a32f796dd6234aa6f504f1c93c2",
+  "captured_at": "2026-10-13T18:16:51.669597+00:00",
+  "external_dirty_counts": [
+    13,
+    7,
+    62
+  ],
+  "external_dirty_public_files": 82,
+  "files": {
+    "baseline": {
+      "bytes": 724287,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/baseline.json",
+      "sha256": "8050c2a023b755bc01bf49487b301c62378198a5fda259a2a866d4b23d28cfbb"
+    },
+    "start_github": {
+      "bytes": 72877,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/start-github-verification.json",
+      "sha256": "49d64263610b49f00708c9b10cab0f06cb8551a7f9f979500080ee7c09330bf9"
+    }
+  },
+  "immutable_unique_files": 2530,
+  "main_push_jobs": 14,
+  "main_push_runs": 3,
+  "passed": true,
+  "preserved_pointer_relocation": 1,
+  "previous_immutable_roster": 1744,
+  "previous_non_source_exact": 1738,
+  "production_release": "HOLD",
+  "reports": 9,
+  "required_rules_unchanged": 11,
+  "schema": "arcora-outbound-body-preservation-start/v1",
+  "scope": "Closed approved public roster only. Old 1,738 non-source entries remain byte exact including the relocated PR60 pointer; six authorized PR61 source replacements bind the historical 378-source e399 baseline. All new PR61 delivery originals/copies and final corrected report/QA frozen. Changing new validation root excluded. Forthcoming authorized source edits require a fresh freeze and explicit exemptions from this historical source baseline. No private files/configuration/env discovery, service boot, proving, endpoints, GPU, deployments, financial operations or old/outside writes.",
+  "source_count_at_start": 378,
+  "source_sha256_at_start": "e399e633da9ddac4827bc615b7285e6203f0d7424df71be370cea78b12192dbd",
+  "tree": "be4b3fb2b8036528c2a1558fa818b073a6935b6a"
+}

@@ -1,0 +1,16 @@
+{
+  "exact_function_sha256": {
+    "sealed_request_json_bytes": "262fbfc29af0d9327423c06225cca0789fdbc30200c60b4e780c6e3515c33069",
+    "prove_request_json_bytes": "0ec2cad87e7b51cbb65a105f7c91a43c94c9f2d26b1607e927a158a5d14ae1af",
+    "prove_curl_args": "5c06b6dcb0f70fa5e865da3cf4d884978af2276f53d7873ab8f18c35cd3aa9ef",
+    "split_status": "1bf9daab1b8ebec040e0932d251a1360ed48b6df75ae31c0651dd714e12400c3",
+    "http_post_command_with_body_limit": "aff85c4a60c67862c506bbaf5c6faa2d2b2ab9a9d15867b93a37c05cd862865e"
+  },
+  "exact_guard_early_snippet_sha256": "471125c23a5347871abdd55102aceb1d99c493ae06686a1643cd61aa7013379a",
+  "exact_guard_actual_snippet_sha256": "1bfed573c9afd5e6d5c0cfbc79d8ef4f5c70192f8915f9a2bfe56c1082173b88",
+  "exact_whole_pipeline_source_sha256": "2ba148aa37f0497b0e73f0f4755e6d3b2a0b2dbb5e402b605608bf6a26dcc646",
+  "exact_shared_runner_sha256": "74892f54c5b5ae4372e096ff154c50be34c70e7cca6b8ec9761d7c6a4a9f886b",
+  "source_snapshot_sha256": "d8e01c96a7a01e124905d47ba0a136ecc5e54441a716a267b3ce8f6470dcea65",
+  "source_preallocated_beforeguard": true,
+  "instrumentation_scope": "Synthetic public Vec BEFORE exact snippets, inert continuation sentinels AFTER guard. No execution of nonce/keyprovider/seal/wholehandshake. HTTP fn/args/status decoder copied whole and invoked nativecurl via markerwrapper."
+}

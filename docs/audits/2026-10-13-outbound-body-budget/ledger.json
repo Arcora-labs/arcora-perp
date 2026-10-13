@@ -1,0 +1,351 @@
+{
+  "artifact_count": 68,
+  "base": "c33e3824c2557a32f796dd6234aa6f504f1c93c2",
+  "files": {
+    "independent/body-design-review.json": {
+      "bytes": 4052,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/independent/body-design-review.json",
+      "sha256": "4ebdbbc95430950622652e3051ba1da05dc12bc5eded919e0658294267d571f1"
+    },
+    "independent/source-qa-final.json": {
+      "bytes": 7106,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/independent/source-qa-final.json",
+      "sha256": "8c9b754443f0ec25f16161f68c382f40ab4d3f0a72026215cbc3ba1b2dce9db8"
+    },
+    "independent/test-scope-review.json": {
+      "bytes": 5789,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/independent/test-scope-review.json",
+      "sha256": "a0629b2b64a8c18c265bc470735a99fdeb71ebded789e7eb1fde41f2b863d2e7"
+    },
+    "local-check-summary.json": {
+      "bytes": 4410,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/local-check-summary.json",
+      "sha256": "b05aafa52f4cdd76e0cdbbf232c0665e70f5c0c14cbdf3f4ebd4499b2677053d"
+    },
+    "local/clippy/stderr.log": {
+      "bytes": 186,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/clippy/stderr.log",
+      "sha256": "6d43bd12c2aef5b4532ee6e8ba6982919d97e1f03193afe177ef958948efbf7c"
+    },
+    "local/clippy/stdout.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/clippy/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/clippy/verification.json": {
+      "bytes": 90259,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/clippy/verification.json",
+      "sha256": "e9f9ce4532cabae590cefe188324774bbe53e4366c832545a39d83d5e1a4d95d"
+    },
+    "local/format/stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/format/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/format/stdout.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/format/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/format/verification.json": {
+      "bytes": 90192,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/format/verification.json",
+      "sha256": "3805434dbe81ded762c14cc47b6a6f26ff9b73a6f134790f832cc6c938829291"
+    },
+    "local/http-transport/stderr.log": {
+      "bytes": 267,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/http-transport/stderr.log",
+      "sha256": "2de33e98a05fb7d36e6a40db6de4c96f446803ef845daef92f8de000e1ea6131"
+    },
+    "local/http-transport/stdout.log": {
+      "bytes": 1789,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/http-transport/stdout.log",
+      "sha256": "c8bffd0e970bdfa638c4809f4c8b5d7768d856ffb1bcca14b9901cb14320aa5d"
+    },
+    "local/http-transport/verification.json": {
+      "bytes": 90356,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/http-transport/verification.json",
+      "sha256": "0dd0940b952ad6526112a0bf89c876d75c51df929e7a0fa3504fa7e68bcab2f9"
+    },
+    "local/prover-client/stderr.log": {
+      "bytes": 153,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/prover-client/stderr.log",
+      "sha256": "07378cba357d81f6b357a37a35f1869509296067af26cf1284a8b92906049a7d"
+    },
+    "local/prover-client/stdout.log": {
+      "bytes": 6470,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/prover-client/stdout.log",
+      "sha256": "257f35defd78ef62b9dc80c8fb50f13dce4177c2d751061bb42c5bbbbec54b81"
+    },
+    "local/prover-client/verification.json": {
+      "bytes": 90352,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/prover-client/verification.json",
+      "sha256": "ea9ffe4ccd4bcf56017d9b2560cfc2895a31e437b03025660a7deb6e568821d0"
+    },
+    "local/service-identity/stderr.log": {
+      "bytes": 4346,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/service-identity/stderr.log",
+      "sha256": "70188593410c7772a0b5c39ead172998b786139f6899ebd02cc1acba529a1e30"
+    },
+    "local/service-identity/stdout.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/service-identity/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/service-identity/verification.json": {
+      "bytes": 90236,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/service-identity/verification.json",
+      "sha256": "38fe975fec5434a5c860c3354cf1fc8ec182f2bc41a4deb9759b22a5f6439131"
+    },
+    "local/shared-transport/stderr.log": {
+      "bytes": 153,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/shared-transport/stderr.log",
+      "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+    },
+    "local/shared-transport/stdout.log": {
+      "bytes": 1275,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/shared-transport/stdout.log",
+      "sha256": "3a19e383f0dca0bf1680c6f880be56f90fe3d0d9d722d02d2578261345e42616"
+    },
+    "local/shared-transport/verification.json": {
+      "bytes": 90360,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/shared-transport/verification.json",
+      "sha256": "4229ea12e220fd5ed8940364181478488a50a8da244b355355ea4fa5b07021bb"
+    },
+    "native/ascii-exact.child-marker": {
+      "bytes": 20,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/ascii-exact.child-marker",
+      "sha256": "a6d2be093c1cf43c2f00cf29f51703d03fcbc7dc46e3c38d9e45e7b84b1f1253"
+    },
+    "native/ascii-exact.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/ascii-exact.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/ascii-exact.stdout.log": {
+      "bytes": 144,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/ascii-exact.stdout.log",
+      "sha256": "263e7053cea1346b64927f180efc993efecced86b0e98825937d42bec2fb2910"
+    },
+    "native/ascii-exact.wrapper.sh": {
+      "bytes": 228,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/ascii-exact.wrapper.sh",
+      "sha256": "d77d0b9be6b4aa7cfdd56b6e5425f4db77f1014b4522ea73311c03a4da264de6"
+    },
+    "native/ascii-plus1.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/ascii-plus1.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/ascii-plus1.stdout.log": {
+      "bytes": 138,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/ascii-plus1.stdout.log",
+      "sha256": "dc4142572bbb3b1f1614365350bf37f380568440d0dac9e7f7ed8b5a766e2674"
+    },
+    "native/ascii-plus1.wrapper.sh": {
+      "bytes": 228,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/ascii-plus1.wrapper.sh",
+      "sha256": "0d433439e78725e7899c80482d7ae26dc1bbfe2e2bc73fe90e9ad1db7fe200f8"
+    },
+    "native/compile.json": {
+      "bytes": 1660,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/compile.json",
+      "sha256": "adc88d80fcff211baf237f4964dc45791de55ac5a4a30a2ec3ec37ea173f160f"
+    },
+    "native/compile.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/compile.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/compile.stdout.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/compile.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/cuts.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/cuts.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/cuts.stdout.log": {
+      "bytes": 1607,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/cuts.stdout.log",
+      "sha256": "4c49fecc2bb7a92c1a7e8179c941b2628e5ca8b58b84e3aa522de0455e807382"
+    },
+    "native/extraction.json": {
+      "bytes": 1339,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/extraction.json",
+      "sha256": "fc29f0c1083438c43a2cd0b822aa4a23e7c5ff4ed2ee321687c73e3b9b8d2d67"
+    },
+    "native/final-readback.json": {
+      "bytes": 1768,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/final-readback.json",
+      "sha256": "dc8558d9a478de5e3c513119ec2bede94ba31434da4f9c7bb0b55303ea93ab3e"
+    },
+    "native/live-curl.rs": {
+      "bytes": 9139,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/live-curl.rs",
+      "sha256": "74892f54c5b5ae4372e096ff154c50be34c70e7cca6b8ec9761d7c6a4a9f886b"
+    },
+    "native/probe.rs": {
+      "bytes": 9193,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/probe.rs",
+      "sha256": "cfb3d9479a94d426b4f1b5b41deb2628c79c7c3e20e4ad9a66570822e8ada193"
+    },
+    "native/public-artifacts.json": {
+      "bytes": 5265,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/public-artifacts.json",
+      "sha256": "06eed9fcdeb562396186376ee42605ca1f110ebe75feecde64b205c48e392da4"
+    },
+    "native/result.json": {
+      "bytes": 11927,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/result.json",
+      "sha256": "232bea3dff6c2b79be0607341de65c98b7c648cbc2c0bd6d5215519a85447d6b"
+    },
+    "native/run.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/run.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/run.stdout.log": {
+      "bytes": 455,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/run.stdout.log",
+      "sha256": "69e0951e143356053125291be3be337819519988f7ad7a15cbf0f9164a3d8c57"
+    },
+    "native/run_probe.py": {
+      "bytes": 8536,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/run_probe.py",
+      "sha256": "903701e444b1ad56c48e3ac17eca37a3edf3285a81ccf17f9cbefaced325831d"
+    },
+    "native/scope.md": {
+      "bytes": 2029,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/scope.md",
+      "sha256": "a8852ed9bcc13bc59a15237bba606755f176cd6ed5e5915467058d5b842904b4"
+    },
+    "native/source-snapshot.json": {
+      "bytes": 45648,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/source-snapshot.json",
+      "sha256": "d8e01c96a7a01e124905d47ba0a136ecc5e54441a716a267b3ce8f6470dcea65"
+    },
+    "native/typed401.child-marker": {
+      "bytes": 20,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/typed401.child-marker",
+      "sha256": "a6d2be093c1cf43c2f00cf29f51703d03fcbc7dc46e3c38d9e45e7b84b1f1253"
+    },
+    "native/typed401.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/typed401.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/typed401.stdout.log": {
+      "bytes": 97,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/typed401.stdout.log",
+      "sha256": "767ec5f5bedbbdf35260a82acc8fa060d95b4de4a89526f730036b8c5d9f3214"
+    },
+    "native/typed401.wrapper.sh": {
+      "bytes": 225,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/typed401.wrapper.sh",
+      "sha256": "29444aaffb3f490f3154723a96b07aeaf3d31fd68b6e63b3868390d1970d5ba2"
+    },
+    "native/utf8-char-limit.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/utf8-char-limit.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/utf8-char-limit.stdout.log": {
+      "bytes": 126,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/utf8-char-limit.stdout.log",
+      "sha256": "b65060729004116e5ce31faaabc5c964cda836c46098543e28a1860c3f2caf08"
+    },
+    "native/utf8-char-limit.wrapper.sh": {
+      "bytes": 232,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/utf8-char-limit.wrapper.sh",
+      "sha256": "ac2f6b02db10ca118c83626d2b4403938a39d4061405e25c6aed29a19cca34e9"
+    },
+    "native/utf8-exact.child-marker": {
+      "bytes": 20,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/utf8-exact.child-marker",
+      "sha256": "a6d2be093c1cf43c2f00cf29f51703d03fcbc7dc46e3c38d9e45e7b84b1f1253"
+    },
+    "native/utf8-exact.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/utf8-exact.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/utf8-exact.stdout.log": {
+      "bytes": 132,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/utf8-exact.stdout.log",
+      "sha256": "3085f352495bdebc6d6870dddab2be5a629c852c8d82db0da086c62f9e489693"
+    },
+    "native/utf8-exact.wrapper.sh": {
+      "bytes": 227,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/utf8-exact.wrapper.sh",
+      "sha256": "b05110c73a77a6ec166f6a8503e3b6caf6a41e03b3854cc1826e26b1d6fb911e"
+    },
+    "native/zero-budget.stderr.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/zero-budget.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native/zero-budget.stdout.log": {
+      "bytes": 123,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/zero-budget.stdout.log",
+      "sha256": "19cf572ef03ba3779cbebafb22c9c5882571b197fa3e19dc0e8d97bd7cce7d79"
+    },
+    "native/zero-budget.wrapper.sh": {
+      "bytes": 228,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/zero-budget.wrapper.sh",
+      "sha256": "fe14afdfb7bb8aa0ad747ce5dfe955f5a3bf34619d7fd9de88acb7a5c8e30926"
+    },
+    "preservation-start.json": {
+      "bytes": 2113,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/preservation-start.json",
+      "sha256": "83d4e35da9d84245c28e21260a034e479ee88e912a2ae55baf7e4f58d4084dd8"
+    },
+    "prover-typecheck/receipt.json": {
+      "bytes": 112778,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/prover-typecheck-final/receipt.json",
+      "sha256": "4385892aff9bb4b463cceee199b3cb5b0164dbef1812223c258af4a54225d8ef"
+    },
+    "prover-typecheck/run_prover_typecheck.py": {
+      "bytes": 12992,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/run_prover_typecheck.py",
+      "sha256": "34f620d0a8d6032d3b8382695e7e57658742389b9c079c6392f72f1d1588bf99"
+    },
+    "prover-typecheck/stderr.log": {
+      "bytes": 1411,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/prover-typecheck-final/stderr.log",
+      "sha256": "0825383450e65f83964311b536e8be225552e4baa367104db966f4335462b038"
+    },
+    "prover-typecheck/stdout.log": {
+      "bytes": 0,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/prover-typecheck-final/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "record_check.py": {
+      "bytes": 2508,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/record_check.py",
+      "sha256": "e3615dc5647b63416c083d384db745d8a33a0194f90d04284ab7b71200a93578"
+    },
+    "recovery/base-source.json": {
+      "bytes": 868,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/base-source.json",
+      "sha256": "b98fd4f933823d7928b0653a9504c10fe1fe4d41af0ee18129d72f886380e1ba"
+    },
+    "source-freeze-final.json": {
+      "bytes": 48062,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/source-freeze-final.json",
+      "sha256": "be27b1ae971e095d59d92fae575951ff3677865cf286377ef318daa5bea0dc92"
+    },
+    "start-github-verification.json": {
+      "bytes": 72877,
+      "copied_from": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/start-github-verification.json",
+      "sha256": "49d64263610b49f00708c9b10cab0f06cb8551a7f9f979500080ee7c09330bf9"
+    }
+  },
+  "release_gate": "HOLD",
+  "schema": "arcora-outbound-body-local-evidence/v1",
+  "scope": "Existing512MiB JSON ceiling; small injected-budget native checks and isolated guard cuts; large bounds arithmetic only. No full handshake/real key release/fresh proof/RAM or proving capacity.",
+  "source_count": 378,
+  "source_sha256": "927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d"
+}
