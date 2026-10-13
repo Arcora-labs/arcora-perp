@@ -1,0 +1,341 @@
+{
+  "schema": "arcora-service-base-native-before-after-comparison/v1",
+  "created_at": "2026-10-13T05:21:18.868695+00:00",
+  "result": "PASS",
+  "base": "1caae328fe73a5ab96bb4200d5e28d926807d201",
+  "base_tree": "36615324cc626e7cdc84553fd19c706d9c00a4be",
+  "before_source": {
+    "count": 378,
+    "sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b"
+  },
+  "after_source": {
+    "count": 378,
+    "sha256": "e399e633da9ddac4827bc615b7285e6203f0d7424df71be370cea78b12192dbd"
+  },
+  "before_public_map_equal": true,
+  "after_public_map_equal": true,
+  "before_selected_evidence_unchanged": true,
+  "before_result_sha256": "b5f2cfe8bc7d6b5b1a283ce779d681dc43447846a6381f2a3dd8566e47727e86",
+  "after_result_sha256": "08faa3a779a8d36777c3f912dbc80cab29e1da0035cc593a8e6ce30c382f7556",
+  "before_total_cases": 12,
+  "before_total_actual_requests": 12,
+  "after_total_cases": 17,
+  "after_total_actual_requests": 5,
+  "after_endpoint_refusals_with_zero_child_and_zero_requests": 12,
+  "paired_cases": {
+    "post-control": {
+      "before_request_count": 1,
+      "after_request_count": 1,
+      "before_target": [
+        "POST /base/prove HTTP/1.1"
+      ],
+      "after_target": [
+        "POST /base/prove HTTP/1.1"
+      ],
+      "before_result": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      },
+      "after_result": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      },
+      "after_child_started": true
+    },
+    "post-query": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "POST /base?x=1/prove HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      },
+      "after_result": {
+        "error": "Http(\"invalid HTTP service base URL\")",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "post-fragment": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "POST /base HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      },
+      "after_result": {
+        "error": "Http(\"invalid HTTP service base URL\")",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "post-empty-query": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "POST /base?/prove HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      },
+      "after_result": {
+        "error": "Http(\"invalid HTTP service base URL\")",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "gateway-get-control": {
+      "before_request_count": 1,
+      "after_request_count": 1,
+      "before_target": [
+        "GET /base/attest HTTP/1.1"
+      ],
+      "after_target": [
+        "GET /base/attest HTTP/1.1"
+      ],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_child_started": true
+    },
+    "gateway-get-query": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "GET /base?x=1/attest HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "gateway-get-fragment": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "GET /base HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "gateway-get-empty-query": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "GET /base?/attest HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "prover-get-control": {
+      "before_request_count": 1,
+      "after_request_count": 1,
+      "before_target": [
+        "GET /base/attest HTTP/1.1"
+      ],
+      "after_target": [
+        "GET /base/attest HTTP/1.1"
+      ],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_child_started": true
+    },
+    "prover-get-query": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "GET /base?x=1/attest HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "prover-get-fragment": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "GET /base HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    },
+    "prover-get-empty-query": {
+      "before_request_count": 1,
+      "after_request_count": 0,
+      "before_target": [
+        "GET /base?/attest HTTP/1.1"
+      ],
+      "after_target": [],
+      "before_result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "after_result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "after_child_started": false
+    }
+  },
+  "additional_AFTER_cases_not_claimed_as_paired_BEFORE": {
+    "post-empty-fragment": {
+      "request_count": 0,
+      "child_started": false,
+      "result": {
+        "error": "Http(\"invalid HTTP service base URL\")",
+        "kind": "ERROR"
+      },
+      "target": []
+    },
+    "gateway-get-empty-fragment": {
+      "request_count": 0,
+      "child_started": false,
+      "result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "target": []
+    },
+    "prover-get-empty-fragment": {
+      "request_count": 0,
+      "child_started": false,
+      "result": {
+        "error": "invalid HTTP service base URL",
+        "kind": "ERROR"
+      },
+      "target": []
+    },
+    "gateway-direct": {
+      "request_count": 1,
+      "child_started": true,
+      "result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "target": [
+        "GET /base/attest?owned=1 HTTP/1.1"
+      ]
+    },
+    "prover-direct": {
+      "request_count": 1,
+      "child_started": true,
+      "result": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      },
+      "target": [
+        "GET /base/attest?owned=1 HTTP/1.1"
+      ]
+    }
+  },
+  "GET_functions_byte_identical_both_roles_and_before_after": true,
+  "GET_function_sha256": {
+    "http_get_json": "d715b5be7740313f607c281baa204e5037ca64bf326a7a17e032f6c3ea55627e",
+    "http_get_json_command": "e64e4030b182c28f88f77f2468ef9fdf5f8ea8fe23b24bbb7baa5915a3985dd0"
+  },
+  "POST_function_sha256_before": {
+    "prove_curl_args": "5c06b6dcb0f70fa5e865da3cf4d884978af2276f53d7873ab8f18c35cd3aa9ef",
+    "split_status": "1bf9daab1b8ebec040e0932d251a1360ed48b6df75ae31c0651dd714e12400c3",
+    "http_post": "88143fe0666758a6dfa87b922628b134320029a106c5e6a3445c407484a8e437",
+    "http_post_command": "75fd3fa002b06f679a57fce31faf50078e62d85ee4b7d2008d3160bfe9f9dd48"
+  },
+  "POST_function_sha256_after": {
+    "prove_curl_args": "5c06b6dcb0f70fa5e865da3cf4d884978af2276f53d7873ab8f18c35cd3aa9ef",
+    "split_status": "1bf9daab1b8ebec040e0932d251a1360ed48b6df75ae31c0651dd714e12400c3",
+    "http_post": "88143fe0666758a6dfa87b922628b134320029a106c5e6a3445c407484a8e437",
+    "http_post_command": "39230c88a53dfc6a498623d0d49fa06a8a87e7c26548589ccb31f11d78c1ab23"
+  },
+  "exact_service_endpoint_sha256": "c9cfbfe3edcc098e210d10642ab3bb5a0f3b2c4cddb5aecabcaaa25d6499b97c",
+  "native_curl": "/usr/bin/curl",
+  "native_curl_version": "curl 8.7.1 (x86_64-apple-darwin25.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.68.1",
+  "compile_before_exit": 0,
+  "compile_after_exit": 0,
+  "compile_after_seconds": 3.7623449580278248,
+  "scope": "Same three caller join seams and twelve paired BEFORE cases. Exact frozen AFTER source common helper and injected marker shell wrapper execs real nativecurl; no marker proves no child wrapper spawn, and owned listener counts separately prove no request. Empty fragment and two fullURL GET query positives are additional AFTER coverage. Entire handshake/boot/quote/proverbackend not invoked; wrong fixture200 JSON was only low-level parsing. Static public inputs, no credentials/env/config reads; no production service/proof release acceptance. Source and prior frozen records unchanged by this agent."
+}

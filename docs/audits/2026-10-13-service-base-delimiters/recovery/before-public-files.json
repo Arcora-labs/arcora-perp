@@ -1,0 +1,152 @@
+{
+  "schema": "arcora-service-base-before-public-files/v1",
+  "files": {
+    "before-audit.json": {
+      "sha256": "c4330d291fe1bfa2a7f9d0597bcc76be07249b01a0e88e975682ce1f71a82b2f",
+      "bytes": 6191
+    },
+    "before-native-probe/base-curl.rs": {
+      "sha256": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+      "bytes": 7799
+    },
+    "before-native-probe/base-snapshot.json": {
+      "sha256": "4ab2fdd7a83ca6518b9da0ea8fb5037e8da3fcd72a717369cc6c6d7356cf8f25",
+      "bytes": 47438
+    },
+    "before-native-probe/compile.json": {
+      "sha256": "c7ddad91818bc2f0171f4ad9ce119e517d6754775aa89c8e35a9626d588f6e1c",
+      "bytes": 1825
+    },
+    "before-native-probe/compile.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/compile.stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/gateway-get-control.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/gateway-get-control.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/gateway-get-empty-query.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/gateway-get-empty-query.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/gateway-get-fragment.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/gateway-get-fragment.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/gateway-get-query.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/gateway-get-query.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/post-control.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/post-control.stdout.log": {
+      "sha256": "4d4fcb95000b7d292c60c1164ab18bca6bdcc273e0c13870cd1477be1d473d48",
+      "bytes": 73
+    },
+    "before-native-probe/post-empty-query.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/post-empty-query.stdout.log": {
+      "sha256": "4d4fcb95000b7d292c60c1164ab18bca6bdcc273e0c13870cd1477be1d473d48",
+      "bytes": 73
+    },
+    "before-native-probe/post-fragment.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/post-fragment.stdout.log": {
+      "sha256": "4d4fcb95000b7d292c60c1164ab18bca6bdcc273e0c13870cd1477be1d473d48",
+      "bytes": 73
+    },
+    "before-native-probe/post-query.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/post-query.stdout.log": {
+      "sha256": "4d4fcb95000b7d292c60c1164ab18bca6bdcc273e0c13870cd1477be1d473d48",
+      "bytes": 73
+    },
+    "before-native-probe/probe.rs": {
+      "sha256": "0c37d731c8fe9d2524d464b1ff87222f4eba8bea2fc315099fe8b61076e7c0d8",
+      "bytes": 8272
+    },
+    "before-native-probe/prover-get-control.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/prover-get-control.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/prover-get-empty-query.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/prover-get-empty-query.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/prover-get-fragment.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/prover-get-fragment.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/prover-get-query.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before-native-probe/prover-get-query.stdout.log": {
+      "sha256": "37b9b3868d4d6c7bc8dc03a49b0251dceef26a932b774a85dc18a620b2492267",
+      "bytes": 42
+    },
+    "before-native-probe/reproducer.json": {
+      "sha256": "b5f2cfe8bc7d6b5b1a283ce779d681dc43447846a6381f2a3dd8566e47727e86",
+      "bytes": 102546
+    },
+    "before.stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "before.stdout.log": {
+      "sha256": "2aa1937355af0ca6da8359254b80044c80f69f60d61633e4513860d8ac9f7e04",
+      "bytes": 1258
+    },
+    "regression-strategy.md": {
+      "sha256": "1adcc23f0fc0c5950f40d2bd7fed6eb1f96d484df2ce3150a80c2194f7ddcd0a",
+      "bytes": 3558
+    },
+    "run_before_probe.py": {
+      "sha256": "ad55962fb3de7209b3943019c6f69b1b71628c2d868cf5a019e1aaf7149d8c9b",
+      "bytes": 9896
+    }
+  },
+  "count": 36,
+  "readback_twice_equal": true,
+  "excludes": "Native binaries/cached rlibs/full source archive copies/raw synthetic request bodies"
+}

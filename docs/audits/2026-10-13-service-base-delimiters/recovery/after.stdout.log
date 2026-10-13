@@ -1,0 +1,54 @@
+{
+  "result_sha256": "08faa3a779a8d36777c3f912dbc80cab29e1da0035cc593a8e6ce30c382f7556",
+  "compile_exit": 0,
+  "source_map_equal": true,
+  "source_sha256": "e399e633da9ddac4827bc615b7285e6203f0d7424df71be370cea78b12192dbd",
+  "actual_targets": {
+    "post-control": [
+      "POST /base/prove HTTP/1.1"
+    ],
+    "post-query": [],
+    "post-fragment": [],
+    "post-empty-query": [],
+    "post-empty-fragment": [],
+    "gateway-get-control": [
+      "GET /base/attest HTTP/1.1"
+    ],
+    "gateway-get-query": [],
+    "gateway-get-fragment": [],
+    "gateway-get-empty-query": [],
+    "gateway-get-empty-fragment": [],
+    "prover-get-control": [
+      "GET /base/attest HTTP/1.1"
+    ],
+    "prover-get-query": [],
+    "prover-get-fragment": [],
+    "prover-get-empty-query": [],
+    "prover-get-empty-fragment": [],
+    "gateway-direct": [
+      "GET /base/attest?owned=1 HTTP/1.1"
+    ],
+    "prover-direct": [
+      "GET /base/attest?owned=1 HTTP/1.1"
+    ]
+  },
+  "actual_counts": {
+    "post-control": 1,
+    "post-query": 0,
+    "post-fragment": 0,
+    "post-empty-query": 0,
+    "post-empty-fragment": 0,
+    "gateway-get-control": 1,
+    "gateway-get-query": 0,
+    "gateway-get-fragment": 0,
+    "gateway-get-empty-query": 0,
+    "gateway-get-empty-fragment": 0,
+    "prover-get-control": 1,
+    "prover-get-query": 0,
+    "prover-get-fragment": 0,
+    "prover-get-empty-query": 0,
+    "prover-get-empty-fragment": 0,
+    "gateway-direct": 1,
+    "prover-direct": 1
+  }
+}

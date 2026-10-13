@@ -1,0 +1,179 @@
+{
+  "schema": "arcora-service-base-before-audit/v1",
+  "captured_at": "2026-10-13T05:14:43.791472+00:00",
+  "result": "PASS_MEASURED_BEFORE_JOIN_BUG",
+  "base": "1caae328fe73a5ab96bb4200d5e28d926807d201",
+  "tree": "36615324cc626e7cdc84553fd19c706d9c00a4be",
+  "source_count": 378,
+  "source_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "before_after_public_map_equal": true,
+  "before_archived_blobs_unchanged": true,
+  "source_snapshot_sha256": "4ab2fdd7a83ca6518b9da0ea8fb5037e8da3fcd72a717369cc6c6d7356cf8f25",
+  "native_result_sha256": "b5f2cfe8bc7d6b5b1a283ce779d681dc43447846a6381f2a3dd8566e47727e86",
+  "exact_join_callsites": {
+    "crates/gateway/src/prover_client.rs": {
+      "line": 561,
+      "exact_expression": "format!(\"{}/prove\", url.trim_end_matches('/'))",
+      "expression_sha256": "936b1fcd1aed6e2ccfe5e70e8a70e0a74e8ec87e13ec0c3cc709801fce359def"
+    },
+    "crates/gateway/src/main.rs": {
+      "line": 807,
+      "exact_expression": "format!(\"{}/attest\", prover_url.trim_end_matches('/'))",
+      "expression_sha256": "952186edccb40c521fa892db86941b4e8e5ad1d7cf9f0be665aca8d55397db93"
+    },
+    "crates/prover-service/src/main.rs": {
+      "line": 272,
+      "exact_expression": "format!(\"{}/attest\", gw_url.trim_end_matches('/'))",
+      "expression_sha256": "eef7104ed6a47efbf71be560cd581d526aada78be5fa6453858be3a4bf5212ca"
+    }
+  },
+  "exact_POST_function_sha256": {
+    "prove_curl_args": "5c06b6dcb0f70fa5e865da3cf4d884978af2276f53d7873ab8f18c35cd3aa9ef",
+    "split_status": "1bf9daab1b8ebec040e0932d251a1360ed48b6df75ae31c0651dd714e12400c3",
+    "http_post": "88143fe0666758a6dfa87b922628b134320029a106c5e6a3445c407484a8e437",
+    "http_post_command": "75fd3fa002b06f679a57fce31faf50078e62d85ee4b7d2008d3160bfe9f9dd48"
+  },
+  "exact_GET_function_sha256": {
+    "http_get_json": "d715b5be7740313f607c281baa204e5037ca64bf326a7a17e032f6c3ea55627e",
+    "http_get_json_command": "e64e4030b182c28f88f77f2468ef9fdf5f8ea8fe23b24bbb7baa5915a3985dd0"
+  },
+  "both_GET_bodies_byte_identical": true,
+  "compile_exit": 0,
+  "compile_seconds": 2.766780958045274,
+  "native_curl": "/usr/bin/curl",
+  "native_curl_version": "curl 8.7.1 (x86_64-apple-darwin25.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.68.1",
+  "actual_total_requests": 12,
+  "actual_cases": {
+    "post-control": {
+      "requests": 1,
+      "target": "POST /base/prove HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      }
+    },
+    "post-query": {
+      "requests": 1,
+      "target": "POST /base?x=1/prove HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      }
+    },
+    "post-fragment": {
+      "requests": 1,
+      "target": "POST /base HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      }
+    },
+    "post-empty-query": {
+      "requests": 1,
+      "target": "POST /base?/prove HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "body": "{\"owned_fixture\":1}",
+        "json_parser_accepted": true,
+        "kind": "OK"
+      }
+    },
+    "gateway-get-control": {
+      "requests": 1,
+      "target": "GET /base/attest HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    },
+    "gateway-get-query": {
+      "requests": 1,
+      "target": "GET /base?x=1/attest HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    },
+    "gateway-get-fragment": {
+      "requests": 1,
+      "target": "GET /base HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    },
+    "gateway-get-empty-query": {
+      "requests": 1,
+      "target": "GET /base?/attest HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    },
+    "prover-get-control": {
+      "requests": 1,
+      "target": "GET /base/attest HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    },
+    "prover-get-query": {
+      "requests": 1,
+      "target": "GET /base?x=1/attest HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    },
+    "prover-get-fragment": {
+      "requests": 1,
+      "target": "GET /base HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    },
+    "prover-get-empty-query": {
+      "requests": 1,
+      "target": "GET /base?/attest HTTP/1.1",
+      "response_status": 200,
+      "returned": {
+        "kind": "OK",
+        "value": {
+          "owned_fixture": 1
+        }
+      }
+    }
+  },
+  "regression_strategy_sha256": "1adcc23f0fc0c5950f40d2bd7fed6eb1f96d484df2ce3150a80c2194f7ddcd0a",
+  "scope": "Exact archived BASE1caae328 low-level POST and both identical GET functions compiled with real serde_json/nativecurl. The two GET wrappers mechanically reuse the exact known /attest caller join expression then invoke the GET helper; whole handshake/boot functions are NOT invoked. Four owned loopback base cases perrole, one actual request each. Wrong route fixture200/JSON is low-level only, no real service/proof/attestation acceptance. Trusted operator publicURLs/body/bearer only, no privateenv/config/credentials/backend. Aftermap may contain concurrent parent changes; archivedBASE blobs are still hash-checked. All writes only this new ignored recovery directory.",
+  "implementation": "Not implemented by this agent. Parent owns helper/tests; this before archive remains immutable."
+}

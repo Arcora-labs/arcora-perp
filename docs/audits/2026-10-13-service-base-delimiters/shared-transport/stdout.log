@@ -1,0 +1,15 @@
+
+running 10 tests
+test curl_transport::tests::curl_incomplete_body_keeps_non_success_exit_even_with_valid_json_prefix ... ok
+test curl_transport::tests::curl_get_exact_byte_cap_is_accepted_and_one_more_is_refused ... ok
+test curl_transport::tests::curl_post_sends_large_stdin_exactly_and_keeps_status_suffix ... ok
+test curl_transport::tests::early_closed_stdin_spawn_and_configuration_errors_are_static_and_redacted ... ok
+test curl_transport::tests::service_base_join_preserves_encoded_paths_and_existing_address_forms ... ok
+test curl_transport::tests::service_base_query_and_fragment_refuse_without_echoing_values ... ok
+test curl_transport::tests::simultaneous_stdout_stderr_and_large_stdin_complete_without_pipe_deadlock ... ok
+test curl_transport::tests::subprocess_worker ... ignored, private native child fixture; invoked by exact name with owned synthetic env only
+test curl_transport::tests::either_pipe_overflow_reaps_child_and_unblocks_large_stdin_writer ... ok
+test curl_transport::tests::supervisor_deadline_reaps_stalled_child_and_unblocks_stdin ... ok
+
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 756 filtered out; finished in 2.28s
+
