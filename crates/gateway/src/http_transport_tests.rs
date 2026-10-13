@@ -503,3 +503,35 @@ fn post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request() {
     );
     std::fs::remove_dir(directory).unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn post_malformed_bearer_is_redacted_before_child_or_peer_request() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let directory = std::env::temp_dir().join(format!(
+        "arcora-bearer-refusal-{}-{}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let marker = directory.join("child");
+    for token in ["public\rinjected", "public\ninjected", "public\0injected"] {
+        let mut command = Command::new("/bin/sh");
+        command
+            .args([
+                "-c",
+                "printf child > \"$1\"; shift; exec curl \"$@\"",
+                "arcora-owned-bearer-refusal",
+            ])
+            .arg(&marker);
+        let error = http_post_command(&url, "{}", 1, Some(token), command).unwrap_err();
+        assert!(matches!(error, ProverClientError::Http(ref message)
+            if message == "invalid HTTP bearer header"));
+        assert!(!marker.exists(), "child started before bearer refusal");
+        assert!(matches!(listener.accept(), Err(error)
+            if error.kind() == std::io::ErrorKind::WouldBlock));
+    }
+    std::fs::remove_dir(directory).unwrap();
+}

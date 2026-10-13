@@ -1,0 +1,77 @@
+{
+  "schema": "arcora-bearer-native-production-source-observation/v1",
+  "observed_at": "2026-10-13T20:19:20.306189+00:00",
+  "passed": true,
+  "source_count": 379,
+  "source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "source_before_after_equal": true,
+  "source_snapshot_sha256": "925c97e5004ad5fb0c60f352d155382c34aeb4552c3593f3a2486bbc54654180",
+  "native_curl": "/usr/bin/curl",
+  "curl_version": "curl 8.7.1 (x86_64-apple-darwin25.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.68.1\nRelease-Date: 2024-03-27\nProtocols: dict file ftp ftps gopher gophers http https imap imaps ipfs ipns ldap ldaps mqtt pop3 pop3s rtsp smb smbs smtp smtps telnet tftp\nFeatures: alt-svc AsynchDNS GSS-API HSTS HTTP2 HTTPS-proxy IPv6 Kerberos Largefile libz MultiSSL NTLM SPNEGO SSL threadsafe UnixSockets\n",
+  "cases": {
+    "unicode-positive": {
+      "seconds": 0.868360917083919,
+      "kind": "http",
+      "status": 200,
+      "public_token_label": "PUBLIC-synthetic / + = \u00fc",
+      "returned": {
+        "JSON_accepted": true,
+        "body": "{\"owned_fixture\":true}",
+        "kind": "OK"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 18,
+          "body_sha256": "bd2b8c390d53f6b55cdd35c04c0c7a1f06643682b0149100263824f469281a67",
+          "wire_sha256": "f1e4bb44abe39f8b3d7c22b3496b90ee62d9b5230a87b1bc5324a893119978b3",
+          "authorization_count": 1,
+          "public_token_exact": true,
+          "scripted_status": 200
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/headers-root/unicode-positive/arcora-prove-header-56928-1791922759508881000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/headers-root/unicode-positive/arcora-prove-header-56928-1791922759508881000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56929",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56929,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "8a87801d5a9e3c2ef59e559caab00b024aaf4ad116ef8595eaddba94c66ca51f",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/headers-root/unicode-positive",
+      "input_spec_sha256": "92d73430933c3c38cbd4a5f475951d5765f126a67eb5201083995fb90eb2908e",
+      "wrapper_sha256": "01202275b44714a88a96396bfbc174305de941eb6b06d5687b6abc013f4f568e",
+      "stdout_sha256": "f14513c5545abe06f20377463cfd555198af63c9d97a3a77682b1d3646e03b4c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "e10f62e47a746f0503e9d9ede9a4b86ebdf1862fd872e2a6340106c82a400cd1",
+      "spawnfail_scope": null
+    }
+  },
+  "case_count": 1,
+  "HTTP_request_total": 1,
+  "additional_positive_scope": "PUBLIC synthetic spaces/plus/equal/UTF8 header bytes, transport fixture only not realprover admission/tokenmint;",
+  "scope": "Exact production funcs/header module compiled normal nativebinary; publicsynthetic tokens/body only. KnownOWNED PID/header path inspection only; private TMPDIR set ONLY in ownprobeprocess, no ambientsecret/env/config reads. SameUID/root/SIGKILL residualscope remains. SuccessNone200 is only fixture transport control, no realprover/authacceptance. OwnPythonhang tests directchild supervisor, not curl timeout. No backend/quote/setup/prove/GPU or source/old/outside changes."
+}

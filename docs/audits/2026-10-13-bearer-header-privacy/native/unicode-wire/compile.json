@@ -1,0 +1,21 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "--edition=2021",
+    "--crate-name",
+    "owned_native_bearer",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/probe.rs",
+    "-L",
+    "dependency=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps",
+    "--extern",
+    "serde_json=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libserde_json-1f00db33053c319f.rlib",
+    "-o",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/probe"
+  ],
+  "exit_code": 0,
+  "seconds": 2.0034582080552354,
+  "source_sha256": "e5426703f9468552a6c8db5dc9f7e563cea87e0af5a5cbd3918f53f11e4632a4",
+  "serde_rlib_sha256": "26a1f894e935b4cc6cb47070d30802071e3c735b071c532f3d41f2d96c36a215",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

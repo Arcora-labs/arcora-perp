@@ -1,0 +1,4 @@
+    Checking sealed-box v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Checking note-archive v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.06s

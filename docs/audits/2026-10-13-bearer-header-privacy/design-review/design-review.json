@@ -1,0 +1,61 @@
+{
+  "401_retry_scope": "Each POST constructs a fresh request-scoped header owner. Header is dropped after run or preceding transport error before returned401 handling; existing reauth/reseal/session update logic is unchanged. Ordinary typed401 control is distinct from a full attested refresh proof.",
+  "base": "76f658433882e5448c12c05c3f80bd7f3d78de39",
+  "blocking_findings": [],
+  "filesystem_scope": {
+    "OS_child_kill_wait": "Shared supervisor attempts kill/wait; OS failures remain best effort. The absolute has-reaped comment was corrected before freeze.",
+    "body_stdin_borrowed_unchanged": true,
+    "cleanup": "Drop removes fixed file and directory nonrecursively, best effort. SIGKILL/power loss/OOM abort or filesystem failure can leave a private artifact; no secure erase guarantee.",
+    "collision_attempts_bounded": 128,
+    "create_new_header_mode_request": "0600",
+    "fresh_exclusive_directory_mode_request": "0700",
+    "lifetime_through_supervision_and_worker_joins": true,
+    "name_has_no_token": true,
+    "owner_created_before_later_filesystem_errors": true,
+    "permissions_note": "Unix creation modes can be narrowed by umask; metadata/native tests should report actual mode, not assume universal chmod/ACL/platform guarantees.",
+    "trust_boundary": "Default trusted temp parent/cooperative filesystem. SameUID/root can read or replace names/memory; hostile TMPDIR or parent replacement is not solved. O_EXCL rejects existing leaf symlinks; private directory protects against ordinary other-user traversal.",
+    "writer_closed_before_curl_read": true
+  },
+  "frozen_prior_native_evidence": {
+    "findings_sha256": "2c00b88ed78a1430b4ef9ae34becd7600d35b5326ddbebe80e2eeab2d210826d",
+    "observations_sha256": "6def5b3474fa512306fb5ef115cce7fcc30a01fb4469c82e0251ec51108ad632",
+    "owned_synthetic_requests": 2,
+    "production_constructor_argv_visible_vs_standalone0600_headerfile_prototype": true,
+    "prototype_is_not_current_production_acceptance": true
+  },
+  "native_acceptance_requested": [
+    "Extract actual frozen modifiedPOST/helper, observe only owned curl PID at a peer barrier, assert token absent from argv but exact same body/header on wire.",
+    "Some/None, ordinary production-shape hex and generic test token; compare representation edge cases if documenting general byte compatibility.",
+    "Actual0600file/0700directory, lifetime through owned child supervision, cleanup after success/spawn/IO/timeout/error; no SIGKILL guarantee.",
+    "MalformedCR/LF/NUL fixed redaction before child/peer/filesystem admission; retain body/URL/deadline guards.",
+    "Typed401 then fresh attempt with a new owner/token; no whole handshake, real token minting, proof or attestation acceptance."
+  ],
+  "passed": true,
+  "production_release": "HOLD",
+  "public_token_contract": {
+    "CR_LF_NUL_rejection": "Necessary fixed-redacted representation rejection for a line-oriented headerfile; done before filesystem creation.",
+    "None": "No headerfile or fabricated bearer.",
+    "nonUnix_Some": "Explicit fixed error before spawn; no token-in-argv fallback.",
+    "production_session_token": "0x-prefixed hex Keccak digest from public handshake::session_token source; no execution or actual secret read.",
+    "public_with_session_token": "Generic Option<String> API remains; fake ASCII/Unicode/space values are not forced to hex grammar."
+  },
+  "reviewed_at": "2026-10-13T20:20:36.816195+00:00",
+  "reviewed_current_source_count": 379,
+  "reviewed_current_source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "reviewed_sources": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "bytes": 20275,
+      "sha256": "bb7e6e6d8a822d3e68dd55f84baf802b66670e27ef1befd89aedbec9dc856fac"
+    },
+    "crates/gateway/src/prover_bearer_header.rs": {
+      "bytes": 6039,
+      "sha256": "8d5801bfe69d1f43875d091ba47ecfb1f7086a117f783115ee4dbad436db7bd3"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 84837,
+      "sha256": "e6b3c403dac94f226d47b64e4591824f65fd26329072629ed2fcfeaef7f9f0b5"
+    }
+  },
+  "schema": "arcora-bearer-argv-independent-design-review/v1",
+  "scope": "Read-only public source and frozen synthetic native evidence; no test/build/network/service/privateconfig/source/old/outside mutation. Only this new ignored design receipt is written."
+}
