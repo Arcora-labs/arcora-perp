@@ -1,0 +1,23 @@
+{
+  "base": "76f658433882e5448c12c05c3f80bd7f3d78de39",
+  "changes": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "after_bytes": 20275,
+      "after_sha256": "bb7e6e6d8a822d3e68dd55f84baf802b66670e27ef1befd89aedbec9dc856fac",
+      "base_bytes": 18953,
+      "base_sha256": "27768b2a4ea0e31faedcbf6e47aba7342b2d3e71cb6531eedbc67b31c8d67a89"
+    },
+    "crates/gateway/src/prover_bearer_header.rs": {
+      "after_bytes": 6039,
+      "after_sha256": "8d5801bfe69d1f43875d091ba47ecfb1f7086a117f783115ee4dbad436db7bd3",
+      "base_absent": true
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "after_bytes": 84837,
+      "after_sha256": "e6b3c403dac94f226d47b64e4591824f65fd26329072629ed2fcfeaef7f9f0b5",
+      "base_bytes": 84118,
+      "base_sha256": "a34b4e977940884cea7aaaedb73aae711962cf5fe00f2d4733cb7a7569e10bbd"
+    }
+  },
+  "production_release": "HOLD"
+}

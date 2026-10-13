@@ -1,0 +1,688 @@
+{
+  "schema": "arcora-bearer-native-final-evidence/v1",
+  "observed_at": "2026-10-13T20:22:04.632660+00:00",
+  "passed": true,
+  "source_count": 379,
+  "source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "source_before_after_equal": true,
+  "source_snapshot_sha256": "925c97e5004ad5fb0c60f352d155382c34aeb4552c3593f3a2486bbc54654180",
+  "primary_result_sha256": "8649b61949a372b79bbd764d9a1a7f0945fe643c08b2b06c789d42d19b3b74e7",
+  "unicode_result_sha256": "9ea4f06a11f639f004d45c372259a7c965bd4a88fde2444438de98710561903c",
+  "aggregate_cases": 15,
+  "actual_HTTP_requests": 7,
+  "cases": {
+    "success-some": {
+      "seconds": 0.7452179579995573,
+      "kind": "http",
+      "status": 200,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "JSON_accepted": true,
+        "body": "{\"owned_fixture\":true}",
+        "kind": "OK"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 163840,
+          "body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695",
+          "wire_sha256": "facd2148d5859c83caaa49f33fb5a1413135caf4a0cceb5925485a5166ce9106",
+          "authorization_count": 1,
+          "public_token_exact": true,
+          "scripted_status": 200
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/success-some/arcora-prove-header-56675-1791922681442548000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/success-some/arcora-prove-header-56675-1791922681442548000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56676",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56676,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "49c4b11baffc6da79c31b0dfe3a2e5f0bd06bee9a257938c21b1c4105109fed9",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/success-some",
+      "input_spec_sha256": "776dd883b06efd4a1ed63197b254c07324a9d3d87fdfb1ebf4fe09b590e47eb1",
+      "wrapper_sha256": "a756bf1d5971b2b73006125202163a18f9552e91fc409bfd66b96e6fd4bf40a0",
+      "stdout_sha256": "5dfa4159e1dad008e8aede6ad3f6440c380f6a1f776bea333330225081e2ccc2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "c7d43f38d29d4d3f04ce4e9cbc66eb4a2bf84833a1a8bd62fa4b9a73a09345d2",
+      "spawnfail_scope": null
+    },
+    "success-none": {
+      "seconds": 0.4311483340570703,
+      "kind": "http",
+      "status": 200,
+      "public_token_label": null,
+      "returned": {
+        "JSON_accepted": true,
+        "body": "{\"owned_fixture\":true}",
+        "kind": "OK"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 163840,
+          "body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695",
+          "wire_sha256": "ac082af531027b61af873546c4157f01b0601646b9eb255dfdd46cbf9815b255",
+          "authorization_count": 0,
+          "public_token_exact": true,
+          "scripted_status": 200
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": null,
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56679",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56679,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "19523f5aaca5abae95b3edbdb7c6bce04e0476073166325421b23f70208b4185",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/success-none",
+      "input_spec_sha256": "aff74291a4ae2ed0729da7e26600d4d969ff1b30a25dd9e26cbf988aa6ecfe6e",
+      "wrapper_sha256": "78067a6d6734807f8d6cef69f5bb5090ea5c5a8873e2e5c5358f6fc17df71ed2",
+      "stdout_sha256": "5dfa4159e1dad008e8aede6ad3f6440c380f6a1f776bea333330225081e2ccc2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "ca79c622375a58543efa1d1ece9ace7b1ae4b730eb04f121b0ab52e284c82395",
+      "spawnfail_scope": null
+    },
+    "http500": {
+      "seconds": 0.3930807909928262,
+      "kind": "http",
+      "status": 500,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "error": "Http(\"prover /prove HTTP 500\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 163840,
+          "body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695",
+          "wire_sha256": "6dba63e6e0183a104183b5c5d1e72f30290c99542c7b4d40212d0deebb0233b7",
+          "authorization_count": 1,
+          "public_token_exact": true,
+          "scripted_status": 500
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/http500/arcora-prove-header-56681-1791922682224783000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/http500/arcora-prove-header-56681-1791922682224783000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56682",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56682,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "4a2a6d53f698e7feecd5a68818b1802d3b54eb1261fd2203b4b89fd17187b59a",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/http500",
+      "input_spec_sha256": "19c8c0bc073d2f46be897bf7786d2ec4f342c7ee67028177f38414e3dfb5ae8e",
+      "wrapper_sha256": "d088c4b3fe364251c71eeeda90d7573c788506ae92da87809dd0a983373eadea",
+      "stdout_sha256": "42681a101cb67a0f519ac1cac9f18505721ecd8b7c5309b52db15e32c4ccfdd3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "f6d1b2ea415b9b529f6869c3b98d4669c137bb703aa4d1b280a9b4af3fac1a7d",
+      "spawnfail_scope": null
+    },
+    "fresh-first401": {
+      "seconds": 0.44008095806930214,
+      "kind": "http",
+      "status": 401,
+      "public_token_label": "public-first",
+      "returned": {
+        "error": "Unauthorized",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 163840,
+          "body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695",
+          "wire_sha256": "592da273aeffcaf477b77c2dd48adbe657abacc2332ae8ed32027d8e442ce07f",
+          "authorization_count": 1,
+          "public_token_exact": true,
+          "scripted_status": 401
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/fresh-parent/arcora-prove-header-56684-1791922682627061000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/fresh-parent/arcora-prove-header-56684-1791922682627061000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56685",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56685,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "968c79ab1a37eaa49a92804927374c93d78c3e413b2990c656b50a09b14b13ee",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/fresh-parent",
+      "input_spec_sha256": "cb51ffa1a8908c7b06039c997158a2923cf400c252b146cd44b0ea7486bbd9d9",
+      "wrapper_sha256": "5f0d64a6a7af5a3f4509a1ca739a4abd01f177dc76e6d38e1f76cd419f332767",
+      "stdout_sha256": "5b735f5114d681e924d75f5951aab6e33f26934a558d1b57ec99005da785e816",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "d92b8b33c69788c00e7344cc92db273484c8a5393f14678987765e7db1841d52",
+      "spawnfail_scope": null
+    },
+    "fresh-second200": {
+      "seconds": 0.42290137498639524,
+      "kind": "http",
+      "status": 200,
+      "public_token_label": "public-second",
+      "returned": {
+        "JSON_accepted": true,
+        "body": "{\"owned_fixture\":true}",
+        "kind": "OK"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 163840,
+          "body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695",
+          "wire_sha256": "76eec82e7bf306e92a50a8ace5bd25386f5bec038875c87195d66614b617bea4",
+          "authorization_count": 1,
+          "public_token_exact": true,
+          "scripted_status": 200
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/fresh-parent/arcora-prove-header-56687-1791922683068264000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/fresh-parent/arcora-prove-header-56687-1791922683068264000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56688",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56688,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "7ff6c30326f34b3ef159bba6140bed8ccd9e34a45982d5a76f9d56b033c9e687",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/fresh-parent",
+      "input_spec_sha256": "f05cd54fd3ab414189c53b07f19d225e7740c835ba17755229ee5cbf5180bdae",
+      "wrapper_sha256": "462cc961473a99070bce7d7384fece166a5e03904fa404cf47b7388130662ee3",
+      "stdout_sha256": "5dfa4159e1dad008e8aede6ad3f6440c380f6a1f776bea333330225081e2ccc2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "718860ee4b149f46e7074b8c56a30a048055dd47f0839ebf041e4be149a517d7",
+      "spawnfail_scope": null
+    },
+    "curl-timeout": {
+      "seconds": 1.4202238329453394,
+      "kind": "curl-timeout",
+      "status": 200,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "error": "Http(\"prover HTTP transport exit exit status: 28\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 163840,
+          "body_sha256": "c97c149052f417198e772d0bb52457f6641b4ec7a5cfe5f4856e467c67f78695",
+          "wire_sha256": "5e0cc2fcb1d77741682956dbf081e731448e6d5d8bf681479feb9bcadec31a81",
+          "authorization_count": 1,
+          "public_token_exact": true,
+          "scripted_status": 200
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/curl-timeout/arcora-prove-header-56690-1791922683495660000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/curl-timeout/arcora-prove-header-56690-1791922683495660000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56691",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56691,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "25bff8248366e276a415154aa0d47128cc1e8676f98f975a95679e2d80d65096",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/curl-timeout",
+      "input_spec_sha256": "4c9a6d40ac919caaa47e18b4fee7345138874bfaeb2b98d0345cf97b76665e50",
+      "wrapper_sha256": "7b78c3bb46ed930fc6b531664bc47011d5413ccd44d3f6ce3e83439f5a94ade4",
+      "stdout_sha256": "3d7771ce8a178c8225bf4f25e2eb2b19e24404cb08c09d4682e895bced847df3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "10562d75c4874f4184e7e623bf7c46f6b926bbc2e790347578bde07543bf8d71",
+      "spawnfail_scope": null
+    },
+    "supervisor-hang": {
+      "seconds": 6.054533499991521,
+      "kind": "supervisor-hang",
+      "status": 200,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "error": "Http(\"HTTP transport supervisor deadline exceeded\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/supervisor-hang/arcora-prove-header-56693-1791922684920383000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/supervisor-hang/arcora-prove-header-56693-1791922684920383000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56694",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56694,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "ownedPythonhang",
+        "stdout_sha256": "0be1cb143ec6ec35fa287fe2b6b240c7ff891e02352917660234918cd38b476c",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/supervisor-hang",
+      "input_spec_sha256": "46f079f93a7296dff5dc43acc9a8c41f10b590455ffdbf0eae56562d55674c16",
+      "wrapper_sha256": "72d018dc387da05c9d2abe13c5af0bfe3626993b960f4b92d4c03b1ece42d13a",
+      "stdout_sha256": "3e6be586ff16214bfc425ec0accf8672c0e63aeb66e9d1c4507fd41d86ce2d48",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "6569676e642102aeccc0adf9724b6c451b9c2ae83b1194c2783709dcc2f93e85",
+      "spawnfail_scope": null
+    },
+    "spawn-fail": {
+      "seconds": 0.10019816702697426,
+      "kind": "spawn-fail",
+      "status": 200,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "error": "Http(\"HTTP transport could not start\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": false,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": null,
+      "known_owned_ps": null,
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/spawn-fail",
+      "input_spec_sha256": "0e86d06249484b72ee1559b2e39688f88a792faed0111e138726fd1c37332c80",
+      "wrapper_sha256": "42ca78eae830024aa959fa0be6f3366eb0740e2ce9d931b8536655c8b2adb961",
+      "stdout_sha256": "476ee0237b946232eb2c0e5250fe3d7099e878be22daac38b826792a2b33e8e2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": null,
+      "spawnfail_scope": "Filepath was not observed in-flight; post-erroremptytree plus exact sourceowner-before-run ordering, not heldfile observation."
+    },
+    "malformed-CR": {
+      "seconds": 0.09880095801781863,
+      "kind": "malformed",
+      "status": 200,
+      "public_token_label": "public\rInjected: yes",
+      "returned": {
+        "error": "Http(\"invalid HTTP bearer header\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": false,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": null,
+      "known_owned_ps": null,
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/malformed-CR",
+      "input_spec_sha256": "672f58a4f5cb9671967eae23b412901543a162f69c92b7963058d18bf5a467cd",
+      "wrapper_sha256": "5d4eef65d9fda4fe5f348ddce8a664673a50d4761f9990afd417b9db7ba57000",
+      "stdout_sha256": "cf7592aa75b9e390c58e8a5ed4aa9be1d6fff39e5e622f0babbc5fb84d948ba2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": null,
+      "spawnfail_scope": null
+    },
+    "malformed-LF": {
+      "seconds": 0.10317112505435944,
+      "kind": "malformed",
+      "status": 200,
+      "public_token_label": "public\nInjected: yes",
+      "returned": {
+        "error": "Http(\"invalid HTTP bearer header\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": false,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": null,
+      "known_owned_ps": null,
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/malformed-LF",
+      "input_spec_sha256": "6aaa0b9f66297ddafbde9359c4216d89fbfeb23b9828d260776f03fcb6be1326",
+      "wrapper_sha256": "e4329d9beea41721b9d85c6c3e9f3402722e8caa05598ddc2fb33f8efd8e4d49",
+      "stdout_sha256": "cf7592aa75b9e390c58e8a5ed4aa9be1d6fff39e5e622f0babbc5fb84d948ba2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": null,
+      "spawnfail_scope": null
+    },
+    "malformed-NUL": {
+      "seconds": 0.09863616607617587,
+      "kind": "malformed",
+      "status": 200,
+      "public_token_label": "public\u0000injected",
+      "returned": {
+        "error": "Http(\"invalid HTTP bearer header\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": false,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": null,
+      "known_owned_ps": null,
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/malformed-NUL",
+      "input_spec_sha256": "b2518bc3191771194483c50c87ffe2417157710533865630ab239c270829bbc7",
+      "wrapper_sha256": "978f98819b1f0ab4740adaced8b2f50a022d9cf512a60dd2c1aa2440a309f3c9",
+      "stdout_sha256": "cf7592aa75b9e390c58e8a5ed4aa9be1d6fff39e5e622f0babbc5fb84d948ba2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": null,
+      "spawnfail_scope": null
+    },
+    "body-overbudget": {
+      "seconds": 0.10117562499362975,
+      "kind": "precheck",
+      "status": 200,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "error": "Http(\"HTTP request exceeds byte limit\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": false,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": null,
+      "known_owned_ps": null,
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/body-overbudget",
+      "input_spec_sha256": "7b1dfb8e66b04999fccf2af7d4c4f88f9a683185432fa09d1daafb4c148b9334",
+      "wrapper_sha256": "656faa4a5f2f6a7652fd3e7abdb49211619515cfe8f5f20ebec6cab8371a7915",
+      "stdout_sha256": "00dac8cbcfb37de0ea86b96fafd2f2bb7aa4c8b72dba0bebe4a2b688a7d7dace",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": null,
+      "spawnfail_scope": null
+    },
+    "endpoint-query": {
+      "seconds": 0.09937708301004022,
+      "kind": "precheck",
+      "status": 200,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "error": "Http(\"invalid HTTP service base URL\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": false,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": null,
+      "known_owned_ps": null,
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/endpoint-query",
+      "input_spec_sha256": "be8dbf4b49d4d6e775eddd8c21609bf730a24cce059e7e05a0c081241a37d61d",
+      "wrapper_sha256": "a9e3fc4862b17e66b098adc0eb591a72f3da52e4f54d40fa4f3dd37c343907af",
+      "stdout_sha256": "22164a19c9e11bdcca7d2a5b7263bb0484c7c6e17f7c1dbb815e9cd931346a65",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": null,
+      "spawnfail_scope": null
+    },
+    "timeout-zero": {
+      "seconds": 0.09918766701593995,
+      "kind": "precheck",
+      "status": 200,
+      "public_token_label": "public-synthetic-A",
+      "returned": {
+        "error": "Http(\"invalid HTTP transport timeout\")",
+        "kind": "ERROR"
+      },
+      "child_marker_exists": false,
+      "HTTP_requests": [],
+      "HTTP_request_count": 0,
+      "observed_metadata": null,
+      "known_owned_ps": null,
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/headers-root/timeout-zero",
+      "input_spec_sha256": "00f544dcbd8b8a3c1445813716f26c76f2aa897f9023f457b2dc878f1897fcdb",
+      "wrapper_sha256": "a5596a7db669b19114051633128b07535803167064a25bce62dc1aab1c0bc043",
+      "stdout_sha256": "f2c6299db5dae629f0c64d503e8a72545483482e4e4446c7edf4eccf77e4b434",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": null,
+      "spawnfail_scope": null
+    },
+    "unicode/unicode-positive": {
+      "seconds": 0.868360917083919,
+      "kind": "http",
+      "status": 200,
+      "public_token_label": "PUBLIC-synthetic / + = \u00fc",
+      "returned": {
+        "JSON_accepted": true,
+        "body": "{\"owned_fixture\":true}",
+        "kind": "OK"
+      },
+      "child_marker_exists": true,
+      "HTTP_requests": [
+        {
+          "target": "POST /base/prove HTTP/1.1",
+          "body_bytes": 18,
+          "body_sha256": "bd2b8c390d53f6b55cdd35c04c0c7a1f06643682b0149100263824f469281a67",
+          "wire_sha256": "f1e4bb44abe39f8b3d7c22b3496b90ee62d9b5230a87b1bc5324a893119978b3",
+          "authorization_count": 1,
+          "public_token_exact": true,
+          "scripted_status": 200
+        }
+      ],
+      "HTTP_request_count": 1,
+      "observed_metadata": {
+        "known_header_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/headers-root/unicode-positive/arcora-prove-header-56928-1791922759508881000-0/authorization",
+        "private_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/headers-root/unicode-positive/arcora-prove-header-56928-1791922759508881000-0",
+        "file_mode": "0600",
+        "directory_mode": "0700",
+        "regular_file": true,
+        "owner_matches": true,
+        "nlink": 1,
+        "file_exists_during_held_response_or_owned_hang": true
+      },
+      "known_owned_ps": {
+        "command": [
+          "/bin/ps",
+          "-ww",
+          "-p",
+          "56929",
+          "-o",
+          "pid=,ppid=,command="
+        ],
+        "known_owned_PID": 56929,
+        "PPID_matches_probe": true,
+        "synthetic_token_absent": true,
+        "observed_program": "nativecurl",
+        "stdout_sha256": "8a87801d5a9e3c2ef59e559caab00b024aaf4ad116ef8595eaddba94c66ca51f",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "header_path_removed_after_return": true,
+      "private_directory_removed_after_return": true,
+      "owned_temp_root_empty_after_return": true,
+      "owned_TMPDIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/unicode-wire/headers-root/unicode-positive",
+      "input_spec_sha256": "92d73430933c3c38cbd4a5f475951d5765f126a67eb5201083995fb90eb2908e",
+      "wrapper_sha256": "01202275b44714a88a96396bfbc174305de941eb6b06d5687b6abc013f4f568e",
+      "stdout_sha256": "f14513c5545abe06f20377463cfd555198af63c9d97a3a77682b1d3646e03b4c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exact_args_sha256": "e10f62e47a746f0503e9d9ede9a4b86ebdf1862fd872e2a6340106c82a400cd1",
+      "spawnfail_scope": null
+    }
+  },
+  "all_observed_headers_removed_afterreturn": true,
+  "all_private_temproots_empty_afterreturn": true,
+  "CRLFNUL_each_no_child_peer_echo": true,
+  "fresh_attempts": {
+    "same_owned_temp_parent": true,
+    "distinct_header_paths": true,
+    "first_deleted_before_second": true,
+    "samebody": true,
+    "fresh_synthetic_header_value": true,
+    "independent_POSTs_NOT_full_rehandshake": true
+  },
+  "timing_seconds": {
+    "curl_timeout": 1.4202238329453394,
+    "owned_supervisor_hang": 6.054533499991521
+  },
+  "normal_160KiB_body_and_synthetic_token_preserved": true,
+  "noauth_None_is_fixture_transport_only": true,
+  "Unicode_public_rawheader_exact_not_realprover_admission": true,
+  "spawnfail_only_emptytree_and_sourceorder_NOT_inflightfileobservation": true,
+  "old_evidence_rosters": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe": {
+      "manifest_sha256": "06eed9fcdeb562396186376ee42605ca1f110ebe75feecde64b205c48e392da4",
+      "entries": 36,
+      "all_listed_bytes_unchanged": true
+    },
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/next-bearer-argv-audit": {
+      "manifest_sha256": "21d7c7ad5a4cd6dd0ccfe264b77cd0a7df882ce09cd16af727b004224628574c",
+      "entries": 23,
+      "all_listed_bytes_unchanged": true
+    }
+  },
+  "scope_sha256": "81392db1802667633c5b019d1451bb9c4c71560af978754d0d35e8880ef0c24c",
+  "source_fn_hashes": {
+    "prove_curl_args": "de74816ed2569dc6212448c82cd3bec0dec16fdb6dca241c26ed68bc81356176",
+    "split_status": "1bf9daab1b8ebec040e0932d251a1360ed48b6df75ae31c0651dd714e12400c3",
+    "http_post_command": "f6863cf4c9ede2bdb1f9f538d664d616faf75267665963b527b1474aba140c61",
+    "http_post_command_with_body_limit": "09f060f578754852a189e6284c02d93d00c7893f3209f8a66cb09b673fcfad75"
+  },
+  "helper_module_sha256": "8d5801bfe69d1f43875d091ba47ecfb1f7086a117f783115ee4dbad436db7bd3",
+  "firstpass_no_repair_history": true,
+  "scope": "Only new ignored native artifacts written. No production process/deploy/config/realcredentials/otherPID/backend/proof actions. No sameUID/root or crashcleanup guarantee. Whole actual rehandshake not executed."
+}

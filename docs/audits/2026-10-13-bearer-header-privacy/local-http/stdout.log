@@ -1,0 +1,25 @@
+
+running 20 tests
+test http_transport_tests::direct_full_url_get_query_support_remains_unchanged ... ok
+test http_transport_tests::file_protocol_cannot_supply_attestation_or_receive_proof_body ... ok
+test http_transport_tests::get_glob_characters_are_one_literal_http_target ... ok
+test http_transport_tests::get_http_and_json_failures_do_not_echo_peer_content ... ok
+test http_transport_tests::get_nested_encoded_base_paths_reach_the_exact_attest_route ... ok
+test http_transport_tests::get_overflow_refused_with_or_without_content_length ... ok
+test http_transport_tests::get_small_and_exact_limit_valid_json_succeed ... ok
+test http_transport_tests::post_401_is_typed_and_other_errors_are_redacted ... ok
+test http_transport_tests::post_exact_body_byte_limit_preserves_unicode_body_and_bearer ... ok
+test http_transport_tests::post_exact_limit_succeeds_and_limit_plus_one_refuses ... ok
+test http_transport_tests::post_injected_body_limit_refuses_before_process_creation ... ok
+test http_transport_tests::post_invalid_timeouts_refuse_before_process_creation ... ok
+test http_transport_tests::post_glob_characters_are_one_literal_http_target ... ok
+test http_transport_tests::post_malformed_bearer_is_redacted_before_child_or_peer_request ... ok
+test http_transport_tests::post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request ... ok
+test http_transport_tests::post_query_fragment_bases_refuse_before_process_creation ... ok
+test http_transport_tests::post_streams_large_input_and_preserves_bearer_and_body ... ok
+test http_transport_tests::prover_decode_errors_do_not_echo_remote_values ... ok
+test http_transport_tests::scheme_less_loopback_http_remains_compatible ... ok
+test http_transport_tests::post_nested_encoded_base_paths_reach_the_exact_prove_route ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 758 filtered out; finished in 0.17s
+

@@ -1,0 +1,141 @@
+{
+  "actual_local_records": {
+    "local-client": {
+      "elapsed_seconds": 11.045151832979172,
+      "exit_code": 0,
+      "receipt_sha256": "27bba6d3deb873ac0247f2a90ced09f0c8c0ea152335c6e226645188233f3df8",
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 39,
+          "state": "ok"
+        }
+      ]
+    },
+    "local-clippy": {
+      "elapsed_seconds": 7.161055458011106,
+      "exit_code": 0,
+      "receipt_sha256": "94a3759f5ba2d8a9c89a09de78b81c70a52f456a10249eab24e9bab74299f4c2",
+      "test_summaries": []
+    },
+    "local-format": {
+      "elapsed_seconds": 0.6688142500352114,
+      "exit_code": 0,
+      "receipt_sha256": "cb429358452b2b0609ec7c047e5ef204cc7b12756fe1a56547553993238e4de0",
+      "test_summaries": []
+    },
+    "local-http": {
+      "elapsed_seconds": 0.5319262921111658,
+      "exit_code": 0,
+      "receipt_sha256": "8b0fc32d87bb5bca0ddcd8409b0643caa0c0ceb3b993e446f9f5de3387e69bfe",
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 20,
+          "state": "ok"
+        }
+      ]
+    }
+  },
+  "base": "76f658433882e5448c12c05c3f80bd7f3d78de39",
+  "baseline_note": "Historical378/927 source uses exact76f Git blobs; baseline capture occurred with two authorized edits active and is explicitly not claimed clean.",
+  "baseline_sha256": "38388df7efdb3a2af721537dcbe90b05bed2fadfee024f1b157326a10b8685f5",
+  "captured_at": "2026-10-13T20:20:36.816195+00:00",
+  "changed_public_sources": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/gateway/src/prover_bearer_header.rs",
+    "crates/gateway/src/prover_client.rs"
+  ],
+  "changed_source_hashes": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "bytes": 20275,
+      "sha256": "bb7e6e6d8a822d3e68dd55f84baf802b66670e27ef1befd89aedbec9dc856fac"
+    },
+    "crates/gateway/src/prover_bearer_header.rs": {
+      "bytes": 6039,
+      "sha256": "8d5801bfe69d1f43875d091ba47ecfb1f7086a117f783115ee4dbad436db7bd3"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 84837,
+      "sha256": "e6b3c403dac94f226d47b64e4591824f65fd26329072629ed2fcfeaef7f9f0b5"
+    }
+  },
+  "findings": [],
+  "guard_order_and_redaction_passed_static_review": true,
+  "historical_immutable_inputs": {
+    "known": 3214,
+    "new_helper_not_a_historical_source": true,
+    "only_two_existing_source_exceptions": [
+      "crates/gateway/src/prover_client.rs",
+      "crates/gateway/src/http_transport_tests.rs"
+    ],
+    "other_original_size_hash_unchanged": 3212
+  },
+  "input_cut": {
+    "all_rechecked_identical": true,
+    "sha256_canonical_map": "616e5d145e2016541eb58eb6ebb36c8647af533454e6e3f1a903045be1aca525",
+    "unique_files_read": 3229
+  },
+  "limitations": [
+    "This removes ordinary token argv exposure; privatefile path remains visible. SameUID/root/hostile temp replacement/crash cleanup are not solved.",
+    "Owned native after-source probing, nonUnix runtime and global permissions under arbitrary umask/ACL are not claimed by this receipt.",
+    "No new proof/real attestation/backend/keyrelease/service/release acceptance."
+  ],
+  "new_helper4_and_HTTP1_tests": true,
+  "no_new_native_after_fix_result_claimed_by_this_review": true,
+  "old_HTTP19_entire_prefix_exact": true,
+  "old_client_tests": {
+    "all_other_client_support_and_test_module_bytes_exact": true,
+    "intentional_after_sha256": "809828624a2ad5dcbf73364bf78939829a1f3831c2bdfb2e5d1ddf3cdaa2167f",
+    "intentional_before_sha256": "2fbf1da50d91d950c862fdf1d69e0bd93dff03ecb96c6e9494bd8fdb94772d07",
+    "intentional_test": "bearer_is_attached_when_present now cfgUnix privatefile-Hargument plus token absence assertion",
+    "old_defined": 35,
+    "unchanged_except_single_intentional_argv_test": 34
+  },
+  "passed": true,
+  "production_release": "HOLD",
+  "protected_pins_equal_baseline_and_current": true,
+  "remaining_public_sources_byte_exact": 376,
+  "schema": "arcora-bearer-argv-independent-source-qa/v1",
+  "scope": "Independent frozen source/pin/public-roster and saved actual local39client/20HTTP/Clippy/fmt readback only. No new test/build/network/source/Git/outside/oldtarget writes.",
+  "shared_transport_wire_seal_session_core_guest_unchanged_outside3": true,
+  "source_count": 379,
+  "source_freeze_sha256": "ef75146bb088f13cab3afde51702f55e5fcdedcb001ee9fe1b23da3d0356ad7f",
+  "source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "unchanged_manifests_locks": {
+    "Cargo.lock": {
+      "bytes": 61374,
+      "sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5"
+    },
+    "Cargo.toml": {
+      "bytes": 1303,
+      "sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa"
+    },
+    "crates/gateway/Cargo.toml": {
+      "bytes": 3013,
+      "sha256": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1"
+    },
+    "crates/prover-service/Cargo.lock": {
+      "bytes": 146927,
+      "sha256": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e"
+    },
+    "crates/prover-service/Cargo.toml": {
+      "bytes": 1261,
+      "sha256": "5b28c2dac8c8543f193ca142bd372a2c1c92f25a577cc71ca40bac9103daed48"
+    },
+    "scripts/local-verification/service-identity-harness/Cargo.lock": {
+      "bytes": 15220,
+      "sha256": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d"
+    },
+    "scripts/local-verification/service-identity-harness/Cargo.toml": {
+      "bytes": 452,
+      "sha256": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312"
+    },
+    "scripts/tee-capture/Cargo.lock": {
+      "bytes": 62976,
+      "sha256": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e"
+    }
+  }
+}

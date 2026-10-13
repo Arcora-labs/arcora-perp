@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "result_sha256": "8649b61949a372b79bbd764d9a1a7f0945fe643c08b2b06c789d42d19b3b74e7",
+  "cases": 14,
+  "actual_HTTP_requests": 6,
+  "source_count": 379,
+  "source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "all_headers_cleaned_after_return": true,
+  "fresh_independent_POSTs_distinctpaths": true
+}

@@ -1,0 +1,74 @@
+
+running 39 tests
+test prover_client::bearer_header::tests::creation_failure_is_redacted ... ok
+test prover_client::bearer_header::tests::header_control_characters_fail_without_echoing_input ... ok
+test prover_client::bearer_header::tests::private_header_preserves_bytes_and_cleans_up_on_drop ... ok
+test prover_client::bearer_header::tests::concurrent_requests_get_distinct_header_files ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::clock_pipeline_tests::clock_pipeline_refuses_unsupported_legacy_client ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::clock_pipeline_tests::clock_pipeline_intent_survives_encrypted_journal_and_cannot_rollback ... ok
+test prover_client::clock_pipeline_tests::clock_pipeline_rejects_mismatched_prover_commitment ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::clock_pipeline_tests::clock_pipeline_validates_context_before_prover_call ... ok
+test prover_client::prove_curl_tests::args_carry_the_transport_hardening_flags_in_pairs ... ok
+test prover_client::prove_curl_tests::bearer_is_attached_when_present ... ok
+test prover_client::prove_curl_tests::invalid_status_markers_are_refused_without_echo ... ok
+test prover_client::prove_curl_tests::no_bearer_header_when_token_absent ... ok
+test prover_client::prove_curl_tests::split_status_separates_body_and_code ... ok
+test prover_client::prove_curl_tests::status_is_captured_via_write_out ... ok
+test prover_client::reauth_tests::no_rehandshake_means_401_is_terminal ... ok
+test prover_client::reauth_tests::re_handshakes_once_and_retries_on_401 ... ok
+test prover_client::reauth_tests::rehandshake_refreshes_the_stored_secret_not_only_the_token ... ok
+test prover_client::reauth_tests::second_401_is_terminal ... ok
+test prover_client::reauth_tests::success_does_not_rehandshake ... ok
+test prover_client::clock_pipeline_tests::clock_pipeline_uses_v2_native_derivation_and_journals_bound_proof ... ok
+test prover_client::request_body_tests::integer_ceiling_and_overflow_checks_need_no_large_payload ... ok
+test prover_client::request_body_tests::expansion_matches_exact_small_sealed_postcard_and_json ... ok
+test prover_client::seal_nonce_tests::nonce_is_deterministic_for_same_root_and_plaintext ... ok
+test prover_client::seal_nonce_tests::nonce_is_not_the_public_plaintext_hash ... ok
+test prover_client::seal_nonce_tests::nonce_varies_with_plaintext_and_with_root ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::tests::a_disagreeing_prover_is_refused ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+test prover_client::request_body_tests::small_witness_exact_budgets_preserve_legacy_and_clocked_seals ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::tests::a_disagreeing_prover_names_the_differing_root ... ok
+test prover_client::tests::a_window_that_enters_close_only_reports_a_non_normal_post_state ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::tests::local_derivation_matches_the_mock_prover_on_all_seven_roots ... ok
+test prover_client::tests::an_empty_proof_is_refused_before_broadcast ... ok
+test prover_client::tests::parses_a_response_with_deposits_root ... ok
+test prover_client::tests::parses_a_response_without_deposits_root ... ok
+test prover_client::tests::rejects_a_present_but_malformed_root ... ok
+test prover_client::tests::rejects_a_response_missing_the_commitment ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::tests::new_deposit_count_is_cumulative_not_per_window ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::tests::the_outcome_carries_the_proven_post_state_terms_the_gate_judges ... ok
+test prover_client::tests::the_insurance_term_is_the_post_state_not_the_pre_state ... ok
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test prover_client::tests::zero_deposit_window_submits_the_prestate_count ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 739 filtered out; finished in 0.35s
+

@@ -1,0 +1,1 @@
+56679 56678 /usr/bin/curl -q --globoff --proto =http,https -s -S --connect-timeout 20 --keepalive-time 30 --max-time 4 -X POST -H Content-Type: application/json -w \012__DPHTTP_STATUS__%{http_code} --data-binary @- -- http://127.0.0.1:57270/base/prove

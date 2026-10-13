@@ -1,0 +1,54 @@
+{
+  "PR62_copied": 327,
+  "active_authorized_source_changes": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/gateway/src/prover_bearer_header.rs",
+    "crates/gateway/src/prover_client.rs"
+  ],
+  "all_main_success": true,
+  "base": "76f658433882e5448c12c05c3f80bd7f3d78de39",
+  "bypass_actors": [],
+  "captured_at": "2026-10-13T20:13:41.832599+00:00",
+  "current_checkout_clean": false,
+  "current_status_paths": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/gateway/src/prover_client.rs",
+    "crates/gateway/src/prover_bearer_header.rs"
+  ],
+  "external_dirty_counts": [
+    13,
+    7,
+    62
+  ],
+  "external_public_dirty_files": 82,
+  "files": {
+    "baseline": {
+      "bytes": 910352,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/baseline.json",
+      "sha256": "38388df7efdb3a2af721537dcbe90b05bed2fadfee024f1b157326a10b8685f5"
+    },
+    "github_start": {
+      "bytes": 73781,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/start-github-verification.json",
+      "sha256": "b171e2a50d335005d0615eb8c6b0e47676be4c5bc7568a3bd0826fe0d5d72b5f"
+    }
+  },
+  "immutable_unique_files": 3214,
+  "main_jobs": 14,
+  "main_workflows": 3,
+  "non_active_files_rechecked": 3212,
+  "passed": true,
+  "pointer_relocation": 1,
+  "previous_authorized_source_replacements": 5,
+  "previous_non_source_exact": 2525,
+  "previous_roster_count": 2530,
+  "production_release": "HOLD",
+  "reports": 10,
+  "required_approvals": 0,
+  "required_checks_strict": 11,
+  "schema": "arcora-bearer-argv-preservation-start/v1",
+  "scope": "Closed explicitly approved public roster only. Previous2525 non-source entries preserved byte exact including PR61 pointer relocated to backup; five completed PR62 source replacements bind historical378/927 Git source. Current PR63 client/HTTP edits and new helper are explicit authorized status exceptions; current checkout is not claimed clean. PR62 originals/copies327+ledger, report/QA/pointer and three external checkouts82 public bodies protected. Changing new validation root excluded. No private/env discovery, old/outside/source mutation, backend/GPU/proof/endpoints/deployments/financial operations.",
+  "source_count_at_start": 378,
+  "source_sha256_at_start": "927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d",
+  "tree": "6eb4cb1a7743b31ae206f547432c255a0801b693"
+}

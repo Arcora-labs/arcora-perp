@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "result_sha256": "9ea4f06a11f639f004d45c372259a7c965bd4a88fde2444438de98710561903c",
+  "cases": 1,
+  "actual_HTTP_requests": 1,
+  "source_count": 379,
+  "source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "all_headers_cleaned_after_return": true,
+  "unicode_public_header_bytes_exact": true
+}

@@ -703,3 +703,25 @@ gateway 749/0/24 yalnız beklenti, yerelde fullsuite yeniden çalıştırılmad�
 Core/guest/Cargo/ELF/vkey/pinler aynı. Plaintext allocation preflight ve yerel
 bearer argv işi ayrı kalır; canlı servis/proof/CC/custody/release kapıları
 açık ve **PRODUCTION RELEASE HOLD** sürüyor.
+
+
+## Prover bearer argv görünürlüğü
+
+13 Ekim 2026: PR62 normal merge `76f65843`; üç main CI akışı/14 job SUCCESS.
+Her bearer POST artık exclusive Unix0700 dizin/create_new0600 header file kullanır;
+curl argv’de yalnız token içermeyen @path kalır, body stdin’dedir. Admission önce;
+RAII owner transport supervision/joins boyunca yaşar ve cleanup best effort’tur.
+None dosya oluşturmaz. CR/LF/NUL line-representation retleri sabit/redacted;
+hex-only grammar yok. Non-Unix bearer fail closed. SameUID/root/hostileTMPDIR/
+SIGKILL cleanup kabulü bu kapsamda değildir.
+
+Yerel client39 / HTTP20, Clippy/format PASS. Native15 vaka/7 gerçek curl request;
+Some/None wire, izin/lifetime/argv ve normal/error/timeout cleanup gözlemlendi.
+Bağımsız401→fresh200 ikiPOST whole re-handshake kabulü değildir; session testleri
+ayrıdır. Spawnfail yalnız fixederror/emptytree/sourceorder; in-flight path gözlemi
+yok. Yeni head CI’ı ayrı doğrulanır: full gateway754/0/24 sadece beklentidir.
+[116 public kanıt ve kapsam](audits/2026-10-13-bearer-header-privacy/README.md).
+
+Diğer376 kaynak, core/guest/Cargo/ELF/vkey/pinler aynı. Sırada plaintext allocation
+öncesi counting preflight/performance sözleşmesi; live servis/proof/CC/custody/release
+kapıları açık ve **PRODUCTION RELEASE HOLD** sürüyor.

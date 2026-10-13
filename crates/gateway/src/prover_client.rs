@@ -21,6 +21,9 @@ use perp_core::{Digest, EngineError, Keccak256};
 use sequencer::WindowWitness;
 use std::collections::BTreeMap;
 
+#[path = "prover_bearer_header.rs"]
+mod bearer_header;
+
 /// The seven on-chain roots + the cumulative `new_deposit_count` + commitment + proof
 /// for one window's `settleBatch`.
 /// Serde: persisted (sealed) in the rollback journal once the prove returns, so a boot
@@ -522,11 +525,12 @@ fn prove_request_json_bytes(
 ///   tunnel / firewall idle-timeout silently RSTs it mid-proof ("Recv failure: Connection
 ///   reset by peer"), wasting the proof. Keepalives every 30s hold it open.
 ///
-/// SEC-020 Task 5: when `bearer` is `Some`, attach `Authorization: Bearer <token>` so
+/// SEC-020 Task 5: when `bearer_header` is `Some`, curl reads the request's private
+/// header file so the token is absent from argv. It still sends the same bearer so
 /// the prover's `/prove` gate authorizes the request. When `None` (the boot handshake
 /// refused — Phase-1 prod), NO auth header is sent: the prover 401s (fail-closed). We
 /// never fabricate an empty bearer that could accidentally pass a mis-implemented gate.
-fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer: Option<&str>) -> Vec<String> {
+fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer_header: Option<&str>) -> Vec<String> {
     let mut args = vec![
         "-q".into(),
         // One configured endpoint must not expand into several proof POSTs.
@@ -546,9 +550,9 @@ fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer: Option<&str>) -> V
         "-H".into(),
         "Content-Type: application/json".into(),
     ];
-    if let Some(token) = bearer {
+    if let Some(header_argument) = bearer_header {
         args.push("-H".into());
-        args.push(format!("Authorization: Bearer {token}"));
+        args.push(header_argument.into());
     }
     // Append the HTTP status after the body under STATUS_SENTINEL (see `split_status`).
     args.push("-w".into());
@@ -637,7 +641,15 @@ pub(super) fn http_post_command_with_body_limit(
         .map_err(|e| ProverClientError::Http(e.to_string()))?;
     curl_transport::check_request_body_bytes(body.len(), body_limit)
         .map_err(|e| ProverClientError::Http(e.to_string()))?;
-    command.args(prove_curl_args(&endpoint, timeout_secs, bearer));
+    let bearer_header = bearer
+        .map(bearer_header::BearerHeader::create)
+        .transpose()
+        .map_err(|e| ProverClientError::Http(e.into()))?;
+    command.args(prove_curl_args(
+        &endpoint,
+        timeout_secs,
+        bearer_header.as_ref().map(|header| header.argument()),
+    ));
     let out = curl_transport::run(
         command,
         Some(body.as_bytes()),
@@ -648,6 +660,9 @@ pub(super) fn http_post_command_with_body_limit(
         },
     )
     .map_err(|e| ProverClientError::Http(e.to_string()))?;
+    // Keep the file through run's child supervision and pipe-worker joins. The
+    // owner also drops automatically on the preceding transport error.
+    drop(bearer_header);
     // Without `--fail`, a non-zero curl exit now means a TRANSPORT failure (connect
     // timeout, DNS, tunnel down) — the HTTP status itself rides the `-w` sentinel.
     if !out.status.success() {
@@ -1394,13 +1409,16 @@ mod prove_curl_tests {
         a.windows(2).any(|w| w[0] == flag && w[1] == value)
     }
 
+    #[cfg(unix)]
     #[test]
     fn bearer_is_attached_when_present() {
-        let a = prove_curl_args("http://x/prove", 900, Some("s3cret-token"));
+        let header = super::bearer_header::BearerHeader::create("s3cret-token").unwrap();
+        let a = prove_curl_args("http://x/prove", 900, Some(header.argument()));
         assert!(
-            has_pair(&a, "-H", "Authorization: Bearer s3cret-token"),
+            has_pair(&a, "-H", header.argument()),
             "a present session token must ride the /prove request as a bearer"
         );
+        assert!(!a.iter().any(|arg| arg.contains("s3cret-token")));
         assert_eq!(a.last().unwrap(), "http://x/prove", "endpoint stays last");
     }
 
