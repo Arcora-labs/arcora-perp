@@ -12,6 +12,9 @@ use std::{
 
 pub(crate) const MAX_GET_RESPONSE_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_STDERR_BYTES: usize = 16 * 1024;
+/// Shared /prove JSON ceiling. A configured peer may admit a smaller body.
+/// This bounds input bytes, not prior allocations or proving memory.
+pub(crate) const MAX_PROVE_REQUEST_BODY_BYTES: usize = 512 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Limits {
@@ -29,6 +32,7 @@ pub(crate) struct Captured {
 pub(crate) enum Error {
     Configuration,
     Endpoint,
+    RequestBodyLimit,
     Spawn,
     Read,
     Write,
@@ -44,6 +48,7 @@ impl std::fmt::Display for Error {
         f.write_str(match self {
             Self::Configuration => "invalid HTTP transport limits",
             Self::Endpoint => "invalid HTTP service base URL",
+            Self::RequestBodyLimit => "HTTP request exceeds byte limit",
             Self::Spawn => "HTTP transport could not start",
             Self::Read => "HTTP transport pipe read failed",
             Self::Write => "HTTP transport request write failed",
@@ -65,6 +70,16 @@ pub(crate) fn service_endpoint(base: &str, service_path: &str) -> Result<String,
         return Err(Error::Endpoint);
     }
     Ok(format!("{}{}", base.trim_end_matches('/'), service_path))
+}
+
+pub(crate) fn check_request_body_bytes(bytes: usize, limit: usize) -> Result<(), Error> {
+    if limit == 0 {
+        return Err(Error::Configuration);
+    }
+    if bytes > limit {
+        return Err(Error::RequestBodyLimit);
+    }
+    Ok(())
 }
 
 fn bounded_read(mut pipe: impl Read, limit: usize, overflow: Error) -> Result<Vec<u8>, Error> {
@@ -117,6 +132,9 @@ pub(crate) fn run(
         .checked_add(limits.timeout)
         .filter(|_| !limits.timeout.is_zero() && limits.stdout > 0 && limits.stderr > 0)
         .ok_or(Error::Configuration)?;
+    if let Some(bytes) = input {
+        check_request_body_bytes(bytes.len(), MAX_PROVE_REQUEST_BODY_BYTES)?;
+    }
     let child = command
         .stdin(if input.is_some() {
             Stdio::piped()

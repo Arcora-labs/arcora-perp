@@ -1,0 +1,110 @@
+{
+  "actual_checkout_head": "c33e3824c2557a32f796dd6234aa6f504f1c93c2",
+  "base": "c33e3824c2557a32f796dd6234aa6f504f1c93c2",
+  "blocking_findings": [],
+  "case_review": [
+    {
+      "test": "request_body_limits_are_inclusive_positive_and_do_not_allocate_payloads",
+      "verdict": "Correct byte-count domain:0/1/exactcap accepted,cap+1/usizeMAX rejected,zero config rejected,small exact/over distinguished. No payload allocation."
+    },
+    {
+      "test": "expansion_matches_exact_small_sealed_postcard_and_json",
+      "verdict": "Eight0..16384byte DTO payloads,127/128 and16383/16384 varint boundaries, actual SealedWitness postcard decode/reencode byte equality, exact ASCII hexJSON length. Synthetic container is explicitly not authenticated."
+    },
+    {
+      "test": "integer_ceiling_and_overflow_checks_need_no_large_payload",
+      "verdict": "Correct checked addition/multiplication overflow cases. The fixed shape produces odd JSON length, so the even512MiB ceiling has nearest admitted body cap−1 and next body cap+1; this is integer evidence only."
+    },
+    {
+      "test": "small_witness_exact_budgets_preserve_legacy_and_clocked_seals",
+      "verdict": "All four legacy/clocked x Software/Attested local provider combinations compare exact deterministic sealed output at inclusive budget and reject budget−1. These are small actual seals, not remote quote/proof acceptance."
+    },
+    {
+      "test": "post_injected_body_limit_refuses_before_process_creation",
+      "verdict": "Specific fixed RequestBodyLimit error with nonexistent command supports pre-spawn distinction from Spawn and redacts synthetic body/bearer."
+    },
+    {
+      "test": "post_exact_body_byte_limit_preserves_unicode_body_and_bearer",
+      "verdict": "Unicode éé has4UTF8bytes; real ownedHTTP exact4byte budget preserves complete response,POST route,body bytes and bearer. Raw transport body is not backend JSON acceptance."
+    },
+    {
+      "test": "post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request",
+      "verdict": "Same4byte Unicode body with3byte budget; first-action owned child marker absent and owned listener accepts no peer. Source comparison is before argv/run/spawn; no retry,live endpoint or arbitrary process-tree claim."
+    }
+  ],
+  "compatibility": {
+    "existing512MiB_ceiling_reused": true,
+    "no_new_dependency": true,
+    "protected_pins_match_frozen_expectation": true,
+    "prover_env_default_and_bounds_unchanged_except_constant_alias": true
+  },
+  "independent_integer_recomputation": {
+    "JSON_formula": "15+2*envelope",
+    "admitted_JSON_bytes": 536870911,
+    "ceiling_bytes": 536870912,
+    "envelope_formula": "P+postcard_varint_len(P)+96",
+    "large_payload_allocated": false,
+    "largest_plaintext_current_shape": 268435348,
+    "next_plaintext_JSON_bytes": 536870913
+  },
+  "new_regular_functions": 7,
+  "old_test_preservation": {
+    "HTTP16_entire_prefix_exact": true,
+    "client32_and_support_modules_exact": true,
+    "shared9_regular_plus_ignored_private_worker_entire_prefix_exact": true
+  },
+  "passed": true,
+  "production_release": "HOLD",
+  "review_kind": "Static source/test validity and scope only; no Rust test/build/network execution",
+  "reviewed_at": "2026-10-13T18:33:50.570684+00:00",
+  "reviewed_source_files": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "bytes": 18953,
+      "sha256": "27768b2a4ea0e31faedcbf6e47aba7342b2d3e71cb6531eedbc67b31c8d67a89"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 84118,
+      "sha256": "a34b4e977940884cea7aaaedb73aae711962cf5fe00f2d4733cb7a7569e10bbd"
+    },
+    "crates/prover-service/src/admission.rs": {
+      "bytes": 15016,
+      "sha256": "683f5bd231b9e9e43bc710e51994cc82d6181522d8f58624da1c74c4d66556a3"
+    },
+    "crates/service-transport/curl.rs": {
+      "bytes": 9139,
+      "sha256": "74892f54c5b5ae4372e096ff154c50be34c70e7cca6b8ec9761d7c6a4a9f886b"
+    },
+    "crates/service-transport/curl_tests.rs": {
+      "bytes": 19313,
+      "sha256": "f598b87f90aeeece334ca42291676fa617a34407419c7f173729a6cb78748433"
+    }
+  },
+  "schema": "arcora-outbound-body-independent-test-scope-review/v1",
+  "scope_limits": [
+    "This guard does not bound earlier full plaintext/clock serialization allocations,totalRAM or proving capacity.",
+    "A peer may configure a lower limit; no negotiation or independently approved lower peer acceptance is claimed.",
+    "Before key-release means local SealedWitness provider order; existing live CC/mutual-attestation handshake may occur earlier and is not accepted by these tests.",
+    "Small injected budgets exercise the identical byte-comparison branch and ownedHTTP path without giant512MiB payloads.",
+    "Expected749/19/35/10 counts are static discovery expectations, not actual execution results in this receipt.",
+    "No services,SDK/backend,GPU,setup,prove,public endpoint/privateconfig or outside/old packet mutation. Candidate live submission and production release remain HOLD."
+  ],
+  "source_count": 378,
+  "source_freeze_sha256": "be27b1ae971e095d59d92fae575951ff3677865cf286377ef318daa5bea0dc92",
+  "source_sha256": "927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d",
+  "static_order": {
+    "actual_serialized_wire_guard_before_hex": true,
+    "final_body_byte_guard_before_curl_argv_and_run": true,
+    "nonce_or_key_release_zero_call_counter_not_measured_by_tests": true,
+    "plaintext_already_allocated_before_prediction": true,
+    "prediction_before_nonce_and_local_seal_provider": true,
+    "shared_input_guard_before_spawn": true
+  },
+  "test_counts_expected_not_executed": {
+    "HTTP": 19,
+    "client": 35,
+    "gateway_ignored": 24,
+    "gateway_on_Unix": 749,
+    "shared_private_ignored": 1,
+    "shared_regular": 10
+  }
+}

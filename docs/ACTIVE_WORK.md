@@ -681,3 +681,25 @@ Sıradaki GPU'suz aday, receiver'ın 512 MiB maksimumuyla uyumlu outbound body
 sözleşmesi ve erken allocation sınırlarının incelenmesi. Core/guest/Cargo,
 ELF/vkey ve 21/9/2 pinleri korunuyor; canlı servis/proof/CC/custody/release
 kapıları açık. **PRODUCTION RELEASE HOLD** sürüyor.
+
+## Outbound /prove JSON byte bütçesi
+
+13 Ekim 2026: PR61 normal merge `c33e3824`; üç main CI akışı/14 job SUCCESS.
+Mevcut receiver 512 MiB JSON üst tavanı client ile ortak sabite bağlandı;
+alıcı env aralığı/değeri aynı, daha küçük peer yine 413 dönebilir. Plaintext
+serialization sonrası checked sealed/postcard/hexJSON genişleme guard’ı
+nonce/seal öncesinde; actual sealedwire guard’ı hex öncesinde; final body.len()
+ve shared stdin guard’ı curl başlamadan ret yapıyor. İlk plaintext/clocked
+copy allocation’ı ve toplam RAM/proving kapasitesi sınırlandığı iddia edilmez.
+
+Yerel HTTP 19 / client 35 / shared 10(+private helper IGNORE)/Python 25, Clippy/format
+ve gerçek offline locked prover typecheck PASS. Native 6 HTTP vaka / 3 curl request;
+üç negatifte childmarker/peer request 0. Küçük injected budget ve izole guard
+cut kanıtları whole handshake/key release kabulü değildir; 512 MiB sınırı
+yalnız integer/source kontrolüdür. Yeni head’in CI’ı ayrı doğrulanır; full
+gateway 749/0/24 yalnız beklenti, yerelde fullsuite yeniden çalıştırılmadı.
+[Public kanıt ve kapsam](audits/2026-10-13-outbound-body-budget/README.md).
+
+Core/guest/Cargo/ELF/vkey/pinler aynı. Plaintext allocation preflight ve yerel
+bearer argv işi ayrı kalır; canlı servis/proof/CC/custody/release kapıları
+açık ve **PRODUCTION RELEASE HOLD** sürüyor.

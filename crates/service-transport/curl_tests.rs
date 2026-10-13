@@ -529,3 +529,23 @@ fn subprocess_worker() {
         _ => panic!("unknown owned worker mode"),
     }
 }
+
+#[test]
+fn request_body_limits_are_inclusive_positive_and_do_not_allocate_payloads() {
+    use super::{check_request_body_bytes, MAX_PROVE_REQUEST_BODY_BYTES};
+    for bytes in [0, 1, MAX_PROVE_REQUEST_BODY_BYTES] {
+        assert_eq!(
+            check_request_body_bytes(bytes, MAX_PROVE_REQUEST_BODY_BYTES),
+            Ok(())
+        );
+    }
+    for bytes in [MAX_PROVE_REQUEST_BODY_BYTES + 1, usize::MAX] {
+        assert_eq!(
+            check_request_body_bytes(bytes, MAX_PROVE_REQUEST_BODY_BYTES),
+            Err(Error::RequestBodyLimit)
+        );
+    }
+    assert_eq!(check_request_body_bytes(0, 0), Err(Error::Configuration));
+    assert_eq!(check_request_body_bytes(4, 4), Ok(()));
+    assert_eq!(check_request_body_bytes(5, 4), Err(Error::RequestBodyLimit));
+}

@@ -10,7 +10,7 @@ use dark_perp_attestation::ct_eq;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 
-pub(crate) const MAX_BODY_BYTES: usize = 512 * 1024 * 1024;
+pub(crate) const MAX_BODY_BYTES: usize = crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES;
 
 #[derive(Clone)]
 pub(crate) struct Limits {
