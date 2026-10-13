@@ -558,7 +558,8 @@ pub(super) fn http_post_command(
         .checked_add(5)
         .filter(|_| timeout_secs > 0)
         .ok_or_else(|| ProverClientError::Http("invalid HTTP transport timeout".into()))?;
-    let endpoint = format!("{}/prove", url.trim_end_matches('/'));
+    let endpoint = curl_transport::service_endpoint(url, "/prove")
+        .map_err(|e| ProverClientError::Http(e.to_string()))?;
     command.args(prove_curl_args(&endpoint, timeout_secs, bearer));
     let out = curl_transport::run(
         command,

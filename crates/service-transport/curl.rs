@@ -28,6 +28,7 @@ pub(crate) struct Captured {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Error {
     Configuration,
+    Endpoint,
     Spawn,
     Read,
     Write,
@@ -42,6 +43,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Configuration => "invalid HTTP transport limits",
+            Self::Endpoint => "invalid HTTP service base URL",
             Self::Spawn => "HTTP transport could not start",
             Self::Read => "HTTP transport pipe read failed",
             Self::Write => "HTTP transport request write failed",
@@ -52,6 +54,17 @@ impl std::fmt::Display for Error {
             Self::Worker => "HTTP transport pipe worker failed",
         })
     }
+}
+
+/// Append a trusted service path (currently /attest or /prove) to the configured
+/// base. A query or fragment would swallow the appended path in curl. Refuse
+/// those raw delimiters before any parse/trim; encoded path bytes stay literal.
+/// This preserves the existing join for other bases, not a general URL parser.
+pub(crate) fn service_endpoint(base: &str, service_path: &str) -> Result<String, Error> {
+    if base.bytes().any(|byte| matches!(byte, b'?' | b'#')) {
+        return Err(Error::Endpoint);
+    }
+    Ok(format!("{}{}", base.trim_end_matches('/'), service_path))
 }
 
 fn bounded_read(mut pipe: impl Read, limit: usize, overflow: Error) -> Result<Vec<u8>, Error> {

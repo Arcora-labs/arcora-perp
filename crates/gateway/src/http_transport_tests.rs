@@ -355,3 +355,74 @@ fn file_protocol_cannot_supply_attestation_or_receive_proof_body() {
         && !message.contains("synthetic-public-canary")));
     assert_eq!(std::fs::read(file).unwrap(), bytes);
 }
+
+#[test]
+fn post_query_fragment_bases_refuse_before_process_creation() {
+    for tail in [
+        "?",
+        "?x=synthetic-private-canary",
+        "#",
+        "#synthetic-private-canary",
+        "?x=1#note",
+    ] {
+        let base = format!("http://127.0.0.1:1/base{tail}");
+        let command = Command::new("this-synthetic-executable-must-not-run");
+        let result = http_post_command(
+            &base,
+            "synthetic-body",
+            5,
+            Some("synthetic-bearer"),
+            command,
+        );
+        assert!(matches!(result, Err(ProverClientError::Http(ref message))
+            if message == "invalid HTTP service base URL"));
+    }
+}
+
+#[test]
+fn post_nested_encoded_base_paths_reach_the_exact_prove_route() {
+    for path in ["/nested/base///", "/base/%3F%23/", "/base/%3f%23/"] {
+        let (url, peer) = fixture(200, b"{\"synthetic\":true}".to_vec(), Framing::Length);
+        let body = "synthetic-base-body";
+        let response = http_post_command(
+            &format!("{url}{path}"),
+            body,
+            5,
+            Some("synthetic-bearer"),
+            curl(),
+        );
+        let exchange = peer.join().unwrap();
+        assert!(exchange.response_complete);
+        let target = format!("POST {}/prove HTTP/1.1\r\n", path.trim_end_matches('/'));
+        assert!(exchange.request.starts_with(target.as_bytes()));
+        assert!(exchange.request.ends_with(body.as_bytes()));
+        assert_eq!(response.unwrap(), "{\"synthetic\":true}");
+    }
+}
+
+#[test]
+fn get_nested_encoded_base_paths_reach_the_exact_attest_route() {
+    for path in ["/nested/base///", "/base/%3F%23/", "/base/%3f%23/"] {
+        let (url, peer) = fixture(200, b"{\"synthetic\":true}".to_vec(), Framing::Length);
+        let endpoint =
+            crate::curl_transport::service_endpoint(&format!("{url}{path}"), "/attest").unwrap();
+        let response = crate::http_get_json_command(&endpoint, curl());
+        let exchange = peer.join().unwrap();
+        assert!(exchange.response_complete);
+        let target = format!("GET {}/attest HTTP/1.1\r\n", path.trim_end_matches('/'));
+        assert!(exchange.request.starts_with(target.as_bytes()));
+        assert_eq!(response.unwrap()["synthetic"], true);
+    }
+}
+
+#[test]
+fn direct_full_url_get_query_support_remains_unchanged() {
+    let (url, peer) = fixture(200, b"{\"synthetic\":true}".to_vec(), Framing::Length);
+    let response = crate::http_get_json_command(&format!("{url}/resource?x=1"), curl());
+    let exchange = peer.join().unwrap();
+    assert!(exchange.response_complete);
+    assert!(exchange
+        .request
+        .starts_with(b"GET /resource?x=1 HTTP/1.1\r\n"));
+    assert_eq!(response.unwrap()["synthetic"], true);
+}

@@ -269,7 +269,7 @@ fn boot_handshake(
     let azure =
         AzureTdxAttestor::from_collateral_json(&collateral).map_err(|e| format!("{e:?}"))?;
 
-    let url = format!("{}/attest", gw_url.trim_end_matches('/'));
+    let url = curl_transport::service_endpoint(&gw_url, "/attest").map_err(|e| e.to_string())?;
     let resp = http_get_json(&url)?;
     let bundle = resp
         .get("bundle")

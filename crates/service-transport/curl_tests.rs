@@ -17,6 +17,76 @@ const PRIVATE_MARKER: &str = "synthetic-peer-value-must-not-enter-diagnostics";
 const LARGE_INPUT: usize = 512 * 1024;
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(1);
 
+#[test]
+fn service_base_query_and_fragment_refuse_without_echoing_values() {
+    for tail in [
+        "?",
+        "?x=synthetic-private-canary",
+        "#",
+        "#synthetic-private-canary",
+        "?x=1#note",
+    ] {
+        let base = format!("https://example.invalid/base{tail}");
+        for path in ["/attest", "/prove"] {
+            let error = super::service_endpoint(&base, path).unwrap_err();
+            assert_eq!(error, Error::Endpoint);
+            assert_eq!(error.to_string(), "invalid HTTP service base URL");
+            assert!(!error.to_string().contains(&base));
+            assert!(!error.to_string().contains("synthetic-private-canary"));
+        }
+    }
+}
+
+#[test]
+fn service_base_join_preserves_encoded_paths_and_existing_address_forms() {
+    for (base, expected_attest, expected_prove) in [
+        (
+            "http://127.0.0.1:8091",
+            "http://127.0.0.1:8091/attest",
+            "http://127.0.0.1:8091/prove",
+        ),
+        (
+            "https://example.invalid/",
+            "https://example.invalid/attest",
+            "https://example.invalid/prove",
+        ),
+        (
+            "https://example.invalid/nested/base///",
+            "https://example.invalid/nested/base/attest",
+            "https://example.invalid/nested/base/prove",
+        ),
+        (
+            "http://[::1]:8091/base/",
+            "http://[::1]:8091/base/attest",
+            "http://[::1]:8091/base/prove",
+        ),
+        (
+            "127.0.0.1:8091/base/",
+            "127.0.0.1:8091/base/attest",
+            "127.0.0.1:8091/base/prove",
+        ),
+        (
+            "https://example.invalid/base/%3F%23/",
+            "https://example.invalid/base/%3F%23/attest",
+            "https://example.invalid/base/%3F%23/prove",
+        ),
+        (
+            "https://example.invalid/base/%3f%23/",
+            "https://example.invalid/base/%3f%23/attest",
+            "https://example.invalid/base/%3f%23/prove",
+        ),
+    ] {
+        assert_eq!(
+            super::service_endpoint(base, "/attest").unwrap(),
+            expected_attest
+        );
+        assert_eq!(
+            super::service_endpoint(base, "/prove").unwrap(),
+            expected_prove
+        );
+    }
+}
+
 struct Scratch(PathBuf);
 impl Scratch {
     fn new() -> Self {

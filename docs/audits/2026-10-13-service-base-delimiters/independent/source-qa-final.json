@@ -1,0 +1,202 @@
+{
+  "schema": "arcora-service-base-independent-final-source-qa/v1",
+  "captured_at": "2026-10-13T05:23:02.639899+00:00",
+  "passed": true,
+  "base_head": "1caae328fe73a5ab96bb4200d5e28d926807d201",
+  "actual_head_at_capture": "1caae328fe73a5ab96bb4200d5e28d926807d201",
+  "source_freeze_sha256": "34d33a595825871523a77498063418be122db4eabc7c6b91ca736cd5cb969301",
+  "source_count": 378,
+  "source_sha256": "e399e633da9ddac4827bc615b7285e6203f0d7424df71be370cea78b12192dbd",
+  "actual_changed_source_paths": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/prover_client.rs",
+    "crates/prover-service/src/main.rs",
+    "crates/service-transport/curl.rs",
+    "crates/service-transport/curl_tests.rs"
+  ],
+  "actual_numstat": [
+    "71\t0\tcrates/gateway/src/http_transport_tests.rs",
+    "1\t1\tcrates/gateway/src/main.rs",
+    "2\t1\tcrates/gateway/src/prover_client.rs",
+    "1\t1\tcrates/prover-service/src/main.rs",
+    "13\t0\tcrates/service-transport/curl.rs",
+    "70\t0\tcrates/service-transport/curl_tests.rs"
+  ],
+  "reconstruction": {
+    "crates/gateway/src/main.rs": {
+      "only_old_join_replaced": true,
+      "reconstructed_entire_file_is_BASE": true,
+      "base_sha256": "635f738621e3fa7825a360ce8b5eddd77d161d029e1dd8e71f353a843b593b1f",
+      "current_sha256": "df0a779d6e5ea875808d51cbe9ad675706f4ad4e5193bc561f7cdd4111baef20"
+    },
+    "crates/prover-service/src/main.rs": {
+      "only_old_join_replaced": true,
+      "reconstructed_entire_file_is_BASE": true,
+      "base_sha256": "112e9e6313eac8f06348daba67a4e2d640cf8a2b0381b75fa6d0b9d4ac138c03",
+      "current_sha256": "334c10094def18a18c0c1812f7b6f13067b6e49383a29e69f4cf5ba30db56d51"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "only_old_join_replaced": true,
+      "reconstructed_entire_file_is_BASE": true,
+      "base_sha256": "c2581f23359a3a0c74670333ff1ac181b4d1996b2c0bdfdebd7255fbf89b293d",
+      "current_sha256": "36b8ae2f5455cf7009a29827c662a5fa6b0931346ddb9a38624028fb2f5e0179"
+    },
+    "crates/service-transport/curl.rs": {
+      "new_endpoint_enum_display_and_pure_helper_only": true,
+      "entire_previous_capture_runner_byte_exact": true,
+      "base_sha256": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+      "current_sha256": "7d6d1c02af1ca25bf75bd77320e16b993f0f414df454f75c5ce393bdf6f02e68",
+      "helper_sha256": "e9581d071dc0ee8668459458b35d80327f949e1a18e36cedc57f4d6ee6f18234"
+    },
+    "crates/service-transport/curl_tests.rs": {
+      "only_new_2_test_functions_inserted_before_Scratch": true,
+      "all_7_regular_old_tests_and_private_worker_helpers_byte_unchanged": true,
+      "base_sha256": "ddf9b02178296431171c866f4e5dc9683449081c037408d01c5a22ce9f40bf98",
+      "current_sha256": "bb9960678769022c868505f71e770cd4ae43a81b235217fc7499401d170dfb87"
+    },
+    "crates/gateway/src/http_transport_tests.rs": {
+      "entire_old_12_test_file_is_exact_prefix": true,
+      "new_test_count": 4,
+      "added_lines": 71,
+      "base_sha256": "80d67c94b7f0f4672e00570ef6a3738754b8cb98e463782fd8e1e4714740069a",
+      "current_sha256": "e4fd5ae5674dc5fedb2b0d13edfcbd6750e08d10244849b8c22936e8de47eb4b"
+    }
+  },
+  "old_inline_tests": {
+    "crates/gateway/src/main.rs": {
+      "plain": 164,
+      "tokio": 11,
+      "all_test_bodies_and_assertions_unchanged": true
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "plain": 32,
+      "tokio": 0,
+      "all_test_bodies_and_assertions_unchanged": true
+    }
+  },
+  "all207_old_inline_functions_preserved": true,
+  "old12_HTTP_tests_preserved": true,
+  "old7_regular_shared_tests_and_worker_preserved": true,
+  "new_regular_test_functions": 6,
+  "non6_public_sources_exact_old_map": 372,
+  "non6_tracked_paths_without_git_diff": 3368,
+  "GET_wrappers": {
+    "identical_to_each_other_and_BASE": true,
+    "bytes": 1067,
+    "sha256": "e955b15f22e8b92c045e21feb55e5a304b82e2ff13452681fc3584a1925d509e"
+  },
+  "frozen_pins": {
+    "candidate_auxiliary_test_sources_sha256": {
+      "count": 2,
+      "BASE_and_current_equal": true
+    },
+    "candidate_sources_sha256": {
+      "count": 9,
+      "BASE_and_current_equal": true
+    },
+    "reviewed_v2_sources_sha256": {
+      "count": 21,
+      "BASE_and_current_equal": true
+    }
+  },
+  "root_service_manifests_locks_and_TEE_lock": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "crates/prover-service/Cargo.toml": "5b28c2dac8c8543f193ca142bd372a2c1c92f25a577cc71ca40bac9103daed48",
+    "crates/prover-service/Cargo.lock": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d",
+    "scripts/tee-capture/Cargo.lock": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e"
+  },
+  "frozen_artifacts": {
+    "contracts/integration/fixtures/clock-v2-verified/guest.elf": {
+      "bytes": 525824,
+      "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/program-vkey.bin": {
+      "bytes": 32,
+      "sha256": "5d6af308d886b93f41bb947993fcbe4f20b755d7e0eb9bf134ef2dc99104f21e"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof-evidence.json": {
+      "bytes": 1907,
+      "sha256": "224704d958a9d5246abace7d0df424d10afd67fb74db113bc399290e56c16486"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/clock.witness.bin": {
+      "bytes": 1274,
+      "sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof.bin": {
+      "bytes": 356,
+      "sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof.sdk.json": {
+      "bytes": 1997,
+      "sha256": "9028b9ce9be2e4a2957101f78727565e345a00e58a970d5383113e6182770c05"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/public-values.bin": {
+      "bytes": 32,
+      "sha256": "f366fab4eac85e885e3f18fc826b8421d4fe29897b223734cee7b15885cffaee"
+    },
+    "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf": {
+      "bytes": 540704,
+      "sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f"
+    },
+    "contracts/integration/fixtures/chainlink-candidate-v1/metadata.json": {
+      "bytes": 1562,
+      "sha256": "d0a1be2b345f688b3bd102dbd6d5d6512aae1caaae6a996ba9f8b8fe411dd696"
+    }
+  },
+  "actual_standalone_prover_typecheck": {
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/receipt.json",
+    "sha256": "b8f187facf65e535d8fcf4dca63501f9bb08a3713a9c81d7f8facc695761b2d1",
+    "passed": true,
+    "exit_code": 0,
+    "elapsed_seconds": 16.556832625065,
+    "command": [
+      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+      "check",
+      "--offline",
+      "--locked",
+      "--manifest-path",
+      "crates/prover-service/Cargo.toml",
+      "--bin",
+      "prover-service"
+    ],
+    "toolchain": {
+      "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+      "python": "Python 3.14.6",
+      "protoc": "libprotoc 29.3"
+    },
+    "source_before_after_exact": true,
+    "8_prior_frozen_runner_receipt_logs_exact": true,
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr_sha256": "9df5abe8ebd629de49ec3aa56035a41e9c4894bca63979a50e4137f69bff3d55",
+    "no_rustup_sync": true
+  },
+  "source_semantics": {
+    "raw_ASCII_question_hash_checked_before_trim_or_parse": true,
+    "no_URI_parser_or_new_dependency": true,
+    "fixed_error_URL_free": "invalid HTTP service base URL",
+    "old_trim_plus_literal_suffix_for_other_bases": true,
+    "percent_encoded_delimiters_not_decoded": true,
+    "protocol_glob_flags_deadlines_capture_and401_reauth_unchanged": true,
+    "all_three_service_joins_use_shared_helper": true,
+    "direct_complete_URL_GET_still_accepts_query_by_existing_contract": true,
+    "pre_spawn_only_not_pre_all_local_work": true,
+    "existing_GET_measurement_and_collateral_steps_before_guard_preserved": true,
+    "no_bodycap_or_secret_or_guest_proof_custody_change": true
+  },
+  "test_scope_review": {
+    "POST_negative_uses_owned_nonexistent_command_and_exactEndpoint_error": true,
+    "shared_negative_tests_cover_both_attest_and_prove_suffixes": true,
+    "shared_positive_cases_include_nestedtrailing_IPv6_schemeless_percentencoded": true,
+    "HTTP_positive_newcases_check_exact_encoded_nested_request_target_body": true,
+    "new_direct_GET_query_positive_preserves_generic_helper_contract": true,
+    "gateway_tests_and_native_probes_not_run_by_this_auditor": true
+  },
+  "limitations": "Raw delimiter configuration admission only. No full URL validator,host allowlist,outbound witness byte cap,live handshake/quote,key release,fresh proof,approved service or release acceptance. Production HOLD.",
+  "findings": []
+}

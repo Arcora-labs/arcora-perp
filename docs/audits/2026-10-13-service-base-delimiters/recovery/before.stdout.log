@@ -1,0 +1,34 @@
+{
+  "result_sha256": "b5f2cfe8bc7d6b5b1a283ce779d681dc43447846a6381f2a3dd8566e47727e86",
+  "compile_exit": 0,
+  "source_map_equal": true,
+  "source_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "actual_targets": {
+    "post-control": "POST /base/prove HTTP/1.1",
+    "post-query": "POST /base?x=1/prove HTTP/1.1",
+    "post-fragment": "POST /base HTTP/1.1",
+    "post-empty-query": "POST /base?/prove HTTP/1.1",
+    "gateway-get-control": "GET /base/attest HTTP/1.1",
+    "gateway-get-query": "GET /base?x=1/attest HTTP/1.1",
+    "gateway-get-fragment": "GET /base HTTP/1.1",
+    "gateway-get-empty-query": "GET /base?/attest HTTP/1.1",
+    "prover-get-control": "GET /base/attest HTTP/1.1",
+    "prover-get-query": "GET /base?x=1/attest HTTP/1.1",
+    "prover-get-fragment": "GET /base HTTP/1.1",
+    "prover-get-empty-query": "GET /base?/attest HTTP/1.1"
+  },
+  "actual_counts": {
+    "post-control": 1,
+    "post-query": 1,
+    "post-fragment": 1,
+    "post-empty-query": 1,
+    "gateway-get-control": 1,
+    "gateway-get-query": 1,
+    "gateway-get-fragment": 1,
+    "gateway-get-empty-query": 1,
+    "prover-get-control": 1,
+    "prover-get-query": 1,
+    "prover-get-fragment": 1,
+    "prover-get-empty-query": 1
+  }
+}

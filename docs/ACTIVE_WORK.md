@@ -661,3 +661,23 @@ Query/fragment base suffix davranışı ve receiver ile uyumlu outbound body
 sınırı sonraki GPU'suz audit adaylarıdır. Core/guest/Cargo/ELF/vkey ve 21/9/2
 pinleri aynı; canlı servis/proof/CC/custody/release kapıları açık kalır.
 Candidate submission kapalı ve **PRODUCTION RELEASE HOLD** sürüyor.
+
+## Service base query/fragment reddi
+
+13 Ekim 2026: PR60 normal merge `1caae328`; üç main CI akışı/14 job SUCCESS.
+Üç `/prove` ve `/attest` base join'i ortak std-only helper kullanıyor: raw `?`
+ve `#` (boş query/fragment dahil) curl başlamadan sabit hata ile reddediliyor.
+Diğer girdilerde eski trailing-slash trim ve literal path eklemesi korunuyor;
+encoded `%3F/%23`, scheme-less ve direct complete-URL GET query desteği aynı.
+
+Owned native tekrarın 17 vakası geçti: 12 negatifte child marker/request 0,
+üç normal BASE ve iki direct GET query kontrolünde toplam beş gerçek curl
+request. Bu full handshake veya quote/key-release kabulü değildir. Yerel HTTP16,
+client32, shared9 (bir private helper IGNORE), Python25; Clippy/format ve gerçek
+offline prover typecheck PASS. Yeni head'in CI'ı ayrı doğrulanır; yerel full
+gateway suite yeniden koşulmadı. [132 public kanıt ve kapsam](audits/2026-10-13-service-base-delimiters/README.md).
+
+Sıradaki GPU'suz aday, receiver'ın 512 MiB maksimumuyla uyumlu outbound body
+sözleşmesi ve erken allocation sınırlarının incelenmesi. Core/guest/Cargo,
+ELF/vkey ve 21/9/2 pinleri korunuyor; canlı servis/proof/CC/custody/release
+kapıları açık. **PRODUCTION RELEASE HOLD** sürüyor.

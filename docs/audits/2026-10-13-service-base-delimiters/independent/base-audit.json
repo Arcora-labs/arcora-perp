@@ -1,0 +1,113 @@
+{
+  "schema": "arcora-service-base-independent-exact-base-audit/v1",
+  "captured_at": "2026-10-13T05:13:37.379157+00:00",
+  "base_head": "1caae328fe73a5ab96bb4200d5e28d926807d201",
+  "base_tree": "36615324cc626e7cdc84553fd19c706d9c00a4be",
+  "actual_checkout_head_at_capture": "1caae328fe73a5ab96bb4200d5e28d926807d201",
+  "actual_tracked_status_at_capture": "",
+  "base_source_count": 378,
+  "base_source_sha256": "678ae9e19a08d73b05df8653478e48a8d8b85d31a85992ff83bef68d8f39385b",
+  "prior_source_freeze_sha256": "4c5b725159e9f0c6a16aadc7fb3cf7f746f11cded10a6b9d70c38e2a1b3bf709",
+  "selected_sources": {
+    "crates/gateway/src/main.rs": {
+      "base_sha256": "635f738621e3fa7825a360ce8b5eddd77d161d029e1dd8e71f353a843b593b1f",
+      "bytes": 811015,
+      "current_matches_base_at_capture": true
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "base_sha256": "c2581f23359a3a0c74670333ff1ac181b4d1996b2c0bdfdebd7255fbf89b293d",
+      "bytes": 76385,
+      "current_matches_base_at_capture": true
+    },
+    "crates/prover-service/src/main.rs": {
+      "base_sha256": "112e9e6313eac8f06348daba67a4e2d640cf8a2b0381b75fa6d0b9d4ac138c03",
+      "bytes": 25271,
+      "current_matches_base_at_capture": true
+    },
+    "crates/service-transport/curl.rs": {
+      "base_sha256": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+      "bytes": 7799,
+      "current_matches_base_at_capture": true
+    },
+    "crates/gateway/src/http_transport_tests.rs": {
+      "base_sha256": "80d67c94b7f0f4672e00570ef6a3738754b8cb98e463782fd8e1e4714740069a",
+      "bytes": 13459,
+      "current_matches_base_at_capture": true
+    },
+    "crates/service-transport/curl_tests.rs": {
+      "base_sha256": "ddf9b02178296431171c866f4e5dc9683449081c037408d01c5a22ce9f40bf98",
+      "bytes": 16298,
+      "current_matches_base_at_capture": true
+    }
+  },
+  "join_sites": [
+    {
+      "path": "crates/gateway/src/main.rs",
+      "function": "prover_handshake",
+      "base_line": 807,
+      "old_join": "format!(\"{}/attest\", prover_url.trim_end_matches('/'))"
+    },
+    {
+      "path": "crates/prover-service/src/main.rs",
+      "function": "boot_handshake",
+      "base_line": 272,
+      "old_join": "format!(\"{}/attest\", gw_url.trim_end_matches('/'))"
+    },
+    {
+      "path": "crates/gateway/src/prover_client.rs",
+      "function": "http_post_command",
+      "base_line": 561,
+      "old_join": "format!(\"{}/prove\", url.trim_end_matches('/'))"
+    }
+  ],
+  "frozen_pins": {
+    "candidate_auxiliary_test_sources_sha256": {
+      "count": 2,
+      "current_equals_prior_pins": true
+    },
+    "candidate_sources_sha256": {
+      "count": 9,
+      "current_equals_prior_pins": true
+    },
+    "reviewed_v2_sources_sha256": {
+      "count": 21,
+      "current_equals_prior_pins": true
+    }
+  },
+  "root_service_manifests_locks": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "crates/prover-service/Cargo.toml": "5b28c2dac8c8543f193ca142bd372a2c1c92f25a577cc71ca40bac9103daed48",
+    "crates/prover-service/Cargo.lock": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d"
+  },
+  "chosen_scope": {
+    "design": "Shared pure-std service_endpoint(base,suffix) used at the three joins.",
+    "admission": "If raw base contains ? or #, refuse with fixed Error::Endpoint before curl subprocess creation. Check before trim or any URI normalization.",
+    "positive_compatibility": "For every base without raw ?/#, preserve exact previous trim_end_matches slash and literal suffix result, including nestedpath/multipletrailing slash/IPv6/schemeless/encoded%3F%23.",
+    "not_added": [
+      "Full URL validator or URI parser",
+      "New dependency/Cargo changes",
+      "Body cap or pre-serialization limit",
+      "Header/bearer grammar",
+      "Host allowlist or config/service discovery",
+      "Runtime activation/DPCLK3/proof/TEE acceptance"
+    ],
+    "timing_calibration": "Pre-spawn is the contract; not automatically before witness serialization, local seal, expected-measurement checks or collateral reads."
+  },
+  "acceptance_requirements": [
+    "Shared pure helper raw ?/# and empty delimiters fail with fixed URL-free diagnostic.",
+    "Percent-encoded %3F/%23 and lowercase variants remain unchanged; no decoding.",
+    "Normal/nested/trailing-slash/multiple-slash/IPv6/schemeless expected joins byte-identical to BASE.",
+    "Actual HTTP caller negative with owned command/zero peer connections proves refusal before child creation, not merely a404 or transport failure after request.",
+    "All three join sites call helper; exact both GET wrappers/native routes and actual standalone prover typecheck remain separately verified.",
+    "Existing --globoff/--proto HTTP(S)/-q/-- flags, deadlines, response limits and typed401 single rehandshake stay untouched.",
+    "Existing12HTTP/196plain+11tokioinline/7shared tests and assertions preserved.",
+    "Frozen21/9/2pins/rootservice Cargo/ELF identities stay unchanged."
+  ],
+  "trust_scope": "Operator URLs are trusted configuration. Existing measured wrong routes demonstrate endpoint ambiguity, not remote criticalSSRF, bearer forgery or attestation/proof bypass.",
+  "read_only_execution": "Only public source/Git metadata/hash reads. No privateenv/config, network, curl, binary, build, test, service, quote, boot/setup/prove executed. Root owns implementation; no current fix or runtime PASS claim.",
+  "production_release": "HOLD"
+}

@@ -804,7 +804,7 @@ fn prover_handshake(
 ) -> Result<(String, [u8; 32], u64), String> {
     let gw_expected = expected_measurement_env("GATEWAY_EXPECTED_MEASUREMENT")?;
     let pv_expected = expected_measurement_env("PROVER_EXPECTED_MEASUREMENT")?;
-    let url = format!("{}/attest", prover_url.trim_end_matches('/'));
+    let url = curl_transport::service_endpoint(prover_url, "/attest").map_err(|e| e.to_string())?;
     let resp = http_get_json(&url)?;
     let bundle = resp
         .get("bundle")
