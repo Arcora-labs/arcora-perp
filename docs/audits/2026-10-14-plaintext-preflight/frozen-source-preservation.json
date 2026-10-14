@@ -1,0 +1,69 @@
+{
+  "all_current_source_files_equal": true,
+  "allowed_metadata_files": {
+    "docs/ACTIVE_WORK.md": {
+      "bytes": 53373,
+      "sha256": "4824577117a096d869a687101bc8c96047322dfdb5a72827064aef60c5292ae5"
+    },
+    "docs/audits/2026-10-14-plaintext-preflight/README.md": {
+      "bytes": 4285,
+      "sha256": "bf6a77498f50674d320af3aadbb5d759b7f12584864c198b10f6072a5a0f1574"
+    }
+  },
+  "authorized_source_paths": [
+    "crates/gateway/src/prover_client.rs"
+  ],
+  "baseline_sha256": "0452dee5790d5db2fe8af1def2db83a4201bce471e6923e1b2d4eaa0a31ec82e",
+  "captured_at": "2026-10-14T05:50:02.100303+00:00",
+  "committed_paths_from_BASE": [],
+  "current_head": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "current_status_paths": [
+    "crates/gateway/src/prover_client.rs",
+    "docs/ACTIVE_WORK.md",
+    "docs/audits/2026-10-14-plaintext-preflight/README.md"
+  ],
+  "current_tree": "cd03a8218f36d65ad7ded7a11d2209867c3952bd",
+  "eight_manifests_and_locks_unchanged": true,
+  "expected_head": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "external": [
+    {
+      "dirty_count": 13,
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "name": "primary",
+      "passed": true,
+      "staged_whitelist_before_diff": true
+    },
+    {
+      "dirty_count": 7,
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "name": "kimi",
+      "passed": true,
+      "staged_whitelist_before_diff": true
+    },
+    {
+      "dirty_count": 62,
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "name": "dark",
+      "passed": true,
+      "staged_whitelist_before_diff": true
+    }
+  ],
+  "external_public_dirty_files": 82,
+  "immutable_unique_files": 4037,
+  "nine_program_proof_artifacts_unchanged": true,
+  "non_active_files_verified": 4036,
+  "other_378_sources_equal_baseline": true,
+  "passed": true,
+  "production_release": "HOLD",
+  "protected_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "schema": "arcora-plaintext-preflight-preservation-readback/v1",
+  "scope": "Only closed approved public paths, exact frozen source, staged whitelist and caller-declared finite new metadata list. No private/env discovery, network/build/test/source/old/outside writes. One NEW ignored receipt only; cooperative readback, not filesystem rollback/attestation proof.",
+  "source_count": 379,
+  "source_freeze_sha256": "997db0d2893c3cf30cdb1911bab0fedd7e000b48ae5a42136c1b6caa9ff4e7d9",
+  "source_sha256": "b43fe139894f3b8f36692c3b43ddc8b7ba0647ab8003828413b18fe011e33c38",
+  "unknown_status_paths_ignored": false
+}

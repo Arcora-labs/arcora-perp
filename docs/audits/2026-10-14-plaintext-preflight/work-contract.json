@@ -1,0 +1,29 @@
+{
+  "schema": "arcora-plaintext-preflight-work/v1",
+  "base_commit": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "state": "BASELINE_CAPTURE",
+  "authorized_actions": [
+    "GPU-free local edits/tests",
+    "publish PR",
+    "normal merge after current required checks",
+    "report delivery"
+  ],
+  "source_scope": [
+    "crates/gateway/src/prover_client.rs"
+  ],
+  "scope_limits": [
+    "No proving/GPU/production deployment/live CC/chain transaction/private config reading",
+    "Preserve source pins/locks/ELF/vkey and dirty outside checkouts",
+    "Custodial alpha and production HOLD remain"
+  ],
+  "acceptance": [
+    "reject bounded serialization before first plaintext output buffer encode",
+    "same inclusive existing JSON policy and error domains",
+    "exact legacy/DPCLK2 small real WindowWitness bytes and deterministic seals",
+    "retain postplain/sealed/HTTP guards and reauthentication semantics",
+    "checked overflow/varints/prefix/early traversal and no giant allocation",
+    "CPU sample reports second serialization cost without throughput guarantee",
+    "independent source review, actual local checks and current GitHub CI",
+    "normal merge readback and report with preserved historical evidence"
+  ]
+}

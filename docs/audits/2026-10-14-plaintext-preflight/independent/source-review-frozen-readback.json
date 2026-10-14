@@ -1,0 +1,23 @@
+{
+  "all_current_sources_match_freeze": true,
+  "blocking_findings": [],
+  "current_reviewed_client_sha256": "a66f16cd2aeaf0c663f9a7b4bced9af5c0b5b268865bc7f212085c39fc4bd3f7",
+  "observed_utc": "2026-10-14T05:45:05.548404+00:00",
+  "passed": true,
+  "review": {
+    "bytes": 7173,
+    "path": "target/plaintext-preflight-validation-20261014/independent/source-review-v1.json",
+    "sha256": "cbe3f27fcc68e98d3cbf5a23a69a07ac3f635d62386efcf0003f260a4345cf2d"
+  },
+  "schema": "arcora-plaintext-preflight-frozen-source-review-readback/v1",
+  "scope": "Previously reviewed exact client bytes match final freeze. Entire closed379-public-source map read back; source review and actual root execution remain separate evidence. No arbitrary Serialize/RSS/CPU/proving/production approval claim.",
+  "source_count": 379,
+  "source_edits_by_reviewer": false,
+  "source_freeze": {
+    "bytes": 50669,
+    "path": "target/plaintext-preflight-validation-20261014/source-freeze-final.json",
+    "sha256": "997db0d2893c3cf30cdb1911bab0fedd7e000b48ae5a42136c1b6caa9ff4e7d9"
+  },
+  "source_sha256": "b43fe139894f3b8f36692c3b43ddc8b7ba0647ab8003828413b18fe011e33c38",
+  "tests_executed_by_reviewer": false
+}

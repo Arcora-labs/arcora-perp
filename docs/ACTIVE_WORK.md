@@ -725,3 +725,28 @@ yok. Yeni head CI’ı ayrı doğrulanır: full gateway754/0/24 sadece beklentid
 Diğer376 kaynak, core/guest/Cargo/ELF/vkey/pinler aynı. Sırada plaintext allocation
 öncesi counting preflight/performance sözleşmesi; live servis/proof/CC/custody/release
 kapıları açık ve **PRODUCTION RELEASE HOLD** sürüyor.
+
+
+## Plaintext allocation öncesi bounded preflight
+
+14 Ekim 2026: PR63 normal merge `c929c719`; PR20/20 ve main14/14 SUCCESS.
+Gateway artık aynı sealed/hex/JSON politikasını checked monotonic inverse ile
+plaintext bütçesine çevirip immutable tuple'ı bounded postcard Flavor ile sayar.
+Legacy0 / DPCLK2 magic8 başlangıcı dahil; sınır aşılınca ilk plaintext output
+encoder'ı çağrılmaz. Eski encoder, postplain/sealed/final HTTP guard'ları ve wire
+korunur. Zero limit Configuration, byte aşımı fixed non-401 Http, codec hatası
+Decode kalır. Count/encoded length farkı nonce/key-provider/seal öncesinde reddedilir.
+
+Yerel client46 / HTTP20, Clippy/format PASS; eski39 client testi korunur,7 eklenir.
+İki gerçek küçük witness legacy/clock × software/attested8 seal kombinasyonunda
+bağımsız eski byte referansıyla aynı. Production-linked callback seam'de ret
+encoder çağrısından önce doğrulandı; whole live backend/CC/key-release kabulü değildir.
+Kabul edilen yol iki serialization geçişi yapar. İzole debug CPU sample'ında
+küçük2516–2741-byte witness encoding median oranı2.07–2.11; threshold/throughput
+veya büyük input/RSS/proving kapasitesi taahhüdü değildir. Input hazırlama allocation'ı,
+custom serializer allocation/CPU ve aynı-length content drift'i bu sınırın dışındadır.
+
+[Kaynak ve yerel kanıt](audits/2026-10-14-plaintext-preflight/README.md).
+Yeni head CI'ı ayrı doğrulanır; beklenen full gateway761 PASS/0 FAIL/24 IGNORE.
+Candidate submission kapalı, live servis/proof/CC/custody/release kapıları açık,
+**PRODUCTION RELEASE HOLD** sürüyor.

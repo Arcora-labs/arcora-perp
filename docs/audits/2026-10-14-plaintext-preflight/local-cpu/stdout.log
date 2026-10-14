@@ -1,0 +1,30 @@
+
+running 1 test
+test prover_client::request_body_tests::real_small_witness_paired_encoding_cpu_observation ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":false,"plaintext_bytes":2600,"pair":0,"repetitions":500,"old_encode_ns":13547333,"count_encode_ns":28485792}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":false,"plaintext_bytes":2600,"pair":1,"repetitions":500,"old_encode_ns":13597875,"count_encode_ns":28458333}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":false,"plaintext_bytes":2600,"pair":2,"repetitions":500,"old_encode_ns":13579167,"count_encode_ns":28552125}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":false,"plaintext_bytes":2600,"pair":3,"repetitions":500,"old_encode_ns":13689417,"count_encode_ns":28426000}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":false,"plaintext_bytes":2600,"pair":4,"repetitions":500,"old_encode_ns":13666166,"count_encode_ns":28577292}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":true,"plaintext_bytes":2741,"pair":0,"repetitions":500,"old_encode_ns":14241375,"count_encode_ns":30064541}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":true,"plaintext_bytes":2741,"pair":1,"repetitions":500,"old_encode_ns":14487750,"count_encode_ns":30033500}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":true,"plaintext_bytes":2741,"pair":2,"repetitions":500,"old_encode_ns":14444208,"count_encode_ns":29945041}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":true,"plaintext_bytes":2741,"pair":3,"repetitions":500,"old_encode_ns":14492667,"count_encode_ns":30006333}
+PLAINTEXT_CPU_SAMPLE {"fixture":0,"clocked":true,"plaintext_bytes":2741,"pair":4,"repetitions":500,"old_encode_ns":14399958,"count_encode_ns":30245792}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":false,"plaintext_bytes":2516,"pair":0,"repetitions":500,"old_encode_ns":13288209,"count_encode_ns":27659791}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":false,"plaintext_bytes":2516,"pair":1,"repetitions":500,"old_encode_ns":13166959,"count_encode_ns":27989208}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":false,"plaintext_bytes":2516,"pair":2,"repetitions":500,"old_encode_ns":13284542,"count_encode_ns":27855000}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":false,"plaintext_bytes":2516,"pair":3,"repetitions":500,"old_encode_ns":13132709,"count_encode_ns":27778417}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":false,"plaintext_bytes":2516,"pair":4,"repetitions":500,"old_encode_ns":13224708,"count_encode_ns":27808875}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":true,"plaintext_bytes":2657,"pair":0,"repetitions":500,"old_encode_ns":14127334,"count_encode_ns":29190166}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":true,"plaintext_bytes":2657,"pair":1,"repetitions":500,"old_encode_ns":14472000,"count_encode_ns":29155917}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":true,"plaintext_bytes":2657,"pair":2,"repetitions":500,"old_encode_ns":14323541,"count_encode_ns":30266250}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":true,"plaintext_bytes":2657,"pair":3,"repetitions":500,"old_encode_ns":14383416,"count_encode_ns":30280416}
+PLAINTEXT_CPU_SAMPLE {"fixture":1,"clocked":true,"plaintext_bytes":2657,"pair":4,"repetitions":500,"old_encode_ns":14122542,"count_encode_ns":36210459}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 784 filtered out; finished in 0.93s
+
