@@ -807,3 +807,8 @@ Private prepare helper returns the same native roots after all withdrawal checks
 
 
 PR68 required TLS correction: first1f0 dependency audit FAILED on four today Rustls advisories0346-49. Five owned locks only rustls.version/checksum ->0.23.46; no ignores/rerun/workflow change, guest32pins/program9 exact. Current384 input closure (addsTEElock) cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a: audits5zero-vuln, SP1guard, gateway773/0/25, focused6/0/0,REST69/0/1,TEEcheck,Clippy/format and release2/0/0+110 PASS. Old27+ledger packet historical unchanged; current additive ci-correction-v2/. Current clock CPU321.250/474.592us vsBASE633.304/942.317, observed combined-source microfixtures only. NewheadCI/normalmerge/main acceptance remains later. PRODUCTION HOLD/candidate disabled.
+
+
+## 2026-10-14 - Invocation-local withdrawal Merkle levels (local cut)
+
+Private claim preparation reuses native parent levels per invocation; core/guest, wire and durable replay boundaries stay unchanged. Focused61/0/4 includes 234 trees and 12,195 exact paths. The release build supervisor timed out; its later-produced source-verified executable ran8/0/0 +120 samples. Eight counterbalanced CPU invocations add960 samples; claim medians fall80.5-92.7%, small total differences remain noisy. Source 7f8874a7b75b8aa067e1ea36e7076c683366c3aed50ee243de434bedbaa816d7. Raw failures/provenance retained in docs/audits/2026-10-14-merkle-levels/. Full local/CI/merge/main acceptance is separate. PRODUCTION RELEASE HOLD; candidate submission disabled.

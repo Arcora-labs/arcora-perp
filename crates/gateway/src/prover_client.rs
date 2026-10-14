@@ -16,6 +16,7 @@
 use crate::withdrawals::Withdrawal;
 use perp_core::commitment::{derive_roots, DerivedRoots};
 use perp_core::hash::{Domain, Hasher};
+#[cfg(test)]
 use perp_core::merkle::{merkle_proof, merkle_root};
 use perp_core::{Digest, EngineError, Keccak256};
 use sequencer::WindowWitness;
@@ -23,6 +24,9 @@ use std::collections::BTreeMap;
 
 #[path = "prover_bearer_header.rs"]
 mod bearer_header;
+
+mod claim_tree;
+use claim_tree::ClaimTree;
 
 /// The seven on-chain roots + the cumulative `new_deposit_count` + commitment + proof
 /// for one window's `settleBatch`.
@@ -226,18 +230,14 @@ fn prepare_unproved_with_roots(
         proof: Vec::new(),
     };
     let leaves: Vec<Digest> = ww.iter().map(|w| w.leaf()).collect();
-    if merkle_root(&leaves) != outcome.withdrawals_root {
+    let tree = ClaimTree::new(&leaves);
+    if tree.root() != outcome.withdrawals_root {
         return Err("withdrawals root mismatch: gateway tree vs derived".into());
     }
     let withdraw_proofs = ww
         .iter()
         .enumerate()
-        .map(|(i, w)| {
-            (
-                w.leaf(),
-                (outcome.withdrawals_root, merkle_proof(&leaves, i)),
-            )
-        })
+        .map(|(i, w)| (w.leaf(), (outcome.withdrawals_root, tree.proof(i))))
         .collect();
     Ok((
         PreparedSettle {
@@ -1964,6 +1964,9 @@ mod roots_carry_tests;
 
 #[cfg(test)]
 mod finite_profile_tests;
+
+#[cfg(test)]
+mod merkle_reuse_tests;
 
 #[cfg(test)]
 mod request_body_tests {

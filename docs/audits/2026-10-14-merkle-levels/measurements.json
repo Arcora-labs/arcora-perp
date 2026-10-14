@@ -1,0 +1,1697 @@
+{
+  "counterbalanced_release": {
+    "actual_cpu_tests": {
+      "failed": 0,
+      "ignored": 0,
+      "passed": 8
+    },
+    "binary_sha256": {
+      "baseline": "fa69da7790d0ce68245ed953c85e4d3195dbbb1792e2b964b99ad6dccfda2c80",
+      "current": "7eb86207c8d9e27e79f810bb67910e60487c04ed54c1f41369bba6a835e14779"
+    },
+    "blocks": 4,
+    "limits": [
+      "Separate executable processes, AB/BA order across four blocks; no fixed CPU affinity/frequency",
+      "Medians of twenty ten-call batch averages per fixture/phase/implementation, not user-level p95/p99",
+      "Proof responses synthetic; phases overlap and cannot be added",
+      "Original current build supervisor timed out; recovered executable verified separately; no build-success claim"
+    ],
+    "raw_sample_count": 960,
+    "schema": "arcora-merkle-levels-balanced-release/v1",
+    "source_sha256": "7f8874a7b75b8aa067e1ea36e7076c683366c3aed50ee243de434bedbaa816d7",
+    "summary": {
+      "notes160_withdrawals16": {
+        "claim_paths": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 289.7875,
+            "median_us": 243.62914999999998,
+            "min_us": 161.7208
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 59.4333,
+            "median_us": 47.566649999999996,
+            "min_us": 29.8541
+          },
+          "observed_median_reduction_percent": 80.47579692331563
+        },
+        "clocked_prepare_cached_stub_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2133.65,
+            "median_us": 1836.8833999999997,
+            "min_us": 1092.4167
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2043.125,
+            "median_us": 1750.8000499999998,
+            "min_us": 990.5458000000001
+          },
+          "observed_median_reduction_percent": 4.686380746867213
+        },
+        "clocked_software_seal_hex": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4165.4875,
+            "median_us": 3551.74995,
+            "min_us": 2333.9792
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4358.6667,
+            "median_us": 3791.15415,
+            "min_us": 1803.8166999999999
+          },
+          "observed_median_reduction_percent": -6.74045761582962
+        },
+        "legacy_prepare_cached_stub_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2107.3041000000003,
+            "median_us": 1651.5542,
+            "min_us": 866.9625
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1818.0709,
+            "median_us": 1616.3020500000002,
+            "min_us": 801.2166
+          },
+          "observed_median_reduction_percent": 2.134483385407504
+        },
+        "legacy_software_seal_hex": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4190.775,
+            "median_us": 3367.5521,
+            "min_us": 2291.3457999999996
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4266.6042,
+            "median_us": 3771.90625,
+            "min_us": 1769.5083
+          },
+          "observed_median_reduction_percent": -12.007361370890157
+        },
+        "native_replay_owned": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1850.0458999999998,
+            "median_us": 1574.7458000000001,
+            "min_us": 726.4334
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1717.7708,
+            "median_us": 1629.0979000000002,
+            "min_us": 772.6583
+          },
+          "observed_median_reduction_percent": -3.451484042694397
+        },
+        "prepare_unproved_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2200.2834,
+            "median_us": 1870.8103999999998,
+            "min_us": 887.7334000000001
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1994.0125,
+            "median_us": 1704.3104,
+            "min_us": 749.3209
+          },
+          "observed_median_reduction_percent": 8.899886380789834
+        },
+        "state_clone": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 21.416700000000002,
+            "median_us": 11.2271,
+            "min_us": 6.3292
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 24.245900000000002,
+            "median_us": 12.229200000000002,
+            "min_us": 7.408399999999999
+          },
+          "observed_median_reduction_percent": -8.9257243633708
+        }
+      },
+      "notes160_withdrawals48": {
+        "claim_paths": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2237.9959,
+            "median_us": 1742.94375,
+            "min_us": 1146.075
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 171.58329999999998,
+            "median_us": 127.34375,
+            "min_us": 67.9208
+          },
+          "observed_median_reduction_percent": 92.69375445994743
+        },
+        "clocked_prepare_cached_stub_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4153.7375,
+            "median_us": 3128.60625,
+            "min_us": 2070.9375
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2355.4792,
+            "median_us": 1733.5458,
+            "min_us": 929.725
+          },
+          "observed_median_reduction_percent": 44.59047698955405
+        },
+        "clocked_software_seal_hex": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4596.8917,
+            "median_us": 3882.7479,
+            "min_us": 2074.9
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4839.5875,
+            "median_us": 3745.5521,
+            "min_us": 2242.55
+          },
+          "observed_median_reduction_percent": 3.5334717456160347
+        },
+        "legacy_prepare_cached_stub_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4321.8333,
+            "median_us": 3469.8229,
+            "min_us": 2787.5125
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2149.6542000000004,
+            "median_us": 1878.7333,
+            "min_us": 1348.6083
+          },
+          "observed_median_reduction_percent": 45.85506655109112
+        },
+        "legacy_software_seal_hex": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4176.2417000000005,
+            "median_us": 3266.8854499999998,
+            "min_us": 2146.625
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4580.3375,
+            "median_us": 3683.3354499999996,
+            "min_us": 1941.0916000000002
+          },
+          "observed_median_reduction_percent": -12.747615622702657
+        },
+        "native_replay_owned": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1991.0583000000001,
+            "median_us": 1595.34585,
+            "min_us": 1019.3083
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2018.375,
+            "median_us": 1775.5854,
+            "min_us": 1218.5541
+          },
+          "observed_median_reduction_percent": -11.297835513221166
+        },
+        "prepare_unproved_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 4277.2083,
+            "median_us": 3150.64585,
+            "min_us": 1993.3042
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2264.9042000000004,
+            "median_us": 2034.1583500000002,
+            "min_us": 1304.8958
+          },
+          "observed_median_reduction_percent": 35.43678195376988
+        },
+        "state_clone": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 20.0083,
+            "median_us": 9.972900000000001,
+            "min_us": 3.9625
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 22.2,
+            "median_us": 10.9292,
+            "min_us": 7.2333
+          },
+          "observed_median_reduction_percent": -9.58898615247319
+        }
+      },
+      "notes64_withdrawals16": {
+        "claim_paths": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 285.8125,
+            "median_us": 203.91035,
+            "min_us": 107.5416
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 60.2125,
+            "median_us": 35.40625,
+            "min_us": 19.9875
+          },
+          "observed_median_reduction_percent": 82.63636446114677
+        },
+        "clocked_prepare_cached_stub_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1483.1916,
+            "median_us": 1337.65415,
+            "min_us": 660.775
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1378.25,
+            "median_us": 1116.1479,
+            "min_us": 805.175
+          },
+          "observed_median_reduction_percent": 16.55930645451219
+        },
+        "clocked_software_seal_hex": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1935.0125,
+            "median_us": 1417.3229000000001,
+            "min_us": 783.3916999999999
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2078.5584,
+            "median_us": 1823.3833999999997,
+            "min_us": 858.1542
+          },
+          "observed_median_reduction_percent": -28.649822845591476
+        },
+        "legacy_prepare_cached_stub_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1591.1958,
+            "median_us": 1428.3103999999998,
+            "min_us": 604.8167
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1370.1833000000001,
+            "median_us": 1129.55625,
+            "min_us": 499.9708
+          },
+          "observed_median_reduction_percent": 20.91661238341468
+        },
+        "legacy_software_seal_hex": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2039.2625,
+            "median_us": 1724.23125,
+            "min_us": 1189.8958
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 2108.8583,
+            "median_us": 1625.1083,
+            "min_us": 803.975
+          },
+          "observed_median_reduction_percent": 5.748819945120465
+        },
+        "native_replay_owned": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1257.1792,
+            "median_us": 1030.9187,
+            "min_us": 504.14590000000004
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1285.7584,
+            "median_us": 1103.6354000000001,
+            "min_us": 555.7292
+          },
+          "observed_median_reduction_percent": -7.053582401793679
+        },
+        "prepare_unproved_total": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1417.0542,
+            "median_us": 1227.1937000000003,
+            "min_us": 586.2334000000001
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 1252.2333999999998,
+            "median_us": 1127.7458000000001,
+            "min_us": 543.2334000000001
+          },
+          "observed_median_reduction_percent": 8.103684039447078
+        },
+        "state_clone": {
+          "baseline": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 13.133299999999998,
+            "median_us": 4.625,
+            "min_us": 1.5792
+          },
+          "current": {
+            "batch_samples": 20,
+            "calls_per_batch": 10,
+            "max_us": 16.5209,
+            "median_us": 4.66045,
+            "min_us": 3.8875
+          },
+          "observed_median_reduction_percent": -0.7664864864864951
+        }
+      }
+    }
+  },
+  "exact_fixture_metadata_equal": true,
+  "initial_baseline": {
+    "actual_tests": {
+      "correctness_passed": 4,
+      "cpu_passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "rss_passed": 3
+    },
+    "binary_sha256": "fa69da7790d0ce68245ed953c85e4d3195dbbb1792e2b964b99ad6dccfda2c80",
+    "cpu": {
+      "notes160_withdrawals16": {
+        "claim_paths": {
+          "thread_cpu_us_per_operation": {
+            "max": 284.6125,
+            "median": 109.3833,
+            "min": 108.0458,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 325.99170000000004,
+            "median": 129.1917,
+            "min": 121.10839999999999,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1266.6625,
+            "median": 964.1208,
+            "min": 849.7292,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1392.2083,
+            "median": 1101.7416,
+            "min": 1021.0583,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 2746.975,
+            "median": 2419.6207999999997,
+            "min": 2227.0041,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 3072.575,
+            "median": 2664.6417,
+            "min": 2409.85,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1622.525,
+            "median": 1280.5833,
+            "min": 954.8083,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1946.6334,
+            "median": 1478.2417,
+            "min": 1111.2583,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 4153.6917,
+            "median": 2369.8958,
+            "min": 1903.3209,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 4815.8875,
+            "median": 3234.45,
+            "min": 2096.2875,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "native_replay_owned": {
+          "thread_cpu_us_per_operation": {
+            "max": 1725.15,
+            "median": 1394.3084,
+            "min": 983.5165999999999,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1871.45,
+            "median": 1545.475,
+            "min": 1211.4041000000002,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "prepare_unproved_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1930.6416000000002,
+            "median": 1784.5083,
+            "min": 1530.5208,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2358.2375,
+            "median": 2133.2207999999996,
+            "min": 1800.2667,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "state_clone": {
+          "thread_cpu_us_per_operation": {
+            "max": 18.0292,
+            "median": 10.125,
+            "min": 9.495899999999999,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 18.233400000000003,
+            "median": 10.3,
+            "min": 9.6125,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        }
+      },
+      "notes160_withdrawals48": {
+        "claim_paths": {
+          "thread_cpu_us_per_operation": {
+            "max": 2327.7,
+            "median": 1470.1208000000001,
+            "min": 912.2458,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2579.6666,
+            "median": 1647.2208,
+            "min": 1302.5167,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 4129.6458999999995,
+            "median": 3680.6417,
+            "min": 2281.0042000000003,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 4341.7708,
+            "median": 4013.3082999999997,
+            "min": 2369.0209,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 4431.8042000000005,
+            "median": 3442.1375,
+            "min": 2394.2875,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 5302.0166,
+            "median": 3710.5042000000003,
+            "min": 2485.4208,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 3319.7832999999996,
+            "median": 3148.4292,
+            "min": 2824.7959,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 3507.8958,
+            "median": 3472.4,
+            "min": 3268.6375,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 4216.8417,
+            "median": 3403.9084,
+            "min": 2762.675,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 4557.7083,
+            "median": 3827.9791,
+            "min": 2888.2333,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "native_replay_owned": {
+          "thread_cpu_us_per_operation": {
+            "max": 2024.6291,
+            "median": 1913.3666,
+            "min": 1656.0833,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2320.3833,
+            "median": 2170.3333,
+            "min": 1866.9167,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "prepare_unproved_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 3215.1333,
+            "median": 2861.3707999999997,
+            "min": 2156.8583,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 4045.1375,
+            "median": 3475.05,
+            "min": 2507.2625,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "state_clone": {
+          "thread_cpu_us_per_operation": {
+            "max": 11.8125,
+            "median": 9.904200000000001,
+            "min": 9.425,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 12.0,
+            "median": 10.095799999999999,
+            "min": 9.5125,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        }
+      },
+      "notes64_withdrawals16": {
+        "claim_paths": {
+          "thread_cpu_us_per_operation": {
+            "max": 283.1708,
+            "median": 164.225,
+            "min": 106.4042,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 318.5417,
+            "median": 195.5709,
+            "min": 107.97919999999999,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1405.525,
+            "median": 1308.0833,
+            "min": 573.1209,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1509.1042,
+            "median": 1330.175,
+            "min": 574.6083000000001,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 1822.7792,
+            "median": 1399.175,
+            "min": 1019.6041,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1860.15,
+            "median": 1442.1125,
+            "min": 1080.625,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1379.4958000000001,
+            "median": 794.5375,
+            "min": 598.55,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1472.925,
+            "median": 1021.8959,
+            "min": 735.7334000000001,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 1926.5125,
+            "median": 1165.6125,
+            "min": 951.2709,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1985.4375,
+            "median": 1316.1834,
+            "min": 1195.275,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "native_replay_owned": {
+          "thread_cpu_us_per_operation": {
+            "max": 1124.95,
+            "median": 676.6042,
+            "min": 496.95840000000004,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1150.6291999999999,
+            "median": 731.0958,
+            "min": 562.0166999999999,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "prepare_unproved_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1326.5875,
+            "median": 865.7041999999999,
+            "min": 597.8708,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1495.8791999999999,
+            "median": 980.1292,
+            "min": 684.6375,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "state_clone": {
+          "thread_cpu_us_per_operation": {
+            "max": 4.55,
+            "median": 1.8708,
+            "min": 1.4208,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 4.6458,
+            "median": 1.9458,
+            "min": 1.45,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        }
+      }
+    },
+    "cpu_samples": 120,
+    "fixtures": {
+      "notes160_withdrawals16": {
+        "claim_count": 16,
+        "claim_path_siblings": [
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4
+        ],
+        "fixture": "notes160_withdrawals16",
+        "frames": {
+          "clocked_plaintext_bytes": 23582,
+          "clocked_request_json_bytes": 47377,
+          "clocked_sealed_envelope_bytes": 23681,
+          "legacy_journal_intent_in_memory_bytes": 27799,
+          "legacy_plaintext_bytes": 23453,
+          "legacy_request_json_bytes": 47119,
+          "legacy_sealed_envelope_bytes": 23552,
+          "pre_state_postcard_bytes": 21843,
+          "prepared_intent_postcard_bytes": 3350,
+          "withdrawal_list_postcard_bytes": 913,
+          "witness_postcard_bytes": 23454
+        },
+        "ops": 17,
+        "post_live_notes": 144,
+        "pre_live_notes": 160,
+        "prepared_intent_sha256": "7fd44e732922d479359d19fa255e2fdaad67f9d0f4c8e6edc6dc7b790526077a",
+        "proof": "synthetic_cached_stub",
+        "seal": "software_test_keys",
+        "timed_ops": 1,
+        "withdrawals": 16,
+        "witness_sha256": "7afe1902265d85e0044e563f1e9e9de1b4839dff822b6a5132e52e7e0d80037a"
+      },
+      "notes160_withdrawals48": {
+        "claim_count": 48,
+        "claim_path_siblings": [
+          6,
+          6,
+          6,
+          5,
+          5,
+          6,
+          5,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          5,
+          6,
+          5,
+          6,
+          5,
+          6,
+          5,
+          5,
+          6,
+          5,
+          5,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          5,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          5,
+          5,
+          5,
+          6,
+          6,
+          5,
+          6,
+          5,
+          6,
+          6
+        ],
+        "fixture": "notes160_withdrawals48",
+        "frames": {
+          "clocked_plaintext_bytes": 26398,
+          "clocked_request_json_bytes": 53009,
+          "clocked_sealed_envelope_bytes": 26497,
+          "legacy_journal_intent_in_memory_bytes": 41175,
+          "legacy_plaintext_bytes": 26269,
+          "legacy_request_json_bytes": 52751,
+          "legacy_sealed_envelope_bytes": 26368,
+          "pre_state_postcard_bytes": 21843,
+          "prepared_intent_postcard_bytes": 12086,
+          "withdrawal_list_postcard_bytes": 2737,
+          "witness_postcard_bytes": 26270
+        },
+        "ops": 49,
+        "post_live_notes": 112,
+        "pre_live_notes": 160,
+        "prepared_intent_sha256": "85bdeccf8147943f5e5214ec2dd8cb87f5b4866da80d719342da624196801326",
+        "proof": "synthetic_cached_stub",
+        "seal": "software_test_keys",
+        "timed_ops": 1,
+        "withdrawals": 48,
+        "witness_sha256": "ab1c751f98f188eaaa46c0b2430012598126d5febc762b86662f9918bd97ea5f"
+      },
+      "notes64_withdrawals16": {
+        "claim_count": 16,
+        "claim_path_siblings": [
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4
+        ],
+        "fixture": "notes64_withdrawals16",
+        "frames": {
+          "clocked_plaintext_bytes": 10908,
+          "clocked_request_json_bytes": 22027,
+          "clocked_sealed_envelope_bytes": 11006,
+          "legacy_journal_intent_in_memory_bytes": 15125,
+          "legacy_plaintext_bytes": 10779,
+          "legacy_request_json_bytes": 21769,
+          "legacy_sealed_envelope_bytes": 10877,
+          "pre_state_postcard_bytes": 9169,
+          "prepared_intent_postcard_bytes": 3350,
+          "withdrawal_list_postcard_bytes": 913,
+          "witness_postcard_bytes": 10780
+        },
+        "ops": 17,
+        "post_live_notes": 48,
+        "pre_live_notes": 64,
+        "prepared_intent_sha256": "bb363ecf71ec04d9eaf4097cefb2e06d7670eff848900e5f7ae088fd34245c4a",
+        "proof": "synthetic_cached_stub",
+        "seal": "software_test_keys",
+        "timed_ops": 1,
+        "withdrawals": 16,
+        "witness_sha256": "a3eb7f02d9f59eb0255e6f86bb812731531082b56b9538a0c5a2c15843b25c3e"
+      }
+    },
+    "limits": [
+      "Only the three fixed native inputs; no admission cap or capacity guarantee",
+      "CPU is the median of five ten-call batch averages; overlapping phases must not be summed",
+      "Setup/warmup/checks/output cleanup excluded from CPU; input destruction and result pushes included",
+      "RSS is one whole fresh-child peak per fixture including setup/validation/frames, not preparation-only memory",
+      "Synthetic cached proof and software test seal keys; no backend, real proof, chain, CC or durable WAL acceptance",
+      "PRODUCTION RELEASE HOLD; candidate submission remains disabled"
+    ],
+    "measurement_source_sha256": "189438f2e9f5f3ca6c0717d9a63500f11e6416edc5be608d7c3a447f59a5cffb",
+    "rss": {
+      "notes160_withdrawals16": {
+        "peak_rss_bytes": 6160384,
+        "peak_rss_mib": 5.875,
+        "pid": 13841,
+        "samples": 1
+      },
+      "notes160_withdrawals48": {
+        "peak_rss_bytes": 6176768,
+        "peak_rss_mib": 5.890625,
+        "pid": 13843,
+        "samples": 1
+      },
+      "notes64_withdrawals16": {
+        "peak_rss_bytes": 5685248,
+        "peak_rss_mib": 5.421875,
+        "pid": 13840,
+        "samples": 1
+      }
+    },
+    "schema": "arcora-finite-preparation-profile/v1",
+    "status": "PASS"
+  },
+  "source_verified_current_executable": {
+    "actual_tests": {
+      "correctness_passed": 4,
+      "cpu_passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "rss_passed": 3
+    },
+    "binary_sha256": "7eb86207c8d9e27e79f810bb67910e60487c04ed54c1f41369bba6a835e14779",
+    "cpu": {
+      "notes160_withdrawals16": {
+        "claim_paths": {
+          "thread_cpu_us_per_operation": {
+            "max": 51.008300000000006,
+            "median": 40.4333,
+            "min": 29.6875,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 51.070800000000006,
+            "median": 40.4833,
+            "min": 29.7416,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1912.1333,
+            "median": 1709.8458,
+            "min": 1201.6625,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2034.3916000000002,
+            "median": 1776.7917,
+            "min": 1286.1,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 4083.8791,
+            "median": 3879.9332999999997,
+            "min": 3726.8042,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 4335.175,
+            "median": 4114.5375,
+            "min": 3993.3875,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1864.2875,
+            "median": 1788.1042,
+            "min": 1478.5791000000002,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 3161.4332999999997,
+            "median": 2249.125,
+            "min": 1506.975,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 4120.2291000000005,
+            "median": 3980.675,
+            "min": 3779.5834,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 4511.683400000001,
+            "median": 4215.35,
+            "min": 3868.7792000000004,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "native_replay_owned": {
+          "thread_cpu_us_per_operation": {
+            "max": 1802.4458,
+            "median": 1681.2125,
+            "min": 1437.55,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2043.425,
+            "median": 1715.55,
+            "min": 1448.2958,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "prepare_unproved_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1899.3791999999999,
+            "median": 1804.5666999999999,
+            "min": 1379.9083999999998,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2141.325,
+            "median": 1985.9125,
+            "min": 1666.975,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "state_clone": {
+          "thread_cpu_us_per_operation": {
+            "max": 14.3167,
+            "median": 10.1208,
+            "min": 9.1959,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 14.429200000000002,
+            "median": 10.25,
+            "min": 9.275,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        }
+      },
+      "notes160_withdrawals48": {
+        "claim_paths": {
+          "thread_cpu_us_per_operation": {
+            "max": 95.9542,
+            "median": 95.1417,
+            "min": 90.8375,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 96.0541,
+            "median": 95.20410000000001,
+            "min": 90.9041,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 2153.125,
+            "median": 2057.0042,
+            "min": 1942.475,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2425.45,
+            "median": 2188.1207999999997,
+            "min": 2078.5333,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 4518.3667000000005,
+            "median": 4258.2,
+            "min": 4114.6166,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 5491.5208,
+            "median": 4783.8125,
+            "min": 4269.4375,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 2052.8417,
+            "median": 1944.8583,
+            "min": 1797.2917,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2510.5167,
+            "median": 2004.1166,
+            "min": 1804.3084,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 4558.625,
+            "median": 3650.7709,
+            "min": 2525.55,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 7431.475,
+            "median": 4578.9375,
+            "min": 3641.8,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "native_replay_owned": {
+          "thread_cpu_us_per_operation": {
+            "max": 1449.8625,
+            "median": 912.3208000000001,
+            "min": 861.05,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1488.4166,
+            "median": 914.1542,
+            "min": 866.8666,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "prepare_unproved_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 2160.9334,
+            "median": 2029.1291999999999,
+            "min": 1746.625,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 3017.85,
+            "median": 2234.65,
+            "min": 2151.5667000000003,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "state_clone": {
+          "thread_cpu_us_per_operation": {
+            "max": 13.1166,
+            "median": 11.3792,
+            "min": 7.0333000000000006,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 13.758299999999998,
+            "median": 12.629100000000001,
+            "min": 7.1083,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        }
+      },
+      "notes64_withdrawals16": {
+        "claim_paths": {
+          "thread_cpu_us_per_operation": {
+            "max": 61.991699999999994,
+            "median": 52.8333,
+            "min": 33.275,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 424.7041,
+            "median": 52.945800000000006,
+            "min": 35.9,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1218.6083,
+            "median": 1167.1708,
+            "min": 1113.4459,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 5423.95,
+            "median": 1365.3667,
+            "min": 1284.0583000000001,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "clocked_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 1957.6416000000002,
+            "median": 1813.8791999999999,
+            "min": 1776.6875,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2078.5875,
+            "median": 1913.4,
+            "min": 1780.4375,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_prepare_cached_stub_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1371.6167,
+            "median": 1287.1916999999999,
+            "min": 1233.3292,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 2396.2041,
+            "median": 1349.8333,
+            "min": 1286.0709,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "legacy_software_seal_hex": {
+          "thread_cpu_us_per_operation": {
+            "max": 1896.4167,
+            "median": 1764.3375,
+            "min": 1676.7958999999998,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 7364.6875,
+            "median": 2076.8375,
+            "min": 1878.7292,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "native_replay_owned": {
+          "thread_cpu_us_per_operation": {
+            "max": 1277.4875,
+            "median": 1118.1,
+            "min": 991.9459,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1481.5666999999999,
+            "median": 1284.8791999999999,
+            "min": 1255.8667,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "prepare_unproved_total": {
+          "thread_cpu_us_per_operation": {
+            "max": 1319.9666000000002,
+            "median": 887.8291999999999,
+            "min": 788.3834,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 1465.45,
+            "median": 963.9959,
+            "min": 826.1375,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        },
+        "state_clone": {
+          "thread_cpu_us_per_operation": {
+            "max": 12.075,
+            "median": 5.3083,
+            "min": 4.8584,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          },
+          "wall_us_per_operation": {
+            "max": 12.2917,
+            "median": 5.3958,
+            "min": 4.9708000000000006,
+            "repetitions_per_round": 10,
+            "rounds": 5
+          }
+        }
+      }
+    },
+    "cpu_samples": 120,
+    "fixtures": {
+      "notes160_withdrawals16": {
+        "claim_count": 16,
+        "claim_path_siblings": [
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4
+        ],
+        "fixture": "notes160_withdrawals16",
+        "frames": {
+          "clocked_plaintext_bytes": 23582,
+          "clocked_request_json_bytes": 47377,
+          "clocked_sealed_envelope_bytes": 23681,
+          "legacy_journal_intent_in_memory_bytes": 27799,
+          "legacy_plaintext_bytes": 23453,
+          "legacy_request_json_bytes": 47119,
+          "legacy_sealed_envelope_bytes": 23552,
+          "pre_state_postcard_bytes": 21843,
+          "prepared_intent_postcard_bytes": 3350,
+          "withdrawal_list_postcard_bytes": 913,
+          "witness_postcard_bytes": 23454
+        },
+        "ops": 17,
+        "post_live_notes": 144,
+        "pre_live_notes": 160,
+        "prepared_intent_sha256": "7fd44e732922d479359d19fa255e2fdaad67f9d0f4c8e6edc6dc7b790526077a",
+        "proof": "synthetic_cached_stub",
+        "seal": "software_test_keys",
+        "timed_ops": 1,
+        "withdrawals": 16,
+        "witness_sha256": "7afe1902265d85e0044e563f1e9e9de1b4839dff822b6a5132e52e7e0d80037a"
+      },
+      "notes160_withdrawals48": {
+        "claim_count": 48,
+        "claim_path_siblings": [
+          6,
+          6,
+          6,
+          5,
+          5,
+          6,
+          5,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          5,
+          6,
+          5,
+          6,
+          5,
+          6,
+          5,
+          5,
+          6,
+          5,
+          5,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          5,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          5,
+          5,
+          5,
+          6,
+          6,
+          5,
+          6,
+          5,
+          6,
+          6
+        ],
+        "fixture": "notes160_withdrawals48",
+        "frames": {
+          "clocked_plaintext_bytes": 26398,
+          "clocked_request_json_bytes": 53009,
+          "clocked_sealed_envelope_bytes": 26497,
+          "legacy_journal_intent_in_memory_bytes": 41175,
+          "legacy_plaintext_bytes": 26269,
+          "legacy_request_json_bytes": 52751,
+          "legacy_sealed_envelope_bytes": 26368,
+          "pre_state_postcard_bytes": 21843,
+          "prepared_intent_postcard_bytes": 12086,
+          "withdrawal_list_postcard_bytes": 2737,
+          "witness_postcard_bytes": 26270
+        },
+        "ops": 49,
+        "post_live_notes": 112,
+        "pre_live_notes": 160,
+        "prepared_intent_sha256": "85bdeccf8147943f5e5214ec2dd8cb87f5b4866da80d719342da624196801326",
+        "proof": "synthetic_cached_stub",
+        "seal": "software_test_keys",
+        "timed_ops": 1,
+        "withdrawals": 48,
+        "witness_sha256": "ab1c751f98f188eaaa46c0b2430012598126d5febc762b86662f9918bd97ea5f"
+      },
+      "notes64_withdrawals16": {
+        "claim_count": 16,
+        "claim_path_siblings": [
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4
+        ],
+        "fixture": "notes64_withdrawals16",
+        "frames": {
+          "clocked_plaintext_bytes": 10908,
+          "clocked_request_json_bytes": 22027,
+          "clocked_sealed_envelope_bytes": 11006,
+          "legacy_journal_intent_in_memory_bytes": 15125,
+          "legacy_plaintext_bytes": 10779,
+          "legacy_request_json_bytes": 21769,
+          "legacy_sealed_envelope_bytes": 10877,
+          "pre_state_postcard_bytes": 9169,
+          "prepared_intent_postcard_bytes": 3350,
+          "withdrawal_list_postcard_bytes": 913,
+          "witness_postcard_bytes": 10780
+        },
+        "ops": 17,
+        "post_live_notes": 48,
+        "pre_live_notes": 64,
+        "prepared_intent_sha256": "bb363ecf71ec04d9eaf4097cefb2e06d7670eff848900e5f7ae088fd34245c4a",
+        "proof": "synthetic_cached_stub",
+        "seal": "software_test_keys",
+        "timed_ops": 1,
+        "withdrawals": 16,
+        "witness_sha256": "a3eb7f02d9f59eb0255e6f86bb812731531082b56b9538a0c5a2c15843b25c3e"
+      }
+    },
+    "limits": [
+      "Only the three fixed native inputs; no admission cap or capacity guarantee",
+      "CPU is the median of five ten-call batch averages; overlapping phases must not be summed",
+      "Setup/warmup/checks/output cleanup excluded from CPU; input destruction and result pushes included",
+      "RSS is one whole fresh-child peak per fixture including setup/validation/frames, not preparation-only memory",
+      "Synthetic cached proof and software test seal keys; no backend, real proof, chain, CC or durable WAL acceptance",
+      "PRODUCTION RELEASE HOLD; candidate submission remains disabled"
+    ],
+    "measurement_source_sha256": "7f8874a7b75b8aa067e1ea36e7076c683366c3aed50ee243de434bedbaa816d7",
+    "provenance": {
+      "binary_mtime_unix": 1791999166.3886592,
+      "binary_sha256": "7eb86207c8d9e27e79f810bb67910e60487c04ed54c1f41369bba6a835e14779",
+      "build_supervisor": {
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "gateway",
+          "--bin",
+          "gateway",
+          "--release",
+          "--locked",
+          "--offline",
+          "--no-run",
+          "--message-format=json"
+        ],
+        "exit_code": -9,
+        "logs": {
+          "stderr": {
+            "bytes": 114,
+            "sha256": "ad1ece6f949309d348e7bacecd41ef65b964b76cbd19bebf420b0bc0ffe7c053"
+          },
+          "stdout": {
+            "bytes": 246627,
+            "sha256": "7dfdb4af5b6125e5a2872805fff0aa543ca080ce1672394b1f249a4e7e5f3867"
+          }
+        },
+        "pid": 14636,
+        "ru_maxrss_unit": "bytes (macOS)",
+        "started_unix": 1791998136.3118742,
+        "timed_out": true,
+        "wait4_ru_maxrss_raw": 77725696,
+        "wall_seconds": 900.0958368778229
+      },
+      "embedded_public_identity": [
+        {
+          "algorithm": "sha256-canonical-source-map-v1",
+          "schema": "arcora-service-build-identity/v1",
+          "source_files": 388,
+          "source_sha256": "10cc8fc185e902c8c0d7dbc39a6dfcc3b85aeaf0c23836a6e2057be72b6872f3"
+        }
+      ],
+      "limitations": "Embedded source identity is self-reported local provenance, not attestation. No build-success claim from the timed-out supervisor.",
+      "matched_measurement_source_sha256": "7f8874a7b75b8aa067e1ea36e7076c683366c3aed50ee243de434bedbaa816d7",
+      "matched_public_source_sha256": "10cc8fc185e902c8c0d7dbc39a6dfcc3b85aeaf0c23836a6e2057be72b6872f3",
+      "matched_source_files": 389,
+      "observed_rustc_flags": [
+        "--crate-name gateway",
+        "--test",
+        "-C opt-level=3",
+        "-C lto",
+        "-C codegen-units=1",
+        "-C strip=debuginfo"
+      ],
+      "status": "supervisor timed out; orphan compiler subsequently produced this executable; compile exit status not recovered"
+    },
+    "rss": {
+      "notes160_withdrawals16": {
+        "peak_rss_bytes": 5931008,
+        "peak_rss_mib": 5.65625,
+        "pid": 20856,
+        "samples": 1
+      },
+      "notes160_withdrawals48": {
+        "peak_rss_bytes": 6160384,
+        "peak_rss_mib": 5.875,
+        "pid": 20857,
+        "samples": 1
+      },
+      "notes64_withdrawals16": {
+        "peak_rss_bytes": 5472256,
+        "peak_rss_mib": 5.21875,
+        "pid": 20855,
+        "samples": 1
+      }
+    },
+    "schema": "arcora-finite-preparation-profile/recovered-executable-v1",
+    "status": "PASS for executed tests only; build supervisor timed out"
+  }
+}

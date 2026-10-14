@@ -44,6 +44,13 @@ struct Fixture {
     post_bytes: Vec<u8>,
 }
 
+// Keep the existing fixture constructor private; the adjacent differential tests
+// receive only its immutable witness and native withdrawals, not new test inputs.
+pub(super) fn native_fixture(case: usize) -> (WindowWitness, Vec<Withdrawal>) {
+    let f = fixture(case);
+    (f.witness, f.withdrawals)
+}
+
 fn fixture(case: usize) -> Fixture {
     let (name, count, withdrawal_count) = CASES[case];
     // PR65's unchanged native, funded Sequencer. Only value-preserving native
@@ -487,11 +494,13 @@ mod observation {
                 || &f.withdrawals,
                 |withdrawals| {
                     let leaves: Vec<Digest> = withdrawals.iter().map(|w| w.leaf()).collect();
-                    let root = merkle_root(&leaves);
+                    // Same invocation-local tree used by production preparation.
+                    let tree = ClaimTree::new(&leaves);
+                    let root = tree.root();
                     withdrawals
                         .iter()
                         .enumerate()
-                        .map(|(i, w)| (w.leaf(), (root, merkle_proof(&leaves, i))))
+                        .map(|(i, w)| (w.leaf(), (root, tree.proof(i))))
                         .collect::<BTreeMap<_, _>>()
                 },
                 |paths| assert_eq!(bytes(paths), bytes(&f.prepared.withdraw_proofs)),
