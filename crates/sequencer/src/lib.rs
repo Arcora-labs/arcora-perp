@@ -1458,12 +1458,13 @@ impl Sequencer {
         };
         // the single per-window counter bump (mirrors apply_batch's engine.rs:156)
         self.state.next_batch_id += 1;
-        let pre_state = self.window_start_state.clone();
+        // Prepare the post-bump baseline before draining anything, then move the
+        // prior owned baseline into the witness instead of cloning it.
+        let next_window_state = self.state.clone();
+        let pre_state = core::mem::replace(&mut self.window_start_state, next_window_state);
         let ops = core::mem::take(&mut self.window_ops);
-        // reopen the next window from the post-bump state
         self.window_ordered.clear();
         self.window_rejected.clear();
-        self.window_start_state = self.state.clone();
         WindowWitness {
             batch_id,
             pre_state,

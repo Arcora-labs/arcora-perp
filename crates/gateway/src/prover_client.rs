@@ -1948,6 +1948,9 @@ mod clock_pipeline_tests {
 }
 
 #[cfg(test)]
+mod window_ownership_tests;
+
+#[cfg(test)]
 mod request_body_tests {
     use super::*;
     use crate::curl_transport::{check_request_body_bytes, Error, MAX_PROVE_REQUEST_BODY_BYTES};

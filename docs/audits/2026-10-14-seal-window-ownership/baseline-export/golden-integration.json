@@ -1,0 +1,11 @@
+{
+  "actual_old_export_passed": true,
+  "checks": "Full rawbytes now include_bytes! compared, no hash-only or generated expectedvalues",
+  "final_new_test_sha256": "aab20366eb642d92020cde714f5b3a73d8415eb4073af35b3cf2caf702e422ed",
+  "fixture_builder_sha256": "ea0c311afa366d800dbde696e094d9a691e17a6897748cd8d0ff894ed4133669",
+  "initial_failure": "Test harness emitted JSON marker after test name; initial parser expected line prefix. Preparation aborted before application patch. Placeholder-test failure kept historical under local/ownership.",
+  "kind": "Preparation parser fix",
+  "passed": true,
+  "production_change": "seal_window2fullStateclones→1",
+  "raw_golden_files": 21
+}

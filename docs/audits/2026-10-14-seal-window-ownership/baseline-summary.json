@@ -1,0 +1,89 @@
+{
+  "PR64_delivery_ledger": {
+    "bytes": 136294,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_PR64_Kanit_2026-10-14/delivery-ledger.json",
+    "sha256": "b1f18ac97cf0471f56d801cc9ad9a4764367bb959573aa8e19cc7b932470dbe7"
+  },
+  "PR64_final_QA": {
+    "bytes": 20641,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_PR64_Rapor_QA_2026-10-14.json",
+    "sha256": "16c232ad7949f55ca084c571bbe34df18cba0b41f2f10006985022526cf5561a"
+  },
+  "PR64_report": {
+    "bytes": 7812,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_Durum_Raporu_2026-10-14_PR64.md",
+    "sha256": "01218af8a07c11e0d45f57fdf758497098bac5bca9d69bb202659a75756204ce"
+  },
+  "active_PR64_pointer": {
+    "bytes": 539,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_Devam_2026-10-11.md",
+    "sha256": "f1ef88c5f35fcb4f71f8b83adda4cf6a112463889aca8cd4acc8d7f20c340a7a"
+  },
+  "base": "c387dbe2de0392a996d6028f745f81fa963809dd",
+  "current_source_count": 380,
+  "current_source_sha256": "1ed0b332badb55ea9c64d673cdf0955aa67fdcb9cc232a4ff613171a0d9392e3",
+  "external_cut": [
+    {
+      "dirty_count": 13,
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "name": "primary",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 7,
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "name": "kimi",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 62,
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "name": "dark",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    }
+  ],
+  "external_public_dirty_files": 82,
+  "frozen_source_preservation": {
+    "bytes": 9396,
+    "path": "frozen-source-preservation.json",
+    "sha256": "48066f699afe32e730548d51db008d36e3a51371fec74bbd341fb7f6249dbd31"
+  },
+  "full_baseline": {
+    "bytes": 1328265,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/baseline.json",
+    "sha256": "654b0f85ba856ad8b9a0bff1817dd9ae17e86d85397ce725e3695b96e5ff8584"
+  },
+  "github_start_summary": {
+    "bytes": 1737,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/github-start-summary.json",
+    "sha256": "59baae7a1bd9f29391b509f4b9c2e997c76024cf7a10b4731ced7a0e33afd870"
+  },
+  "initial379_capture": {
+    "bytes": 44653,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/start-source-cut.json",
+    "sha256": "24bb2baf77db5bcd7ac7c0e4d1e883515c8c92acd682180f348a837d7979913f"
+  },
+  "initial_checkout_clean": true,
+  "initial_source_count": 379,
+  "initial_source_sha256": "b43fe139894f3b8f36692c3b43ddc8b7ba0647ab8003828413b18fe011e33c38",
+  "manifests_locks_8_unchanged": true,
+  "new_source_path": "crates/gateway/src/prover_client/window_ownership_tests.rs",
+  "original_immutable_unique_count": 4748,
+  "passed": true,
+  "program_artifacts_9_unchanged": true,
+  "protected_original_files_verified": 4746,
+  "protected_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "schema": "arcora-seal-window-ownership-baseline-summary/v1",
+  "scope": "Compact references to the root-captured full approved baseline and real functional preservation receipt; whole4748 map is retained ignored/outside and not duplicated in this Git packet. This summary does not rerun the full preservation verifier or confer CI/release acceptance.",
+  "two_authorized_existing_source_paths": [
+    "crates/sequencer/src/lib.rs",
+    "crates/gateway/src/prover_client.rs"
+  ]
+}

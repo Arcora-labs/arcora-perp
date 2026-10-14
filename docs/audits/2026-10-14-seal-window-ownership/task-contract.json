@@ -1,0 +1,28 @@
+{
+  "acceptance": [
+    "Actual old-source deterministic fixture wire/snapshot goldens captured before application patch",
+    "New source matches witness/legacy+DPCLK2 tuples/fullSequencer bytes and roots/counters on two fixed valid fixtures",
+    "Live state mutation leaves returned witness and next baseline independent",
+    "Failed window + intervening ticks rollback/reseal keeps same batchID, old clocks/order and tick-window mappings",
+    "Existing tests retained; relevant local tests/format/clippy pass",
+    "Fresh PR checks on exact newhead pass before normal merge; actual main checks separately verified",
+    "Old reports/CI/dirty externalwork preserved and final current-state report delivered"
+  ],
+  "authorized_source_paths": [
+    "crates/sequencer/src/lib.rs",
+    "crates/gateway/src/prover_client.rs",
+    "crates/gateway/src/prover_client/window_ownership_tests.rs"
+  ],
+  "base_commit": "c387dbe2de0392a996d6028f745f81fa963809dd",
+  "canonical_repo": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "excluded": [
+    "GPU/proof generation",
+    "live production backend/chain/CC/keyrelease",
+    "input/RSS cap or production throughput guarantee",
+    "dependency/pin/workflow/protection change"
+  ],
+  "production_release": "HOLD",
+  "schema": "arcora-seal-window-ownership-task/v1",
+  "scope": "One full State clone in seal_window replaced by transfer of prior owned baseline after fully preparing post-bump replacement; normal successful semantics preserved",
+  "started_at": "2026-10-14T08:05:25.086731+00:00"
+}

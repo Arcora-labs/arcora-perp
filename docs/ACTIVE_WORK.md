@@ -750,3 +750,14 @@ custom serializer allocation/CPU ve aynı-length content drift'i bu sınırın d
 Yeni head CI'ı ayrı doğrulanır; beklenen full gateway761 PASS/0 FAIL/24 IGNORE.
 Candidate submission kapalı, live servis/proof/CC/custody/release kapıları açık,
 **PRODUCTION RELEASE HOLD** sürüyor.
+
+
+## 2026-10-14 — seal_window eski baseline ownership, PR65 yerel adayı
+
+`seal_window` eski `window_start_state` değerini witness'a sahipliğiyle taşıyor. Counter B artışından sonra yeni baseline'ın tek tam State clone'u hazırlanıyor; ardından `mem::replace` ile eski baseline alınıp ops/manifest kuyruğu önceki normal sırayla kapanıyor. İki tam State clone'u bire indirildi; diğer journal/replay/rollback clone'ları kapsam dışında.
+
+Gerçek eski `c387dbe2de0392a996d6028f745f81fa963809dd` sequencer kaynağında koşulan geçici exporter, 21 tam binary referans üretti. İki normal regresyon testi bunları `include_bytes!` ile eksiksiz karşılaştırıyor: witness, legacy/DPCLK2 tuple, tam serialized Sequencer durumu, sonraki baseline ve müdahil tick'li rollback/reseal. Eski/yeni fixture builder bytes aynı; exporter final kaynaktan kaldırıldı.
+
+Yerel gerçek sonuçlar: ownership_v2 2 PASS, client 48 PASS, sequencer lib 33 PASS, spine 31 PASS, format/clippy PASS. İlk placeholder hazırlık koşusu 0 PASS / 2 FAIL / 1 IGNORE, exit 101 olarak HISTORICAL saklandı; final kabul sonucu değildir. CI henüz yayın öncesinde BEKLEMEDE; 763 PASS / 0 FAIL / 24 IGNORE yalnız yeni gateway sayısının beklenen değeridir.
+
+Kaynak: 380 public dosya / `1ed0b332badb55ea9c64d673cdf0955aa67fdcb9cc232a4ff613171a0d9392e3`. [Seçili kanıt paketi](audits/2026-10-14-seal-window-ownership/README.md). Eski State/Vec/tree-index capacity'leri taşınır ve allocation sırası değişir; CPU/RSS/OOM, aggregate input cap veya proving kapasitesi garantisi yok. Fresh proof/live backend/CC/release kapıları açılmadı: **PRODUCTION RELEASE HOLD**.

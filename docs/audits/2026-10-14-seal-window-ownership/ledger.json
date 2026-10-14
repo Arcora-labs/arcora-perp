@@ -1,0 +1,429 @@
+{
+  "CI_status": "PENDING_BEFORE_PUBLICATION",
+  "README_metadata": {
+    "bytes": 6205,
+    "sha256": "5a83bcbb8e14baaeb28d50ea448aed2bb8d29f2fad40f4b1699d3e8671f2a1bd"
+  },
+  "actual_local_checks": {
+    "client": {
+      "acceptance": "PASS",
+      "exit_code": 0,
+      "result": {
+        "bytes": 1468,
+        "path": "local/client/result.json",
+        "sha256": "1ab59daf0ca5f169ed13e53ffddb1feed17397d9baab74f9f6ce6d3eccb2d7e0"
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 48
+        }
+      ]
+    },
+    "clippy": {
+      "acceptance": "PASS",
+      "exit_code": 0,
+      "result": {
+        "bytes": 1528,
+        "path": "local/clippy/result.json",
+        "sha256": "b4630f83ae3ae778a430ec622312128bc99484f3a9fccef877f35234fcc3afb9"
+      },
+      "test_summaries": []
+    },
+    "format": {
+      "acceptance": "PASS",
+      "exit_code": 0,
+      "result": {
+        "bytes": 1427,
+        "path": "local/format/result.json",
+        "sha256": "5ebaca31eba3ad0f64298376a93af2595639cb3be61d52b9bd8739aacbb8afec"
+      },
+      "test_summaries": []
+    },
+    "old_export": {
+      "acceptance": "OLD_SOURCE_DIAGNOSTIC_ONLY",
+      "exit_code": 0,
+      "result": {
+        "bytes": 1613,
+        "path": "local/old_export/result.json",
+        "sha256": "21b2ae5be0287ca5dd78d0ee416555f90450b24134c7adb1dfdf984dbb5b5b2a"
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 1
+        }
+      ]
+    },
+    "ownership": {
+      "acceptance": "HISTORICAL_PREPARATION_FAILURE",
+      "exit_code": 101,
+      "result": {
+        "bytes": 1522,
+        "path": "local/ownership/result.json",
+        "sha256": "30c3c3f4e7ad5a722747cebe76606c5487f61841fb67e5a71b6e8509d675e7b7"
+      },
+      "test_summaries": [
+        {
+          "failed": 2,
+          "ignored": 1,
+          "passed": 0
+        }
+      ]
+    },
+    "ownership_v2": {
+      "acceptance": "PASS",
+      "exit_code": 0,
+      "result": {
+        "bytes": 1519,
+        "path": "local/ownership_v2/result.json",
+        "sha256": "93af794a5fe3ba3a16b62ba61e36d2aff6bf23edbf42d084a10706658295f647"
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 2
+        }
+      ]
+    },
+    "sequencer_lib": {
+      "acceptance": "PASS",
+      "exit_code": 0,
+      "result": {
+        "bytes": 1461,
+        "path": "local/sequencer_lib/result.json",
+        "sha256": "f86d8d226428545447841ff8f07adfb908351b294aa189b16a6955562dc6e1fd"
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 33
+        }
+      ]
+    },
+    "sequencer_spine": {
+      "acceptance": "PASS",
+      "exit_code": 0,
+      "result": {
+        "bytes": 1474,
+        "path": "local/sequencer_spine/result.json",
+        "sha256": "0282376388834891d131e29c2ff8700bbcd69e26336f885807573379038f62b4"
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 31
+        }
+      ]
+    }
+  },
+  "base": "c387dbe2de0392a996d6028f745f81fa963809dd",
+  "expected_gateway_only": [
+    763,
+    0,
+    24
+  ],
+  "file_count": 58,
+  "files": {
+    "active-work-append-readback.json": {
+      "bytes": 692,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/packet-active-work-append.json",
+      "sha256": "fb8c7dbfd6c92a0657390acc55908e1e5fac0f83579c5beb38e96d200015facf"
+    },
+    "baseline-export/golden-integration.json": {
+      "bytes": 688,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/golden-integration.json",
+      "sha256": "591c01a7632ba981fbb61219cdf1f764037b179b09fa9c93d14bcc8273d446f1"
+    },
+    "baseline-export/normal-00-before_first_seal_seq.bin": {
+      "bytes": 3105,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-00-before_first_seal_seq.bin",
+      "sha256": "1ae7d052a52096ed0ad48c9fdd484f2b013866900a1c7272e9ab52211b8531d0"
+    },
+    "baseline-export/normal-01-first_witness.bin": {
+      "bytes": 1639,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-01-first_witness.bin",
+      "sha256": "8cf1a130ae94db45636f0752ea7d01e0d46aac1ef4f6b0571d771a395282b6f8"
+    },
+    "baseline-export/normal-02-first_legacy.bin": {
+      "bytes": 1638,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-02-first_legacy.bin",
+      "sha256": "16bfa40c5a352f46d52ecacb50e5f23feeeb170cac0da41b05db297630f280fb"
+    },
+    "baseline-export/normal-03-first_clocked.bin": {
+      "bytes": 1767,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-03-first_clocked.bin",
+      "sha256": "c864b5709365be79f7471a03dd8ed7e81ddf749284d394d2131ce62ee56c4b85"
+    },
+    "baseline-export/normal-04-after_first_seal_seq.bin": {
+      "bytes": 2389,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-04-after_first_seal_seq.bin",
+      "sha256": "9776a7c643e2bbe99911c82fa4feb91117c9a8c74a68f42907cada4488e76100"
+    },
+    "baseline-export/normal-05-live_mutated_seq.bin": {
+      "bytes": 3214,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-05-live_mutated_seq.bin",
+      "sha256": "8873b09f9f8a6da2a11b8ce5a51f8b3f0dc1c5039ab7ad1157508f98f409385d"
+    },
+    "baseline-export/normal-06-second_witness.bin": {
+      "bytes": 1343,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-06-second_witness.bin",
+      "sha256": "6171e276a424d06599f6cf874db5540270dcf1b6392f995b629fc3db9237c8f7"
+    },
+    "baseline-export/normal-07-second_legacy.bin": {
+      "bytes": 1342,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-07-second_legacy.bin",
+      "sha256": "034a5206e4396efdebd67eb75ed04ce353091859ee1c22916ef09d0bc0c94916"
+    },
+    "baseline-export/normal-08-second_clocked.bin": {
+      "bytes": 1471,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-08-second_clocked.bin",
+      "sha256": "0d5c74c3a458a01f05ed98c2edf7af96cd7276883632691fa1ba0532ecfda653"
+    },
+    "baseline-export/normal-09-after_second_seal_seq.bin": {
+      "bytes": 2865,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/normal-09-after_second_seal_seq.bin",
+      "sha256": "5c0555f09cb7a268d88cfd1ab45b04e87b9d62414cbc4770a2c6ecbccf932831"
+    },
+    "baseline-export/old-harness.txt": {
+      "bytes": 14148,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/old-harness.txt",
+      "sha256": "5d7e4ba555e20f1efbd87ce2ea78366d766474fa45d4eebd23663f9b64cb7b24"
+    },
+    "baseline-export/old-output-map.json": {
+      "bytes": 14636,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/old-output-map.json",
+      "sha256": "221cdffacba265026e44d9629ab5fc178bf9e00688ca7cba9a979cd06dd483d7"
+    },
+    "baseline-export/old-parent-with-test-module.txt": {
+      "bytes": 102812,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/old-parent-with-test-module.txt",
+      "sha256": "dea48e5ea9af3676309fc9bada19b37d9273616c90ff098905d08580fbd47684"
+    },
+    "baseline-export/old-sequencer.txt": {
+      "bytes": 137647,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/old-sequencer.txt",
+      "sha256": "04ea88b2e96ff6407496aadb5ff110c549d40a333372234c1648551fbb65487a"
+    },
+    "baseline-export/rollback-00-before_first_seal_seq.bin": {
+      "bytes": 3105,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-00-before_first_seal_seq.bin",
+      "sha256": "1ae7d052a52096ed0ad48c9fdd484f2b013866900a1c7272e9ab52211b8531d0"
+    },
+    "baseline-export/rollback-01-first_witness.bin": {
+      "bytes": 1639,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-01-first_witness.bin",
+      "sha256": "8cf1a130ae94db45636f0752ea7d01e0d46aac1ef4f6b0571d771a395282b6f8"
+    },
+    "baseline-export/rollback-02-first_legacy.bin": {
+      "bytes": 1638,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-02-first_legacy.bin",
+      "sha256": "16bfa40c5a352f46d52ecacb50e5f23feeeb170cac0da41b05db297630f280fb"
+    },
+    "baseline-export/rollback-03-first_clocked.bin": {
+      "bytes": 1767,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-03-first_clocked.bin",
+      "sha256": "c864b5709365be79f7471a03dd8ed7e81ddf749284d394d2131ce62ee56c4b85"
+    },
+    "baseline-export/rollback-04-after_first_seal_seq.bin": {
+      "bytes": 2389,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-04-after_first_seal_seq.bin",
+      "sha256": "9776a7c643e2bbe99911c82fa4feb91117c9a8c74a68f42907cada4488e76100"
+    },
+    "baseline-export/rollback-05-intervening_seq.bin": {
+      "bytes": 2954,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-05-intervening_seq.bin",
+      "sha256": "185f5e5bf7b42074c425f1fe9bfee1d52ef93e63b299aedd507fd05a69e129b0"
+    },
+    "baseline-export/rollback-06-after_rollback_seq.bin": {
+      "bytes": 3670,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-06-after_rollback_seq.bin",
+      "sha256": "a6f646ebb4bd250449d70466ddc0120bf6ec7fbc2875d735159bef9680d29ba3"
+    },
+    "baseline-export/rollback-07-resealed_witness.bin": {
+      "bytes": 2062,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-07-resealed_witness.bin",
+      "sha256": "aa8f94eae5d12ee10aac0e5b95a356ac9339673b01693905ca127b3dad1f3550"
+    },
+    "baseline-export/rollback-08-resealed_legacy.bin": {
+      "bytes": 2061,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-08-resealed_legacy.bin",
+      "sha256": "cb053eefc1194efb7f46c858ada8ce1db2b1fcff17f889a36e3e3ffe40ed2145"
+    },
+    "baseline-export/rollback-09-resealed_clocked.bin": {
+      "bytes": 2190,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-09-resealed_clocked.bin",
+      "sha256": "4408659eed48cb8a7e025da4263bf54219a0de360f788d7df515f147278485fa"
+    },
+    "baseline-export/rollback-10-after_reseal_seq.bin": {
+      "bytes": 2595,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline-export/rollback-10-after_reseal_seq.bin",
+      "sha256": "e5ebf923f46dfe6ee489e917c0c68244239c7f4e4660762932aff4ed61fbee87"
+    },
+    "baseline-summary.json": {
+      "bytes": 3844,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/packet-baseline-summary.json",
+      "sha256": "a26ddcbe4648c271d07b278382b9731d25ecc4facb9adaacb6ed053b161f73b7"
+    },
+    "frozen-source-preservation.json": {
+      "bytes": 9396,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/frozen-source-preservation.json",
+      "sha256": "48066f699afe32e730548d51db008d36e3a51371fec74bbd341fb7f6249dbd31"
+    },
+    "independent/scoped-review.json": {
+      "bytes": 6674,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/independent/scoped-review.json",
+      "sha256": "693cd3c3f0f95286b69f8ae013dbf418394473742de4ec1171ac0d263bae59ba"
+    },
+    "local-summary.json": {
+      "bytes": 46837,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local-summary.json",
+      "sha256": "ef3dce16eef9035257a8628d68d7604e7f74a5bf0cd80b00a3e150518b1688da"
+    },
+    "local/client/result.json": {
+      "bytes": 1468,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/client/result.json",
+      "sha256": "1ab59daf0ca5f169ed13e53ffddb1feed17397d9baab74f9f6ce6d3eccb2d7e0"
+    },
+    "local/client/stderr.log": {
+      "bytes": 153,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/client/stderr.log",
+      "sha256": "fa2856e610f66392616b5f3d095ae64e817d782c339988cbb3edb40037ddad04"
+    },
+    "local/client/stdout.log": {
+      "bytes": 4520,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/client/stdout.log",
+      "sha256": "9b87420d311d7a0a528fdc54331aea533ba122f807a41034f3f290777eca8880"
+    },
+    "local/clippy/result.json": {
+      "bytes": 1528,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/clippy/result.json",
+      "sha256": "b4630f83ae3ae778a430ec622312128bc99484f3a9fccef877f35234fcc3afb9"
+    },
+    "local/clippy/stderr.log": {
+      "bytes": 304,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/clippy/stderr.log",
+      "sha256": "6b25604c3a82d5b1c53ef12d79e62c9ee64d1fd333c1767ad36d7893f59b40b4"
+    },
+    "local/clippy/stdout.log": {
+      "bytes": 0,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/clippy/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/format/result.json": {
+      "bytes": 1427,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/format/result.json",
+      "sha256": "5ebaca31eba3ad0f64298376a93af2595639cb3be61d52b9bd8739aacbb8afec"
+    },
+    "local/format/stderr.log": {
+      "bytes": 0,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/format/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/format/stdout.log": {
+      "bytes": 0,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/format/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/old_export/result.json": {
+      "bytes": 1613,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/old_export/result.json",
+      "sha256": "21b2ae5be0287ca5dd78d0ee416555f90450b24134c7adb1dfdf984dbb5b5b2a"
+    },
+    "local/old_export/stderr.log": {
+      "bytes": 267,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/old_export/stderr.log",
+      "sha256": "1dac34b67a7c4dacdf7e96d7e2ca1887914dcfd920368168695ab117025eb81f"
+    },
+    "local/old_export/stdout.log": {
+      "bytes": 4589,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/old_export/stdout.log",
+      "sha256": "6ae8180f57b62a586d9cac49c60486fe99c7f666d783d81ddcc8f5acbb0eb2da"
+    },
+    "local/ownership/result.json": {
+      "bytes": 1522,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/ownership/result.json",
+      "sha256": "30c3c3f4e7ad5a722747cebe76606c5487f61841fb67e5a71b6e8509d675e7b7"
+    },
+    "local/ownership/stderr.log": {
+      "bytes": 896,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/ownership/stderr.log",
+      "sha256": "ce7fa3eab0740af153688ac496ced47fb8fe81bd7d70b1baea29117b153d06c2"
+    },
+    "local/ownership/stdout.log": {
+      "bytes": 745,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/ownership/stdout.log",
+      "sha256": "54d5c802123a4f24fbd330c09f525d2622333b1d559a5c28daf18f4f8aa0ea20"
+    },
+    "local/ownership_v2/result.json": {
+      "bytes": 1519,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/ownership_v2/result.json",
+      "sha256": "93af794a5fe3ba3a16b62ba61e36d2aff6bf23edbf42d084a10706658295f647"
+    },
+    "local/ownership_v2/stderr.log": {
+      "bytes": 385,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/ownership_v2/stderr.log",
+      "sha256": "47792b9e6f027829dd005c1198207fd2a76321281bd45a6f711011e90fc8f346"
+    },
+    "local/ownership_v2/stdout.log": {
+      "bytes": 339,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/ownership_v2/stdout.log",
+      "sha256": "c158e1877e739c3f38ae874401a9129609a94595e46861718a09274248e1cf12"
+    },
+    "local/sequencer_lib/result.json": {
+      "bytes": 1461,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/sequencer_lib/result.json",
+      "sha256": "f86d8d226428545447841ff8f07adfb908351b294aa189b16a6955562dc6e1fd"
+    },
+    "local/sequencer_lib/stderr.log": {
+      "bytes": 1434,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/sequencer_lib/stderr.log",
+      "sha256": "c6039f6dd0762146d650faefb6b7471085630ef69ca2cfd41bda6b11ecdbfaf3"
+    },
+    "local/sequencer_lib/stdout.log": {
+      "bytes": 2692,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/sequencer_lib/stdout.log",
+      "sha256": "e65f8b044c1a4fa990a2b2ae50dcfb7a707c1bec14aeeec2670bca01b42ab102"
+    },
+    "local/sequencer_spine/result.json": {
+      "bytes": 1474,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/sequencer_spine/result.json",
+      "sha256": "0282376388834891d131e29c2ff8700bbcd69e26336f885807573379038f62b4"
+    },
+    "local/sequencer_spine/stderr.log": {
+      "bytes": 262,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/sequencer_spine/stderr.log",
+      "sha256": "0c66065de9ae850888b7b106e3e2cfbdcadf898a72de13c7deed1a3cbe2bd8dd"
+    },
+    "local/sequencer_spine/stdout.log": {
+      "bytes": 1994,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/sequencer_spine/stdout.log",
+      "sha256": "b71505d32a4b288dc865a8586e6f12774d9b290064d2126e78ba79eab98af41a"
+    },
+    "run_owned_check.py": {
+      "bytes": 1848,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/run_owned_check.py",
+      "sha256": "83a01bcc9d3b1d195294279b655d0f224bf1d969c08a4831f2ac319b8c601b9c"
+    },
+    "source-freeze-final.json": {
+      "bytes": 49395,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/source-freeze-final.json",
+      "sha256": "2860a29f0134b500ee3dd1a6d18c6757435e776f976160fac4421552bb85d240"
+    },
+    "task-contract.json": {
+      "bytes": 1569,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/task-contract.json",
+      "sha256": "daae259bb1fbd66784938c502c6690526cccbec1529acba55da64fd417e24442"
+    }
+  },
+  "production_release": "HOLD",
+  "schema": "arcora-seal-window-ownership-public-packet/v1",
+  "scope": "Selected original evidence only; no full prior baseline/CI duplication. Historical initial placeholder failure retained and explicitly not accepted; actual old21 bytes plus final source/local outcomes. README+ledger are separate from files map.",
+  "source_count": 380,
+  "source_sha256": "1ed0b332badb55ea9c64d673cdf0955aa67fdcb9cc232a4ff613171a0d9392e3"
+}
