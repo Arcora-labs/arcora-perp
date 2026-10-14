@@ -1,0 +1,11 @@
+{
+  "architecture": "arm64",
+  "cpu": "Apple M4",
+  "measurement_source_sha256": "96f6e8927c7a5fbed7598111d3d6f08e561d37d65b30d4c7291b2dfd7d80b7cf",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80",
+  "profile": "release",
+  "python": "3.14.6",
+  "rss_api": "os.wait4(exact_child_pid, options).ru_maxrss; macOS bytes",
+  "rss_scope": "whole fresh test child: harness, native fixture setup, correctness checks, cached proof callbacks and in-memory frame roundtrips; not phase allocation",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1"
+}

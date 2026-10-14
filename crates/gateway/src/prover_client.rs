@@ -1963,6 +1963,9 @@ mod window_ownership_tests;
 mod roots_carry_tests;
 
 #[cfg(test)]
+mod finite_profile_tests;
+
+#[cfg(test)]
 mod request_body_tests {
     use super::*;
     use crate::curl_transport::{check_request_body_bytes, Error, MAX_PROVE_REQUEST_BODY_BYTES};

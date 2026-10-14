@@ -1,0 +1,32 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "-p",
+    "gateway",
+    "--bin",
+    "gateway",
+    "--release",
+    "--locked",
+    "--offline",
+    "--no-run",
+    "--message-format=json"
+  ],
+  "exit_code": 0,
+  "logs": {
+    "stderr": {
+      "bytes": 177,
+      "sha256": "e36b3495bafee163eee3469e6bd9b3bf33bdc75777af75c4b4b5364e7f47a5ed"
+    },
+    "stdout": {
+      "bytes": 250086,
+      "sha256": "27c48c4cbf4213c7042a40d53a3ef6ccfefb06e3d7ac11a579b040ab5943652f"
+    }
+  },
+  "pid": 98172,
+  "ru_maxrss_unit": "bytes (macOS)",
+  "started_unix": 1791994184.3201358,
+  "timed_out": false,
+  "wait4_ru_maxrss_raw": 2191310848,
+  "wall_seconds": 82.80382513999939
+}

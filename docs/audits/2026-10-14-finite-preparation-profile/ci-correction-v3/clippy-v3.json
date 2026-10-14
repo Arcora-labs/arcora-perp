@@ -1,0 +1,17 @@
+{
+  "command": [
+    "cargo",
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--locked",
+    "--offline",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 5.700792074203491,
+  "log_sha256": "9f106c1696911b9e32f68d7847529921f4664b7218c7a2b7a1b0ae4a45c9c40b",
+  "measurement_source_sha256": "189438f2e9f5f3ca6c0717d9a63500f11e6416edc5be608d7c3a447f59a5cffb"
+}

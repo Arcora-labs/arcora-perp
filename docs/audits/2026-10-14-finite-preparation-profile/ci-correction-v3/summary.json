@@ -1,0 +1,600 @@
+{
+  "actual_tests": {
+    "correctness_passed": 4,
+    "cpu_passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "rss_passed": 3
+  },
+  "binary_sha256": "fa69da7790d0ce68245ed953c85e4d3195dbbb1792e2b964b99ad6dccfda2c80",
+  "cpu": {
+    "notes160_withdrawals16": {
+      "claim_paths": {
+        "thread_cpu_us_per_operation": {
+          "max": 56.0375,
+          "median": 54.325,
+          "min": 54.0042,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 57.083400000000005,
+          "median": 54.3333,
+          "min": 54.0167,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "clocked_prepare_cached_stub_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 600.8625,
+          "median": 345.6917,
+          "min": 343.5958,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 1444.0875,
+          "median": 345.7125,
+          "min": 343.6083,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "clocked_software_seal_hex": {
+        "thread_cpu_us_per_operation": {
+          "max": 801.1415999999999,
+          "median": 770.6542,
+          "min": 759.3375,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 805.0459000000001,
+          "median": 774.075,
+          "min": 759.3541,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "legacy_prepare_cached_stub_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 421.275,
+          "median": 344.4583,
+          "min": 340.5208,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 424.5042,
+          "median": 353.2666,
+          "min": 340.55420000000004,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "legacy_software_seal_hex": {
+        "thread_cpu_us_per_operation": {
+          "max": 820.4875,
+          "median": 773.4084,
+          "min": 760.0,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 853.075,
+          "median": 776.7917,
+          "min": 773.0541999999999,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "native_replay_owned": {
+        "thread_cpu_us_per_operation": {
+          "max": 287.3875,
+          "median": 284.0167,
+          "min": 280.4375,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 287.4042,
+          "median": 284.0333,
+          "min": 280.45840000000004,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "prepare_unproved_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 412.6834,
+          "median": 364.1,
+          "min": 348.4167,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 471.3917,
+          "median": 370.6042,
+          "min": 351.5458,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "state_clone": {
+        "thread_cpu_us_per_operation": {
+          "max": 3.0583,
+          "median": 1.3208,
+          "min": 1.3,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 3.0875,
+          "median": 1.3333,
+          "min": 1.3125,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      }
+    },
+    "notes160_withdrawals48": {
+      "claim_paths": {
+        "thread_cpu_us_per_operation": {
+          "max": 446.6542,
+          "median": 438.325,
+          "min": 435.95,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 447.17920000000004,
+          "median": 438.3375,
+          "min": 435.9667,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "clocked_prepare_cached_stub_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 773.8875,
+          "median": 769.55,
+          "min": 747.525,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 774.8791,
+          "median": 769.5666,
+          "min": 747.5458000000001,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "clocked_software_seal_hex": {
+        "thread_cpu_us_per_operation": {
+          "max": 903.9375,
+          "median": 866.5667,
+          "min": 842.5125,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 904.25,
+          "median": 866.5834,
+          "min": 842.5291,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "legacy_prepare_cached_stub_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 1637.9292,
+          "median": 1335.5417,
+          "min": 987.0416,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 1653.8958,
+          "median": 1367.1916,
+          "min": 1009.1125,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "legacy_software_seal_hex": {
+        "thread_cpu_us_per_operation": {
+          "max": 1093.475,
+          "median": 938.225,
+          "min": 848.0165999999999,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 1105.1375,
+          "median": 941.8416,
+          "min": 848.0292,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "native_replay_owned": {
+        "thread_cpu_us_per_operation": {
+          "max": 325.0667,
+          "median": 319.7958,
+          "min": 317.3083,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 325.0958,
+          "median": 320.0791,
+          "min": 317.4541,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "prepare_unproved_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 773.6292,
+          "median": 760.2333000000001,
+          "min": 750.7459,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 776.6083000000001,
+          "median": 760.2541,
+          "min": 750.9916999999999,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "state_clone": {
+        "thread_cpu_us_per_operation": {
+          "max": 1.7792000000000001,
+          "median": 1.3208,
+          "min": 1.2834,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 1.8125,
+          "median": 1.3334000000000001,
+          "min": 1.3,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      }
+    },
+    "notes64_withdrawals16": {
+      "claim_paths": {
+        "thread_cpu_us_per_operation": {
+          "max": 53.0417,
+          "median": 52.85,
+          "min": 52.179199999999994,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 53.054199999999994,
+          "median": 52.8666,
+          "min": 52.1959,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "clocked_prepare_cached_stub_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 230.83329999999998,
+          "median": 230.0375,
+          "min": 229.025,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 230.85410000000002,
+          "median": 230.05,
+          "min": 229.04160000000002,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "clocked_software_seal_hex": {
+        "thread_cpu_us_per_operation": {
+          "max": 352.1708,
+          "median": 348.38340000000005,
+          "min": 344.8583,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 352.1875,
+          "median": 348.3917,
+          "min": 344.86670000000004,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "legacy_prepare_cached_stub_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 225.9125,
+          "median": 225.3375,
+          "min": 224.6625,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 225.9292,
+          "median": 225.3666,
+          "min": 224.6792,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "legacy_software_seal_hex": {
+        "thread_cpu_us_per_operation": {
+          "max": 347.7875,
+          "median": 346.0375,
+          "min": 345.5917,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 347.8084,
+          "median": 346.05,
+          "min": 345.6042,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "native_replay_owned": {
+        "thread_cpu_us_per_operation": {
+          "max": 172.29579999999999,
+          "median": 171.75,
+          "min": 171.2125,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 172.3084,
+          "median": 171.76670000000001,
+          "min": 171.225,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "prepare_unproved_total": {
+        "thread_cpu_us_per_operation": {
+          "max": 227.4458,
+          "median": 225.55,
+          "min": 225.025,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 227.4625,
+          "median": 225.56670000000003,
+          "min": 225.04160000000002,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      },
+      "state_clone": {
+        "thread_cpu_us_per_operation": {
+          "max": 1.5583,
+          "median": 0.5832999999999999,
+          "min": 0.5625,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        },
+        "wall_us_per_operation": {
+          "max": 1.5959,
+          "median": 0.6,
+          "min": 0.575,
+          "repetitions_per_round": 10,
+          "rounds": 5
+        }
+      }
+    }
+  },
+  "cpu_samples": 120,
+  "fixtures": {
+    "notes160_withdrawals16": {
+      "claim_count": 16,
+      "claim_path_siblings": [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4
+      ],
+      "fixture": "notes160_withdrawals16",
+      "frames": {
+        "clocked_plaintext_bytes": 23582,
+        "clocked_request_json_bytes": 47377,
+        "clocked_sealed_envelope_bytes": 23681,
+        "legacy_journal_intent_in_memory_bytes": 27799,
+        "legacy_plaintext_bytes": 23453,
+        "legacy_request_json_bytes": 47119,
+        "legacy_sealed_envelope_bytes": 23552,
+        "pre_state_postcard_bytes": 21843,
+        "prepared_intent_postcard_bytes": 3350,
+        "withdrawal_list_postcard_bytes": 913,
+        "witness_postcard_bytes": 23454
+      },
+      "ops": 17,
+      "post_live_notes": 144,
+      "pre_live_notes": 160,
+      "prepared_intent_sha256": "7fd44e732922d479359d19fa255e2fdaad67f9d0f4c8e6edc6dc7b790526077a",
+      "proof": "synthetic_cached_stub",
+      "seal": "software_test_keys",
+      "timed_ops": 1,
+      "withdrawals": 16,
+      "witness_sha256": "7afe1902265d85e0044e563f1e9e9de1b4839dff822b6a5132e52e7e0d80037a"
+    },
+    "notes160_withdrawals48": {
+      "claim_count": 48,
+      "claim_path_siblings": [
+        6,
+        6,
+        6,
+        5,
+        5,
+        6,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        5,
+        6,
+        5,
+        6,
+        5,
+        6,
+        5,
+        5,
+        6,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        5,
+        5,
+        5,
+        6,
+        6,
+        5,
+        6,
+        5,
+        6,
+        6
+      ],
+      "fixture": "notes160_withdrawals48",
+      "frames": {
+        "clocked_plaintext_bytes": 26398,
+        "clocked_request_json_bytes": 53009,
+        "clocked_sealed_envelope_bytes": 26497,
+        "legacy_journal_intent_in_memory_bytes": 41175,
+        "legacy_plaintext_bytes": 26269,
+        "legacy_request_json_bytes": 52751,
+        "legacy_sealed_envelope_bytes": 26368,
+        "pre_state_postcard_bytes": 21843,
+        "prepared_intent_postcard_bytes": 12086,
+        "withdrawal_list_postcard_bytes": 2737,
+        "witness_postcard_bytes": 26270
+      },
+      "ops": 49,
+      "post_live_notes": 112,
+      "pre_live_notes": 160,
+      "prepared_intent_sha256": "85bdeccf8147943f5e5214ec2dd8cb87f5b4866da80d719342da624196801326",
+      "proof": "synthetic_cached_stub",
+      "seal": "software_test_keys",
+      "timed_ops": 1,
+      "withdrawals": 48,
+      "witness_sha256": "ab1c751f98f188eaaa46c0b2430012598126d5febc762b86662f9918bd97ea5f"
+    },
+    "notes64_withdrawals16": {
+      "claim_count": 16,
+      "claim_path_siblings": [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4
+      ],
+      "fixture": "notes64_withdrawals16",
+      "frames": {
+        "clocked_plaintext_bytes": 10908,
+        "clocked_request_json_bytes": 22027,
+        "clocked_sealed_envelope_bytes": 11006,
+        "legacy_journal_intent_in_memory_bytes": 15125,
+        "legacy_plaintext_bytes": 10779,
+        "legacy_request_json_bytes": 21769,
+        "legacy_sealed_envelope_bytes": 10877,
+        "pre_state_postcard_bytes": 9169,
+        "prepared_intent_postcard_bytes": 3350,
+        "withdrawal_list_postcard_bytes": 913,
+        "witness_postcard_bytes": 10780
+      },
+      "ops": 17,
+      "post_live_notes": 48,
+      "pre_live_notes": 64,
+      "prepared_intent_sha256": "bb363ecf71ec04d9eaf4097cefb2e06d7670eff848900e5f7ae088fd34245c4a",
+      "proof": "synthetic_cached_stub",
+      "seal": "software_test_keys",
+      "timed_ops": 1,
+      "withdrawals": 16,
+      "witness_sha256": "a3eb7f02d9f59eb0255e6f86bb812731531082b56b9538a0c5a2c15843b25c3e"
+    }
+  },
+  "limits": [
+    "Only the three fixed native inputs; no admission cap or capacity guarantee",
+    "CPU is the median of five ten-call batch averages; overlapping phases must not be summed",
+    "Setup/warmup/checks/output cleanup excluded from CPU; input destruction and result pushes included",
+    "RSS is one whole fresh-child peak per fixture including setup/validation/frames, not preparation-only memory",
+    "Synthetic cached proof and software test seal keys; no backend, real proof, chain, CC or durable WAL acceptance",
+    "PRODUCTION RELEASE HOLD; candidate submission remains disabled"
+  ],
+  "measurement_source_sha256": "189438f2e9f5f3ca6c0717d9a63500f11e6416edc5be608d7c3a447f59a5cffb",
+  "rss": {
+    "notes160_withdrawals16": {
+      "peak_rss_bytes": 6160384,
+      "peak_rss_mib": 5.875,
+      "pid": 6337,
+      "samples": 1
+    },
+    "notes160_withdrawals48": {
+      "peak_rss_bytes": 6291456,
+      "peak_rss_mib": 6.0,
+      "pid": 6338,
+      "samples": 1
+    },
+    "notes64_withdrawals16": {
+      "peak_rss_bytes": 5636096,
+      "peak_rss_mib": 5.375,
+      "pid": 6333,
+      "samples": 1
+    }
+  },
+  "schema": "arcora-finite-preparation-profile/v1",
+  "status": "PASS"
+}

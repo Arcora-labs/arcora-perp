@@ -1,0 +1,10 @@
+test_booleans_batch_shape_and_duration_refused (test_finite_preparation_profile.ProfileValidation.test_booleans_batch_shape_and_duration_refused) ... ok
+test_complete_grid_and_units (test_finite_preparation_profile.ProfileValidation.test_complete_grid_and_units) ... ok
+test_metadata_shape_and_synthetic_labels (test_finite_preparation_profile.ProfileValidation.test_metadata_shape_and_synthetic_labels) ... ok
+test_missing_duplicate_unknown_and_extra_fields (test_finite_preparation_profile.ProfileValidation.test_missing_duplicate_unknown_and_extra_fields) ... ok
+test_zero_tests_failure_and_ignored_are_not_passes (test_finite_preparation_profile.ProfileValidation.test_zero_tests_failure_and_ignored_are_not_passes) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.001s
+
+OK

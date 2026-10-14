@@ -1,0 +1,30 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.30s
+     Running unittests src/main.rs (target/debug/deps/gateway-5bed3f2dcb54af31)
+
+running 8 tests
+test prover_client::finite_profile_tests::finite_committed_withdrawal_mutations_refused_before_callbacks ... ok
+test prover_client::finite_profile_tests::native_160_16 ... FINITE_FIXTURE {"fixture":"notes160_withdrawals16","pre_live_notes":160,"post_live_notes":144,"withdrawals":16,"ops":17,"timed_ops":1,"claim_count":16,"claim_path_siblings":[4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],"witness_sha256":"7afe1902265d85e0044e563f1e9e9de1b4839dff822b6a5132e52e7e0d80037a","prepared_intent_sha256":"7fd44e732922d479359d19fa255e2fdaad67f9d0f4c8e6edc6dc7b790526077a","frames":{"pre_state_postcard_bytes":21843,"witness_postcard_bytes":23454,"prepared_intent_postcard_bytes":3350,"withdrawal_list_postcard_bytes":913,"legacy_plaintext_bytes":23453,"legacy_sealed_envelope_bytes":23552,"legacy_request_json_bytes":47119,"clocked_plaintext_bytes":23582,"clocked_sealed_envelope_bytes":23681,"clocked_request_json_bytes":47377,"legacy_journal_intent_in_memory_bytes":27799},"proof":"synthetic_cached_stub","seal":"software_test_keys"}
+ok
+test prover_client::finite_profile_tests::native_160_48 ... 
+thread 'prover_client::finite_profile_tests::native_160_48' (18839255) panicked at crates/gateway/src/prover_client/finite_profile_tests.rs:218:9:
+assertion `left == right` failed
+  left: 5
+ right: 6
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test prover_client::finite_profile_tests::native_64_16 ... FINITE_FIXTURE {"fixture":"notes64_withdrawals16","pre_live_notes":64,"post_live_notes":48,"withdrawals":16,"ops":17,"timed_ops":1,"claim_count":16,"claim_path_siblings":[4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],"witness_sha256":"a3eb7f02d9f59eb0255e6f86bb812731531082b56b9538a0c5a2c15843b25c3e","prepared_intent_sha256":"bb363ecf71ec04d9eaf4097cefb2e06d7670eff848900e5f7ae088fd34245c4a","frames":{"pre_state_postcard_bytes":9169,"witness_postcard_bytes":10780,"prepared_intent_postcard_bytes":3350,"withdrawal_list_postcard_bytes":913,"legacy_plaintext_bytes":10779,"legacy_sealed_envelope_bytes":10877,"legacy_request_json_bytes":21769,"clocked_plaintext_bytes":10908,"clocked_sealed_envelope_bytes":11006,"clocked_request_json_bytes":22027,"legacy_journal_intent_in_memory_bytes":15125},"proof":"synthetic_cached_stub","seal":"software_test_keys"}
+ok
+test prover_client::finite_profile_tests::observation::finite_preparation_cpu ... ignored, bounded release thread CPU diagnostic; invoke with one test thread
+test prover_client::finite_profile_tests::rss_160_16 ... ignored, whole fresh-child RSS diagnostic; invoke separately with the runner
+test prover_client::finite_profile_tests::rss_160_48 ... ignored, whole fresh-child RSS diagnostic; invoke separately with the runner
+test prover_client::finite_profile_tests::rss_64_16 ... ignored, whole fresh-child RSS diagnostic; invoke separately with the runner
+
+failures:
+
+failures:
+    prover_client::finite_profile_tests::native_160_48
+
+test result: FAILED. 3 passed; 1 failed; 4 ignored; 0 measured; 798 filtered out; finished in 5.64s
+
+error: test failed, to rerun pass `-p gateway --bin gateway`
