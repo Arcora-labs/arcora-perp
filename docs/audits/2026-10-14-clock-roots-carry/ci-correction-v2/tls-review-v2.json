@@ -1,0 +1,209 @@
+{
+  "actual_failure": {
+    "database_commit": "caee11f41fab07d676c0a4655a2a5dd1f94da97c",
+    "ignored_advisories": [],
+    "job": 115905517000,
+    "job_raw": {
+      "bytes": 3208,
+      "sha256": "9cf0dab2efcd268edda89228a28c0cf2f3b8dd27d6c917fd3729b8be5b3db55b"
+    },
+    "log_raw": {
+      "bytes": 53456,
+      "sha256": "abe8bd15ca3bdf0a8016590807918173a4ccaf36c3c4260fed1b784c6ad79cfe"
+    },
+    "primary_reference_basis": "Provided captured CargoAudit JSON descriptions and primary rustls PR URLs; no fresh remote page fetch by reviewer. Official release readback remains root-owned; registry archive bytes independently match lock checksum.",
+    "primary_references": [
+      {
+        "id": "RUSTSEC-2026-0346",
+        "patched": [
+          ">=0.23.46"
+        ],
+        "primary_fix_URL": "https://github.com/rustls/rustls/pull/3299",
+        "published": "2026-10-14",
+        "scope": "Feature/configuration-dependent as described in captured audit; no Arcora exploit or authentication/proof bypass inferred",
+        "title": "`Debug` impls for client session values expose TLS secrets"
+      },
+      {
+        "id": "RUSTSEC-2026-0347",
+        "patched": [
+          ">=0.23.46"
+        ],
+        "primary_fix_URL": "https://github.com/rustls/rustls/pull/3300",
+        "published": "2026-10-14",
+        "scope": "Feature/configuration-dependent as described in captured audit; no Arcora exploit or authentication/proof bypass inferred",
+        "title": "Buffered application data sent to outer server after ECH rejection"
+      },
+      {
+        "id": "RUSTSEC-2026-0348",
+        "patched": [
+          ">=0.23.46"
+        ],
+        "primary_fix_URL": "https://github.com/rustls/rustls/pull/3297",
+        "published": "2026-10-14",
+        "scope": "Feature/configuration-dependent as described in captured audit; no Arcora exploit or authentication/proof bypass inferred",
+        "title": "Brotli certificate decompression can allocate up to 1 GiB before authentication"
+      },
+      {
+        "id": "RUSTSEC-2026-0349",
+        "patched": [
+          ">=0.23.46"
+        ],
+        "primary_fix_URL": "https://github.com/rustls/rustls/pull/3355",
+        "published": "2026-10-14",
+        "scope": "Feature/configuration-dependent as described in captured audit; no Arcora exploit or authentication/proof bypass inferred",
+        "title": "Unauthenticated ServerHello can downgrade later connections to classical key exchange"
+      }
+    ],
+    "run": 38579556500,
+    "vulnerabilities": 4
+  },
+  "already_reviewed_code_exact": {
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 103105,
+      "sha256": "7b06659fdf336de52f4134ab9e6682e7a67683cd190bb3640aad88c04e3fc5a0"
+    },
+    "crates/gateway/src/prover_client/roots_carry_tests.rs": {
+      "bytes": 24680,
+      "sha256": "e9d3652898d43366474af20c3076af919f9345329a2143a521095a22ec63b105"
+    }
+  },
+  "checks": {
+    "all443_protected_files_live_exact": true,
+    "all_other_packages_edges_and_raw_text_unchanged": true,
+    "exact_five_lock_version_checksum_pairs_only": true,
+    "full384_source_map_live_exact": true,
+    "guest21_candidate9_aux2_and_program9_unchanged": true,
+    "no_advisory_suppression_or_policy_change": true,
+    "patched_ranges_cover_all_four_captured_advisories": true,
+    "tee_unrelated_Windows_edges_retained_BASE": true,
+    "two_reviewed_Rust_code_files_exact_failed_publication": true
+  },
+  "existing_program_artifacts": {
+    "count": 9,
+    "files_sha256": {
+      "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+      "contracts/integration/fixtures/chainlink-candidate-v1/metadata.json": "d0a1be2b345f688b3bd102dbd6d5d6512aae1caaae6a996ba9f8b8fe411dd696",
+      "contracts/integration/fixtures/clock-v2-verified/clock.witness.bin": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f",
+      "contracts/integration/fixtures/clock-v2-verified/guest.elf": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+      "contracts/integration/fixtures/clock-v2-verified/program-vkey.bin": "5d6af308d886b93f41bb947993fcbe4f20b755d7e0eb9bf134ef2dc99104f21e",
+      "contracts/integration/fixtures/clock-v2-verified/proof-evidence.json": "224704d958a9d5246abace7d0df424d10afd67fb74db113bc399290e56c16486",
+      "contracts/integration/fixtures/clock-v2-verified/proof.bin": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89",
+      "contracts/integration/fixtures/clock-v2-verified/proof.sdk.json": "9028b9ce9be2e4a2957101f78727565e345a00e58a970d5383113e6182770c05",
+      "contracts/integration/fixtures/clock-v2-verified/public-values.bin": "f366fab4eac85e885e3f18fc826b8421d4fe29897b223734cee7b15885cffaee"
+    }
+  },
+  "freeze_v2": {
+    "bytes": 45302,
+    "sha256": "956ec73f490622eb8368f35fd7005b06c255a53445af6eee7cd47f4391c6391c"
+  },
+  "guest_locks_unchanged": [
+    "crates/sp1-guest/Cargo.lock",
+    "crates/sp1-chainlink-guest/Cargo.lock",
+    "crates/chainlink-oracle/Cargo.lock"
+  ],
+  "guest_source_pins": {
+    "candidate_aux2": {
+      "canonical_map_sha256": "1e351df9320689a1d7d841e0b911a6c36dbccf9aa263e1e4f5ab3511329b1201",
+      "count": 2
+    },
+    "candidate_runtime9": {
+      "canonical_map_sha256": "3e1925f2dca885613f8ca5fd5dc1781a0aad743d57e25c6b64395e0ae7b17133",
+      "count": 9
+    },
+    "reviewed_guest21": {
+      "canonical_map_sha256": "442ebec4ed2f8fc08f6ea82a5166a315385e5970d2e40f8aa8de1510c97a8d6b",
+      "count": 21
+    }
+  },
+  "history_boundary": {
+    "preliminary_source_sha256": "342c6b4b1a3d76084261cdd359e2b37baceb2b4b18b336ee0674b5a8d744a1ee",
+    "scope-v2.json": {
+      "bytes": 571,
+      "sha256": "954afb6abccb66feafa2a06c7ae8fe6124ee59983b87466fac267c59a302d68e"
+    },
+    "use": "Historical preliminary scope only; final narrow-diff-final and source-freeze-v2 cdd75 are current. Old383/534 local checks and49% same-TLS measurement remain valid historical records, not current384 test/audit acceptance."
+  },
+  "locks": {
+    "Cargo.lock": {
+      "after": {
+        "bytes": 61374,
+        "sha256": "081dc8935b6e3d5d060107c2cc573bd190342c3ffaae61e4237f8533bcdb6479"
+      },
+      "before": {
+        "bytes": 61374,
+        "sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5"
+      },
+      "only_rustls_version_checksum_changed": true,
+      "other_package_objects_dependency_edges_order_and_text_exact": true,
+      "packages": 262
+    },
+    "crates/chainlink-streams-client/Cargo.lock": {
+      "after": {
+        "bytes": 23607,
+        "sha256": "00b8d72f2fa72095162a2c1c368e078ba57ae87c68cda985d052c0a68dac0098"
+      },
+      "before": {
+        "bytes": 23607,
+        "sha256": "c0b29e553e285e59b453149501cbb20e1f5861979990932d9e4de60c05f75ae0"
+      },
+      "only_rustls_version_checksum_changed": true,
+      "other_package_objects_dependency_edges_order_and_text_exact": true,
+      "packages": 102
+    },
+    "crates/prover-service/Cargo.lock": {
+      "after": {
+        "bytes": 146927,
+        "sha256": "041cce61d0bf96ac47a2c41ad9842363af6b72e8a04e2bfee1c4156379327f34"
+      },
+      "before": {
+        "bytes": 146927,
+        "sha256": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e"
+      },
+      "only_rustls_version_checksum_changed": true,
+      "other_package_objects_dependency_edges_order_and_text_exact": true,
+      "packages": 559
+    },
+    "crates/sp1-host/Cargo.lock": {
+      "after": {
+        "bytes": 141096,
+        "sha256": "5e110b9b48311165ff5302b622f48356a515c7f5d6700b59d9228eafa0e71c6b"
+      },
+      "before": {
+        "bytes": 141096,
+        "sha256": "859da83e32b762e038cf5858ae9c445922f147c0e406a0907baa42386b8fbbe8"
+      },
+      "only_rustls_version_checksum_changed": true,
+      "other_package_objects_dependency_edges_order_and_text_exact": true,
+      "packages": 537
+    },
+    "scripts/tee-capture/Cargo.lock": {
+      "after": {
+        "bytes": 62976,
+        "sha256": "7499d274b9bfa6dcd2f3deed9dec27d1b8b1a21f2b491cc0818c2677e1c960af"
+      },
+      "before": {
+        "bytes": 62976,
+        "sha256": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e"
+      },
+      "only_rustls_version_checksum_changed": true,
+      "other_package_objects_dependency_edges_order_and_text_exact": true,
+      "packages": 259
+    }
+  },
+  "observed_utc": "2026-10-14T14:41:58.480560+00:00",
+  "owned_public_registry_archive_matches_checksum": {
+    "bytes": 386227,
+    "sha256": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
+  },
+  "passed": true,
+  "production_release": "HOLD",
+  "protected_unchanged": 443,
+  "reference_failed_head": "1f0cb7e63564aa712fef77adf6a6751b613a44dc",
+  "remaining": "Root-owned locked fetch, v2 focused/full/clippy/fmt/release and actual CargoAudit/current-head CI outcomes must close separately; none are claimed by this scope review. No guest rebuild/reproof, ELF/vkey rotation, backend/CC/chain/production activation.",
+  "reviewer_Cargo_build_audit_network_or_source_mutation": false,
+  "rustls_registry_checksum": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf",
+  "schema": "arcora-clock-roots-carry-tls-independent-scope-review/v2",
+  "scope_only_not_v2_test_audit_acceptance": true,
+  "source_count": 384,
+  "source_sha256": "cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a"
+}

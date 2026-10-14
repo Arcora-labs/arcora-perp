@@ -1,0 +1,17 @@
+{
+  "authorized_locks": [
+    "Cargo.lock",
+    "crates/sp1-host/Cargo.lock",
+    "crates/prover-service/Cargo.lock",
+    "scripts/tee-capture/Cargo.lock",
+    "crates/chainlink-streams-client/Cargo.lock"
+  ],
+  "only_changes": "rustls version/checksum; all other package objects and text unchanged",
+  "passed": true,
+  "protected": 443,
+  "registry_checksum": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf",
+  "rustls": "0.23.46",
+  "source_count": 384,
+  "source_sha256": "cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a",
+  "tee_3_unrelated_Windows_edges_preserved": true
+}

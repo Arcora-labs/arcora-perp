@@ -1,0 +1,7 @@
+   Compiling rustls v0.23.46
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling ureq v2.12.1
+   Compiling oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
+   Compiling chainlink-streams-client-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.63s
+     Running unittests src/main.rs (target/debug/deps/gateway-5bed3f2dcb54af31)

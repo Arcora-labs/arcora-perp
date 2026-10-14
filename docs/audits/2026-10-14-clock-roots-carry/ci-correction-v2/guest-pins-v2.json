@@ -1,0 +1,21 @@
+{
+  "command": [
+    "/opt/homebrew/bin/python3.12",
+    "-B",
+    "scripts/local-verification/check_sp1_release.py"
+  ],
+  "exit_code": 0,
+  "files": {
+    "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "bytes": 441,
+      "sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8"
+    }
+  },
+  "source_count": 384,
+  "source_sha256": "cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a",
+  "wall_seconds": 0.06933570804540068
+}

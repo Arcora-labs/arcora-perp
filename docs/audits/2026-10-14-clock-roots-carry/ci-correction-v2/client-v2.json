@@ -1,0 +1,24 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "test",
+    "--manifest-path",
+    "crates/chainlink-streams-client/Cargo.toml",
+    "--locked",
+    "--offline"
+  ],
+  "exit_code": 0,
+  "files": {
+    "stderr": {
+      "bytes": 3274,
+      "sha256": "7803bfad7b8f2a85ca0acde2766660654e2f1a97c7d94736cb91bdf641e57036"
+    },
+    "stdout": {
+      "bytes": 6692,
+      "sha256": "da7255b7f46006ed6fe4903d9b3d4080a027dd0a12314d69911d6fea1c2b2529"
+    }
+  },
+  "source_count": 384,
+  "source_sha256": "cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a",
+  "wall_seconds": 17.790316333062947
+}

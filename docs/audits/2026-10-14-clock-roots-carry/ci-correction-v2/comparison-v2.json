@@ -1,0 +1,25 @@
+{
+  "baseline_source_count": 382,
+  "baseline_source_sha256": "dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14",
+  "fixtures": {
+    "normal": {
+      "after_clock_us": 321.25,
+      "after_legacy_us": 319.60409999999996,
+      "before_clock_us": 633.3041999999999,
+      "before_legacy_us": 314.4042,
+      "observed_clock_reduction_percent": 49.27398239266374
+    },
+    "rollback_resealed": {
+      "after_clock_us": 474.5917,
+      "after_legacy_us": 474.3708,
+      "before_clock_us": 942.3167,
+      "before_legacy_us": 459.2542,
+      "observed_clock_reduction_percent": 49.635647972703865
+    }
+  },
+  "passed": true,
+  "samples_each": 110,
+  "scope": "BASE old TLS/replay vs current roots+TLS patch; same microfixtures do not exercise TLS. Observational batch-averaged threadCPU only, no causal percentage/production/RSS/proof guarantee.",
+  "source_count": 384,
+  "source_sha256": "cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a"
+}
