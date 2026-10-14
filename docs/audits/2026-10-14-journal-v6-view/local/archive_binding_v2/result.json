@@ -1,0 +1,37 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "test",
+    "-p",
+    "gateway",
+    "--locked",
+    "report_archive_binding::tests",
+    "--",
+    "--test-threads=2"
+  ],
+  "completed_at": "2026-10-14T09:51:35.149674+00:00",
+  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "elapsed_seconds": 142.64685000001919,
+  "exit_code": 0,
+  "files": {
+    "stderr.log": {
+      "bytes": 153,
+      "sha256": "55801ea16fd8041999dd582c62249a0235979453c6cc926d199d51f03528a677"
+    },
+    "stdout.log": {
+      "bytes": 4159,
+      "sha256": "567ecf4e19e1d685b4b34bc15bef5602e6eaf98d00d639644bee6aae321ed6af"
+    }
+  },
+  "runtime": {
+    "cargo": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "rust_test_threads": 2,
+    "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+  },
+  "schema": "arcora-journal-v6-owned-local-check/v1",
+  "scope": "Actual owned subprocess; no GPU/proof/production process; rawstdout/stderr preserved",
+  "source_files": {
+    "crates/gateway/src/rollback_journal.rs": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+  },
+  "started_at": "2026-10-14T09:49:12.498854+00:00"
+}

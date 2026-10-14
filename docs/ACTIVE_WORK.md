@@ -761,3 +761,21 @@ Gerçek eski `c387dbe2de0392a996d6028f745f81fa963809dd` sequencer kaynağında k
 Yerel gerçek sonuçlar: ownership_v2 2 PASS, client 48 PASS, sequencer lib 33 PASS, spine 31 PASS, format/clippy PASS. İlk placeholder hazırlık koşusu 0 PASS / 2 FAIL / 1 IGNORE, exit 101 olarak HISTORICAL saklandı; final kabul sonucu değildir. CI henüz yayın öncesinde BEKLEMEDE; 763 PASS / 0 FAIL / 24 IGNORE yalnız yeni gateway sayısının beklenen değeridir.
 
 Kaynak: 380 public dosya / `1ed0b332badb55ea9c64d673cdf0955aa67fdcb9cc232a4ff613171a0d9392e3`. [Seçili kanıt paketi](audits/2026-10-14-seal-window-ownership/README.md). Eski State/Vec/tree-index capacity'leri taşınır ve allocation sırası değişir; CPU/RSS/OOM, aggregate input cap veya proving kapasitesi garantisi yok. Fresh proof/live backend/CC/release kapıları açılmadı: **PRODUCTION RELEASE HOLD**.
+
+
+## 2026-10-14 — Candidate journal v6 borrowed serialization (pre-publication)
+
+BASE16fde84 after PR65. The two serialization-only full journal/envelope clones
+in v6 write and canonical re-encode are replaced by a private Serialize-only
+borrowed view. Owned decode/returns, v5/v6 framing, suffix→canonical→batch→policy
+checks, exact refusals, atomic durability and recovery/callers remain. Three new
+normal tests pass; journal12, archive-binding35 (including five retention tests),
+price-lifecycle10 +1 existing ignore, format/Clippy also passed. Three mistaken
+zero-test filters are preserved as historical UNACCEPTED; never counted as success.
+
+Source380 /7fe776cc4f1f4c612b7584c11ae8715b0c6afc2c0273ebc411ba633911048fc8.
+Evidence: docs/audits/2026-10-14-journal-v6-view/. PR CI, normal merge and main are
+PENDING at this packet cut; later outside final records are required. No measured
+CPU/RSS/input-cap, OOM/panic, real backend/proof/CC or release claim. Production
+HOLD and candidate submission closure remain. Previous source/evidence, reports,
+32 pins, 8 locks/manifests, 9 program artifacts and other dirty checkouts protected.

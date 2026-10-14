@@ -85,6 +85,14 @@ struct CandidateJournalV6 {
     envelope: ArchiveEnvelope,
 }
 
+/// Serialize the same v6 fields without copying the full recovery state. Decode
+/// still uses the owned payload above, so no borrowed data escapes recovery.
+#[derive(serde::Serialize)]
+struct CandidateJournalV6Ref<'a> {
+    journal: &'a RollbackJournal,
+    envelope: &'a ArchiveEnvelope,
+}
+
 /// Boot-facing decode result: which authenticated envelope the sealed bytes carry.
 pub enum OpenedJournal {
     /// Legacy v5 journal — no archive binding. Refused in archive-required mode.
@@ -148,9 +156,9 @@ pub fn write_versioned(
             postcard::to_allocvec(j).map_err(|e| format!("journal encode: {e}"))?,
         ),
         Some(env) => {
-            let payload = CandidateJournalV6 {
-                journal: j.clone(),
-                envelope: env.clone(),
+            let payload = CandidateJournalV6Ref {
+                journal: j,
+                envelope: env,
             };
             (
                 CANDIDATE_MAGIC,
@@ -194,9 +202,9 @@ pub fn open_versioned(sealed: &[u8], seed: &[u8; 32]) -> Result<OpenedJournal, S
         // a body produced by `write_versioned` round-trips byte-exactly. A body
         // that decodes but re-encodes differently is corrupt in a way the length-
         // blind decode happened to tolerate — refuse it.
-        let reencoded = postcard::to_allocvec(&CandidateJournalV6 {
-            journal: journal.clone(),
-            envelope: envelope.clone(),
+        let reencoded = postcard::to_allocvec(&CandidateJournalV6Ref {
+            journal: &journal,
+            envelope: &envelope,
         })
         .map_err(|e| format!("journal re-encode: {e}"))?;
         if reencoded != body {
@@ -392,6 +400,402 @@ mod tests {
             .unwrap();
         let bc = gw.seq.state.next_batch_id;
         gw.begin_window_settle(bc).unwrap().expect("window sealed")
+    }
+
+    /// Fixed native fixture: no gateway boot, env, clock, network, or prover service.
+    /// Two full-note withdrawals exercise nonempty claim paths as well as state.
+    fn candidate_fixture() -> RollbackJournal {
+        use perp_core::engine::BatchOp;
+        use perp_core::hash::Keccak256;
+        use perp_core::market::Market;
+        use perp_core::note::owner_from_spend_key;
+        use perp_core::Note;
+        let mut seq = sequencer::Sequencer::new(
+            sequencer::EnclaveIdentity::from_seed([9; 32], 3, [0xab; 32]),
+            8,
+        );
+        seq.add_market(Market::conservative(0));
+        seq.set_retain_tick_snapshots(false);
+        for key in 1..=3u8 {
+            let owner = owner_from_spend_key::<Keccak256>(&[key; 32]);
+            seq.apply(&BatchOp::Deposit {
+                owner,
+                asset_id: 0,
+                amount: i128::from(key) * 1_000 * QUOTE_SCALE,
+                blinding: [key * 0x11; 32],
+                from: [key; 20],
+                deposit_id: seq.state.consumed_deposit_count,
+                deposit_blind: [key + 0x10; 32],
+            })
+            .unwrap();
+        }
+        let insurance = Note::new(
+            owner_from_spend_key::<Keccak256>(&[1; 32]),
+            0,
+            1_000 * QUOTE_SCALE,
+            [0x11; 32],
+        );
+        seq.apply(&BatchOp::FundInsurance {
+            note_commitment: insurance.commitment::<Keccak256>(),
+            spend_key: [1; 32],
+        })
+        .unwrap();
+        seq.seal_genesis_baseline();
+        assert_eq!(seq.state.notes.len(), 2);
+        seq.apply(&BatchOp::Deposit {
+            owner: owner_from_spend_key::<Keccak256>(&[4; 32]),
+            asset_id: 0,
+            amount: 4_000 * QUOTE_SCALE,
+            blinding: [0x44; 32],
+            from: [4; 20],
+            deposit_id: seq.state.consumed_deposit_count,
+            deposit_blind: [0x14; 32],
+        })
+        .unwrap();
+        let mut ww = Vec::new();
+        for key in 2..=3u8 {
+            let owner = owner_from_spend_key::<Keccak256>(&[key; 32]);
+            let amount = i128::from(key) * 1_000 * QUOTE_SCALE;
+            let note = Note::new(owner, 0, amount, [key * 0x11; 32]);
+            let nonce = u64::from(key) * 128;
+            seq.apply(&BatchOp::Withdraw {
+                note_commitment: note.commitment::<Keccak256>(),
+                spend_key: [key; 32],
+                to: Some([key; 20]),
+                nonce,
+            })
+            .unwrap();
+            ww.push(Withdrawal {
+                owner,
+                to: [key; 20],
+                amount: amount as u128,
+                nonce,
+            });
+        }
+        let witness = seq.seal_window();
+        assert_eq!(witness.pre_state.notes.len(), 2);
+        assert_eq!(witness.ops.len(), 3);
+        RollbackJournal {
+            batch_id: witness.batch_id,
+            witness,
+            ww,
+            prepared: None,
+        }
+    }
+
+    fn candidate_stages() -> Vec<RollbackJournal> {
+        let stage1 = candidate_fixture();
+        let mut intent = stage1.clone();
+        intent.prepared =
+            Some(crate::prover_client::prepare_unproved(&intent.witness, &intent.ww).unwrap());
+        let mut stage2 = stage1.clone();
+        stage2.prepared =
+            Some(prove_and_prepare(&MockProverClient, &stage2.witness, &stage2.ww).unwrap());
+        assert!(intent.prepared.as_ref().unwrap().outcome.proof.is_empty());
+        let prepared = stage2.prepared.as_ref().unwrap();
+        assert!(!prepared.outcome.proof.is_empty());
+        assert_eq!(prepared.outcome.new_deposit_count, 4);
+        assert!(prepared.outcome.post_mode_is_normal);
+        assert!(prepared.outcome.post_insurance_fund > 0);
+        assert_eq!(prepared.withdraw_proofs.len(), 2);
+        assert!(prepared
+            .withdraw_proofs
+            .values()
+            .all(|(_, proof)| !proof.is_empty()));
+        vec![stage1, intent, stage2]
+    }
+
+    fn candidate_envelopes() -> Vec<ArchiveEnvelope> {
+        use chainlink_streams_client::report_archive::ArchiveId;
+        // Deliberately synthetic metadata: codec fidelity, not archive authenticity.
+        let first = ArchiveRef {
+            market_id: 0,
+            now_ms: 127,
+            archive_id: ArchiveId::parse(&"11".repeat(32)).unwrap(),
+        };
+        let second = ArchiveRef {
+            market_id: u64::MAX,
+            now_ms: 128,
+            archive_id: ArchiveId::parse(&"22".repeat(32)).unwrap(),
+        };
+        let refs = vec![first.clone(), second, first];
+        assert_eq!(refs[0], refs[2]);
+        assert_ne!(refs[0], refs[1]);
+        vec![
+            ArchiveEnvelope {
+                policy_binding: [7; 32],
+                refs: Vec::new(),
+            },
+            ArchiveEnvelope {
+                policy_binding: [0xa5; 32],
+                refs,
+            },
+        ]
+    }
+
+    /// Independent old owned-clone representation, unchanged from BASE16fde84.
+    fn old_owned_v6_body(j: &RollbackJournal, env: &ArchiveEnvelope) -> Vec<u8> {
+        postcard::to_allocvec(&CandidateJournalV6 {
+            journal: j.clone(),
+            envelope: env.clone(),
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn candidate_v6_borrowed_body_matches_old_owned_all_stages() {
+        for j in candidate_stages() {
+            for env in candidate_envelopes() {
+                let old = old_owned_v6_body(&j, &env);
+                let borrowed = postcard::to_allocvec(&CandidateJournalV6Ref {
+                    journal: &j,
+                    envelope: &env,
+                })
+                .unwrap();
+                assert_eq!(
+                    borrowed, old,
+                    "whole body, including state/proof/claims/ref order"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn candidate_v6_write_plaintext_and_owned_open_match_old_reference() {
+        let seed = [42; 32];
+        let path = scratch_path("borrowed-write");
+        for j in candidate_stages() {
+            let old_v5 = postcard::to_allocvec(&j).unwrap();
+            write_versioned(&path, &j, None, &seed).unwrap();
+            let sealed = std::fs::read(&path).unwrap();
+            assert_eq!(
+                snapshot::open(&sealed, &seed).unwrap(),
+                [MAGIC.as_slice(), old_v5.as_slice()].concat()
+            );
+            let OpenedJournal::Legacy(back) = open_versioned(&sealed, &seed).unwrap() else {
+                panic!("v5 must remain legacy");
+            };
+            assert_eq!(postcard::to_allocvec(&back).unwrap(), old_v5);
+            assert_eq!(
+                postcard::to_allocvec(&open(&sealed, &seed).unwrap()).unwrap(),
+                old_v5
+            );
+            for env in candidate_envelopes() {
+                let old = old_owned_v6_body(&j, &env);
+                write_versioned(&path, &j, Some(&env), &seed).unwrap();
+                let sealed = std::fs::read(&path).unwrap();
+                assert_eq!(
+                    snapshot::open(&sealed, &seed).unwrap(),
+                    [CANDIDATE_MAGIC.as_slice(), old.as_slice()].concat()
+                );
+                let OpenedJournal::Candidate {
+                    journal: back,
+                    envelope: back_env,
+                } = open_versioned(&sealed, &seed).unwrap()
+                else {
+                    panic!("v6 must return owned candidate fields");
+                };
+                assert_eq!(old_owned_v6_body(&back, &back_env), old);
+                assert_eq!(
+                    open(&sealed, &seed).err().unwrap(),
+                    "journal magic/version mismatch"
+                );
+            }
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    // The pre-change v6 decoder below is copied from the BASE Git blob. Its
+    // owned canonical encoder is intentionally retained as the error-order oracle.
+    fn old_owned_open_versioned(sealed: &[u8], seed: &[u8; 32]) -> Result<OpenedJournal, String> {
+        let plain = snapshot::open(sealed, seed).map_err(|e| format!("journal open: {e}"))?;
+        if let Some(body) = plain.strip_prefix(CANDIDATE_MAGIC.as_slice()) {
+            let (CandidateJournalV6 { journal, envelope }, rest) =
+                postcard::take_from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+            if !rest.is_empty() {
+                return Err(format!(
+                    "candidate journal decode: {} trailing bytes after the envelope",
+                    rest.len()
+                ));
+            }
+            // Canonical re-encoding: postcard's derive encoding is deterministic, so
+            // a body produced by `write_versioned` round-trips byte-exactly. A body
+            // that decodes but re-encodes differently is corrupt in a way the length-
+            // blind decode happened to tolerate — refuse it.
+            let reencoded = postcard::to_allocvec(&CandidateJournalV6 {
+                journal: journal.clone(),
+                envelope: envelope.clone(),
+            })
+            .map_err(|e| format!("journal re-encode: {e}"))?;
+            if reencoded != body {
+                return Err("candidate journal decode: non-canonical body encoding".into());
+            }
+            if journal.batch_id != journal.witness.batch_id {
+                return Err(format!(
+                    "journal batch_id mismatch: batch_id {} != witness.batch_id {}",
+                    journal.batch_id, journal.witness.batch_id
+                ));
+            }
+            // An empty REF list is legitimate (a window with no oracle-bearing ops —
+            // recovery verifies `refs.len() == used-op count`); only a missing policy
+            // binding would be indistinguishable from a legacy journal under downgrade.
+            if envelope.policy_binding == [0; 32] {
+                return Err("candidate journal carries an empty policy binding".into());
+            }
+            return Ok(OpenedJournal::Candidate { journal, envelope });
+        }
+        open(sealed, seed).map(OpenedJournal::Legacy)
+    }
+
+    fn opened_bytes(result: Result<OpenedJournal, String>) -> Result<(bool, Vec<u8>), String> {
+        result.map(|opened| match opened {
+            OpenedJournal::Legacy(j) => (false, postcard::to_allocvec(&j).unwrap()),
+            OpenedJournal::Candidate { journal, envelope } => {
+                (true, old_owned_v6_body(&journal, &envelope))
+            }
+        })
+    }
+
+    fn noncanonical_batch_varint(body: &[u8], batch_id: u64) -> Vec<u8> {
+        let mut prefix = postcard::to_allocvec(&batch_id).unwrap();
+        assert!(prefix.len() < 10);
+        assert!(body.starts_with(&prefix));
+        *prefix.last_mut().unwrap() |= 0x80;
+        prefix.push(0);
+        prefix.extend_from_slice(&body[postcard::to_allocvec(&batch_id).unwrap().len()..]);
+        let (decoded, rest): (CandidateJournalV6, &[u8]) =
+            postcard::take_from_bytes(&prefix).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(decoded.journal.batch_id, batch_id);
+        assert_ne!(postcard::to_allocvec(&decoded).unwrap(), prefix);
+        prefix
+    }
+
+    #[test]
+    fn candidate_v6_refusals_match_old_decoder_and_error_precedence() {
+        let j = candidate_fixture();
+        let env = candidate_envelopes().remove(0);
+        let seed = [42; 32];
+        let body = old_owned_v6_body(&j, &env);
+        let mut bad = j.clone();
+        bad.batch_id += 1;
+        let zero = ArchiveEnvelope {
+            policy_binding: [0; 32],
+            refs: Vec::new(),
+        };
+        let bad_body = old_owned_v6_body(&bad, &zero);
+        let noncanonical = noncanonical_batch_varint(&body, j.batch_id);
+        let bad_noncanonical = noncanonical_batch_varint(&bad_body, bad.batch_id);
+        let batch_error = format!(
+            "journal batch_id mismatch: batch_id {} != witness.batch_id {}",
+            bad.batch_id, bad.witness.batch_id
+        );
+        let cases = [
+            (
+                "suffix",
+                [body.as_slice(), &[0xde, 0xad]].concat(),
+                "candidate journal decode: 2 trailing bytes after the envelope",
+            ),
+            (
+                "noncanonical",
+                noncanonical,
+                "candidate journal decode: non-canonical body encoding",
+            ),
+            ("batch before policy", bad_body, batch_error.as_str()),
+            (
+                "policy",
+                old_owned_v6_body(&j, &zero),
+                "candidate journal carries an empty policy binding",
+            ),
+            (
+                "canonical before batch/policy",
+                bad_noncanonical.clone(),
+                "candidate journal decode: non-canonical body encoding",
+            ),
+            (
+                "suffix before canonical/batch/policy",
+                [bad_noncanonical.as_slice(), &[0xde, 0xad]].concat(),
+                "candidate journal decode: 2 trailing bytes after the envelope",
+            ),
+        ];
+        for (label, body, expected) in cases {
+            let sealed = snapshot::seal(
+                &[CANDIDATE_MAGIC.as_slice(), body.as_slice()].concat(),
+                &seed,
+            );
+            let old = opened_bytes(old_owned_open_versioned(&sealed, &seed));
+            let new = opened_bytes(open_versioned(&sealed, &seed));
+            assert_eq!(
+                old.as_ref().err().unwrap(),
+                expected,
+                "old refusal guard: {label}"
+            );
+            assert_eq!(new, old, "exact error and check order: {label}");
+        }
+        let valid = snapshot::seal(
+            &[CANDIDATE_MAGIC.as_slice(), body.as_slice()].concat(),
+            &seed,
+        );
+        assert_eq!(
+            opened_bytes(open_versioned(&valid, &seed)),
+            opened_bytes(old_owned_open_versioned(&valid, &seed))
+        );
+        let mut tampered = valid.clone();
+        *tampered.last_mut().unwrap() ^= 1;
+        let truncated = snapshot::seal(
+            &[CANDIDATE_MAGIC.as_slice(), &body[..body.len() - 1]].concat(),
+            &seed,
+        );
+        let confusion = snapshot::seal(&[MAGIC.as_slice(), body.as_slice()].concat(), &seed);
+        let legacy_body = postcard::to_allocvec(&j).unwrap();
+        // v5 deliberately accepts a decodable noncanonical integer; v6 must not
+        // accidentally strengthen the legacy path while changing its encoder.
+        let mut legacy_noncanonical = vec![0x80, 0];
+        assert_eq!(j.batch_id, 0);
+        assert_eq!(legacy_body[0], 0);
+        legacy_noncanonical.extend_from_slice(&legacy_body[1..]);
+        let legacy = snapshot::seal(
+            &[MAGIC.as_slice(), legacy_noncanonical.as_slice()].concat(),
+            &seed,
+        );
+        assert_eq!(
+            opened_bytes(open_versioned(&legacy, &seed)).unwrap(),
+            (false, legacy_body.clone())
+        );
+        for (label, sealed, decode_seed) in [
+            ("wrong seed", valid, [43; 32]),
+            ("tamper", tampered, seed),
+            ("truncated envelope", truncated, seed),
+            ("v6 under v5", confusion, seed),
+            (
+                "v5 under v6",
+                snapshot::seal(
+                    &[CANDIDATE_MAGIC.as_slice(), legacy_body.as_slice()].concat(),
+                    &seed,
+                ),
+                seed,
+            ),
+            (
+                "stale magic",
+                snapshot::seal(
+                    &[b"DPRBJL4\0".as_slice(), legacy_body.as_slice()].concat(),
+                    &seed,
+                ),
+                seed,
+            ),
+        ] {
+            let old = opened_bytes(old_owned_open_versioned(&sealed, &decode_seed));
+            assert!(old.is_err(), "old refusal guard: {label}");
+            assert_eq!(
+                opened_bytes(open_versioned(&sealed, &decode_seed)),
+                old,
+                "{label}"
+            );
+        }
+        assert_eq!(
+            opened_bytes(open_versioned(&legacy, &seed)),
+            opened_bytes(old_owned_open_versioned(&legacy, &seed))
+        );
     }
 
     #[test]

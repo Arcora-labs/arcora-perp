@@ -1,0 +1,68 @@
+{
+  "ACTIVE_prefix_preserved_when_authorized_append": false,
+  "allowed_metadata_files": {},
+  "authorized_existing_source_paths": [
+    "crates/gateway/src/rollback_journal.rs"
+  ],
+  "authorized_new_source_paths": [],
+  "baseline_sha256": "2a3957b46f33ee84fb8b99d8160be517b8738b1a0d8861ec1079b7e23ad35179",
+  "committed_paths": [],
+  "current_pointer_stable_cut": {
+    "bytes": 541,
+    "sha256": "08221b2375a27c51afa9db2f3b103cc8bbfe5dbc677d1926d24277de7364c003"
+  },
+  "expected_head": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "external": [
+    {
+      "dirty_count": 13,
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "name": "primary",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 7,
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "name": "kimi",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 62,
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "name": "dark",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    }
+  ],
+  "external_public_dirty_files": 82,
+  "head": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "manifests_locks_8_unchanged": true,
+  "observed_utc": "2026-10-14T09:51:45.667032+00:00",
+  "old_379_sources_preserved": true,
+  "original_PR65_pointer_verified": {
+    "bytes": 541,
+    "sha256": "08221b2375a27c51afa9db2f3b103cc8bbfe5dbc677d1926d24277de7364c003"
+  },
+  "original_immutable_unique_count": 5566,
+  "passed": true,
+  "phase": "frozen-source",
+  "pointer_backup": null,
+  "production_release": "HOLD",
+  "program_artifacts_9_unchanged": true,
+  "protected_original_files_verified": 5565,
+  "protected_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "schema": "arcora-journal-v6-view-preservation/v1",
+  "scope": "Closed approved public roster only. One existing journal source edit and finite caller-declared metadata; authorized ACTIVE append retains BASE prefix; exact source map, original pointer or exact PR65 backup, historical report/CI/raw files and external82 preserved. No private/env discovery, test/build/network/source/outside writes or proof/release acceptance. Cooperative readback, not an atomic filesystem snapshot or rollback-freshness guarantee.",
+  "source_count": 380,
+  "source_freeze_sha256": "d84261f1733282d36c22203858d09110b3a9706c54ae68d75ab17335b96247e9",
+  "source_sha256": "7fe776cc4f1f4c612b7584c11ae8715b0c6afc2c0273ebc411ba633911048fc8",
+  "status_paths": [
+    "crates/gateway/src/rollback_journal.rs"
+  ],
+  "tree": "38277d9f22bbb7ec18f2b93c58e989b99f5713aa"
+}

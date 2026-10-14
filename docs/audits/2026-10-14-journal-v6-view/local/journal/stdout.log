@@ -1,0 +1,17 @@
+
+running 12 tests
+test rollback_journal::tests::candidate_v6_borrowed_body_matches_old_owned_all_stages ... ok
+test rollback_journal::tests::authenticated_plaintext_with_trailing_bytes_is_refused_both_versions ... ok
+test rollback_journal::tests::candidate_v6_refusals_match_old_decoder_and_error_precedence ... ok
+test rollback_journal::tests::journal_batch_id_mismatch_fails_closed ... ok
+test rollback_journal::tests::journal_missing_is_none ... ok
+test rollback_journal::tests::journal_seal_round_trip ... ok
+test rollback_journal::tests::journal_with_a_stale_magic_is_refused ... ok
+test rollback_journal::tests::candidate_v6_write_plaintext_and_owned_open_match_old_reference ... ok
+test rollback_journal::tests::recovery_action_full_matrix ... ok
+test rollback_journal::tests::journal_wrong_seed_fails_closed ... ok
+test rollback_journal::tests::v6_payload_under_v5_magic_is_version_confusion_refused ... ok
+test rollback_journal::tests::v5_write_output_still_opens_through_both_decoders ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 778 filtered out; finished in 0.22s
+

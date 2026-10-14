@@ -1,0 +1,91 @@
+{
+  "BASE_journal_text_exact_Git_blob_sha256": "248d8ae23668f27252201436648eb28329d2402c368aedd8a0eccf2921cdb0eb",
+  "base": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "blocking_findings": [],
+  "coverage": {
+    "body_matrix": "3prepared states \u00d72envelope shapes, complete postcard body equality against unchanged old-owned wrapper",
+    "error_precedence": "Auth/framing \u2192 v6decode \u2192 suffix \u2192 canonicality \u2192 batch \u2192 nonzero policy; legacy canonical behavior unchanged",
+    "existing_tests_retained": [
+      "journal_seal_round_trip",
+      "journal_wrong_seed_fails_closed",
+      "authenticated_plaintext_with_trailing_bytes_is_refused_both_versions",
+      "v6_payload_under_v5_magic_is_version_confusion_refused",
+      "v5_write_output_still_opens_through_both_decoders",
+      "journal_batch_id_mismatch_fails_closed",
+      "journal_with_a_stale_magic_is_refused",
+      "journal_missing_is_none",
+      "recovery_action_full_matrix"
+    ],
+    "negative_matrix": [
+      "Suffix exact error",
+      "Decodable overlong batch varint guarded take_from_bytes success/reencoded bytes differ",
+      "Batch mismatch before empty policy",
+      "Empty policy refusal",
+      "Canonical error before batch+policy",
+      "Suffix error before canonical+batch+policy",
+      "Wrong seed/authenticated envelope truncation/ciphertext tamper",
+      "v6-under-v5, v5-under-v6, stale magic",
+      "Valid v5 decodable noncanonical varint still accepted"
+    ],
+    "new_tests": [
+      "candidate_v6_borrowed_body_matches_old_owned_all_stages",
+      "candidate_v6_write_plaintext_and_owned_open_match_old_reference",
+      "candidate_v6_refusals_match_old_decoder_and_error_precedence"
+    ],
+    "nonvacuous_guards": [
+      "Two prestate notes/three witness ops",
+      "Post-deposit count4, Normal=true, positive insurance",
+      "Prepared nonempty mock proof and two nonempty Merkle claim paths",
+      "Empty-proof prepared intent explicitly empty",
+      "Heterogeneous nonzero policy/ID/time/market refs include original exact duplicate in fixed order"
+    ],
+    "pure_fixed_fixture": "Public Sequencer tree8, fixed enclave identity; three initial deposits, FundInsurance, baseline two notes, later Deposit and two full note Withdraw operations; no Gw::boot/wallclock/env/backend.",
+    "scope": "Synthetic metadata for codec fidelity only, no actual archive record authenticity/admission/candidate backend acceptance",
+    "write_matrix": "3actualv5 plaintext/ownedopen checks plus6actualv6 writes, plaintext magic+oldbody exact, entire owned candidate fields byteequal"
+  },
+  "limits": [
+    "Only named owned wrapper clones eliminated; decoded owned journal and output/reencoded/body/plain/sealed allocations remain",
+    "No OOM/panic recovery equivalence, memory/input/RSS cap, CPU deadline/throughput/proving capacity claim",
+    "Public fixture Withdraw ops exercise core note spend-key authorization, not gateway ingress/L1/CC authorization",
+    "Native MockProverClient uses commitment bytes as mock proof; no cryptographic proof/backend/GPU",
+    "No source/format/core/guest/dependency/pin/routing/HOLD change beyond two serialization representations"
+  ],
+  "nonblocking_test_observation": "The third test valid-v6 control compares old/new Result equality without an explicit unwrap, whereas separate actual-write test unwraps valid v6 for all six stage/env cases. Its negative branch checks exact expected old errors plus old/new equality, so no current production defect; explicit local Ok assertion before its fault loop would make that family independently nonvacuous if desired.",
+  "observed_utc": "2026-10-14T09:48:55.214135+00:00",
+  "operations": {
+    "Git_mutations": 0,
+    "app_source_writes": 0,
+    "network": 0,
+    "new_ignored_review_only": true,
+    "runtime_tests_or_builds": 0
+  },
+  "passed": true,
+  "production_normalization": {
+    "canonical_reencode_change": "Owned decoded values borrowed for canonical reencoding, then returned owned",
+    "error_strings_and_control_order_unchanged": true,
+    "legacy_v5_and_open_unchanged": true,
+    "new_type": "Private Serialize-only CandidateJournalV6Ref with fields journal then envelope references",
+    "owned_type_and_decode_unchanged": true,
+    "snapshot_seed_seal_atomicwrite_unchanged": true,
+    "whole_pre_test_source_exact_after_reversing_only_named_changes": true,
+    "write_some_change": "Owned journal/envelope clone construction replaced by borrowed references"
+  },
+  "read_completed_root_owned_run": {
+    "actual_exit_code": 0,
+    "actual_failed": 0,
+    "actual_ignored": 0,
+    "actual_passed": 3,
+    "elapsed_seconds": 10.757449582917616,
+    "result_sha256": "9cad8af91ea15f540aaf06f5433b1cd2e8369db0e4854ca072e04bc813e54d38",
+    "reviewer_executed_tests": false,
+    "stdout_sha256": "0201cb4bd06535b2d63b8fae280ecf7c9067a542b0de1206ead638184f20df15"
+  },
+  "schema": "arcora-journal-v6-borrowed-view-independent-scoped-review/v1",
+  "source_path": "crates/gateway/src/rollback_journal.rs",
+  "source_sha256_before_and_after": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9",
+  "test_old_decoder_reference": {
+    "BASE_function_renamed_and_whitespace_normalized_exact": true,
+    "legacy_fallback_calls_unchanged_open": true,
+    "normalized_function_sha256": "6ab41eea9f1aebce792acd29f04a4bc2d40f1180c8bd15d15a3a7c4662003e2f"
+  }
+}
