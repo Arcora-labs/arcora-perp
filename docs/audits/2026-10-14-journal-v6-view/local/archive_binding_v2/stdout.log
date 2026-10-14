@@ -1,0 +1,41 @@
+
+running 35 tests
+test report_archive_binding::tests::admit_persists_the_exact_record_before_returning ... ok
+test report_archive_binding::tests::admission_callback_and_index_update_share_one_exclusive_boundary ... ok
+test report_archive_binding::tests::archive_guard_blocks_prover_invocation_on_missing_or_mismatched_records ... ok
+test report_archive_binding::tests::bind_binds_the_actual_op_stream_in_order_with_repeated_use ... ok
+test report_archive_binding::tests::bind_handles_multiple_observations_per_market_in_op_order_with_repeated_use ... ok
+test report_archive_binding::tests::bind_fails_closed_for_unarchived_or_substituted_transcripts ... ok
+test report_archive_binding::tests::candidate_journal_conflict_missing_record_and_capacity_install_nothing ... ok
+test report_archive_binding::tests::candidate_bound_journal_is_rejected_by_v2_resume_and_never_falls_back_to_legacy ... ok
+test report_archive_binding::tests::candidate_journal_recovers_newer_accepted_ids_for_exact_reseal ... ok
+test report_archive_binding::tests::candidate_journal_round_trips_through_the_real_sealed_journal_path ... ok
+test report_archive_binding::tests::candidate_runtime_and_final_snapshot_persist_index_and_failed_writes_keep_checkpoint ... ok
+test report_archive_binding::tests::candidate_snapshot_missing_or_corrupt_exact_id_never_uses_equal_sibling ... ok
+test report_archive_binding::tests::candidate_snapshot_recovers_only_accepted_canonical_ids_not_rejected_orphans ... ok
+test report_archive_binding::tests::candidate_snapshot_refuses_legacy_boot_after_marker_loss_open_window ... ok
+test report_archive_binding::tests::candidate_state_with_open_unsealed_window_refuses_legacy_boot ... ok
+test report_archive_binding::tests::candidate_submission_refused_before_any_prover_call_incl_zero_oracle ... ok
+test report_archive_binding::tests::capacity_and_archive_failure_never_invoke_admission_callback ... ok
+test report_archive_binding::tests::capacity_refuses_instead_of_silently_evicting ... ok
+test report_archive_binding::tests::candidate_snapshot_refuses_malformed_authenticated_envelopes_atomically ... ok
+test report_archive_binding::tests::full_index_and_disk_quota_duplicate_uses_original_id_without_storing_sibling ... ok
+test report_archive_binding::tests::mode_gate_matrix_covers_disabled_missing_mismatched_and_unreadable ... ok
+test report_archive_binding::tests::mode_marker_round_trip_and_fail_closed_postures ... ok
+test report_archive_binding::tests::mismatched_archive_and_envelope_options_cannot_be_legacy_success ... ok
+test report_archive_binding::tests::partial_candidate_config_fails_and_policy_file_is_hardened ... ok
+test report_archive_binding::tests::policy_coverage_is_the_candidate_startup_requirement ... ok
+test report_archive_binding::tests::poisoned_archive_cannot_publish_legacy_runtime_or_final_snapshot ... ok
+test report_archive_binding::tests::rejected_admission_is_never_installed_and_cannot_replace_or_shadow ... ok
+test report_archive_binding::tests::retention_cancelled_caller_keeps_serial_and_mutation_barriers_until_save_install ... ok
+test report_archive_binding::tests::retention_failed_runtime_and_final_save_keep_previous_checkpoint_and_whole_index ... ok
+test report_archive_binding::tests::retention_protects_open_live_and_journal_refs_and_rejects_stale_plans ... ok
+test report_archive_binding::tests::real_admission_to_sealed_window_to_v6_journal_to_recovery_replays_end_to_end ... ok
+test report_archive_binding::tests::retention_requires_authenticated_expected_wal_and_v2_upgrades_conservatively ... ok
+test report_archive_binding::tests::same_normalized_different_full_reports_keep_original_id_and_missing_exact_id_fails ... ok
+test report_archive_binding::tests::verify_fails_closed_on_missing_corrupt_or_mismatched_records ... ok
+test report_archive_binding::tests::retention_real_gateway_continues_past_4096_cumulative_admissions_and_restarts has been running for over 60 seconds
+test report_archive_binding::tests::retention_real_gateway_continues_past_4096_cumulative_admissions_and_restarts ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 755 filtered out; finished in 142.51s
+

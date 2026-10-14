@@ -1,0 +1,16 @@
+
+running 11 tests
+test price_lifecycle_tests::archived_liquidation_succeeds_with_valid_position_and_preserves_evidence ... ok
+test price_lifecycle_tests::archived_open_funding_close_signed_withdraw_and_restart_replay_v3 ... ok
+test price_lifecycle_tests::candidate_refuses_synthetic_demo_prices_and_unguarded_entrypoints ... ok
+test price_lifecycle_tests::candidate_seal_and_checkpoint_cannot_downgrade_when_archive_context_is_missing ... ok
+test price_lifecycle_tests::candidate_material_requires_original_selected_ids_full_reports_and_order ... ok
+test price_lifecycle_tests::export_candidate_price_lifecycle_for_cpu ... ignored, explicit export of owned synthetic lifecycle to a fresh directory
+test price_lifecycle_tests::composed_runtime_recovery_and_final_checkpoints_preserve_candidate_mode ... ok
+test price_lifecycle_tests::runtime_order_withdraw_routes_require_archive_before_financial_mutation ... ok
+test price_lifecycle_tests::stale_policy_at_seal_rolls_back_without_journal_even_if_engine_age_passes ... ok
+test price_lifecycle_tests::terminal_wind_down_withdrawal_does_not_require_a_price_or_archive ... ok
+test price_lifecycle_tests::report_failures_refuse_orders_ticks_and_withdrawals_before_financial_mutation ... ok
+
+test result: ok. 10 passed; 0 failed; 1 ignored; 0 measured; 779 filtered out; finished in 2.29s
+

@@ -1,0 +1,26 @@
+{
+  "GPU_required": false,
+  "authorized_source_paths": [
+    "crates/gateway/src/rollback_journal.rs"
+  ],
+  "base": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "goal": "Remove serialization-only full journal/envelope clone sites from v6 write and canonical re-encode while retaining exact wire/read/recovery behavior",
+  "normal_merge_authorized_by_session": true,
+  "production_release": "HOLD",
+  "required_acceptance": [
+    "wholebody old-owned reference equality for stage1/intent/stage2 and empty/heterogeneous duplicate refs",
+    "actual v5/v6 opened write plaintext equality and full owned decoded output",
+    "same exact rejection strings and suffix-canonical-batch-policy ordering; retain legacy v5 noncanonical acceptance",
+    "existing journal/archive/retention/recovery tests and format/clippy PASS",
+    "strict actual PR CI and merge main checks; unchanged pins,locks,workflows and old artifacts",
+    "updated verified report and pointer backup"
+  ],
+  "schema": "arcora-journal-v6-task-contract/v1",
+  "scope_limits": [
+    "native mock preparation is not fresh proof",
+    "synthetic archive refs validate codec fidelity only",
+    "no measured CPU/RSS/OOM/input-cap or global clone-removal claim",
+    "no live backend/key/chain/deployment or private config discovery"
+  ],
+  "source_count": 380
+}

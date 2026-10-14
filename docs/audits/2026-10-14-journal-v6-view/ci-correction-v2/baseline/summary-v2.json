@@ -1,0 +1,116 @@
+{
+  "ACTIVE_WORK_BASE": {
+    "bytes": 55050,
+    "sha256": "5ae2c3eb6edbbb52d76cfb0b967b3b39324ad5e41d04436246ade8f13d63608c"
+  },
+  "PR65_delivery_ledger": {
+    "bytes": 160622,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_PR65_Kanit_2026-10-14/delivery-ledger.json",
+    "sha256": "bc3e0254d032f99f9a446d8129d539b6591ffc280f36a1f5d801da6865ae1add"
+  },
+  "PR65_final_QA": {
+    "bytes": 3926,
+    "outside_path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_PR65_Rapor_QA_2026-10-14.json",
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/delivery/final-report-qa.json",
+    "sha256": "da917e3c17e721f1efe558843f90dca93019a96b9b441ea7b88083ed14d3e5a2"
+  },
+  "PR65_mapped_files": 403,
+  "PR65_physical_files_with_ledger": 404,
+  "PR65_report": {
+    "bytes": 7006,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_Durum_Raporu_2026-10-14_PR65.md",
+    "sha256": "e2f43c6f015a19e01e2793643b07c575bd57c134174ae0a3ffb9a4ca7b78eec7"
+  },
+  "active_pointer": {
+    "bytes": 541,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_Devam_2026-10-11.md",
+    "sha256": "08221b2375a27c51afa9db2f3b103cc8bbfe5dbc677d1926d24277de7364c003"
+  },
+  "actual_head": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "actual_tree": "38277d9f22bbb7ec18f2b93c58e989b99f5713aa",
+  "authorized_existing_source_paths": [
+    "crates/gateway/src/rollback_journal.rs",
+    "crates/gateway/src/main.rs"
+  ],
+  "authorized_new_source_paths": [],
+  "authorized_source_paths": [
+    "crates/gateway/src/rollback_journal.rs",
+    "crates/gateway/src/main.rs"
+  ],
+  "base": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "captured_at": "2026-10-14T09:43:02.500032+00:00",
+  "external_public_dirty_files": 82,
+  "full_baseline": {
+    "bytes": 1586369,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/baseline/baseline-v2.json",
+    "sha256": "58565521ae4018a855cd0448079e096fa1f2a305f063f09deea286fcaf4e7477"
+  },
+  "github_start": {
+    "main": "16fde84b094d5964d58097441ced33b1cb7d21da",
+    "open_pr_count": 0,
+    "records": {
+      "github-applied-rules.json": {
+        "bytes": 1687,
+        "sha256": "9faea6306394d097f40e28467eee98d774ceb6e7365abd5fefa787948f0cfae7"
+      },
+      "github-main-ref.json": {
+        "bytes": 344,
+        "sha256": "e0a99ba08e2d770d0a511838b3492b281d99341370b2dc1795f919ce7a94a622"
+      },
+      "github-open-prs.json": {
+        "bytes": 2,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "required_approving_review_count": 0,
+    "required_checks": 11,
+    "strict": true
+  },
+  "immutable_unique_count": 5566,
+  "initial380_capture": {
+    "bytes": 44740,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/baseline/start-source-cut.json",
+    "sha256": "211dbf5b15a2e2483e6efb197857474fc3ecd106cee4232a41b862fac99df976"
+  },
+  "initial_checkout_clean": true,
+  "initial_status": "",
+  "journal_BASE_blob": {
+    "bytes": 35734,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/baseline/journal-base.rs.txt",
+    "sha256": "248d8ae23668f27252201436648eb28329d2402c368aedd8a0eccf2921cdb0eb"
+  },
+  "main_BASE_blob": {
+    "bytes": 811044,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/baseline/main-base.rs.txt",
+    "sha256": "df0a779d6e5ea875808d51cbe9ad675706f4ad4e5193bc561f7cdd4111baef20"
+  },
+  "original_baseline": {
+    "bytes": 1559587,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/baseline/baseline.json",
+    "sha256": "2a3957b46f33ee84fb8b99d8160be517b8738b1a0d8861ec1079b7e23ad35179"
+  },
+  "passed": true,
+  "prior4748_carried_fresh_verified": 4748,
+  "prior_PR64_pointer_relocated": {
+    "bytes": 539,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_Devam_2026-10-11_PR64_korunan.md",
+    "sha256": "f1ef88c5f35fcb4f71f8b83adda4cf6a112463889aca8cd4acc8d7f20c340a7a"
+  },
+  "prior_baseline_sha256": "654b0f85ba856ad8b9a0bff1817dd9ae17e86d85397ce725e3695b96e5ff8584",
+  "prior_two_source_replacements_current_PR65": [
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/prover_client.rs",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer/src/lib.rs"
+  ],
+  "production_release": "HOLD",
+  "protected_original_files_after_two_source_exceptions": 5564,
+  "protected_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "revision_immutable_unique_count": 100,
+  "schema": "arcora-journal-v6-view-baseline-summary/v2",
+  "scope": "Closed approved public roster only. Fresh prior4748 with authorized priorPR65 source replacements/oldpointer relocation; actualPR65 outside403 and original named critical receipts added. Newtarget mutable files excluded from immutableinputs. No private/env discovery, source/old/outside writes, build/tests/GPU/proof/backend/financial operations or CI polling. One future journal source path authorized. V2 carries the original5566 immutable map unchanged; two existing-source exceptions journal+main guard test only. Named original unit packet/source/local/failed-publication/delivery preparations additionally retained byte-exact; no live revision rebaseline.",
+  "source_count": 380,
+  "source_sha256": "1ed0b332badb55ea9c64d673cdf0955aa67fdcb9cc232a4ff613171a0d9392e3"
+}

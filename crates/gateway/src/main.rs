@@ -11743,10 +11743,24 @@ mod tests {
             1,
             "one prefix-verified atomic intake constructor"
         );
+        let journal_source = include_str!("rollback_journal.rs");
+        let (journal_production, journal_tests) = journal_source
+            .split_once("#[cfg(test)]\nmod tests {")
+            .expect("journal fixtures must be behind the explicit test-only gate");
+        assert_eq!(
+            journal_production.matches(deposit_op_needle).count(),
+            0,
+            "journal production code must never construct this minting op"
+        );
+        assert_eq!(
+            journal_tests.matches(deposit_op_needle).count(),
+            2,
+            "two fixed candidate codec fixture constructors, test-only"
+        );
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 9,
-            "expected exactly 9 occurrences of `{deposit_op_needle}` across the \
+            deposit_ops, 11,
+            "expected exactly 11 occurrences of `{deposit_op_needle}` across the \
              gateway sources: 4 in main.rs — the `seq.apply(..)` constructions \
              inside `fund_amount` (the only position-credit minter), \
              `seed_insurance_unbacked` (SEC-024: the UNBACKED insurance funnel, \
@@ -11762,7 +11776,9 @@ mod tests {
              report_archive_binding.rs — the candidate archive binding's \
              exhaustive `used_oracle` classifier PATTERN that mirrors \
              chainlink-oracle's `binding::used_oracle` (inspects ops for the \
-             archive binding without constructing one); found {deposit_ops}. Applying this op anywhere \
+             archive binding without constructing one); plus 2 in the explicitly \
+             cfg(test)-gated journal candidate codec fixture, with zero in journal \
+             production code checked above; found {deposit_ops}. Applying this op anywhere \
              else mints collateral below BOTH `refuse_unbacked_mint` and the \
              funnels' bookkeeping, so a new construction site is almost \
              certainly wrong; a legitimate credit path MUST route through \

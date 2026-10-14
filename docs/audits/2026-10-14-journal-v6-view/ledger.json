@@ -1,0 +1,191 @@
+{
+  "base": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "file_count": 36,
+  "files": {
+    "baseline/journal-base.rs.txt": {
+      "bytes": 35734,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/baseline/journal-base.rs.txt",
+      "sha256": "248d8ae23668f27252201436648eb28329d2402c368aedd8a0eccf2921cdb0eb"
+    },
+    "baseline/summary.json": {
+      "bytes": 4847,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/baseline/summary.json",
+      "sha256": "f3491e8ad1a88b9cbecb51c364830f7577d397d464b129788cd31a888865df7a"
+    },
+    "frozen-source-preservation.json": {
+      "bytes": 2726,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/frozen-source-preservation.json",
+      "sha256": "e7ca20633cfedd4da8b7a177bbeff7fc956526287c95063373f28281bd39adf7"
+    },
+    "independent/design-review.json": {
+      "bytes": 8051,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/independent/design-review.json",
+      "sha256": "5ebf585d0d395eaa6012c4c4f1d32182cb74ae4093f9fcbb13604905803fd55b"
+    },
+    "independent/scoped-review.json": {
+      "bytes": 5404,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/independent/scoped-review.json",
+      "sha256": "217a66931d9043eb1f6d4f0d6ac76e9a9d0baf90d1a72907f532a5e35089d14d"
+    },
+    "local-summary.json": {
+      "bytes": 15241,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local-summary.json",
+      "sha256": "4b139b4b86e4ddc0d78d03a1481ae5a8e6cf4b42956c86a64d023e616224b99e"
+    },
+    "local/archive_binding/result.json": {
+      "bytes": 1279,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/archive_binding/result.json",
+      "sha256": "63f3df1cde5ecbc758c4fd592f8a14dc3fb67f9085af377edd61896294515e81"
+    },
+    "local/archive_binding/stderr.log": {
+      "bytes": 153,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/archive_binding/stderr.log",
+      "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+    },
+    "local/archive_binding/stdout.log": {
+      "bytes": 115,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/archive_binding/stdout.log",
+      "sha256": "5182e753b145fe5f25e5d18ee4b1ec484031a065ae1bb3991c22f71c0009c0a8"
+    },
+    "local/archive_binding_v2/result.json": {
+      "bytes": 1281,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/archive_binding_v2/result.json",
+      "sha256": "8d8cfd73dcea7b7125a17c1626d035359c1458d42140926468e5b1eee2bfe155"
+    },
+    "local/archive_binding_v2/stderr.log": {
+      "bytes": 153,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/archive_binding_v2/stderr.log",
+      "sha256": "55801ea16fd8041999dd582c62249a0235979453c6cc926d199d51f03528a677"
+    },
+    "local/archive_binding_v2/stdout.log": {
+      "bytes": 4159,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/archive_binding_v2/stdout.log",
+      "sha256": "567ecf4e19e1d685b4b34bc15bef5602e6eaf98d00d639644bee6aae321ed6af"
+    },
+    "local/candidate_v6/result.json": {
+      "bytes": 1308,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/candidate_v6/result.json",
+      "sha256": "9cad8af91ea15f540aaf06f5433b1cd2e8369db0e4854ca072e04bc813e54d38"
+    },
+    "local/candidate_v6/stderr.log": {
+      "bytes": 267,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/candidate_v6/stderr.log",
+      "sha256": "3218f9b9fe1faf6ca9ebb1cadac200e32dfbf4472e2fa3ba06949169a5d460e7"
+    },
+    "local/candidate_v6/stdout.log": {
+      "bytes": 407,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/candidate_v6/stdout.log",
+      "sha256": "0201cb4bd06535b2d63b8fae280ecf7c9067a542b0de1206ead638184f20df15"
+    },
+    "local/clippy/result.json": {
+      "bytes": 1265,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/clippy/result.json",
+      "sha256": "caae4779555b3f576295b568be4168b9ae740ad2163527ad4f5de9c8b85826c6"
+    },
+    "local/clippy/stderr.log": {
+      "bytes": 186,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/clippy/stderr.log",
+      "sha256": "61c2622247f7c025426c441e5de4d67adb15baf9d3c69d28d0bfa31c315f5a25"
+    },
+    "local/clippy/stdout.log": {
+      "bytes": 0,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/clippy/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/format/result.json": {
+      "bytes": 1202,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/format/result.json",
+      "sha256": "6c2f02568036bb6c12ba192de7e4979d776dd6466e819c5f2d737a6ed8fd4b56"
+    },
+    "local/format/stderr.log": {
+      "bytes": 0,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/format/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/format/stdout.log": {
+      "bytes": 0,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/format/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local/journal/result.json": {
+      "bytes": 1274,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/journal/result.json",
+      "sha256": "4451482077ec4ba2bf943642c05c1e15dc924819a92fbe444d8a9fe53fc0d13e"
+    },
+    "local/journal/stderr.log": {
+      "bytes": 153,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/journal/stderr.log",
+      "sha256": "44be4b124b944c5ae7a42661f0a5ce7f95ce8b374cc35986eabb45062026af7e"
+    },
+    "local/journal/stdout.log": {
+      "bytes": 1101,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/journal/stdout.log",
+      "sha256": "1ffd007e305bb6f8d0925a43f5084e4f6b6f9cd02c93a42751634dc4644ba7d5"
+    },
+    "local/price_lifecycle/result.json": {
+      "bytes": 1271,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/price_lifecycle/result.json",
+      "sha256": "b9160bea0491c837fc255165b729872cbc49fb47efc4a040900dda5483f79120"
+    },
+    "local/price_lifecycle/stderr.log": {
+      "bytes": 153,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/price_lifecycle/stderr.log",
+      "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+    },
+    "local/price_lifecycle/stdout.log": {
+      "bytes": 1334,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/price_lifecycle/stdout.log",
+      "sha256": "974d9bb9e6f4d0788a1802814a066e608be1780b547bea4b03cc3dc719e9ee9c"
+    },
+    "local/retention/result.json": {
+      "bytes": 1281,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/retention/result.json",
+      "sha256": "bd9dcaba0ec3e7e6f70d699713438b7082b4195fbef97eaf4bbb50390854053a"
+    },
+    "local/retention/stderr.log": {
+      "bytes": 153,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/retention/stderr.log",
+      "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+    },
+    "local/retention/stdout.log": {
+      "bytes": 115,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/retention/stdout.log",
+      "sha256": "5182e753b145fe5f25e5d18ee4b1ec484031a065ae1bb3991c22f71c0009c0a8"
+    },
+    "local/retention_v2/result.json": {
+      "bytes": 1282,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/retention_v2/result.json",
+      "sha256": "53c670b581abb2942ff43f1d60c6fa6dcbe766767d74619ae144175410bebac2"
+    },
+    "local/retention_v2/stderr.log": {
+      "bytes": 153,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/retention_v2/stderr.log",
+      "sha256": "7ce8fe84631b38ab4e3c6419fde99c9535b48ae2f35af31cb473084c3888be9f"
+    },
+    "local/retention_v2/stdout.log": {
+      "bytes": 115,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/local/retention_v2/stdout.log",
+      "sha256": "5182e753b145fe5f25e5d18ee4b1ec484031a065ae1bb3991c22f71c0009c0a8"
+    },
+    "run_owned_check.py": {
+      "bytes": 1759,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/run_owned_check.py",
+      "sha256": "026ce8d4b0bdf953ac3fc19eedeedc0b1ff73f0c75b7fb0bd5e5c9839f528018"
+    },
+    "source-freeze-final.json": {
+      "bytes": 49199,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/source-freeze-final.json",
+      "sha256": "d84261f1733282d36c22203858d09110b3a9706c54ae68d75ab17335b96247e9"
+    },
+    "task-contract.json": {
+      "bytes": 1324,
+      "original": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/task-contract.json",
+      "sha256": "2d7a5b238f215eee826881541fbf62b599807b050d967fce5565e2fec5275200"
+    }
+  },
+  "production_release": "HOLD",
+  "schema": "arcora-journal-v6-repo-packet/v1",
+  "scope": "Pre-publication local evidence. PR CI, merge and main are pending and require independent later final records.",
+  "source_count": 380,
+  "source_sha256": "7fe776cc4f1f4c612b7584c11ae8715b0c6afc2c0273ebc411ba633911048fc8"
+}

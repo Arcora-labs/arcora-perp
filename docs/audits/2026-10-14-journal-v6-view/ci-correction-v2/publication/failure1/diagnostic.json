@@ -1,0 +1,31 @@
+{
+  "acceptance": false,
+  "command": [
+    "gh",
+    "run",
+    "view",
+    "38546420259",
+    "--repo",
+    "Arcora-labs/arcora-perp",
+    "--job",
+    "115793497831",
+    "--log"
+  ],
+  "exit_code": 0,
+  "files": {
+    "release-regression.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "release-regression.stdout.log": {
+      "bytes": 223716,
+      "sha256": "16bb7f0dce4de615ac8c65524d6fdf4f6bd6e708a4ec25a6c294feb66a6d6182"
+    }
+  },
+  "job": 115793497831,
+  "observed_utc": "2026-10-14T10:07:02.351019+00:00",
+  "rerun": false,
+  "run": 38546420259,
+  "schema": "arcora-pr66-release-failure-raw-diagnostic/v1",
+  "source_head": "243a2eac9733675394a89e10b21fd6d242664cf2"
+}

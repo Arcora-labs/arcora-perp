@@ -1,0 +1,27 @@
+{
+  "command": [
+    "/opt/homebrew/bin/python3.12",
+    "-B",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/publication/poll_ci.py"
+  ],
+  "elapsed_seconds": 113.08808700006921,
+  "ended_utc": "2026-10-14T10:05:41.686654+00:00",
+  "exit_code": 1,
+  "expectations_unchanged": true,
+  "helper_unchanged": true,
+  "old_CI65_physical210_and_selected_helpers_all_bytes_unchanged": true,
+  "owned_pid": 45344,
+  "passed": false,
+  "phase": "completed",
+  "schema": "arcora-pr66-ci-monitor-outer-execution/v1",
+  "source_writes": false,
+  "stderr": {
+    "bytes": 72,
+    "sha256": "f4bcc0fe6d0c3ce2e99b054cd533894a9784c429cd78d185d6ffa0eb65878e6b"
+  },
+  "stdout": {
+    "bytes": 1065,
+    "sha256": "ae123cc74de33ebd93ed2a87da36181627a5a394b46608826513370c09513088"
+  },
+  "workflow_rerun": false
+}
