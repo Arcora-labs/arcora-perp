@@ -1,0 +1,149 @@
+{
+  "actual_old_export": {
+    "elapsed_seconds": 10.257011334062554,
+    "failed": 0,
+    "ignored": 0,
+    "passed": 1,
+    "result_sha256": "21b2ae5be0287ca5dd78d0ee416555f90450b24134c7adb1dfdf984dbb5b5b2a",
+    "scope": "Explicit selection of temporary ignored diagnostic exporter; no normal golden acceptance on old placeholders",
+    "stdout_sha256": "6ae8180f57b62a586d9cac49c60486fe99c7f666d783d81ddcc8f5acbb0eb2da"
+  },
+  "actual_root_owned_new_run": {
+    "elapsed_seconds": 8.467737917089835,
+    "failed": 0,
+    "ignored": 0,
+    "passed": 2,
+    "result_sha256": "93af794a5fe3ba3a16b62ba61e36d2aff6bf23edbf42d084a10706658295f647",
+    "scope": "Read completed root-owned source-bound result and raw output; reviewer ran no Cargo/test",
+    "stdout_sha256": "c158e1877e739c3f38ae874401a9129609a94595e46861718a09274248e1cf12"
+  },
+  "base": "c387dbe2de0392a996d6028f745f81fa963809dd",
+  "blocking_findings": [],
+  "ci_binding_recommendation": "Root final expectations should bind all21 new raw .bin Git blobs under head_only_files_sha256, besides covered source map; existing verifier supports it.",
+  "committed_golden_files_exact_old_export": {
+    "normal-00-before_first_seal_seq.bin": {
+      "bytes": 3105,
+      "sha256": "1ae7d052a52096ed0ad48c9fdd484f2b013866900a1c7272e9ab52211b8531d0"
+    },
+    "normal-01-first_witness.bin": {
+      "bytes": 1639,
+      "sha256": "8cf1a130ae94db45636f0752ea7d01e0d46aac1ef4f6b0571d771a395282b6f8"
+    },
+    "normal-02-first_legacy.bin": {
+      "bytes": 1638,
+      "sha256": "16bfa40c5a352f46d52ecacb50e5f23feeeb170cac0da41b05db297630f280fb"
+    },
+    "normal-03-first_clocked.bin": {
+      "bytes": 1767,
+      "sha256": "c864b5709365be79f7471a03dd8ed7e81ddf749284d394d2131ce62ee56c4b85"
+    },
+    "normal-04-after_first_seal_seq.bin": {
+      "bytes": 2389,
+      "sha256": "9776a7c643e2bbe99911c82fa4feb91117c9a8c74a68f42907cada4488e76100"
+    },
+    "normal-05-live_mutated_seq.bin": {
+      "bytes": 3214,
+      "sha256": "8873b09f9f8a6da2a11b8ce5a51f8b3f0dc1c5039ab7ad1157508f98f409385d"
+    },
+    "normal-06-second_witness.bin": {
+      "bytes": 1343,
+      "sha256": "6171e276a424d06599f6cf874db5540270dcf1b6392f995b629fc3db9237c8f7"
+    },
+    "normal-07-second_legacy.bin": {
+      "bytes": 1342,
+      "sha256": "034a5206e4396efdebd67eb75ed04ce353091859ee1c22916ef09d0bc0c94916"
+    },
+    "normal-08-second_clocked.bin": {
+      "bytes": 1471,
+      "sha256": "0d5c74c3a458a01f05ed98c2edf7af96cd7276883632691fa1ba0532ecfda653"
+    },
+    "normal-09-after_second_seal_seq.bin": {
+      "bytes": 2865,
+      "sha256": "5c0555f09cb7a268d88cfd1ab45b04e87b9d62414cbc4770a2c6ecbccf932831"
+    },
+    "rollback-00-before_first_seal_seq.bin": {
+      "bytes": 3105,
+      "sha256": "1ae7d052a52096ed0ad48c9fdd484f2b013866900a1c7272e9ab52211b8531d0"
+    },
+    "rollback-01-first_witness.bin": {
+      "bytes": 1639,
+      "sha256": "8cf1a130ae94db45636f0752ea7d01e0d46aac1ef4f6b0571d771a395282b6f8"
+    },
+    "rollback-02-first_legacy.bin": {
+      "bytes": 1638,
+      "sha256": "16bfa40c5a352f46d52ecacb50e5f23feeeb170cac0da41b05db297630f280fb"
+    },
+    "rollback-03-first_clocked.bin": {
+      "bytes": 1767,
+      "sha256": "c864b5709365be79f7471a03dd8ed7e81ddf749284d394d2131ce62ee56c4b85"
+    },
+    "rollback-04-after_first_seal_seq.bin": {
+      "bytes": 2389,
+      "sha256": "9776a7c643e2bbe99911c82fa4feb91117c9a8c74a68f42907cada4488e76100"
+    },
+    "rollback-05-intervening_seq.bin": {
+      "bytes": 2954,
+      "sha256": "185f5e5bf7b42074c425f1fe9bfee1d52ef93e63b299aedd507fd05a69e129b0"
+    },
+    "rollback-06-after_rollback_seq.bin": {
+      "bytes": 3670,
+      "sha256": "a6f646ebb4bd250449d70466ddc0120bf6ec7fbc2875d735159bef9680d29ba3"
+    },
+    "rollback-07-resealed_witness.bin": {
+      "bytes": 2062,
+      "sha256": "aa8f94eae5d12ee10aac0e5b95a356ac9339673b01693905ca127b3dad1f3550"
+    },
+    "rollback-08-resealed_legacy.bin": {
+      "bytes": 2061,
+      "sha256": "cb053eefc1194efb7f46c858ada8ce1db2b1fcff17f889a36e3e3ffe40ed2145"
+    },
+    "rollback-09-resealed_clocked.bin": {
+      "bytes": 2190,
+      "sha256": "4408659eed48cb8a7e025da4263bf54219a0de360f788d7df515f147278485fa"
+    },
+    "rollback-10-after_reseal_seq.bin": {
+      "bytes": 2595,
+      "sha256": "e5ebf923f46dfe6ee489e917c0c68244239c7f4e4660762932aff4ed61fbee87"
+    }
+  },
+  "counter_bump_then_prepare_then_replace_then_drain_verified": true,
+  "fixture_builders_old_new_byte_identical_sha256": "ea0c311afa366d800dbde696e094d9a691e17a6897748cd8d0ff894ed4133669",
+  "full_byte_assertions_not_hash_only": true,
+  "limits": [
+    "Normal successful-path semantic equivalence only, not recoverable OOM/panic equivalence",
+    "Old baseline ownership preserves capacity previously lost through cloning; allocation ordering changes",
+    "No measured CPU/RSS/aggregate input cap/throughput/proving capacity benefit",
+    "No changes/claims for journal, replay or rollback clones, guest/core/pins, live backend/proof/production HOLD"
+  ],
+  "normal_rows": 10,
+  "normal_tests": 2,
+  "observed_utc": "2026-10-14T08:20:19.456427+00:00",
+  "old_export_raw_rows": 21,
+  "old_sequencer_exact_base_blob_sha256": "04ea88b2e96ff6407496aadb5ff110c549d40a333372234c1648551fbb65487a",
+  "parent_module_before_terminal_request_body_tests": true,
+  "passed": true,
+  "production_patch_mechanical_old_function_normalization_exact": true,
+  "reviewed_acceptance": [
+    "Valid fixed-time signed oracle observations and actual fills plus explicit Expired rejection",
+    "Full Sequencer and witness/legacy/DPCLK2 byte comparisons against actual old source",
+    "Post-bump second baseline and logged live Deposit independent of first witness",
+    "Historical oracle operation order and duplicate hashes, no latest-feed substitution",
+    "Rollback same window ID, preserved Counter A, original+intervening op/order/rejection concatenation and tick maps",
+    "Immediate reseal roots match live state and original witness stays immutable"
+  ],
+  "reviewer_operations": {
+    "cargo_or_tests": 0,
+    "git_mutations": 0,
+    "network": 0,
+    "new_ignored_receipt_only": true,
+    "source_writes": 0
+  },
+  "rollback_rows": 11,
+  "schema": "arcora-seal-window-ownership-independent-review/v1",
+  "source_before_after_sha256": {
+    "crates/gateway/src/prover_client.rs": "dea48e5ea9af3676309fc9bada19b37d9273616c90ff098905d08580fbd47684",
+    "crates/gateway/src/prover_client/window_ownership_tests.rs": "aab20366eb642d92020cde714f5b3a73d8415eb4073af35b3cf2caf702e422ed",
+    "crates/sequencer/src/lib.rs": "341e8483eae3b258edcbe3a2e2e19db6644f585e6ecb30b298954200051eeb53"
+  },
+  "temporary_exporter_removed": true
+}

@@ -1,0 +1,14 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+     Running unittests src/main.rs (target/debug/deps/gateway-1dc4365c5e206497)
+
+thread 'prover_client::window_ownership_tests::old_seal_bytes_and_second_baseline_survive_live_mutation' (18186624) panicked at crates/gateway/src/prover_client/window_ownership_tests.rs:323:9:
+assertion `left == right` failed: old-source byte length: before_first_seal_seq
+  left: 3105
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'prover_client::window_ownership_tests::old_rollback_reseal_bytes_keep_intervening_order_clocks_and_maps' (18186623) panicked at crates/gateway/src/prover_client/window_ownership_tests.rs:323:9:
+assertion `left == right` failed: old-source byte length: before_first_seal_seq
+  left: 3105
+ right: 0
+error: test failed, to rerun pass `-p gateway --bin gateway`

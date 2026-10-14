@@ -1,0 +1,176 @@
+{
+  "allowed_metadata_files": {
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-00-before_first_seal_seq.bin": {
+      "bytes": 3105,
+      "sha256": "1ae7d052a52096ed0ad48c9fdd484f2b013866900a1c7272e9ab52211b8531d0"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-01-first_witness.bin": {
+      "bytes": 1639,
+      "sha256": "8cf1a130ae94db45636f0752ea7d01e0d46aac1ef4f6b0571d771a395282b6f8"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-02-first_legacy.bin": {
+      "bytes": 1638,
+      "sha256": "16bfa40c5a352f46d52ecacb50e5f23feeeb170cac0da41b05db297630f280fb"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-03-first_clocked.bin": {
+      "bytes": 1767,
+      "sha256": "c864b5709365be79f7471a03dd8ed7e81ddf749284d394d2131ce62ee56c4b85"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-04-after_first_seal_seq.bin": {
+      "bytes": 2389,
+      "sha256": "9776a7c643e2bbe99911c82fa4feb91117c9a8c74a68f42907cada4488e76100"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-05-live_mutated_seq.bin": {
+      "bytes": 3214,
+      "sha256": "8873b09f9f8a6da2a11b8ce5a51f8b3f0dc1c5039ab7ad1157508f98f409385d"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-06-second_witness.bin": {
+      "bytes": 1343,
+      "sha256": "6171e276a424d06599f6cf874db5540270dcf1b6392f995b629fc3db9237c8f7"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-07-second_legacy.bin": {
+      "bytes": 1342,
+      "sha256": "034a5206e4396efdebd67eb75ed04ce353091859ee1c22916ef09d0bc0c94916"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-08-second_clocked.bin": {
+      "bytes": 1471,
+      "sha256": "0d5c74c3a458a01f05ed98c2edf7af96cd7276883632691fa1ba0532ecfda653"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-09-after_second_seal_seq.bin": {
+      "bytes": 2865,
+      "sha256": "5c0555f09cb7a268d88cfd1ab45b04e87b9d62414cbc4770a2c6ecbccf932831"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-00-before_first_seal_seq.bin": {
+      "bytes": 3105,
+      "sha256": "1ae7d052a52096ed0ad48c9fdd484f2b013866900a1c7272e9ab52211b8531d0"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-01-first_witness.bin": {
+      "bytes": 1639,
+      "sha256": "8cf1a130ae94db45636f0752ea7d01e0d46aac1ef4f6b0571d771a395282b6f8"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-02-first_legacy.bin": {
+      "bytes": 1638,
+      "sha256": "16bfa40c5a352f46d52ecacb50e5f23feeeb170cac0da41b05db297630f280fb"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-03-first_clocked.bin": {
+      "bytes": 1767,
+      "sha256": "c864b5709365be79f7471a03dd8ed7e81ddf749284d394d2131ce62ee56c4b85"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-04-after_first_seal_seq.bin": {
+      "bytes": 2389,
+      "sha256": "9776a7c643e2bbe99911c82fa4feb91117c9a8c74a68f42907cada4488e76100"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-05-intervening_seq.bin": {
+      "bytes": 2954,
+      "sha256": "185f5e5bf7b42074c425f1fe9bfee1d52ef93e63b299aedd507fd05a69e129b0"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-06-after_rollback_seq.bin": {
+      "bytes": 3670,
+      "sha256": "a6f646ebb4bd250449d70466ddc0120bf6ec7fbc2875d735159bef9680d29ba3"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-07-resealed_witness.bin": {
+      "bytes": 2062,
+      "sha256": "aa8f94eae5d12ee10aac0e5b95a356ac9339673b01693905ca127b3dad1f3550"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-08-resealed_legacy.bin": {
+      "bytes": 2061,
+      "sha256": "cb053eefc1194efb7f46c858ada8ce1db2b1fcff17f889a36e3e3ffe40ed2145"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-09-resealed_clocked.bin": {
+      "bytes": 2190,
+      "sha256": "4408659eed48cb8a7e025da4263bf54219a0de360f788d7df515f147278485fa"
+    },
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-10-after_reseal_seq.bin": {
+      "bytes": 2595,
+      "sha256": "e5ebf923f46dfe6ee489e917c0c68244239c7f4e4660762932aff4ed61fbee87"
+    }
+  },
+  "authorized_existing_source_paths": [
+    "crates/sequencer/src/lib.rs",
+    "crates/gateway/src/prover_client.rs"
+  ],
+  "authorized_new_source_path": "crates/gateway/src/prover_client/window_ownership_tests.rs",
+  "baseline_sha256": "654b0f85ba856ad8b9a0bff1817dd9ae17e86d85397ce725e3695b96e5ff8584",
+  "committed_paths": [],
+  "current_pointer_stable_cut": {
+    "bytes": 539,
+    "sha256": "f1ef88c5f35fcb4f71f8b83adda4cf6a112463889aca8cd4acc8d7f20c340a7a"
+  },
+  "expected_head": "c387dbe2de0392a996d6028f745f81fa963809dd",
+  "external": [
+    {
+      "dirty_count": 13,
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "name": "primary",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 7,
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "name": "kimi",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 62,
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "name": "dark",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    }
+  ],
+  "external_public_dirty_files": 82,
+  "head": "c387dbe2de0392a996d6028f745f81fa963809dd",
+  "manifests_locks_8_unchanged": true,
+  "observed_utc": "2026-10-14T08:22:18.245376+00:00",
+  "old_377_sources_preserved": true,
+  "original_PR64_pointer_verified": {
+    "bytes": 539,
+    "sha256": "f1ef88c5f35fcb4f71f8b83adda4cf6a112463889aca8cd4acc8d7f20c340a7a"
+  },
+  "original_immutable_unique_count": 4748,
+  "passed": true,
+  "phase": "frozen-source",
+  "pointer_backup": null,
+  "production_release": "HOLD",
+  "program_artifacts_9_unchanged": true,
+  "protected_original_files_verified": 4746,
+  "protected_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "schema": "arcora-seal-window-ownership-preservation/v1",
+  "scope": "Closed approved public roster only. Two existing source edits plus one new module and finite caller-declared metadata; exact source map, original pointer or exact PR64 backup, historical report/CI/raw files and external82 preserved. No private/env discovery, test/build/network/source/outside writes or proof/release acceptance. Cooperative readback, not an atomic filesystem snapshot or rollback-freshness guarantee.",
+  "source_count": 380,
+  "source_freeze_sha256": "2860a29f0134b500ee3dd1a6d18c6757435e776f976160fac4421552bb85d240",
+  "source_sha256": "1ed0b332badb55ea9c64d673cdf0955aa67fdcb9cc232a4ff613171a0d9392e3",
+  "status_paths": [
+    "crates/gateway/src/prover_client.rs",
+    "crates/sequencer/src/lib.rs",
+    "crates/gateway/src/prover_client/window_ownership_tests.rs",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-00-before_first_seal_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-01-first_witness.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-02-first_legacy.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-03-first_clocked.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-04-after_first_seal_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-05-live_mutated_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-06-second_witness.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-07-second_legacy.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-08-second_clocked.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-09-after_second_seal_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-00-before_first_seal_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-01-first_witness.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-02-first_legacy.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-03-first_clocked.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-04-after_first_seal_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-05-intervening_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-06-after_rollback_seq.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-07-resealed_witness.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-08-resealed_legacy.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-09-resealed_clocked.bin",
+    "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-10-after_reseal_seq.bin"
+  ],
+  "tree": "5c0cdcbdec0501bae947e67c91fe350f7da3603b"
+}

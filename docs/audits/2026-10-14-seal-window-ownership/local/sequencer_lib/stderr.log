@@ -1,0 +1,37 @@
+   Compiling zeroize v1.9.0
+   Compiling libc v0.2.186
+   Compiling const-oid v0.9.6
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling once_cell v1.21.4
+   Compiling generic-array v0.14.7
+   Compiling der v0.7.10
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling hmac v0.12.1
+   Compiling spki v0.7.3
+   Compiling sec1 v0.7.3
+   Compiling rfc6979 v0.4.0
+   Compiling pkcs8 v0.10.2
+   Compiling syn v2.0.118
+   Compiling getrandom v0.2.17
+   Compiling cpufeatures v0.2.17
+   Compiling sha2 v0.10.9
+   Compiling keccak v0.1.6
+   Compiling rand_core v0.6.4
+   Compiling sha3 v0.10.9
+   Compiling ff v0.13.1
+   Compiling crypto-bigint v0.5.5
+   Compiling signature v2.2.0
+   Compiling group v0.13.0
+   Compiling serde_derive v1.0.228
+   Compiling elliptic-curve v0.13.8
+   Compiling ecdsa v0.16.9
+   Compiling k256 v0.13.4
+   Compiling serde v1.0.228
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
+   Compiling matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
+   Compiling sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.91s
+     Running unittests src/lib.rs (target/debug/deps/sequencer-1844fab9fb564a1d)

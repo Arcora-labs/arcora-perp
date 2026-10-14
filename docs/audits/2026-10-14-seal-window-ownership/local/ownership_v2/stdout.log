@@ -1,0 +1,7 @@
+
+running 2 tests
+test prover_client::window_ownership_tests::old_seal_bytes_and_second_baseline_survive_live_mutation ... ok
+test prover_client::window_ownership_tests::old_rollback_reseal_bytes_keep_intervening_order_clocks_and_maps ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 785 filtered out; finished in 0.20s
+

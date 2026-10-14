@@ -1,0 +1,20 @@
+{
+  "after": {
+    "bytes": 55050,
+    "sha256": "5ae2c3eb6edbbb52d76cfb0b967b3b39324ad5e41d04436246ade8f13d63608c"
+  },
+  "append": {
+    "bytes": 1677,
+    "sha256": "228f2b76c6caa0a9aa89f85dd275725989a7ae4870fbc6c385b7196e623a50c7"
+  },
+  "base_commit": "c387dbe2de0392a996d6028f745f81fa963809dd",
+  "before": {
+    "bytes": 53373,
+    "sha256": "4824577117a096d869a687101bc8c96047322dfdb5a72827064aef60c5292ae5"
+  },
+  "passed": true,
+  "path": "docs/ACTIVE_WORK.md",
+  "prefix_byte_exact": true,
+  "schema": "arcora-seal-window-ownership-active-append/v1",
+  "scope": "Append-only metadata; old53373 bytes unchanged. Local results/current source only; CI pending and production HOLD."
+}

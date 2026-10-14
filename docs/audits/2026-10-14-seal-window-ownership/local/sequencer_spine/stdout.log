@@ -1,0 +1,36 @@
+
+running 31 tests
+test accept_then_seal_keeps_one_seq ... ok
+test auto_deleverage_publishes_an_attributable_receipt ... ok
+test clock_idle_compaction_cannot_drop_actual_funding_or_terminal_intent ... ok
+test clock_idle_funding_noops_do_not_create_an_unbounded_window ... ok
+test honest_flow_has_no_inclusion_violations ... ok
+test failed_batch_rolls_back_to_hard_state ... ok
+test liquidation_cancels_resting_orders ... ok
+test maintenance_liquidates_underwater_position ... ok
+test maintenance_reaps_expired_makers_so_they_do_not_anchor_the_mark ... ok
+test manifest_hash_is_stable_and_binds_roots ... ok
+test manifest_ordered_rejected_disjoint_invariant ... ok
+test marking_a_height_settled_finalizes_every_prior_pending_batch ... ok
+test match_settles_and_advances_finality ... ok
+test missing_adl_key_falls_back_to_secret_not_public_owner ... ok
+test missing_liq_key_falls_back_to_secret_not_public_owner ... ok
+test pre_trade_risk_rejects_unmarginable_before_matching ... ok
+test receipt_is_signed_and_verifies ... ok
+test multi_market_positions_are_isolated ... ok
+test reduce_only_order_cannot_open_a_position ... ok
+test reduce_only_behind_an_earlier_same_batch_order_is_rejected ... ok
+test reduce_only_order_may_shrink_a_position ... ok
+test rejected_for_cause_is_not_an_inclusion_violation ... ok
+test review_batch_timestamp_rejects_both_earlier_and_later_summaries ... ok
+test review_seal_preserves_nonzero_funding_across_distinct_tick_times ... ok
+test review_seal_keeps_historical_signed_oracles_across_a_long_window ... ok
+test rollback_window_restores_and_reseals_to_live_root ... ok
+test run_maintenance_ops_replay_reproduces_state ... ok
+test seal_window_replays_multi_tick_window_to_live_root ... ok
+test seal_window_two_tick_fills_only_round_trips ... ok
+test unknown_market_order_is_tagged_invalid_not_reduce_only ... ok
+test withheld_order_becomes_inclusion_violation ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
