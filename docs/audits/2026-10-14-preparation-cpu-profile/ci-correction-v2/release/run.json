@@ -1,0 +1,37 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "test",
+    "--release",
+    "-p",
+    "gateway",
+    "--bin",
+    "gateway",
+    "--locked",
+    "--offline",
+    "cpu_profile_tests",
+    "--",
+    "--include-ignored",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit_code": 0,
+  "files": {
+    "stderr": {
+      "bytes": 2259,
+      "sha256": "9e74f10579ad22cc84003cec9fd4333e0b3a7eb89c18353c9ed5fbf42c44ab22"
+    },
+    "stdout": {
+      "bytes": 34263,
+      "sha256": "302f7fa9650035d8e70b61d0ae053f2c2c061544ad9ef8ea8d0833f1bbb152ba"
+    }
+  },
+  "runtime": {
+    "cargo_build_jobs": 2,
+    "rust_test_threads": 1,
+    "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+  },
+  "source_count": 382,
+  "source_sha256": "dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14",
+  "wall_seconds": 82.60414387495257
+}

@@ -796,3 +796,6 @@ NewheadCI/merge/main pending; production HOLD/candidate disabled.
 ## 2026-10-14: bounded preparation CPU observations
 
 Test-only fixed PR65 input profiling completed locally: 110 release thread-CPU samples on macOS/Apple M4, two correctness/observation tests PASS. Source382 map31d74fdd003299a7a64ff505537d50ca40578b552bcea2d8cfcf14ac013df23f. Native replay, not small-fixture State clone, is the next investigation candidate; no production optimization or capacity guarantee. Packet: docs/audits/2026-10-14-preparation-cpu-profile/. CI publication/normal merge acceptance is a separate later readback. PRODUCTION HOLD and candidate submission disabled.
+
+
+PR67 corrected-source follow-up: first e19 Linux clippy FAILED on test fixture name; one untimed fixture-label assertion fixes it. Current382 source dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14 locally revalidated release2/0/0+110 samples, format/clippy PASS. Original21 packet bytes and failedCI logs preserved; corrected CI still a separate pending gate. Supplemental packet ci-correction-v2/. PRODUCTION HOLD.

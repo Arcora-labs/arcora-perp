@@ -187,6 +187,7 @@ fn assert_prepared(f: &Fixture, actual: &PreparedSettle, clocked: Option<bool>) 
 }
 
 fn assert_inputs(f: &Fixture) {
+    assert!(matches!(f.name, "normal" | "rollback_resealed"));
     assert_eq!(
         postcard::to_allocvec(&f.sequencer).unwrap(),
         f.sequencer_bytes

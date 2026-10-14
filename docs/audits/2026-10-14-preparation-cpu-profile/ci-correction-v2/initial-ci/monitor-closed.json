@@ -1,0 +1,11 @@
+{
+  "elapsed_seconds": 1.9435717919841409,
+  "log_downloads": 0,
+  "passed": false,
+  "reruns": 0,
+  "schema": "arcora-cpu-profile-monitor-closed/v1",
+  "source_writes": 0,
+  "stderr_sha256": "b5e3f373f264a51ae8d0b8aa196e20826a716cdf47d0cb2f746226791b32bb58",
+  "stdout_sha256": "79f91aee054b6e49a363fcc392f75b147856a807def5deb20ac739923b7570a9",
+  "writes_stopped": true
+}
