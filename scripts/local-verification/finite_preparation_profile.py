@@ -9,14 +9,14 @@ import argparse
 from collections import Counter
 import hashlib
 import json
-import os
 from pathlib import Path
 import platform
 import re
 import statistics
 import subprocess
 import sys
-import time
+
+from owned_process import supervise
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = "prover_client::finite_profile_tests::"
@@ -142,45 +142,28 @@ def check_test_result(text, passed):
 
 
 def capture(out, label, argv, timeout=900):
-    """Collect wait4 for this exact PID, never cumulative RUSAGE_CHILDREN.
+    """Capture exact-child usage and bounded cleanup of its owned process group.
 
-    stdout/stderr go to files, so waiting cannot deadlock on a full pipe. Each
-    command is exec'd separately. On timeout only this owned process is killed.
+    All terminal outcomes retain logs/status before failure or cancellation is
+    raised. This is POSIX CLI supervision, not a sandbox for escaping descendants.
     """
-    started = time.time()
+    require(isinstance(label, str) and re.fullmatch(r"[a-zA-Z0-9_.-]+", label),
+            "safe capture label required")
     with (out / f"{label}.stdout.log").open("xb") as stdout, (out / f"{label}.stderr.log").open("xb") as stderr:
-        process = subprocess.Popen(argv, cwd=ROOT, stdout=stdout, stderr=stderr)
-        deadline = time.monotonic() + timeout
-        timed_out = False
-        try:
-            while True:
-                pid, status, usage = os.wait4(process.pid, os.WNOHANG)
-                if pid:
-                    break
-                if time.monotonic() > deadline:
-                    timed_out = True
-                    process.kill()
-                    pid, status, usage = os.wait4(process.pid, 0)
-                    break
-                time.sleep(0.05)
-            process.returncode = os.waitstatus_to_exitcode(status)
-        except BaseException:
-            process.kill()
-            _, status, _ = os.wait4(process.pid, 0)
-            process.returncode = os.waitstatus_to_exitcode(status)
-            raise
+        outcome = supervise(argv, cwd=ROOT, stdout=stdout, stderr=stderr, timeout=timeout)
     logs = {}
     for kind in ("stdout", "stderr"):
         data = (out / f"{label}.{kind}.log").read_bytes()
         logs[kind] = {"bytes": len(data), "sha256": sha(data)}
-    record = {
-        "command": argv, "pid": process.pid, "started_unix": started,
-        "wall_seconds": time.time() - started, "exit_code": process.returncode,
-        "timed_out": timed_out, "wait4_ru_maxrss_raw": usage.ru_maxrss,
-        "ru_maxrss_unit": "bytes (macOS)", "logs": logs,
-    }
+    record = dict(outcome.metadata)
+    record.update({
+        "ru_maxrss_unit": {"Darwin": "bytes (macOS)", "Linux": "KiB (Linux)"}.get(platform.system(), "platform-native units"),
+        "logs": logs,
+    })
     dump(out / f"{label}.json", record)
-    require(not timed_out and process.returncode == 0, f"{label} failed; inspect retained logs")
+    if outcome.error is not None:
+        raise outcome.error
+    require(record["success"], f"{label} failed; inspect retained logs")
     return record, (out / f"{label}.stdout.log").read_text()
 
 

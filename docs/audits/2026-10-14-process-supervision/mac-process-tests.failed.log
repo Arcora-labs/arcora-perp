@@ -1,0 +1,99 @@
+test_exception_and_keyboard_interrupt_cleanup_then_preserve_original (test_owned_process.OwnedProcessTests.test_exception_and_keyboard_interrupt_cleanup_then_preserve_original) ... 
+  test_exception_and_keyboard_interrupt_cleanup_then_preserve_original (test_owned_process.OwnedProcessTests.test_exception_and_keyboard_interrupt_cleanup_then_preserve_original) (error='RuntimeError') ... FAIL
+  test_exception_and_keyboard_interrupt_cleanup_then_preserve_original (test_owned_process.OwnedProcessTests.test_exception_and_keyboard_interrupt_cleanup_then_preserve_original) (error='KeyboardInterrupt') ... FAIL
+test_exception_and_keyboard_interrupt_cleanup_then_preserve_original (test_owned_process.OwnedProcessTests.test_exception_and_keyboard_interrupt_cleanup_then_preserve_original) ... ERROR
+test_exited_leader_with_leftover_child_is_not_success (test_owned_process.OwnedProcessTests.test_exited_leader_with_leftover_child_is_not_success) ... ok
+test_graceful_timeout_zero_exit_cannot_be_success (test_owned_process.OwnedProcessTests.test_graceful_timeout_zero_exit_cannot_be_success) ... ok
+test_invalid_arguments_never_spawn (test_owned_process.OwnedProcessTests.test_invalid_arguments_never_spawn) ... ok
+test_large_output_goes_to_files_not_blocking_pipes (test_owned_process.OwnedProcessTests.test_large_output_goes_to_files_not_blocking_pipes) ... ok
+test_signal_during_spawn_return_keeps_ownership_and_restores_handlers (test_owned_process.OwnedProcessTests.test_signal_during_spawn_return_keeps_ownership_and_restores_handlers) ... /opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 78645 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 78647 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+
+  test_signal_during_spawn_return_keeps_ownership_and_restores_handlers (test_owned_process.OwnedProcessTests.test_signal_during_spawn_return_keeps_ownership_and_restores_handlers) (sig=<Signals.SIGINT: 2>) ... FAIL
+  test_signal_during_spawn_return_keeps_ownership_and_restores_handlers (test_owned_process.OwnedProcessTests.test_signal_during_spawn_return_keeps_ownership_and_restores_handlers) (sig=<Signals.SIGTERM: 15>) ... FAIL
+test_signal_during_spawn_return_keeps_ownership_and_restores_handlers (test_owned_process.OwnedProcessTests.test_signal_during_spawn_return_keeps_ownership_and_restores_handlers) ... ERROR
+test_spawn_failure_is_recorded_without_any_group_signal (test_owned_process.OwnedProcessTests.test_spawn_failure_is_recorded_without_any_group_signal) ... ok
+test_success_and_nonzero_preserve_actual_status_and_usage (test_owned_process.OwnedProcessTests.test_success_and_nonzero_preserve_actual_status_and_usage) ... ok
+test_timeout_kills_ignoring_tree_but_not_unrelated_session (test_owned_process.OwnedProcessTests.test_timeout_kills_ignoring_tree_but_not_unrelated_session) ... FAIL
+test_timeout_kills_ignoring_tree_but_not_unrelated_session (test_owned_process.OwnedProcessTests.test_timeout_kills_ignoring_tree_but_not_unrelated_session) ... ERROR
+
+======================================================================
+ERROR: test_exception_and_keyboard_interrupt_cleanup_then_preserve_original (test_owned_process.OwnedProcessTests.test_exception_and_keyboard_interrupt_cleanup_then_preserve_original)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 59, in tearDown
+    os.killpg(pgid, signal.SIGKILL)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_signal_during_spawn_return_keeps_ownership_and_restores_handlers (test_owned_process.OwnedProcessTests.test_signal_during_spawn_return_keeps_ownership_and_restores_handlers)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 59, in tearDown
+    os.killpg(pgid, signal.SIGKILL)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_timeout_kills_ignoring_tree_but_not_unrelated_session (test_owned_process.OwnedProcessTests.test_timeout_kills_ignoring_tree_but_not_unrelated_session)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 59, in tearDown
+    os.killpg(pgid, signal.SIGKILL)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+FAIL: test_exception_and_keyboard_interrupt_cleanup_then_preserve_original (test_owned_process.OwnedProcessTests.test_exception_and_keyboard_interrupt_cleanup_then_preserve_original) (error='RuntimeError')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 199, in test_exception_and_keyboard_interrupt_cleanup_then_preserve_original
+    self.assertTrue(result.metadata['leader_reaped'])
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_exception_and_keyboard_interrupt_cleanup_then_preserve_original (test_owned_process.OwnedProcessTests.test_exception_and_keyboard_interrupt_cleanup_then_preserve_original) (error='KeyboardInterrupt')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 199, in test_exception_and_keyboard_interrupt_cleanup_then_preserve_original
+    self.assertTrue(result.metadata['leader_reaped'])
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_signal_during_spawn_return_keeps_ownership_and_restores_handlers (test_owned_process.OwnedProcessTests.test_signal_during_spawn_return_keeps_ownership_and_restores_handlers) (sig=<Signals.SIGINT: 2>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 177, in test_signal_during_spawn_return_keeps_ownership_and_restores_handlers
+    self.assertTrue(result.metadata['leader_reaped'])
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_signal_during_spawn_return_keeps_ownership_and_restores_handlers (test_owned_process.OwnedProcessTests.test_signal_during_spawn_return_keeps_ownership_and_restores_handlers) (sig=<Signals.SIGTERM: 15>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 177, in test_signal_during_spawn_return_keeps_ownership_and_restores_handlers
+    self.assertTrue(result.metadata['leader_reaped'])
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_timeout_kills_ignoring_tree_but_not_unrelated_session (test_owned_process.OwnedProcessTests.test_timeout_kills_ignoring_tree_but_not_unrelated_session)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_owned_process.py", line 147, in test_timeout_kills_ignoring_tree_but_not_unrelated_session
+    self.assertEqual(result.metadata['exit_code'], -signal.SIGKILL)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None != -9
+
+----------------------------------------------------------------------
+Ran 9 tests in 4.941s
+
+FAILED (failures=5, errors=3)

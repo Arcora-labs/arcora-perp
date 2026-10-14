@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Fail-closed validation tests for finite preparation diagnostics."""
 import copy
+import json
+from pathlib import Path
+import sys
+import tempfile
+from unittest import mock
+from owned_process import Outcome
 import unittest
 import finite_preparation_profile as profile
 
@@ -60,6 +66,62 @@ class ProfileValidation(unittest.TestCase):
             changed[key] = value
             with self.assertRaises(ValueError):
                 profile.validate_metadata(changed)
+
+
+class CaptureEvidence(unittest.TestCase):
+    def test_success_records_exact_status_and_output(self):
+        with tempfile.TemporaryDirectory() as name:
+            out = Path(name)
+            record, text = profile.capture(out, "success", [sys.executable, "-S", "-c", "print('captured')"])
+            self.assertEqual(text, "captured\n")
+            self.assertTrue(record["success"])
+            self.assertTrue(record["cleanup_complete"])
+            self.assertEqual(json.loads((out/"success.json").read_text()), record)
+
+    def test_timeout_and_nonzero_logs_are_retained(self):
+        with tempfile.TemporaryDirectory() as name:
+            out = Path(name)
+            for label, script, timeout in (("timeout", "import time;time.sleep(30)", .05),
+                                           ("nonzero", "raise SystemExit(7)", 5)):
+                with self.assertRaises(ValueError):
+                    profile.capture(out, label, [sys.executable, "-S", "-c", script], timeout=timeout)
+                record = json.loads((out/f"{label}.json").read_text())
+                self.assertFalse(record["success"])
+                self.assertTrue(record["leader_reaped"])
+                self.assertEqual(record["timed_out"], label == "timeout")
+                for kind, fields in record["logs"].items():
+                    data = (out/f"{label}.{kind}.log").read_bytes()
+                    self.assertEqual(profile.sha(data), fields["sha256"])
+
+    def test_cancellation_evidence_precedes_reraise(self):
+        error = KeyboardInterrupt("injected cancellation")
+        with tempfile.TemporaryDirectory() as name:
+            out = Path(name)
+            with mock.patch.object(profile, "supervise", return_value=Outcome({"success": False}, error)):
+                with self.assertRaises(KeyboardInterrupt) as raised:
+                    profile.capture(out, "cancelled", ["not-executed"])
+            self.assertIs(raised.exception, error)
+            self.assertFalse(json.loads((out/"cancelled.json").read_text())["success"])
+
+    def test_spawn_failure_preserves_evidence_and_exception(self):
+        with tempfile.TemporaryDirectory() as name:
+            out = Path(name)
+            with self.assertRaises(FileNotFoundError):
+                profile.capture(out, "spawn", [str(out/"not-present")])
+            record = json.loads((out/"spawn.json").read_text())
+            self.assertEqual(record["exception_type"], "FileNotFoundError")
+            self.assertIsNone(record["pid"])
+
+    def test_existing_logs_are_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as name:
+            out = Path(name)
+            original = out/"same.stdout.log"
+            original.write_bytes(b"preserve")
+            with mock.patch.object(profile, "supervise") as spawn:
+                with self.assertRaises(FileExistsError):
+                    profile.capture(out, "same", ["not-executed"])
+                spawn.assert_not_called()
+            self.assertEqual(original.read_bytes(), b"preserve")
 
 
 if __name__ == "__main__":

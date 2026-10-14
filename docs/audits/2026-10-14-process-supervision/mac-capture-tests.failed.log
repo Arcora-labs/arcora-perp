@@ -1,0 +1,40 @@
+test_cancellation_evidence_precedes_reraise (test_finite_preparation_profile.CaptureEvidence.test_cancellation_evidence_precedes_reraise) ... ok
+test_existing_logs_are_not_overwritten (test_finite_preparation_profile.CaptureEvidence.test_existing_logs_are_not_overwritten) ... ok
+test_spawn_failure_preserves_evidence_and_exception (test_finite_preparation_profile.CaptureEvidence.test_spawn_failure_preserves_evidence_and_exception) ... ok
+test_success_records_exact_status_and_output (test_finite_preparation_profile.CaptureEvidence.test_success_records_exact_status_and_output) ... ok
+test_timeout_and_nonzero_logs_are_retained (test_finite_preparation_profile.CaptureEvidence.test_timeout_and_nonzero_logs_are_retained) ... ERROR
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 83107 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+test_booleans_batch_shape_and_duration_refused (test_finite_preparation_profile.ProfileValidation.test_booleans_batch_shape_and_duration_refused) ... ok
+test_complete_grid_and_units (test_finite_preparation_profile.ProfileValidation.test_complete_grid_and_units) ... ok
+test_metadata_shape_and_synthetic_labels (test_finite_preparation_profile.ProfileValidation.test_metadata_shape_and_synthetic_labels) ... ok
+test_missing_duplicate_unknown_and_extra_fields (test_finite_preparation_profile.ProfileValidation.test_missing_duplicate_unknown_and_extra_fields) ... ok
+test_zero_tests_failure_and_ignored_are_not_passes (test_finite_preparation_profile.ProfileValidation.test_zero_tests_failure_and_ignored_are_not_passes) ... ok
+
+======================================================================
+ERROR: test_timeout_and_nonzero_logs_are_retained (test_finite_preparation_profile.CaptureEvidence.test_timeout_and_nonzero_logs_are_retained)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_finite_preparation_profile.py", line 87, in test_timeout_and_nonzero_logs_are_retained
+    profile.capture(out, label, [sys.executable, "-S", "-c", script], timeout=timeout)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/finite_preparation_profile.py", line 165, in capture
+    raise outcome.error
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 170, in supervise
+    cleanup()
+    ~~~~~~~^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 136, in cleanup
+    if not group_exists():
+           ~~~~~~~~~~~~^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 111, in group_exists
+    present = _group_exists(process.pid)
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 57, in _group_exists
+    os.killpg(pgid, 0)
+    ~~~~~~~~~^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.397s
+
+FAILED (errors=1)

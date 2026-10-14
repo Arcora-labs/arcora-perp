@@ -1,0 +1,72 @@
+{
+  "base": "98cded403c3fba045094bda330b61e12aba99d03",
+  "candidate_submission": "disabled",
+  "ci": "pending at publication",
+  "evidence": {
+    "README.md": {
+      "bytes": 4770,
+      "sha256": "23a5b362972a502af05d73a0daf89ec1a96b97ba4b15435e2bdad939654e1066"
+    },
+    "linux-supervisor-tests.log": {
+      "bytes": 1657,
+      "sha256": "c2a31b45a53e5ccfa0fec27b5a41f57864ca2450f1e24a9c303163bfe3795b21"
+    },
+    "mac-capture-tests.failed.log": {
+      "bytes": 3550,
+      "sha256": "1e59d3e1c19e805bf8894130bb36b72e8c6070c62093bd0cebfcf4a81c955fbf"
+    },
+    "mac-permission-refusal.log": {
+      "bytes": 237,
+      "sha256": "a40e494e33456d7e851af7622a48c4819477ea25ae2d46ed23881636cd466e4e"
+    },
+    "mac-process-tests.failed.log": {
+      "bytes": 9088,
+      "sha256": "b59423285289c0b3259102e4b9b35e898532ac8962206f040a99a0eba37d6866"
+    },
+    "repository-policy.log": {
+      "bytes": 546,
+      "sha256": "0d6a646502c22482a200b9b646784df36014232b13e7557e999e8b8ee3b8db00"
+    }
+  },
+  "files": {
+    ".github/workflows/a11-release-evidence.yml": "fa2c1c6cf63ae50bc1e0227da7a9dd11698a128e8581dd0533d39dc11bd9dc61",
+    "scripts/local-verification/finite_preparation_profile.py": "e658b1e0b534be0c3d6b7d19e502e1a038419a0412f1b0a5dd4fe6d7e7598c01",
+    "scripts/local-verification/owned_process.py": "9a88fd089a5548e4d4bf8c48ae5c748a79d9a23bfd65302dc956ae071c52d217",
+    "scripts/local-verification/test_finite_preparation_profile.py": "2f873420a177d94a2ef10e7c93dec0448281b9475d3b304f1d70826110609487",
+    "scripts/local-verification/test_owned_process.py": "c9fc9e2fe12218abf6013aff5087bc973a616856a724970ecf8de5226e0ede44"
+  },
+  "linux_supervisor_tests": {
+    "command": [
+      "/usr/bin/python3",
+      "-S",
+      "-m",
+      "unittest",
+      "-v",
+      "test_owned_process"
+    ],
+    "failed": 0,
+    "passed": 10,
+    "skipped": 0,
+    "source_environment": "assistant Linux container"
+  },
+  "mac_capture_parser": "9 passed / 1 ERROR; group probe EPERM",
+  "mac_full_supervisor": "FAILED: 5 assertion failures / 3 teardown errors; group operation EPERM",
+  "mac_permission_refusal": {
+    "passed": 1
+  },
+  "production_release": "HOLD",
+  "repository_policy": {
+    "passed": 3
+  },
+  "unchanged_runner_functions": [
+    "require",
+    "sha",
+    "dump",
+    "source_identity",
+    "validate_metadata",
+    "validate_cpu",
+    "records",
+    "check_test_result",
+    "main"
+  ]
+}
