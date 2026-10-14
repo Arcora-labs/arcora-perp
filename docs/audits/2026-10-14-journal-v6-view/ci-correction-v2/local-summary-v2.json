@@ -1,0 +1,183 @@
+{
+  "checks": {
+    "clippy_v2": {
+      "command": [
+        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "clippy",
+        "-p",
+        "gateway",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "completed_at": "2026-10-14T10:21:05.622411+00:00",
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "elapsed_seconds": 3.808859584038146,
+      "exit_code": 0,
+      "files": {
+        "stderr.log": {
+          "bytes": 186,
+          "sha256": "7be49322d7c520b67a4ab152cb24e18202f48bbbf45871525ae7f4077da6c91e"
+        },
+        "stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "runtime": {
+        "cargo": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "rust_test_threads": 2,
+        "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+      },
+      "schema": "arcora-journal-v6-owned-local-check/v2",
+      "scope": "Actual owned subprocess; no GPU/proof/production process; rawstdout/stderr preserved",
+      "source_files": {
+        "crates/gateway/src/main.rs": "b7335436ff42bb20011234b6d8a064fab007a036fabc297bcba9b566e4968189",
+        "crates/gateway/src/rollback_journal.rs": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+      },
+      "started_at": "2026-10-14T10:21:01.813481+00:00",
+      "test_summaries": []
+    },
+    "format_v2": {
+      "command": [
+        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "completed_at": "2026-10-14T10:21:01.785258+00:00",
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "elapsed_seconds": 0.5907779999542981,
+      "exit_code": 0,
+      "files": {
+        "stderr.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "runtime": {
+        "cargo": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "rust_test_threads": 2,
+        "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+      },
+      "schema": "arcora-journal-v6-owned-local-check/v2",
+      "scope": "Actual owned subprocess; no GPU/proof/production process; rawstdout/stderr preserved",
+      "source_files": {
+        "crates/gateway/src/main.rs": "b7335436ff42bb20011234b6d8a064fab007a036fabc297bcba9b566e4968189",
+        "crates/gateway/src/rollback_journal.rs": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+      },
+      "started_at": "2026-10-14T10:21:01.194484+00:00",
+      "test_summaries": []
+    },
+    "gateway_full_v2": {
+      "command": [
+        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "--",
+        "--test-threads=2"
+      ],
+      "completed_at": "2026-10-14T10:21:01.154520+00:00",
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "elapsed_seconds": 390.6167003340088,
+      "exit_code": 0,
+      "files": {
+        "stderr.log": {
+          "bytes": 153,
+          "sha256": "4bec2c1667ce8edcb0f2cc6b7570c260d88ca60edc3fc5fd8fcb5875a90cc393"
+        },
+        "stdout.log": {
+          "bytes": 75082,
+          "sha256": "555d9b47566743a45ffc862db0b2060442f6cbd3ea30f9c053f81e09b3795038"
+        }
+      },
+      "runtime": {
+        "cargo": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "rust_test_threads": 2,
+        "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+      },
+      "schema": "arcora-journal-v6-owned-local-check/v2",
+      "scope": "Actual owned subprocess; no GPU/proof/production process; rawstdout/stderr preserved",
+      "source_files": {
+        "crates/gateway/src/main.rs": "b7335436ff42bb20011234b6d8a064fab007a036fabc297bcba9b566e4968189",
+        "crates/gateway/src/rollback_journal.rs": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+      },
+      "started_at": "2026-10-14T10:14:30.526132+00:00",
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 24,
+          "passed": 766
+        }
+      ]
+    },
+    "mint_guard_v2": {
+      "command": [
+        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "tests::unbacked_funding_has_exactly_the_known_call_sites",
+        "--",
+        "--exact",
+        "--test-threads=2"
+      ],
+      "completed_at": "2026-10-14T10:14:30.486782+00:00",
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "elapsed_seconds": 8.990250000031665,
+      "exit_code": 0,
+      "files": {
+        "stderr.log": {
+          "bytes": 267,
+          "sha256": "fa64593885702a3c8374f39b70e78cdd0bf8ff851d938ac1f0d6d2d93585cef8"
+        },
+        "stdout.log": {
+          "bytes": 183,
+          "sha256": "8ec5d1fa79537fa692bf9ed612281321d4c5e869ffaae86133ba6ba780c1dc89"
+        }
+      },
+      "runtime": {
+        "cargo": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "rust_test_threads": 2,
+        "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+      },
+      "schema": "arcora-journal-v6-owned-local-check/v2",
+      "scope": "Actual owned subprocess; no GPU/proof/production process; rawstdout/stderr preserved",
+      "source_files": {
+        "crates/gateway/src/main.rs": "b7335436ff42bb20011234b6d8a064fab007a036fabc297bcba9b566e4968189",
+        "crates/gateway/src/rollback_journal.rs": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+      },
+      "started_at": "2026-10-14T10:14:21.496372+00:00",
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 1
+        }
+      ]
+    }
+  },
+  "correction": "Existing sourceguard now requires0journalproduction+2journaltest sites and11global sites; no productionlogic/guard relaxation",
+  "historical_first_CI": "243a2ea release regression failed with765PASS1FAIL24IGNORE because sourcecountguard hadnot accountedfor two new cfgtest fixture constructors; preserved unaccepted",
+  "observed_utc": "2026-10-14T10:21:55.010471+00:00",
+  "old_local_summary_sha256": "4b139b4b86e4ddc0d78d03a1481ae5a8e6cf4b42956c86a64d023e616224b99e",
+  "passed": true,
+  "schema": "arcora-journal-v6-local-summary/v2",
+  "scope": "Fresh fullgateway766/0/24 bound BOTHchangedfiles; initial filtered checks remain historical on firstsource7fe, not promoted to correctedheadCI.",
+  "source_count": 380,
+  "source_files": {
+    "crates/gateway/src/main.rs": "b7335436ff42bb20011234b6d8a064fab007a036fabc297bcba9b566e4968189",
+    "crates/gateway/src/rollback_journal.rs": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+  },
+  "source_sha256": "927cfb188e76f7043ba620f96e42e7ce46c3e3af3168f18c59a2d4ea5a36b679"
+}

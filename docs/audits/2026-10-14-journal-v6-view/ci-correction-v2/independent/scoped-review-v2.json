@@ -1,0 +1,62 @@
+{
+  "base": "16fde84b094d5964d58097441ced33b1cb7d21da",
+  "blocking_findings": [],
+  "correction_scope": {
+    "existing_21_compiled_inputs_unchanged": true,
+    "initial_cut_to_v2_only_changed_source": [
+      "crates/gateway/src/main.rs"
+    ],
+    "journal_current_bytes_unchanged_from_initial_cut": true,
+    "only_changed_main_function": "tests::unbacked_funding_has_exactly_the_known_call_sites",
+    "replacing_only_that_function_with_BASE_restores_ENTIRE_main_bytes": true
+  },
+  "guard_review": {
+    "explicit_journal_cfgtest_module_boundary": true,
+    "journal_production_Deposit_occurrences": 0,
+    "journal_test_Deposit_occurrences": 2,
+    "limits": "Existing source-enumeration text occurrence guard remains such a guard; this review does not claim a compiler-derived whole-program mint proof.",
+    "meaning": "Original9 known sites plus2 pure cfg(test) journal fixture constructors; added per-file production0/test2 guards and explanatory breakdown. No production mint guard or credit path relaxed.",
+    "overall_Deposit_occurrences": 11,
+    "unchanged_other_funnel_counts": {
+      "BatchOp::Deposit": 11,
+      "fund_amount(": 3,
+      "fund_amount_unbacked(": 7,
+      "fund_insurance_backed(": 2
+    }
+  },
+  "initial_actual_CI_failure": {
+    "GH_log_read_exit0_not_test_acceptance": true,
+    "accepted": false,
+    "gateway_failed": 1,
+    "gateway_ignored": 24,
+    "gateway_passed": 765,
+    "head": "243a2eac9733675394a89e10b21fd6d242664cf2",
+    "job": 115793497831,
+    "raw_stdout_sha256": "16bb7f0dce4de615ac8c65524d6fdf4f6bd6e708a4ec25a6c294feb66a6d6182",
+    "rerun": false,
+    "run": 38546420259
+  },
+  "observed_utc": "2026-10-14T10:18:18.332624+00:00",
+  "operations": {
+    "Git_mutation": 0,
+    "network": 0,
+    "new_ignored_scoped_review_only": true,
+    "runtime_build_or_tests": 0,
+    "source_writes": 0
+  },
+  "original_receipts_unchanged": {
+    "packet_qa_sha256": "926787728c671a086189ce06367ed1f2c235d23c8b7282cb01dcdc2ff8ae7aae",
+    "scoped_review_sha256": "217a66931d9043eb1f6d4f0d6ac76e9a9d0baf90d1a72907f532a5e35089d14d"
+  },
+  "passed": true,
+  "postmerge_consumer": "NEW unexecuted verify_postmerge_v2.py requires actual merge/CI SHA and explicit v2 freeze/expectations/publication/finite-selection records; protected409 (exclude both journal+main), noheadonly, fullsource380 and old21 verified. Original helper/preparation are immutable.",
+  "schema": "arcora-journal-v6-source-guard-correction-independent-review/v2",
+  "source_before_after": {
+    "crates/gateway/src/main.rs": "b7335436ff42bb20011234b6d8a064fab007a036fabc297bcba9b566e4968189",
+    "crates/gateway/src/rollback_journal.rs": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+  },
+  "source_count": 380,
+  "source_freeze_v2_sha256": "5dfc0447d0f510cfe69d34f14e81f63c90489a2761d3912b16d4e31339dc4bec",
+  "source_sha256": "927cfb188e76f7043ba620f96e42e7ce46c3e3af3168f18c59a2d4ea5a36b679",
+  "v2_validation_state": "No new runtime acceptance inferred; root current-source guard/full gateway/fmt/clippy and fresh new-head CI remain separately required."
+}

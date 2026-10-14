@@ -1,0 +1,268 @@
+{
+  "ACTIVE_prefix_preserved_when_authorized_append": true,
+  "allowed_metadata_files": {
+    "docs/ACTIVE_WORK.md": {
+      "bytes": 56196,
+      "sha256": "925c6c0292f0d4d4e67c82239a2eddb59a8994a8ae649840bedae039c56782f1"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/README.md": {
+      "bytes": 3821,
+      "sha256": "ba4f4c1f2f3e2eba0fc1ee74e4ccec56c92ce8cae8affd624d13f72996b9bd46"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/baseline/journal-base.rs.txt": {
+      "bytes": 35734,
+      "sha256": "248d8ae23668f27252201436648eb28329d2402c368aedd8a0eccf2921cdb0eb"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/baseline/summary.json": {
+      "bytes": 4847,
+      "sha256": "f3491e8ad1a88b9cbecb51c364830f7577d397d464b129788cd31a888865df7a"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/frozen-source-preservation.json": {
+      "bytes": 2726,
+      "sha256": "e7ca20633cfedd4da8b7a177bbeff7fc956526287c95063373f28281bd39adf7"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/independent/design-review.json": {
+      "bytes": 8051,
+      "sha256": "5ebf585d0d395eaa6012c4c4f1d32182cb74ae4093f9fcbb13604905803fd55b"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/independent/scoped-review.json": {
+      "bytes": 5404,
+      "sha256": "217a66931d9043eb1f6d4f0d6ac76e9a9d0baf90d1a72907f532a5e35089d14d"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/ledger.json": {
+      "bytes": 11543,
+      "sha256": "f0feab821ae644f5f4f3fb121680eb92528a5585a5116cef99cc5c6ab091f9a9"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local-summary.json": {
+      "bytes": 15241,
+      "sha256": "4b139b4b86e4ddc0d78d03a1481ae5a8e6cf4b42956c86a64d023e616224b99e"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding/result.json": {
+      "bytes": 1279,
+      "sha256": "63f3df1cde5ecbc758c4fd592f8a14dc3fb67f9085af377edd61896294515e81"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding/stderr.log": {
+      "bytes": 153,
+      "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding/stdout.log": {
+      "bytes": 115,
+      "sha256": "5182e753b145fe5f25e5d18ee4b1ec484031a065ae1bb3991c22f71c0009c0a8"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding_v2/result.json": {
+      "bytes": 1281,
+      "sha256": "8d8cfd73dcea7b7125a17c1626d035359c1458d42140926468e5b1eee2bfe155"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding_v2/stderr.log": {
+      "bytes": 153,
+      "sha256": "55801ea16fd8041999dd582c62249a0235979453c6cc926d199d51f03528a677"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding_v2/stdout.log": {
+      "bytes": 4159,
+      "sha256": "567ecf4e19e1d685b4b34bc15bef5602e6eaf98d00d639644bee6aae321ed6af"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/candidate_v6/result.json": {
+      "bytes": 1308,
+      "sha256": "9cad8af91ea15f540aaf06f5433b1cd2e8369db0e4854ca072e04bc813e54d38"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/candidate_v6/stderr.log": {
+      "bytes": 267,
+      "sha256": "3218f9b9fe1faf6ca9ebb1cadac200e32dfbf4472e2fa3ba06949169a5d460e7"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/candidate_v6/stdout.log": {
+      "bytes": 407,
+      "sha256": "0201cb4bd06535b2d63b8fae280ecf7c9067a542b0de1206ead638184f20df15"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/clippy/result.json": {
+      "bytes": 1265,
+      "sha256": "caae4779555b3f576295b568be4168b9ae740ad2163527ad4f5de9c8b85826c6"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/clippy/stderr.log": {
+      "bytes": 186,
+      "sha256": "61c2622247f7c025426c441e5de4d67adb15baf9d3c69d28d0bfa31c315f5a25"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/clippy/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/format/result.json": {
+      "bytes": 1202,
+      "sha256": "6c2f02568036bb6c12ba192de7e4979d776dd6466e819c5f2d737a6ed8fd4b56"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/format/stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/format/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/journal/result.json": {
+      "bytes": 1274,
+      "sha256": "4451482077ec4ba2bf943642c05c1e15dc924819a92fbe444d8a9fe53fc0d13e"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/journal/stderr.log": {
+      "bytes": 153,
+      "sha256": "44be4b124b944c5ae7a42661f0a5ce7f95ce8b374cc35986eabb45062026af7e"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/journal/stdout.log": {
+      "bytes": 1101,
+      "sha256": "1ffd007e305bb6f8d0925a43f5084e4f6b6f9cd02c93a42751634dc4644ba7d5"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/price_lifecycle/result.json": {
+      "bytes": 1271,
+      "sha256": "b9160bea0491c837fc255165b729872cbc49fb47efc4a040900dda5483f79120"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/price_lifecycle/stderr.log": {
+      "bytes": 153,
+      "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/price_lifecycle/stdout.log": {
+      "bytes": 1334,
+      "sha256": "974d9bb9e6f4d0788a1802814a066e608be1780b547bea4b03cc3dc719e9ee9c"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/retention/result.json": {
+      "bytes": 1281,
+      "sha256": "bd9dcaba0ec3e7e6f70d699713438b7082b4195fbef97eaf4bbb50390854053a"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/retention/stderr.log": {
+      "bytes": 153,
+      "sha256": "d9faf87d2e3bf09c28234dec609f23816be1a3e401b4f31f4d03a31920c69969"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/retention/stdout.log": {
+      "bytes": 115,
+      "sha256": "5182e753b145fe5f25e5d18ee4b1ec484031a065ae1bb3991c22f71c0009c0a8"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/retention_v2/result.json": {
+      "bytes": 1282,
+      "sha256": "53c670b581abb2942ff43f1d60c6fa6dcbe766767d74619ae144175410bebac2"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/retention_v2/stderr.log": {
+      "bytes": 153,
+      "sha256": "7ce8fe84631b38ab4e3c6419fde99c9535b48ae2f35af31cb473084c3888be9f"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/local/retention_v2/stdout.log": {
+      "bytes": 115,
+      "sha256": "5182e753b145fe5f25e5d18ee4b1ec484031a065ae1bb3991c22f71c0009c0a8"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/run_owned_check.py": {
+      "bytes": 1759,
+      "sha256": "026ce8d4b0bdf953ac3fc19eedeedc0b1ff73f0c75b7fb0bd5e5c9839f528018"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/source-freeze-final.json": {
+      "bytes": 49199,
+      "sha256": "d84261f1733282d36c22203858d09110b3a9706c54ae68d75ab17335b96247e9"
+    },
+    "docs/audits/2026-10-14-journal-v6-view/task-contract.json": {
+      "bytes": 1324,
+      "sha256": "2d7a5b238f215eee826881541fbf62b599807b050d967fce5565e2fec5275200"
+    }
+  },
+  "authorized_existing_source_paths": [
+    "crates/gateway/src/rollback_journal.rs",
+    "crates/gateway/src/main.rs"
+  ],
+  "authorized_new_source_paths": [],
+  "baseline_sha256": "58565521ae4018a855cd0448079e096fa1f2a305f063f09deea286fcaf4e7477",
+  "committed_paths": [
+    "crates/gateway/src/rollback_journal.rs",
+    "docs/ACTIVE_WORK.md",
+    "docs/audits/2026-10-14-journal-v6-view/README.md",
+    "docs/audits/2026-10-14-journal-v6-view/baseline/journal-base.rs.txt",
+    "docs/audits/2026-10-14-journal-v6-view/baseline/summary.json",
+    "docs/audits/2026-10-14-journal-v6-view/frozen-source-preservation.json",
+    "docs/audits/2026-10-14-journal-v6-view/independent/design-review.json",
+    "docs/audits/2026-10-14-journal-v6-view/independent/scoped-review.json",
+    "docs/audits/2026-10-14-journal-v6-view/ledger.json",
+    "docs/audits/2026-10-14-journal-v6-view/local-summary.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding_v2/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding_v2/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/archive_binding_v2/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/candidate_v6/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/candidate_v6/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/candidate_v6/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/clippy/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/clippy/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/clippy/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/format/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/format/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/format/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/journal/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/journal/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/journal/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/price_lifecycle/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/price_lifecycle/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/price_lifecycle/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/retention/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/retention/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/retention/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/retention_v2/result.json",
+    "docs/audits/2026-10-14-journal-v6-view/local/retention_v2/stderr.log",
+    "docs/audits/2026-10-14-journal-v6-view/local/retention_v2/stdout.log",
+    "docs/audits/2026-10-14-journal-v6-view/run_owned_check.py",
+    "docs/audits/2026-10-14-journal-v6-view/source-freeze-final.json",
+    "docs/audits/2026-10-14-journal-v6-view/task-contract.json"
+  ],
+  "current_pointer_stable_cut": {
+    "bytes": 541,
+    "sha256": "08221b2375a27c51afa9db2f3b103cc8bbfe5dbc677d1926d24277de7364c003"
+  },
+  "expected_head": "243a2eac9733675394a89e10b21fd6d242664cf2",
+  "external": [
+    {
+      "dirty_count": 13,
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "name": "primary",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 7,
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "name": "kimi",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    },
+    {
+      "dirty_count": 62,
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "name": "dark",
+      "passed": true,
+      "staged_whitelist_before_binary_diff": true
+    }
+  ],
+  "external_public_dirty_files": 82,
+  "head": "243a2eac9733675394a89e10b21fd6d242664cf2",
+  "manifests_locks_8_unchanged": true,
+  "observed_utc": "2026-10-14T10:15:33.880828+00:00",
+  "old_378_sources_preserved": true,
+  "original_PR65_pointer_verified": {
+    "bytes": 541,
+    "sha256": "08221b2375a27c51afa9db2f3b103cc8bbfe5dbc677d1926d24277de7364c003"
+  },
+  "original_immutable_unique_count": 5566,
+  "passed": true,
+  "phase": "frozen-source",
+  "pointer_backup": null,
+  "production_release": "HOLD",
+  "program_artifacts_9_unchanged": true,
+  "protected_original_files_verified": 5564,
+  "protected_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "revision_immutable_inputs_verified": 100,
+  "schema": "arcora-journal-v6-view-preservation/v2",
+  "scope": "Closed approved public roster only. Two existing journal/main-guard-test source edits and finite caller-declared metadata; authorized ACTIVE append retains BASE prefix; exact source map, original pointer or exact PR65 backup, historical report/CI/raw files and external82 preserved. No private/env discovery, test/build/network/source/outside writes or proof/release acceptance. Cooperative readback, not an atomic filesystem snapshot or rollback-freshness guarantee.",
+  "source_count": 380,
+  "source_freeze_sha256": "5dfc0447d0f510cfe69d34f14e81f63c90489a2761d3912b16d4e31339dc4bec",
+  "source_sha256": "927cfb188e76f7043ba620f96e42e7ce46c3e3af3168f18c59a2d4ea5a36b679",
+  "status_paths": [
+    "crates/gateway/src/main.rs"
+  ],
+  "tree": "93bb65f8b1ed385ef8de436887e7133ca266bd22"
+}

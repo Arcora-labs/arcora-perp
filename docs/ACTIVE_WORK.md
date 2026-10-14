@@ -779,3 +779,15 @@ PENDING at this packet cut; later outside final records are required. No measure
 CPU/RSS/input-cap, OOM/panic, real backend/proof/CC or release claim. Production
 HOLD and candidate submission closure remain. Previous source/evidence, reports,
 32 pins, 8 locks/manifests, 9 program artifacts and other dirty checkouts protected.
+
+
+### Candidate journal v6 - required source-guard CI correction
+
+First PR66 head243a2ea failed release regression (gateway765PASS/1FAIL/24IGNORE):
+source enumeration counted two new cfg(test) fixture constructors. Only the existing
+main.rs test now pins journal production0/test2 and global11; other funnel7/3/2
+and all production logic unchanged. Current fullgateway766/0/24, guard1, format/
+Clippy PASS bound both source files. Old failedCI/packet38/zero-testUNACCEPTED
+records preserved; additive correction ledger in ci-correction-v2.
+Source380/927cfb188e76f7043ba620f96e42e7ce46c3e3af3168f18c59a2d4ea5a36b679.
+NewheadCI/merge/main pending; production HOLD/candidate disabled.
