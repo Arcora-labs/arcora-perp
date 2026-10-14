@@ -1,0 +1,122 @@
+{
+  "README.md": {
+    "bytes": 8640,
+    "sha256": "e0f0917b6b4ebe9a1ede2e6433a3ec5b87adb64df48cac17ded1af6e2ce76b8a"
+  },
+  "binary.json": {
+    "bytes": 210,
+    "sha256": "eb389bddec81e84fc2f0c26807abb335fba54bd132702c07f1c99a393873a8bd"
+  },
+  "build.json": {
+    "bytes": 671,
+    "sha256": "81db92c8b7cea319ad972ec40fb77c08557e9b45665b69ac17375499be2ccaae"
+  },
+  "build.stderr.log": {
+    "bytes": 177,
+    "sha256": "e36b3495bafee163eee3469e6bd9b3bf33bdc75777af75c4b4b5364e7f47a5ed"
+  },
+  "build.stdout.log": {
+    "bytes": 250086,
+    "sha256": "27c48c4cbf4213c7042a40d53a3ef6ccfefb06e3d7ac11a579b040ab5943652f"
+  },
+  "compiler-profile.json": {
+    "bytes": 132,
+    "sha256": "43c655e9d31eb72b5ac40c0e98dbdf405d775b76ff8ba67b66f20d04e760484b"
+  },
+  "correctness.json": {
+    "bytes": 761,
+    "sha256": "e2e2313187a70de28557baa5d6c9b86ff85a0534e5b53339c1247a56678d45fb"
+  },
+  "correctness.stderr.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "correctness.stdout.log": {
+    "bytes": 3018,
+    "sha256": "fc75502ea95bc1bcab48be20e9548f3169cb8aa7596a3c1349e17343cdbad268"
+  },
+  "cpu.json": {
+    "bytes": 768,
+    "sha256": "0ebc050ef96a5a48b1e4078e88f86aa7523c5de8fb5a4bcc3f7de2a36c6c31b8"
+  },
+  "cpu.stderr.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "cpu.stdout.log": {
+    "bytes": 18926,
+    "sha256": "9f34f74c645dd41912a5dddbeafecacea56143a71aac3eeb5466c94d680e086c"
+  },
+  "environment.json": {
+    "bytes": 735,
+    "sha256": "b4fba627f0726ba461179f8b126f64cf9397db9f43718705e9f2040f5d130873"
+  },
+  "focused-debug-v2.log": {
+    "bytes": 3844,
+    "sha256": "fd618b2bbf75ab84a98f127665f99e1f7e319205a7ca789562a517704ed56b3b"
+  },
+  "history/focused-debug.log": {
+    "bytes": 3357,
+    "sha256": "17b16c53e7bc6f048774a9e5b6863ef8e1e56862c1576d916fdf7e56e18f1543"
+  },
+  "history/initial-build.log": {
+    "bytes": 694,
+    "sha256": "0420e09bbb28cfbf947baf50b43adc31d6918d1398fdc90cf871fe3928f19838"
+  },
+  "history/initial-finite-profile-tests.rs": {
+    "bytes": 19618,
+    "sha256": "f83930b9994286d715d31cf07bba64944300f5801694b4ce49d1df3be5db70b6"
+  },
+  "main-rules-before.json": {
+    "bytes": 1687,
+    "sha256": "9faea6306394d097f40e28467eee98d774ceb6e7365abd5fefa787948f0cfae7"
+  },
+  "notes160_withdrawals16.json": {
+    "bytes": 744,
+    "sha256": "5961dcbab73ce8b2d8c609adabc80bcd56e8f17680db6880345754980c4975a7"
+  },
+  "notes160_withdrawals16.stderr.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "notes160_withdrawals16.stdout.log": {
+    "bytes": 1025,
+    "sha256": "2204a3738b08337b070b02635ef243a4ba24732d5299a31d13b98091938417c3"
+  },
+  "notes160_withdrawals48.json": {
+    "bytes": 743,
+    "sha256": "8a8b85d899072d25d3c3b589838ec284c69737028b0fa2e37e99cd9d56fca8c0"
+  },
+  "notes160_withdrawals48.stderr.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "notes160_withdrawals48.stdout.log": {
+    "bytes": 1091,
+    "sha256": "890178187128b64ff602543cc28cca80807ceddb281fda542f26217414c067b4"
+  },
+  "notes64_withdrawals16.json": {
+    "bytes": 742,
+    "sha256": "fe663cef81ed008d0e17c661fda282ad92218dabbfbeb4b7f952a92280b4d285"
+  },
+  "notes64_withdrawals16.stderr.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "notes64_withdrawals16.stdout.log": {
+    "bytes": 1020,
+    "sha256": "9488dd79332f2e0ac34f6cdada9c2a6a999fdd4924d041a55b25aecbfba65671"
+  },
+  "python-validation-v2.log": {
+    "bytes": 825,
+    "sha256": "dfdf41c9624548417a2b98c875285f10909055aa93d750d09e890907366c2b8c"
+  },
+  "source.json": {
+    "bytes": 45265,
+    "sha256": "e15de24ce88712c202da9cb2f24281c4f64db6698a23f1e97f56504c74121817"
+  },
+  "summary.json": {
+    "bytes": 16261,
+    "sha256": "e28ea838b915e6ea82516b881b99a8641fb57235770eb3db2693ce5a6a645c25"
+  }
+}

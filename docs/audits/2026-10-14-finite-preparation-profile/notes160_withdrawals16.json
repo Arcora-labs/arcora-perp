@@ -1,0 +1,27 @@
+{
+  "command": [
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/release/deps/gateway-ee1031d433f7d85e",
+    "prover_client::finite_profile_tests::rss_160_16",
+    "--exact",
+    "--ignored",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "exit_code": 0,
+  "logs": {
+    "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "bytes": 1025,
+      "sha256": "2204a3738b08337b070b02635ef243a4ba24732d5299a31d13b98091938417c3"
+    }
+  },
+  "pid": 98309,
+  "ru_maxrss_unit": "bytes (macOS)",
+  "started_unix": 1791994268.548723,
+  "timed_out": false,
+  "wait4_ru_maxrss_raw": 6094848,
+  "wall_seconds": 0.061250925064086914
+}
