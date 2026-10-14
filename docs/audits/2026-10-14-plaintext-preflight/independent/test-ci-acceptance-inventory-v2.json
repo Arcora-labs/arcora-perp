@@ -1,0 +1,544 @@
+{
+  "base": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "base_tree": "cd03a8218f36d65ad7ded7a11d2209867c3952bd",
+  "cpu_perf_acceptance": {
+    "method": "Measure old encode-only vs new count+encode on actual small valid witnesses with warmup, black_box, repeated paired samples and recorded compiler/profile/source/encoded length; report sample distribution and absolute times, do not add noisy unit wall-clock threshold.",
+    "scope": "Accepted path adds a serialization traversal. Counting budget bounds bytes traversed for these known types, not generic wall-clock/depth or arbitrary Serialize side effects. Prior16 synthetic cases up to256KiB are frozen historical audit, not WindowWitness/RSS/proving-capacity acceptance.",
+    "wire_and_cpu": "Byte equality is a hard regression gate; performance numbers are bounded evidence with no fabricated throughput/RSS guarantee."
+  },
+  "current_actual_ci_reference": {
+    "actual_modules": {
+      "a07-gateway": {
+        "curl_transport::tests::": {
+          "ignored": 1,
+          "ignored_names": [
+            "curl_transport::tests::subprocess_worker"
+          ],
+          "names": [
+            "curl_transport::tests::curl_get_exact_byte_cap_is_accepted_and_one_more_is_refused",
+            "curl_transport::tests::curl_incomplete_body_keeps_non_success_exit_even_with_valid_json_prefix",
+            "curl_transport::tests::curl_post_sends_large_stdin_exactly_and_keeps_status_suffix",
+            "curl_transport::tests::early_closed_stdin_spawn_and_configuration_errors_are_static_and_redacted",
+            "curl_transport::tests::either_pipe_overflow_reaps_child_and_unblocks_large_stdin_writer",
+            "curl_transport::tests::request_body_limits_are_inclusive_positive_and_do_not_allocate_payloads",
+            "curl_transport::tests::service_base_join_preserves_encoded_paths_and_existing_address_forms",
+            "curl_transport::tests::service_base_query_and_fragment_refuse_without_echoing_values",
+            "curl_transport::tests::simultaneous_stdout_stderr_and_large_stdin_complete_without_pipe_deadlock",
+            "curl_transport::tests::supervisor_deadline_reaps_stalled_child_and_unblocks_stdin"
+          ],
+          "passed": 10
+        },
+        "http_transport_tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "http_transport_tests::direct_full_url_get_query_support_remains_unchanged",
+            "http_transport_tests::get_glob_characters_are_one_literal_http_target",
+            "http_transport_tests::file_protocol_cannot_supply_attestation_or_receive_proof_body",
+            "http_transport_tests::get_http_and_json_failures_do_not_echo_peer_content",
+            "http_transport_tests::get_small_and_exact_limit_valid_json_succeed",
+            "http_transport_tests::get_nested_encoded_base_paths_reach_the_exact_attest_route",
+            "http_transport_tests::post_exact_body_byte_limit_preserves_unicode_body_and_bearer",
+            "http_transport_tests::get_overflow_refused_with_or_without_content_length",
+            "http_transport_tests::post_401_is_typed_and_other_errors_are_redacted",
+            "http_transport_tests::post_injected_body_limit_refuses_before_process_creation",
+            "http_transport_tests::post_invalid_timeouts_refuse_before_process_creation",
+            "http_transport_tests::post_malformed_bearer_is_redacted_before_child_or_peer_request",
+            "http_transport_tests::post_glob_characters_are_one_literal_http_target",
+            "http_transport_tests::post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request",
+            "http_transport_tests::post_query_fragment_bases_refuse_before_process_creation",
+            "http_transport_tests::post_exact_limit_succeeds_and_limit_plus_one_refuses",
+            "http_transport_tests::prover_decode_errors_do_not_echo_remote_values",
+            "http_transport_tests::post_streams_large_input_and_preserves_bearer_and_body",
+            "http_transport_tests::post_nested_encoded_base_paths_reach_the_exact_prove_route",
+            "http_transport_tests::scheme_less_loopback_http_remains_compatible"
+          ],
+          "passed": 20
+        },
+        "prover_client::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::bearer_header::tests::concurrent_requests_get_distinct_header_files",
+            "prover_client::bearer_header::tests::creation_failure_is_redacted",
+            "prover_client::bearer_header::tests::header_control_characters_fail_without_echoing_input",
+            "prover_client::bearer_header::tests::private_header_preserves_bytes_and_cleans_up_on_drop",
+            "prover_client::clock_pipeline_tests::clock_pipeline_intent_survives_encrypted_journal_and_cannot_rollback",
+            "prover_client::clock_pipeline_tests::clock_pipeline_refuses_unsupported_legacy_client",
+            "prover_client::clock_pipeline_tests::clock_pipeline_rejects_mismatched_prover_commitment",
+            "prover_client::prove_curl_tests::args_carry_the_transport_hardening_flags_in_pairs",
+            "prover_client::prove_curl_tests::bearer_is_attached_when_present",
+            "prover_client::prove_curl_tests::invalid_status_markers_are_refused_without_echo",
+            "prover_client::prove_curl_tests::no_bearer_header_when_token_absent",
+            "prover_client::prove_curl_tests::split_status_separates_body_and_code",
+            "prover_client::prove_curl_tests::status_is_captured_via_write_out",
+            "prover_client::reauth_tests::no_rehandshake_means_401_is_terminal",
+            "prover_client::reauth_tests::re_handshakes_once_and_retries_on_401",
+            "prover_client::reauth_tests::rehandshake_refreshes_the_stored_secret_not_only_the_token",
+            "prover_client::reauth_tests::second_401_is_terminal",
+            "prover_client::reauth_tests::success_does_not_rehandshake",
+            "prover_client::request_body_tests::expansion_matches_exact_small_sealed_postcard_and_json",
+            "prover_client::request_body_tests::integer_ceiling_and_overflow_checks_need_no_large_payload",
+            "prover_client::clock_pipeline_tests::clock_pipeline_uses_v2_native_derivation_and_journals_bound_proof",
+            "prover_client::seal_nonce_tests::nonce_is_deterministic_for_same_root_and_plaintext",
+            "prover_client::seal_nonce_tests::nonce_is_not_the_public_plaintext_hash",
+            "prover_client::seal_nonce_tests::nonce_varies_with_plaintext_and_with_root",
+            "prover_client::clock_pipeline_tests::clock_pipeline_validates_context_before_prover_call",
+            "prover_client::request_body_tests::small_witness_exact_budgets_preserve_legacy_and_clocked_seals",
+            "prover_client::tests::a_disagreeing_prover_is_refused",
+            "prover_client::tests::a_disagreeing_prover_names_the_differing_root",
+            "prover_client::tests::a_window_that_enters_close_only_reports_a_non_normal_post_state",
+            "prover_client::tests::an_empty_proof_is_refused_before_broadcast",
+            "prover_client::tests::parses_a_response_with_deposits_root",
+            "prover_client::tests::parses_a_response_without_deposits_root",
+            "prover_client::tests::rejects_a_present_but_malformed_root",
+            "prover_client::tests::rejects_a_response_missing_the_commitment",
+            "prover_client::tests::local_derivation_matches_the_mock_prover_on_all_seven_roots",
+            "prover_client::tests::new_deposit_count_is_cumulative_not_per_window",
+            "prover_client::tests::the_insurance_term_is_the_post_state_not_the_pre_state",
+            "prover_client::tests::the_outcome_carries_the_proven_post_state_terms_the_gate_judges",
+            "prover_client::tests::zero_deposit_window_submits_the_prestate_count"
+          ],
+          "passed": 39
+        },
+        "prover_client::bearer_header::tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::bearer_header::tests::concurrent_requests_get_distinct_header_files",
+            "prover_client::bearer_header::tests::creation_failure_is_redacted",
+            "prover_client::bearer_header::tests::header_control_characters_fail_without_echoing_input",
+            "prover_client::bearer_header::tests::private_header_preserves_bytes_and_cleans_up_on_drop"
+          ],
+          "passed": 4
+        },
+        "prover_client::request_body_tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::request_body_tests::expansion_matches_exact_small_sealed_postcard_and_json",
+            "prover_client::request_body_tests::integer_ceiling_and_overflow_checks_need_no_large_payload",
+            "prover_client::request_body_tests::small_witness_exact_budgets_preserve_legacy_and_clocked_seals"
+          ],
+          "passed": 3
+        }
+      },
+      "a11-release": {
+        "curl_transport::tests::": {
+          "ignored": 1,
+          "ignored_names": [
+            "curl_transport::tests::subprocess_worker"
+          ],
+          "names": [
+            "curl_transport::tests::curl_incomplete_body_keeps_non_success_exit_even_with_valid_json_prefix",
+            "curl_transport::tests::curl_get_exact_byte_cap_is_accepted_and_one_more_is_refused",
+            "curl_transport::tests::early_closed_stdin_spawn_and_configuration_errors_are_static_and_redacted",
+            "curl_transport::tests::curl_post_sends_large_stdin_exactly_and_keeps_status_suffix",
+            "curl_transport::tests::request_body_limits_are_inclusive_positive_and_do_not_allocate_payloads",
+            "curl_transport::tests::service_base_join_preserves_encoded_paths_and_existing_address_forms",
+            "curl_transport::tests::service_base_query_and_fragment_refuse_without_echoing_values",
+            "curl_transport::tests::simultaneous_stdout_stderr_and_large_stdin_complete_without_pipe_deadlock",
+            "curl_transport::tests::either_pipe_overflow_reaps_child_and_unblocks_large_stdin_writer",
+            "curl_transport::tests::supervisor_deadline_reaps_stalled_child_and_unblocks_stdin"
+          ],
+          "passed": 10
+        },
+        "http_transport_tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "http_transport_tests::direct_full_url_get_query_support_remains_unchanged",
+            "http_transport_tests::file_protocol_cannot_supply_attestation_or_receive_proof_body",
+            "http_transport_tests::get_glob_characters_are_one_literal_http_target",
+            "http_transport_tests::get_http_and_json_failures_do_not_echo_peer_content",
+            "http_transport_tests::get_overflow_refused_with_or_without_content_length",
+            "http_transport_tests::get_nested_encoded_base_paths_reach_the_exact_attest_route",
+            "http_transport_tests::get_small_and_exact_limit_valid_json_succeed",
+            "http_transport_tests::post_exact_body_byte_limit_preserves_unicode_body_and_bearer",
+            "http_transport_tests::post_401_is_typed_and_other_errors_are_redacted",
+            "http_transport_tests::post_injected_body_limit_refuses_before_process_creation",
+            "http_transport_tests::post_invalid_timeouts_refuse_before_process_creation",
+            "http_transport_tests::post_malformed_bearer_is_redacted_before_child_or_peer_request",
+            "http_transport_tests::post_glob_characters_are_one_literal_http_target",
+            "http_transport_tests::post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request",
+            "http_transport_tests::post_query_fragment_bases_refuse_before_process_creation",
+            "http_transport_tests::post_exact_limit_succeeds_and_limit_plus_one_refuses",
+            "http_transport_tests::prover_decode_errors_do_not_echo_remote_values",
+            "http_transport_tests::post_nested_encoded_base_paths_reach_the_exact_prove_route",
+            "http_transport_tests::scheme_less_loopback_http_remains_compatible",
+            "http_transport_tests::post_streams_large_input_and_preserves_bearer_and_body"
+          ],
+          "passed": 20
+        },
+        "prover_client::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::bearer_header::tests::concurrent_requests_get_distinct_header_files",
+            "prover_client::bearer_header::tests::creation_failure_is_redacted",
+            "prover_client::bearer_header::tests::header_control_characters_fail_without_echoing_input",
+            "prover_client::bearer_header::tests::private_header_preserves_bytes_and_cleans_up_on_drop",
+            "prover_client::clock_pipeline_tests::clock_pipeline_intent_survives_encrypted_journal_and_cannot_rollback",
+            "prover_client::clock_pipeline_tests::clock_pipeline_refuses_unsupported_legacy_client",
+            "prover_client::clock_pipeline_tests::clock_pipeline_rejects_mismatched_prover_commitment",
+            "prover_client::clock_pipeline_tests::clock_pipeline_uses_v2_native_derivation_and_journals_bound_proof",
+            "prover_client::clock_pipeline_tests::clock_pipeline_validates_context_before_prover_call",
+            "prover_client::prove_curl_tests::args_carry_the_transport_hardening_flags_in_pairs",
+            "prover_client::prove_curl_tests::bearer_is_attached_when_present",
+            "prover_client::prove_curl_tests::invalid_status_markers_are_refused_without_echo",
+            "prover_client::prove_curl_tests::no_bearer_header_when_token_absent",
+            "prover_client::prove_curl_tests::split_status_separates_body_and_code",
+            "prover_client::prove_curl_tests::status_is_captured_via_write_out",
+            "prover_client::reauth_tests::no_rehandshake_means_401_is_terminal",
+            "prover_client::reauth_tests::re_handshakes_once_and_retries_on_401",
+            "prover_client::reauth_tests::rehandshake_refreshes_the_stored_secret_not_only_the_token",
+            "prover_client::reauth_tests::second_401_is_terminal",
+            "prover_client::reauth_tests::success_does_not_rehandshake",
+            "prover_client::request_body_tests::expansion_matches_exact_small_sealed_postcard_and_json",
+            "prover_client::request_body_tests::integer_ceiling_and_overflow_checks_need_no_large_payload",
+            "prover_client::request_body_tests::small_witness_exact_budgets_preserve_legacy_and_clocked_seals",
+            "prover_client::seal_nonce_tests::nonce_is_deterministic_for_same_root_and_plaintext",
+            "prover_client::seal_nonce_tests::nonce_is_not_the_public_plaintext_hash",
+            "prover_client::seal_nonce_tests::nonce_varies_with_plaintext_and_with_root",
+            "prover_client::tests::a_disagreeing_prover_is_refused",
+            "prover_client::tests::a_disagreeing_prover_names_the_differing_root",
+            "prover_client::tests::a_window_that_enters_close_only_reports_a_non_normal_post_state",
+            "prover_client::tests::an_empty_proof_is_refused_before_broadcast",
+            "prover_client::tests::local_derivation_matches_the_mock_prover_on_all_seven_roots",
+            "prover_client::tests::parses_a_response_with_deposits_root",
+            "prover_client::tests::parses_a_response_without_deposits_root",
+            "prover_client::tests::rejects_a_present_but_malformed_root",
+            "prover_client::tests::rejects_a_response_missing_the_commitment",
+            "prover_client::tests::new_deposit_count_is_cumulative_not_per_window",
+            "prover_client::tests::the_outcome_carries_the_proven_post_state_terms_the_gate_judges",
+            "prover_client::tests::the_insurance_term_is_the_post_state_not_the_pre_state",
+            "prover_client::tests::zero_deposit_window_submits_the_prestate_count"
+          ],
+          "passed": 39
+        },
+        "prover_client::bearer_header::tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::bearer_header::tests::concurrent_requests_get_distinct_header_files",
+            "prover_client::bearer_header::tests::creation_failure_is_redacted",
+            "prover_client::bearer_header::tests::header_control_characters_fail_without_echoing_input",
+            "prover_client::bearer_header::tests::private_header_preserves_bytes_and_cleans_up_on_drop"
+          ],
+          "passed": 4
+        },
+        "prover_client::request_body_tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::request_body_tests::expansion_matches_exact_small_sealed_postcard_and_json",
+            "prover_client::request_body_tests::integer_ceiling_and_overflow_checks_need_no_large_payload",
+            "prover_client::request_body_tests::small_witness_exact_budgets_preserve_legacy_and_clocked_seals"
+          ],
+          "passed": 3
+        }
+      },
+      "workspace": {
+        "curl_transport::tests::": {
+          "ignored": 1,
+          "ignored_names": [
+            "curl_transport::tests::subprocess_worker"
+          ],
+          "names": [
+            "curl_transport::tests::curl_get_exact_byte_cap_is_accepted_and_one_more_is_refused",
+            "curl_transport::tests::curl_incomplete_body_keeps_non_success_exit_even_with_valid_json_prefix",
+            "curl_transport::tests::curl_post_sends_large_stdin_exactly_and_keeps_status_suffix",
+            "curl_transport::tests::early_closed_stdin_spawn_and_configuration_errors_are_static_and_redacted",
+            "curl_transport::tests::either_pipe_overflow_reaps_child_and_unblocks_large_stdin_writer",
+            "curl_transport::tests::request_body_limits_are_inclusive_positive_and_do_not_allocate_payloads",
+            "curl_transport::tests::service_base_join_preserves_encoded_paths_and_existing_address_forms",
+            "curl_transport::tests::service_base_query_and_fragment_refuse_without_echoing_values",
+            "curl_transport::tests::simultaneous_stdout_stderr_and_large_stdin_complete_without_pipe_deadlock",
+            "curl_transport::tests::supervisor_deadline_reaps_stalled_child_and_unblocks_stdin"
+          ],
+          "passed": 10
+        },
+        "http_transport_tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "http_transport_tests::direct_full_url_get_query_support_remains_unchanged",
+            "http_transport_tests::file_protocol_cannot_supply_attestation_or_receive_proof_body",
+            "http_transport_tests::get_glob_characters_are_one_literal_http_target",
+            "http_transport_tests::get_http_and_json_failures_do_not_echo_peer_content",
+            "http_transport_tests::get_nested_encoded_base_paths_reach_the_exact_attest_route",
+            "http_transport_tests::get_overflow_refused_with_or_without_content_length",
+            "http_transport_tests::get_small_and_exact_limit_valid_json_succeed",
+            "http_transport_tests::post_401_is_typed_and_other_errors_are_redacted",
+            "http_transport_tests::post_exact_body_byte_limit_preserves_unicode_body_and_bearer",
+            "http_transport_tests::post_exact_limit_succeeds_and_limit_plus_one_refuses",
+            "http_transport_tests::post_glob_characters_are_one_literal_http_target",
+            "http_transport_tests::post_injected_body_limit_refuses_before_process_creation",
+            "http_transport_tests::post_invalid_timeouts_refuse_before_process_creation",
+            "http_transport_tests::post_malformed_bearer_is_redacted_before_child_or_peer_request",
+            "http_transport_tests::post_nested_encoded_base_paths_reach_the_exact_prove_route",
+            "http_transport_tests::post_one_byte_over_small_budget_creates_no_child_marker_or_peer_request",
+            "http_transport_tests::post_query_fragment_bases_refuse_before_process_creation",
+            "http_transport_tests::post_streams_large_input_and_preserves_bearer_and_body",
+            "http_transport_tests::prover_decode_errors_do_not_echo_remote_values",
+            "http_transport_tests::scheme_less_loopback_http_remains_compatible"
+          ],
+          "passed": 20
+        },
+        "prover_client::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::bearer_header::tests::concurrent_requests_get_distinct_header_files",
+            "prover_client::bearer_header::tests::creation_failure_is_redacted",
+            "prover_client::bearer_header::tests::header_control_characters_fail_without_echoing_input",
+            "prover_client::bearer_header::tests::private_header_preserves_bytes_and_cleans_up_on_drop",
+            "prover_client::clock_pipeline_tests::clock_pipeline_intent_survives_encrypted_journal_and_cannot_rollback",
+            "prover_client::clock_pipeline_tests::clock_pipeline_refuses_unsupported_legacy_client",
+            "prover_client::clock_pipeline_tests::clock_pipeline_rejects_mismatched_prover_commitment",
+            "prover_client::clock_pipeline_tests::clock_pipeline_uses_v2_native_derivation_and_journals_bound_proof",
+            "prover_client::prove_curl_tests::args_carry_the_transport_hardening_flags_in_pairs",
+            "prover_client::prove_curl_tests::bearer_is_attached_when_present",
+            "prover_client::prove_curl_tests::invalid_status_markers_are_refused_without_echo",
+            "prover_client::prove_curl_tests::no_bearer_header_when_token_absent",
+            "prover_client::prove_curl_tests::split_status_separates_body_and_code",
+            "prover_client::prove_curl_tests::status_is_captured_via_write_out",
+            "prover_client::reauth_tests::no_rehandshake_means_401_is_terminal",
+            "prover_client::reauth_tests::re_handshakes_once_and_retries_on_401",
+            "prover_client::reauth_tests::rehandshake_refreshes_the_stored_secret_not_only_the_token",
+            "prover_client::reauth_tests::second_401_is_terminal",
+            "prover_client::reauth_tests::success_does_not_rehandshake",
+            "prover_client::request_body_tests::expansion_matches_exact_small_sealed_postcard_and_json",
+            "prover_client::request_body_tests::integer_ceiling_and_overflow_checks_need_no_large_payload",
+            "prover_client::clock_pipeline_tests::clock_pipeline_validates_context_before_prover_call",
+            "prover_client::seal_nonce_tests::nonce_is_deterministic_for_same_root_and_plaintext",
+            "prover_client::seal_nonce_tests::nonce_is_not_the_public_plaintext_hash",
+            "prover_client::seal_nonce_tests::nonce_varies_with_plaintext_and_with_root",
+            "prover_client::request_body_tests::small_witness_exact_budgets_preserve_legacy_and_clocked_seals",
+            "prover_client::tests::a_disagreeing_prover_is_refused",
+            "prover_client::tests::a_disagreeing_prover_names_the_differing_root",
+            "prover_client::tests::a_window_that_enters_close_only_reports_a_non_normal_post_state",
+            "prover_client::tests::an_empty_proof_is_refused_before_broadcast",
+            "prover_client::tests::local_derivation_matches_the_mock_prover_on_all_seven_roots",
+            "prover_client::tests::parses_a_response_with_deposits_root",
+            "prover_client::tests::parses_a_response_without_deposits_root",
+            "prover_client::tests::rejects_a_present_but_malformed_root",
+            "prover_client::tests::rejects_a_response_missing_the_commitment",
+            "prover_client::tests::new_deposit_count_is_cumulative_not_per_window",
+            "prover_client::tests::the_insurance_term_is_the_post_state_not_the_pre_state",
+            "prover_client::tests::the_outcome_carries_the_proven_post_state_terms_the_gate_judges",
+            "prover_client::tests::zero_deposit_window_submits_the_prestate_count"
+          ],
+          "passed": 39
+        },
+        "prover_client::bearer_header::tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::bearer_header::tests::concurrent_requests_get_distinct_header_files",
+            "prover_client::bearer_header::tests::creation_failure_is_redacted",
+            "prover_client::bearer_header::tests::header_control_characters_fail_without_echoing_input",
+            "prover_client::bearer_header::tests::private_header_preserves_bytes_and_cleans_up_on_drop"
+          ],
+          "passed": 4
+        },
+        "prover_client::request_body_tests::": {
+          "ignored": 0,
+          "ignored_names": [],
+          "names": [
+            "prover_client::request_body_tests::expansion_matches_exact_small_sealed_postcard_and_json",
+            "prover_client::request_body_tests::integer_ceiling_and_overflow_checks_need_no_large_payload",
+            "prover_client::request_body_tests::small_witness_exact_budgets_preserve_legacy_and_clocked_seals"
+          ],
+          "passed": 3
+        }
+      }
+    },
+    "ci63_sha256": "547fc76010de8ea64fb23c2adf1cefe17be3a59d51b882569f64ea50681c41d3",
+    "future_counts": "Count source-defined new test functions after final source freeze, then collect actual raw CI counts; do not predeclare future full-suite counts from a plan.",
+    "main": {
+      "commit": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+      "jobs": 14,
+      "sha256": "fdce919c1d80f7dda767b1024f8ed807e1b444c74a262fa4ecff0b6067276b55",
+      "success": 14,
+      "workflows": 3
+    },
+    "pr63_gateway": {
+      "a07_gateway": {
+        "failed": 0,
+        "ignored": 24,
+        "log": "a07-gateway.log",
+        "passed": 754,
+        "seconds": 397.11
+      },
+      "a11_release_gateway": {
+        "failed": 0,
+        "ignored": 24,
+        "log": "a11-release.log",
+        "passed": 754,
+        "seconds": 52.03
+      },
+      "workspace_gateway": {
+        "failed": 0,
+        "ignored": 24,
+        "log": "workspace.log",
+        "passed": 754,
+        "seconds": 591.54
+      }
+    }
+  },
+  "current_base_source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "current_body_module": "prover_client::request_body_tests::",
+  "current_body_test_functions": [
+    "expansion_matches_exact_small_sealed_postcard_and_json",
+    "integer_ceiling_and_overflow_checks_need_no_large_payload",
+    "small_witness_exact_budgets_preserve_legacy_and_clocked_seals"
+  ],
+  "current_body_test_limitations": {
+    "numeric": "Production512MiB and usize overflow tests use integer math, not allocation/acceptance at that size.",
+    "preflight": "Existing code allocates postcard plaintext before predicted JSON limit check; budget-minus-one test does not prove rejection before encoding.",
+    "reference": "Existing small-witness expected uses seal_witness_with_clock and the same production implementation. An implementation regression shared by expected/actual can escape; use independent old tuple/seal reference."
+  },
+  "current_checkout_observation": {
+    "head": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+    "status": " M crates/gateway/src/prover_client.rs\n",
+    "tree": "cd03a8218f36d65ad7ded7a11d2209867c3952bd"
+  },
+  "current_source_count": 379,
+  "execution_performed": false,
+  "implementation_accepted": false,
+  "input_files": {
+    ".github/workflows/a07-integration-hotfix.yml": {
+      "bytes": 1015,
+      "sha256": "fac98c63e556d35f8c432f287f6242b317d87fe782af824f6598c8903fc74105"
+    },
+    ".github/workflows/a11-release-evidence.yml": {
+      "bytes": 13917,
+      "sha256": "566c728b821a02e107c58d699dfe77bd5fb45fb04617e768b72ccae4b9cb9c66"
+    },
+    ".github/workflows/ci.yml": {
+      "bytes": 10293,
+      "sha256": "6058fce74352cbd052a6e9d4e5e176a334aa6929eaa4f3b9fdf97b8d13a8d603"
+    },
+    "Cargo.lock": {
+      "bytes": 61374,
+      "sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5"
+    },
+    "crates/gateway/src/http_transport_tests.rs": {
+      "bytes": 20275,
+      "sha256": "bb7e6e6d8a822d3e68dd55f84baf802b66670e27ef1befd89aedbec9dc856fac"
+    },
+    "crates/gateway/src/prover_bearer_header.rs": {
+      "bytes": 6039,
+      "sha256": "8d5801bfe69d1f43875d091ba47ecfb1f7086a117f783115ee4dbad436db7bd3"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 84837,
+      "sha256": "e6b3c403dac94f226d47b64e4591824f65fd26329072629ed2fcfeaef7f9f0b5"
+    },
+    "crates/perp-core/src/state.rs": {
+      "bytes": 22683,
+      "sha256": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388"
+    },
+    "crates/sequencer/src/lib.rs": {
+      "bytes": 137647,
+      "sha256": "04ea88b2e96ff6407496aadb5ff110c549d40a333372234c1648551fbb65487a"
+    }
+  },
+  "input_mode": "Exact historical c929 Git blobs; current root edits, if any, are not treated as this inspected source.",
+  "local_commands_after_root_source_freeze": [
+    "cargo test --locked -p gateway --bin gateway request_body_tests -- --nocapture",
+    "cargo test --locked -p gateway --bin gateway body_admission_tests -- --nocapture (only if that new module is actually source-defined)",
+    "cargo test --locked -p gateway --bin gateway prover_client:: -- --nocapture",
+    "cargo test --locked -p gateway --bin gateway http_transport_tests:: -- --nocapture",
+    "cargo test --locked -p gateway --bin gateway curl_transport::tests:: -- --nocapture",
+    "cargo fmt --all --check",
+    "cargo clippy --workspace --all-targets --locked -- -D warnings"
+  ],
+  "observed_utc": "2026-10-14T05:39:21.830621+00:00",
+  "preservation_for_next_review": [
+    "Old guest/core/candidate32 source pins,8manifest/locks,9proof/program artifacts unchanged; no dependency needed (postcard1.1.3 cached current API Flavor).",
+    "Preserve actual-sealed and final HTTP body checks as well as bearer-header guards; new preflight is additional.",
+    "No backend/service/real endpoint/proof/GPU, source edits or old/outside evidence writes from this review."
+  ],
+  "production_release": "HOLD",
+  "proposed_meaningful_tests": [
+    {
+      "acceptance": "Exercise try_push and whole-slice try_extend inclusive boundaries, initial prefix >limit and usize checked_add overflow with integer state only. On rejection no accepted count mutation; mark exceeded only when counter capacity/overflow caused error. No giant Vec.",
+      "name": "checked_counter_push_extend_and_overflow",
+      "scope": "Counter implementation, not whole witness capacity."
+    },
+    {
+      "acceptance": "Min JSON209/P0; B209/210->0,211->1. P127 JSON463 vs P128 JSON467; budgets463..466 max127. P16383/16384 discontinuity and 512MiB numeric largest P268435348 stay same. For computed maxP, expansion(maxP)<=B and expansion(maxP+1)>B/overflow. Preserve current small actual SealedWitness/postcard+JSON equality reference.",
+      "name": "plaintext_ceiling_inverse_matches_wire_boundaries",
+      "scope": "Pure numeric inversion reuses existing policy, no lower cap or 512MiB allocation."
+    },
+    {
+      "acceptance": "Both valid sample witnesses × legacy tuple3/clock tuple4. Count borrowed exact tuple; compare old postcard.to_allocvec byte length, adding exactly8 clock prefix. Do not clone input inside count.",
+      "name": "real_witness_count_equals_old_plaintext_length",
+      "scope": "Actual WindowWitness serialized types, small fixed fixtures."
+    },
+    {
+      "acceptance": "Private helper called by real seal wrapper accepts an allocating-encoder callback/seam. With actual borrowed small WindowWitness tuple and injected tiny/requiredJSON−1 limit, panic/counter encoder must never be invoked. An exact accepted budget invokes encoder once and returns expected bytes. Source review confirms this same helper is before nonce/provider/seal/hex and propagates error without transport retry.",
+      "name": "production_linked_refuses_before_allocating_encoder",
+      "scope": "First plaintext-output encoder not invoked on refusal; not zero process heap allocation or input construction/RSS. A toy counter test alone is insufficient."
+    },
+    {
+      "acceptance": "Construct expected independently: old tuple3/tuple4 encode, DPCLK2 prefix, unchanged seal_nonce, SoftwareSealProvider or AttestedSealProvider, SealedWitness/postcard and hex. Compare new accepted sealed hex and exact JSON budget for legacy/clock × dev/attested; use existing valid fixtures. Avoid expected and actual invoking same new encode helper.",
+      "name": "old_legacy_clock_dev_attested_wire_reference",
+      "scope": "Byte regression for known current types; no backend/open/real attestation/proof."
+    },
+    {
+      "acceptance": "Budget-exceeded counter maps fixed Http request exceeds byte limit and no401. Ordinary Serialize failure stays Decode. If counted vs actual length check is added, custom drift serializer should produce fixed mismatch Decode before nonce; report that its allocation already occurred. Do not claim two-pass arbitrary custom Serialize allocation boundedness.",
+      "name": "count_error_and_second_pass_drift_classification",
+      "scope": "Error/ordering distinction; known immutable derived witnesses are primary production scope."
+    }
+  ],
+  "review_passed": true,
+  "schema": "arcora-plaintext-preflight-test-ci-inventory/v1",
+  "scope": "Read-only design/test inventory against exact current base. This receipt proposes acceptance; it neither executes tests nor accepts forthcoming implementation. Historical memory was used only for dirty-worktree preservation and bounded-wire-not-RSS evidence discipline; current code/test/CI facts were freshly read from c929/frozen PR63 records.",
+  "scope_label_correction": {
+    "before": [
+      "tests_support::sample_window (live gateway sealed window with Deposit + Fill)",
+      "tests_support::sample_window_no_deposits (live next window, consumed deposit count carried)"
+    ],
+    "corrected_by": "root after independent reviewer finding",
+    "reason": "Correct Deposit + Fill prose label to actual Deposit + signed withdrawal; specify controlled gateway unit-test fixture rather than a live service",
+    "source_and_test_evidence_changed": false,
+    "supersedes_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/independent/test-ci-acceptance-inventory.json",
+    "supersedes_sha256": "6266fb2ad03b098f05175307c22f1d6649cd4a8bfacbda7fd9884fbbc85835cf"
+  },
+  "unchanged_ci_commands": {
+    "A07": [
+      "cargo test --locked -p gateway",
+      "cargo clippy --workspace --all-targets --locked -- -D warnings"
+    ],
+    "A11_release": [
+      "cargo test --workspace --locked --release",
+      "cargo build -p perp-core --no-default-features --features serde --locked",
+      "cargo build -p matcher --no-default-features --locked"
+    ],
+    "ci_workspace": [
+      "cargo test --workspace --locked",
+      "cargo test -p perp-core --features serde --locked",
+      "cargo build -p perp-core --no-default-features --locked",
+      "cargo build -p perp-core --no-default-features --features serde --locked",
+      "cargo build -p matcher --no-default-features --locked",
+      "cargo build -p note-archive --no-default-features --locked",
+      "cargo build -p bridge --no-default-features --locked"
+    ],
+    "excluded": [
+      "cargo check --locked --manifest-path crates/prover-service/Cargo.toml"
+    ]
+  },
+  "witness_type_scope": {
+    "clock": "Existing TimeBounds/derive_roots setup yields real ClockContext; exact DPCLK2 WIRE_MAGIC.len()==8.",
+    "definition": "batch_id:u64, pre_state:DefaultState, ops:Vec<BatchOp>, manifest:BatchManifest; derive Serialize/Deserialize. Transport serializes (&pre_state,&ops,&manifest), plus ClockContext for clocked path; batch_id is not separately added.",
+    "prestate": "DefaultState = State<Keccak256>; derived serialization includes full tree/nullifiers/maps and counters. Already materialized witness/state construction is outside output preflight.",
+    "type": "sequencer::WindowWitness",
+    "valid_small_fixtures": [
+      "tests_support::sample_window (gateway unit-test sealed window with Deposit + signed withdrawal)",
+      "tests_support::sample_window_no_deposits (gateway unit-test next window, consumed deposit count carried)"
+    ]
+  }
+}

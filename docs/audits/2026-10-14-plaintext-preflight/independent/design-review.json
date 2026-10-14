@@ -1,0 +1,79 @@
+{
+  "base_commit": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "base_git_blob_sha256": {
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "crates/gateway/src/prover_client.rs": "e6b3c403dac94f226d47b64e4591824f65fd26329072629ed2fcfeaef7f9f0b5",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/prover-service/src/admission.rs": "683f5bd231b9e9e43bc710e51994cc82d6181522d8f58624da1c74c4d66556a3",
+    "crates/sequencer/src/lib.rs": "04ea88b2e96ff6407496aadb5ff110c549d40a333372234c1648551fbb65487a",
+    "crates/service-transport/curl.rs": "74892f54c5b5ae4372e096ff154c50be34c70e7cca6b8ec9761d7c6a4a9f886b"
+  },
+  "base_public_source_count": 379,
+  "base_public_source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2",
+  "base_tree": "cd03a8218f36d65ad7ded7a11d2209867c3952bd",
+  "candidate_submission_enabled": false,
+  "concrete_blockers": [],
+  "exact_budget_numeric_criteria": {
+    "at_maximum_json_bytes": 536870911,
+    "budget_211_max_plaintext": 1,
+    "budget_467_max_plaintext": 128,
+    "budgets_209_210_max_plaintext": 0,
+    "budgets_463_through_466_max_plaintext": 127,
+    "maximum_plaintext_numeric_only": 268435348,
+    "minimum_json_bytes_empty_plaintext": 209,
+    "plaintext_127_json_bytes": 463,
+    "plaintext_128_json_bytes": 467,
+    "plus_one_plaintext_json_bytes": 536870913,
+    "production_json_ceiling": 536870912,
+    "usize_overflow": "pure checked arithmetic only, no large payload"
+  },
+  "frozen_prior_audit_sha256": {
+    "findings.json": "d9af6171ee930e138929cb72f42a5c43ef156abde812496173adfca9330b8be8",
+    "next-acceptance.md": "5f0cd704042aeb5bca26626ee735acf7616751f1fc646eb820f5e2f2b2b2949d",
+    "observations.json": "93e7e63fb1ba4ff74b98df643e2b7f38caa48a51b09a5f7dabf6c7e8ff10f2ae",
+    "prototype.rs": "4770c944df63912d4ebba5e4d574226874cf91a08e074a8686ea4654e3f7aef1",
+    "public-artifacts.json": "2d4324012abc7e636be6bdef615e2dc9a90100eaf90e7bb7f486514c72028792"
+  },
+  "meaningful_tests": [
+    "Old-reference actual small WindowWitness plaintext tuple3 and tuple4+exact 8-byte DPCLK2 prefix; compare accepted final seals against independently constructed old-reference software and attested-secret seals in four combinations.",
+    "Injected exact existing JSON budget accepts and budget-minus-one refuses with fixed non-Unauthorized Http error before encoder/output-buffer phase; bulk try_extend and byte try_push both covered.",
+    "Prefix-only overbudget refuses before tuple traversal; accepted prefix accounted once.",
+    "Counting error classification tests retain counter exceeded flag; custom serde failure without exceeded flag is Decode.",
+    "Actual output length mismatch on deliberately drifting test serializer is fixed Decode before nonce/seal; explicitly acknowledge second-pass allocation already occurred.",
+    "Existing numeric expansion, provider/session401, postsealed/final HTTP gates remain; no guest/core/ELF/vkey/lock/dependency change.",
+    "Accepted input incurs count+encode passes; report bounded local CPU samples and old/new exact byte equality without invented throughput threshold."
+  ],
+  "minimal_implementation_intent": [
+    "Private encode_plaintext_with_body_limit<T: Serialize + ?Sized> used only by borrowed immutable known legacy tuple3 / DPCLK2 tuple4.",
+    "Derive inclusive max plaintext P once from SAME checked sealed_request_json_bytes formula and caller body_limit; do not run expansion/varint loop for every serialized byte.",
+    "Preserve existing zero-limit Configuration and tiny nonzero no-fit RequestBodyLimit semantics.",
+    "Borrowed CountFlavor used/limit/exceeded; checked try_push/try_extend, flag retained after serialize error. Budget/overflow fixed Http, actual serializer failure Decode.",
+    "Clock prefix length charged before tuple traversal, then old to_allocvec and old prefix Vec+extend preserved.",
+    "Actual encoded plaintext length must equal counted length before nonce/provider/seal; fixed Decode on drift. This is a post-allocation mismatch guard, not generic drift allocation prevention.",
+    "Existing postplain checked prediction, actual sealed postcard and final HTTP body guards remain unchanged."
+  ],
+  "new_execution_tests_performed": false,
+  "observed_utc": "2026-10-14T05:38:00.303498+00:00",
+  "prior_evidence_limits": {
+    "CPU_sample": "single short local sample; noisy, below-one ratio not performance gain",
+    "actual_WindowWitness_integration": false,
+    "cases": 16,
+    "count_heap_allocations_for_these_synthetic_types": 0,
+    "payload_max_bytes": 262144,
+    "reused_evidence_only_no_rerun": true
+  },
+  "release_gate": "HOLD",
+  "review_only": true,
+  "risks_not_closed": [
+    "Input pre_state/ops allocation and cloning already precede this seam.",
+    "Output-byte counting does not bound wall-clock work, recursion or arbitrary custom serializer allocation.",
+    "Unbounded second encoder can allocate expanded output if serializer mutates between passes; known immutable derived production types justify scope, fixed mismatch catches it afterwards.",
+    "Clocked path still makes body Vec and separate magic Vec; no peak RSS claim.",
+    "Body ceiling does not imply peer smaller configured body acceptance or proving capacity."
+  ],
+  "schema": "arcora-preplaintext-independent-design-review/v1",
+  "source_dependency_lock_edits_performed": false,
+  "status": "NO_CONCRETE_BLOCKER_FOR_SCOPED_INTENT"
+}

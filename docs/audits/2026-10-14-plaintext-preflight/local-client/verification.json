@@ -1,0 +1,228 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "test",
+    "--locked",
+    "--offline",
+    "-p",
+    "gateway",
+    "--bin",
+    "gateway",
+    "prover_client::",
+    "--",
+    "--nocapture"
+  ],
+  "cpu_samples": [
+    {
+      "clocked": false,
+      "count_encode_ns": 32650334,
+      "fixture": 0,
+      "old_encode_ns": 19681583,
+      "pair": 0,
+      "plaintext_bytes": 2600,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 29570750,
+      "fixture": 0,
+      "old_encode_ns": 14250583,
+      "pair": 1,
+      "plaintext_bytes": 2600,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 29430625,
+      "fixture": 0,
+      "old_encode_ns": 13716041,
+      "pair": 2,
+      "plaintext_bytes": 2600,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 28956292,
+      "fixture": 0,
+      "old_encode_ns": 14212292,
+      "pair": 3,
+      "plaintext_bytes": 2600,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 29075292,
+      "fixture": 0,
+      "old_encode_ns": 14143625,
+      "pair": 4,
+      "plaintext_bytes": 2600,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 31093875,
+      "fixture": 0,
+      "old_encode_ns": 14548417,
+      "pair": 0,
+      "plaintext_bytes": 2741,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30656958,
+      "fixture": 0,
+      "old_encode_ns": 14855042,
+      "pair": 1,
+      "plaintext_bytes": 2741,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30963666,
+      "fixture": 0,
+      "old_encode_ns": 14785708,
+      "pair": 2,
+      "plaintext_bytes": 2741,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30790792,
+      "fixture": 0,
+      "old_encode_ns": 14701666,
+      "pair": 3,
+      "plaintext_bytes": 2741,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30742292,
+      "fixture": 0,
+      "old_encode_ns": 14895625,
+      "pair": 4,
+      "plaintext_bytes": 2741,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 28551375,
+      "fixture": 1,
+      "old_encode_ns": 13739292,
+      "pair": 0,
+      "plaintext_bytes": 2516,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 28590125,
+      "fixture": 1,
+      "old_encode_ns": 13829917,
+      "pair": 1,
+      "plaintext_bytes": 2516,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 28714833,
+      "fixture": 1,
+      "old_encode_ns": 13566292,
+      "pair": 2,
+      "plaintext_bytes": 2516,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 28479834,
+      "fixture": 1,
+      "old_encode_ns": 13717917,
+      "pair": 3,
+      "plaintext_bytes": 2516,
+      "repetitions": 500
+    },
+    {
+      "clocked": false,
+      "count_encode_ns": 28253042,
+      "fixture": 1,
+      "old_encode_ns": 13971000,
+      "pair": 4,
+      "plaintext_bytes": 2516,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30052750,
+      "fixture": 1,
+      "old_encode_ns": 14382708,
+      "pair": 0,
+      "plaintext_bytes": 2657,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30203041,
+      "fixture": 1,
+      "old_encode_ns": 14373792,
+      "pair": 1,
+      "plaintext_bytes": 2657,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30004167,
+      "fixture": 1,
+      "old_encode_ns": 14391833,
+      "pair": 2,
+      "plaintext_bytes": 2657,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 29942500,
+      "fixture": 1,
+      "old_encode_ns": 14465709,
+      "pair": 3,
+      "plaintext_bytes": 2657,
+      "repetitions": 500
+    },
+    {
+      "clocked": true,
+      "count_encode_ns": 30084333,
+      "fixture": 1,
+      "old_encode_ns": 14438250,
+      "pair": 4,
+      "plaintext_bytes": 2657,
+      "repetitions": 500
+    }
+  ],
+  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "elapsed_seconds": 13.017531166085973,
+  "environment_override": {
+    "CARGO_BUILD_JOBS": "2",
+    "PATH": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/python-bin:/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0iEhaeB:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+    "RUSTC": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+  },
+  "exit_code": 0,
+  "files": {
+    "stderr.log": {
+      "bytes": 268,
+      "sha256": "1627fee1b869f74f498d5f5e7c857d7b27f16c6d817bb93ea4c4d374752a62f3"
+    },
+    "stdout.log": {
+      "bytes": 11945,
+      "sha256": "1af1290d1ac77edb7f3359a339077eb5023161e46d0c043fc0a1ac0841bd88c3"
+    }
+  },
+  "observed_utc": "2026-10-14T05:41:27.917111+00:00",
+  "passed": true,
+  "source_sha256": "a66f16cd2aeaf0c663f9a7b4bced9af5c0b5b268865bc7f212085c39fc4bd3f7",
+  "test_summaries": [
+    [
+      "ok",
+      "46",
+      "0",
+      "0",
+      "0",
+      "739"
+    ]
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "limitations": [
+    "Accepted path has two serializer traversals plus bounded inverse budget work",
+    "Diagnostic duration is noisy, excludes input preparation/sealing/proving/transport",
+    "No optimized-production throughput, peak RSS, giant allocation or proving-capacity acceptance",
+    "Length mismatch catches only post-allocation length drift; same-length custom serializer content drift is outside known immutable witness scope"
+  ],
+  "passed": true,
+  "samples": [
+    {
+      "clocked": false,
+      "fixture": 0,
+      "median_count_encode_ns": 28485792,
+      "median_old_encode_ns": 13597875,
+      "median_ratio": 2.092851493339952,
+      "pair_count": 5,
+      "plaintext_bytes": 2600,
+      "repetitions_per_sample": 500
+    },
+    {
+      "clocked": true,
+      "fixture": 0,
+      "median_count_encode_ns": 30033500,
+      "median_old_encode_ns": 14444208,
+      "median_ratio": 2.0731521589830333,
+      "pair_count": 5,
+      "plaintext_bytes": 2741,
+      "repetitions_per_sample": 500
+    },
+    {
+      "clocked": false,
+      "fixture": 1,
+      "median_count_encode_ns": 27808875,
+      "median_old_encode_ns": 13224708,
+      "median_ratio": 2.1027969010733547,
+      "pair_count": 5,
+      "plaintext_bytes": 2516,
+      "repetitions_per_sample": 500
+    },
+    {
+      "clocked": true,
+      "fixture": 1,
+      "median_count_encode_ns": 30266250,
+      "median_old_encode_ns": 14323541,
+      "median_ratio": 2.105231191255262,
+      "pair_count": 5,
+      "plaintext_bytes": 2657,
+      "repetitions_per_sample": 500
+    }
+  ],
+  "scope": "Two real small WindowWitness fixtures; legacy and DPCLK2 encoding only, debug cargo test, isolated single test/thread; five alternating paired samples per fixture/mode",
+  "source_sha256": "a66f16cd2aeaf0c663f9a7b4bced9af5c0b5b268865bc7f212085c39fc4bd3f7",
+  "verification_sha256": "25d377fa4a3e95104eca726c5cb0841d5973641500c6aa3e56f0a2277c5ff92c"
+}

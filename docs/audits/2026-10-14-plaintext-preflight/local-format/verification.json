@@ -1,0 +1,31 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "fmt",
+    "--all",
+    "--check"
+  ],
+  "cpu_samples": [],
+  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "elapsed_seconds": 0.590392709011212,
+  "environment_override": {
+    "CARGO_BUILD_JOBS": "2",
+    "PATH": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/python-bin:/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0iEhaeB:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+    "RUSTC": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+  },
+  "exit_code": 0,
+  "files": {
+    "stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "observed_utc": "2026-10-14T05:41:49.280365+00:00",
+  "passed": true,
+  "source_sha256": "a66f16cd2aeaf0c663f9a7b4bced9af5c0b5b268865bc7f212085c39fc4bd3f7",
+  "test_summaries": []
+}

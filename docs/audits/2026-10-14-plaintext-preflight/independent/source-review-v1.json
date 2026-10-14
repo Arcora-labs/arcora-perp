@@ -1,0 +1,109 @@
+{
+  "acceptance_state": "SOURCE_REVIEW_PASS; actual test execution and future source freeze/CI acceptance remain separate root tasks.",
+  "base": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "base_source_file_bytes": 84837,
+  "base_source_file_sha256": "e6b3c403dac94f226d47b64e4591824f65fd26329072629ed2fcfeaef7f9f0b5",
+  "blocking_findings": [],
+  "branch": "fix/plaintext-preflight-20261014",
+  "checks": [
+    {
+      "check": "scope_and_history",
+      "evidence": "Only prover_client.rs differs from base. All35 existing #[test] function bodies byte-identical; bearer helper file adds unchanged4 => historical client39 retained. Seven additive functions, request_body_tests now10. Future46/761 counts are derived expectations only until actual local/CI execution.",
+      "passed": true
+    },
+    {
+      "check": "inclusive_inverse_arithmetic",
+      "evidence": "Initial min expansion uses unchanged check_request_body_bytes, preserving B0 Configuration and B1..208 RequestBodyLimit. Binary search high=B/2, upward middle<=high, middle\u22121 safe; overflow expansion cannot fit. C(P) strict monotonic at varint jumps. No lower cap; production512MiB retains maxP268435348. usizeMAX fits largest odd exact expansion, no large allocation.",
+      "passed": true
+    },
+    {
+      "check": "counter_order_and_error_domain",
+      "evidence": "Checked add including whole try_extend; failed count leaves used unchanged and sets exceeded. Derived serializers propagate error. map_err maps counter-cap/overflow to fixed Http only when exceeded; ordinary codec error Decode. Counting is before FnOnce allocating encoder and prefix Vec. Prefix exceeds budget returns before traversal. Zero Config error remains fixed non401.",
+      "passed": true
+    },
+    {
+      "check": "known_type_scope_and_two_pass",
+      "evidence": "Private production seam borrows same tuple3/tuple4. Current WindowWitness/State serialization derived over known immutable data; no preflight clone. Clock prefix exactly existing WIRE_MAGIC8 added once to initial count and output. Mismatch fixed Decode before nonce; comments explicitly postallocation length drift/same-length content drift/custom Serialize allocation limits. Not a generic Serialize CPU/RSS bound.",
+      "passed": true
+    },
+    {
+      "check": "production_path_join",
+      "evidence": "Both legacy and clock real seal wrapper call encode_plaintext_with_body_limit; error propagates with ? before predicted guard, nonce, provider/seal, actual sealed wire guard and hex. Existing postplain/sealed and final HTTP guards remain; shared cap, session/401/bearer/transport and dependency/guest sources unchanged.",
+      "passed": true
+    },
+    {
+      "check": "behavioral_refusal_and_wire_reference",
+      "evidence": "Actual sample_window plus sample_window_no_deposits valid fixtures. Tiny/zero/budget\u22121 panic encoder proves zero encoder call at the private production-linked seam; inclusive exact invokes once. Separate traced4096 shows prefix refusal0 visits and early count stop. Independent old plaintext/seal reference for2fixtures\u00d7legacy/clock\u00d7dev/attested compares bytes without calling new encoder as reference. Old3 request-body test bodies preserved.",
+      "passed": true
+    },
+    {
+      "check": "cpu_observation_scope",
+      "evidence": "Actual2fixtures\u00d7legacy/clock, equality gate,20warmups,5 alternating-order pairs\u00d7500reps, black_box and absolute ns logs. Diagnostic only; no flaky speed threshold or throughput/RSS/proof claim. Input construction and ClockContext/derive_roots setup are outside timed interval.",
+      "passed": true
+    }
+  ],
+  "current_body_module_test_count": 10,
+  "current_source_file_bytes": 102770,
+  "current_source_file_sha256": "a66f16cd2aeaf0c663f9a7b4bced9af5c0b5b268865bc7f212085c39fc4bd3f7",
+  "execution_performed": false,
+  "historical_client39_retained": true,
+  "new_test_function_count": 7,
+  "new_test_functions": [
+    "count_codec_error_and_second_pass_length_drift_keep_decode_domain",
+    "counting_flavor_checks_bulk_push_and_integer_overflow",
+    "plaintext_budget_inverts_inclusive_policy_and_varint_jumps",
+    "prefix_refusal_precedes_traversal_and_count_stops_early",
+    "real_small_witness_paired_encoding_cpu_observation",
+    "real_witness_matches_independent_old_plaintext_and_sealed_bytes",
+    "real_witness_over_budget_never_calls_plaintext_encoder"
+  ],
+  "nonblocking_findings": [],
+  "observed_utc": "2026-10-14T05:44:04.823599+00:00",
+  "old_functions_byte_identical": [
+    "parses_a_response_without_deposits_root",
+    "parses_a_response_with_deposits_root",
+    "rejects_a_present_but_malformed_root",
+    "rejects_a_response_missing_the_commitment",
+    "local_derivation_matches_the_mock_prover_on_all_seven_roots",
+    "new_deposit_count_is_cumulative_not_per_window",
+    "zero_deposit_window_submits_the_prestate_count",
+    "the_outcome_carries_the_proven_post_state_terms_the_gate_judges",
+    "the_insurance_term_is_the_post_state_not_the_pre_state",
+    "a_window_that_enters_close_only_reports_a_non_normal_post_state",
+    "a_disagreeing_prover_is_refused",
+    "an_empty_proof_is_refused_before_broadcast",
+    "a_disagreeing_prover_names_the_differing_root",
+    "nonce_is_not_the_public_plaintext_hash",
+    "nonce_is_deterministic_for_same_root_and_plaintext",
+    "nonce_varies_with_plaintext_and_with_root",
+    "args_carry_the_transport_hardening_flags_in_pairs",
+    "bearer_is_attached_when_present",
+    "no_bearer_header_when_token_absent",
+    "status_is_captured_via_write_out",
+    "split_status_separates_body_and_code",
+    "invalid_status_markers_are_refused_without_echo",
+    "re_handshakes_once_and_retries_on_401",
+    "second_401_is_terminal",
+    "no_rehandshake_means_401_is_terminal",
+    "rehandshake_refreshes_the_stored_secret_not_only_the_token",
+    "success_does_not_rehandshake",
+    "clock_pipeline_uses_v2_native_derivation_and_journals_bound_proof",
+    "clock_pipeline_rejects_mismatched_prover_commitment",
+    "clock_pipeline_validates_context_before_prover_call",
+    "clock_pipeline_intent_survives_encrypted_journal_and_cannot_rollback",
+    "clock_pipeline_refuses_unsupported_legacy_client",
+    "expansion_matches_exact_small_sealed_postcard_and_json",
+    "integer_ceiling_and_overflow_checks_need_no_large_payload",
+    "small_witness_exact_budgets_preserve_legacy_and_clocked_seals"
+  ],
+  "old_source_test_functions_count": 35,
+  "only_changed_tracked_path": [
+    "crates/gateway/src/prover_client.rs"
+  ],
+  "passed": true,
+  "schema": "arcora-plaintext-preflight-independent-source-review/v1",
+  "scope": "Read-only exact diff/current-source security and correctness review. Arithmetic proof and source-bound behavioral test inspection; no test/build/network/source/old/outside writes. Only this new ignored receipt saved. Known fixed immutable witness types and first plaintext-output encoding refusal; no arbitrary custom Serialize/global allocation/RSS/CPU/proving or production-release guarantee.",
+  "source_edits_performed": false,
+  "source_file": "crates/gateway/src/prover_client.rs",
+  "unchanged_external_bearer_test_functions": 4
+}

@@ -1,0 +1,15 @@
+{
+  "authorized_existing_source_paths": [
+    "crates/gateway/src/prover_client.rs"
+  ],
+  "base": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "baseline_sha256": "0452dee5790d5db2fe8af1def2db83a4201bce471e6923e1b2d4eaa0a31ec82e",
+  "branch": "fix/plaintext-preflight-20261014",
+  "later_docs_scope": "New audit packet and docs/ACTIVE_WORK.md only after source verification, as root specified.",
+  "new_source_helper_authorized": false,
+  "original_baseline_immutable": true,
+  "recorded_at": "2026-10-14T05:39:01.568344+00:00",
+  "schema": "arcora-plaintext-preflight-source-scope-clarification/v1",
+  "scope": "Trusted root message fixes source scope; no new source/tracked edits or source-state assertion after baseline.",
+  "supersedes_generic_pre_scope_note_only": true
+}

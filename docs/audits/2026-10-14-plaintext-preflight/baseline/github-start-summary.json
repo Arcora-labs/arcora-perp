@@ -1,0 +1,107 @@
+{
+  "applied_rule_types": [
+    "deletion",
+    "non_fast_forward",
+    "pull_request",
+    "required_status_checks"
+  ],
+  "baseline_sha256": "0452dee5790d5db2fe8af1def2db83a4201bce471e6923e1b2d4eaa0a31ec82e",
+  "captured_at": "2026-10-14T05:38:08.034733+00:00",
+  "captures": {
+    "applied-rules": {
+      "bytes": 1687,
+      "command": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/rules/branches/main"
+      ],
+      "exit_code": 0,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-applied-rules.json",
+      "sha256": "9faea6306394d097f40e28467eee98d774ceb6e7365abd5fefa787948f0cfae7",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "main-ref": {
+      "bytes": 344,
+      "command": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/git/ref/heads/main"
+      ],
+      "exit_code": 0,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-main-ref.json",
+      "sha256": "7c48cdb0576f2e39a735ff3998a86fa3a6bcb961af9f1202e829084ce5e3fafa",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "open-prs": {
+      "bytes": 2,
+      "command": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/pulls?state=open&per_page=100"
+      ],
+      "exit_code": 0,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-open-prs.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "expected_start_main": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "main_matches_start": true,
+  "main_sha": "c929c719e366e62fe4a95f0da9d4e327755116ec",
+  "open_PR_count": 0,
+  "open_PRs": [],
+  "passed": true,
+  "required_context_count": 11,
+  "required_contexts": [
+    {
+      "context": "rust (lint, 1.99)",
+      "integration_id": 15368
+    },
+    {
+      "context": "rust (workspace)",
+      "integration_id": 15368
+    },
+    {
+      "context": "prover crates (excluded, typecheck)",
+      "integration_id": 15368
+    },
+    {
+      "context": "contracts (foundry)",
+      "integration_id": 15368
+    },
+    {
+      "context": "frontend (vite)",
+      "integration_id": 15368
+    },
+    {
+      "context": "dependency advisories",
+      "integration_id": 15368
+    },
+    {
+      "context": "release regression",
+      "integration_id": 15368
+    },
+    {
+      "context": "foundry release gate",
+      "integration_id": 15368
+    },
+    {
+      "context": "gateway RPC, crash and alert drills",
+      "integration_id": 15368
+    },
+    {
+      "context": "frontend release gate",
+      "integration_id": 15368
+    },
+    {
+      "context": "prover source / deployment binding",
+      "integration_id": 15368
+    }
+  ],
+  "schema": "arcora-plaintext-preflight-start-github-readback/v1",
+  "scope": "Only three GitHub public GET metadata endpoints. As-of inventory, no PR/check/rule/branch/source mutation; source clean claim belongs earlier immutable baseline, not this later snapshot.",
+  "strict_required_policy": true
+}

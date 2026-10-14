@@ -1,0 +1,11 @@
+# Bağımsız dar implementation review
+
+Base c929c719 / tree cd03a821; önceki 16 küçük audit frozen. Root'un private `encode_plaintext_with_body_limit` intent'i için somut blocker bulunmadı. Bu kayıt code approval veya release gate kapanışı değildir; implementation sonrası exact source-bound tests gereklidir.
+
+Önerilen tek seam, ilk output Vec öncesinde checked/bounded postcard Flavor'dır. JSON body limit'inden bir defa inclusive plaintext allowance türetilir; budget sıfırsa mevcut Configuration, hiç plaintext sığmayan pozitif bütçede RequestBodyLimit. Borrowed counter'ın exceeded flag'i tutulur: gerçek serde failure ile budget/overflow ayrılır. DPCLK2 prefix tuple traversal öncesinde tam8 byte sayılır. Eski encoder/prefix wire, nonce/provider/session ve downstream guards korunur. Count != actual plaintext length fixed Decode ile nonce/seal öncesinde durur.
+
+P0 minimum209 JSON byte;209/210→P0,211→P1. Varint jump127→128 için463→467 JSON byte olduğundan463..466 bütçeleri P127,467 P128 kabul etmelidir.512MiB budget maksimumP268435348 için536870911; P+1 için536870913. Bunlar integer-only acceptance kriterleri; büyük allocation test değildir.
+
+Mevcut small_witness test'inin expected seal'i aynı wrapper'dan çağrıldığı için bağımsız eski/new wire oracle'ı tek başına sayılmamalı. Actual küçük WindowWitness için eski tuple/prefix serialize reference ve eski seal yolu ile legacy/clock × software/attested4combo equality gerekir. Generic tracing serializer veya production-linked phase sentinel reject-before-output-encoder kesitini kapsamalı; isolated sentinel bütün keyprovider/proof/RSS kabulü değildir.
+
+Accepted iki pass CPU maliyeti açık; custom serde mutation veya allocation genelde yasaklanmış değildir. Known borrowed immutable derived production türleri scope'u daraltır. Drift length guard allocation sonrası farkı yakalar; bu durum için early-allocation-prevention iddiası yapılmaz. Aynı length farklı bytes üreten custom serializer count ile tespit edilemez; değişmeyen production types ve exact wire regression bu scope'un temelidir. Input/prestate clone, recursion/wallclock ve accepted clock twoVec peak memory ayrı kapılardır. Peer daha düşük body cap ile yine reddedebilir. HOLD/candidate disabled kalır.

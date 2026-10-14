@@ -1,0 +1,541 @@
+diff --git a/crates/gateway/src/prover_client.rs b/crates/gateway/src/prover_client.rs
+index 74d1e83..938f92e 100644
+--- a/crates/gateway/src/prover_client.rs
++++ b/crates/gateway/src/prover_client.rs
+@@ -363,8 +363,8 @@ fn seal_witness_with_clock(
+     )
+ }
+ 
+-/// Plaintext has already been allocated. Refuse its checked wire expansion
+-/// before hashing the nonce, releasing a seal key, or allocating the seal/hex.
++/// Count the borrowed witness before allocating its plaintext output. Accepted
++/// witnesses take two serialization passes; this is not a CPU or total-RSS limit.
+ fn seal_witness_with_clock_and_body_limit(
+     w: &WindowWitness,
+     root: &[u8; 32],
+@@ -374,14 +374,15 @@ fn seal_witness_with_clock_and_body_limit(
+     body_limit: usize,
+ ) -> Result<String, ProverClientError> {
+     let bytes = match clock {
+-        None => postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest)),
+-        Some(c) => postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, c)).map(|body| {
+-            let mut bytes = perp_core::clock::WIRE_MAGIC.to_vec();
+-            bytes.extend(body);
+-            bytes
+-        }),
+-    }
+-    .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
++        None => {
++            encode_plaintext_with_body_limit(&(&w.pre_state, &w.ops, &w.manifest), &[], body_limit)
++        }
++        Some(c) => encode_plaintext_with_body_limit(
++            &(&w.pre_state, &w.ops, &w.manifest, c),
++            perp_core::clock::WIRE_MAGIC,
++            body_limit,
++        ),
++    }?;
+     let predicted_body_bytes = sealed_request_json_bytes(bytes.len())
+         .map_err(|e| ProverClientError::Http(e.to_string()))?;
+     crate::curl_transport::check_request_body_bytes(predicted_body_bytes, body_limit)
+@@ -514,6 +515,120 @@ fn prove_request_json_bytes(
+         .ok_or(crate::curl_transport::Error::RequestBodyLimit)
+ }
+ 
++/// Invert the same monotonic sealed/hex/JSON expansion, without a new policy cap.
++/// The upper bound is safe even for usize::MAX; an overflowing expansion cannot fit.
++fn plaintext_byte_limit(body_limit: usize) -> Result<usize, crate::curl_transport::Error> {
++    crate::curl_transport::check_request_body_bytes(sealed_request_json_bytes(0)?, body_limit)?;
++    let (mut low, mut high) = (0usize, body_limit / 2);
++    while low < high {
++        let middle = low + (high - low) / 2 + 1;
++        if sealed_request_json_bytes(middle).is_ok_and(|bytes| bytes <= body_limit) {
++            low = middle;
++        } else {
++            high = middle - 1;
++        }
++    }
++    Ok(low)
++}
++
++struct PlaintextCount {
++    used: usize,
++    limit: usize,
++    exceeded: bool,
++}
++
++impl PlaintextCount {
++    fn add(&mut self, bytes: usize) -> postcard::Result<()> {
++        match self
++            .used
++            .checked_add(bytes)
++            .filter(|used| *used <= self.limit)
++        {
++            Some(used) => {
++                self.used = used;
++                Ok(())
++            }
++            None => {
++                self.exceeded = true;
++                Err(postcard::Error::SerializeBufferFull)
++            }
++        }
++    }
++}
++
++impl postcard::ser_flavors::Flavor for &mut PlaintextCount {
++    type Output = usize;
++
++    fn try_push(&mut self, _byte: u8) -> postcard::Result<()> {
++        self.add(1)
++    }
++
++    fn try_extend(&mut self, bytes: &[u8]) -> postcard::Result<()> {
++        self.add(bytes.len())
++    }
++
++    fn finalize(self) -> postcard::Result<usize> {
++        Ok(self.used)
++    }
++}
++
++/// Private seam for the known immutable witness tuples. Counting creates no
++/// output buffer; arbitrary Serialize implementations may still allocate or drift.
++fn encode_plaintext_with_body_limit<T: serde::Serialize + ?Sized>(
++    value: &T,
++    prefix: &[u8],
++    body_limit: usize,
++) -> Result<Vec<u8>, ProverClientError> {
++    preflight_then_encode_plaintext(value, prefix, body_limit, || postcard::to_allocvec(value))
++}
++
++fn preflight_then_encode_plaintext<T, F>(
++    value: &T,
++    prefix: &[u8],
++    body_limit: usize,
++    encode: F,
++) -> Result<Vec<u8>, ProverClientError>
++where
++    T: serde::Serialize + ?Sized,
++    F: FnOnce() -> postcard::Result<Vec<u8>>,
++{
++    let limit =
++        plaintext_byte_limit(body_limit).map_err(|e| ProverClientError::Http(e.to_string()))?;
++    if prefix.len() > limit {
++        return Err(ProverClientError::Http(
++            crate::curl_transport::Error::RequestBodyLimit.to_string(),
++        ));
++    }
++    let mut counter = PlaintextCount {
++        used: prefix.len(),
++        limit,
++        exceeded: false,
++    };
++    let counted = postcard::serialize_with_flavor(value, &mut counter).map_err(|e| {
++        if counter.exceeded {
++            ProverClientError::Http(crate::curl_transport::Error::RequestBodyLimit.to_string())
++        } else {
++            ProverClientError::Decode(format!("witness encode: {e}"))
++        }
++    })?;
++    let body = encode().map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
++    let bytes = if prefix.is_empty() {
++        body
++    } else {
++        let mut bytes = prefix.to_vec();
++        bytes.extend(body);
++        bytes
++    };
++    // Length drift is caught after allocation; same-length content drift is not.
++    // Only the fixed borrowed witness types have the pre-allocation size guarantee.
++    if bytes.len() != counted {
++        return Err(ProverClientError::Decode(
++            "witness encoded size changed".into(),
++        ));
++    }
++    Ok(bytes)
++}
++
+ /// Curl argv for a `/prove` POST. Factored out so the transport-hardening flags are
+ /// unit-testable. Beyond the wall-clock `--max-time`:
+ /// - `--connect-timeout 20`: a dead prover / down reverse-tunnel is detected on CONNECT
+@@ -1836,6 +1951,380 @@ mod clock_pipeline_tests {
+ mod request_body_tests {
+     use super::*;
+     use crate::curl_transport::{check_request_body_bytes, Error, MAX_PROVE_REQUEST_BODY_BYTES};
++    use postcard::ser_flavors::Flavor;
++    use serde::ser::SerializeSeq;
++    use std::cell::Cell;
++
++    fn fixture_clock(w: &WindowWitness) -> perp_core::clock::ClockContext {
++        let mut post = w.pre_state.clone();
++        let derived = derive_roots(&mut post, &w.ops, &w.manifest).unwrap();
++        let bounds = perp_core::clock::TimeBounds::derive(&w.ops).unwrap();
++        perp_core::clock::ClockContext {
++            chain_id: 84532,
++            verifier: [1; 20],
++            settlement: [2; 20],
++            batch_id: w.batch_id,
++            previous_root: derived.prev_state_root,
++            base_commitment: derived.commitment::<Keccak256>(),
++            phase: derived.wind_down_phase,
++            first_ms: bounds.first_ms,
++            last_ms: bounds.last_ms,
++            timed_ops: bounds.count,
++            anchored_at_ms: bounds.last_ms,
++            max_window_ms: 60_000,
++            clock_skew_ms: 2_000,
++        }
++    }
++
++    #[test]
++    fn plaintext_budget_inverts_inclusive_policy_and_varint_jumps() {
++        assert_eq!(plaintext_byte_limit(0), Err(Error::Configuration));
++        assert_eq!(plaintext_byte_limit(208), Err(Error::RequestBodyLimit));
++        for (body, plaintext) in [
++            (209, 0),
++            (210, 0),
++            (211, 1),
++            (463, 127),
++            (466, 127),
++            (467, 128),
++        ] {
++            assert_eq!(plaintext_byte_limit(body), Ok(plaintext));
++        }
++        for plaintext in [0usize, 1, 127, 128, 16383, 16384, 268_435_348] {
++            let exact = sealed_request_json_bytes(plaintext).unwrap();
++            assert_eq!(plaintext_byte_limit(exact), Ok(plaintext));
++            assert!(sealed_request_json_bytes(plaintext + 1).unwrap() > exact);
++        }
++        assert_eq!(
++            plaintext_byte_limit(MAX_PROVE_REQUEST_BODY_BYTES),
++            Ok(268_435_348)
++        );
++        let maximum = plaintext_byte_limit(usize::MAX).unwrap();
++        assert_eq!(sealed_request_json_bytes(maximum), Ok(usize::MAX));
++        assert_eq!(
++            sealed_request_json_bytes(maximum + 1),
++            Err(Error::RequestBodyLimit)
++        );
++    }
++
++    #[test]
++    fn counting_flavor_checks_bulk_push_and_integer_overflow() {
++        let mut counter = PlaintextCount {
++            used: 8,
++            limit: 11,
++            exceeded: false,
++        };
++        {
++            let mut flavor = &mut counter;
++            flavor.try_extend(&[1, 2]).unwrap();
++            flavor.try_push(3).unwrap();
++            assert_eq!(
++                flavor.try_push(4),
++                Err(postcard::Error::SerializeBufferFull)
++            );
++        }
++        assert_eq!(counter.used, 11);
++        assert!(counter.exceeded);
++        let mut counter = PlaintextCount {
++            used: 0,
++            limit: 1,
++            exceeded: false,
++        };
++        assert_eq!(
++            (&mut counter).try_extend(&[1, 2]),
++            Err(postcard::Error::SerializeBufferFull)
++        );
++        assert_eq!(counter.used, 0);
++        assert!(counter.exceeded);
++        let mut counter = PlaintextCount {
++            used: usize::MAX,
++            limit: usize::MAX,
++            exceeded: false,
++        };
++        assert_eq!(counter.add(1), Err(postcard::Error::SerializeBufferFull));
++        assert_eq!(counter.used, usize::MAX);
++        assert!(counter.exceeded);
++    }
++
++    #[test]
++    fn real_witness_over_budget_never_calls_plaintext_encoder() {
++        fn check<T: serde::Serialize + ?Sized>(value: &T, prefix: &[u8]) {
++            let body = postcard::to_allocvec(value).unwrap();
++            let budget = sealed_request_json_bytes(prefix.len() + body.len()).unwrap();
++            for limit in [0, 1, budget - 1] {
++                let error = preflight_then_encode_plaintext(value, prefix, limit, || {
++                    panic!("refused witness reached plaintext output allocation")
++                })
++                .unwrap_err();
++                let expected = if limit == 0 {
++                    "invalid HTTP transport limits"
++                } else {
++                    "HTTP request exceeds byte limit"
++                };
++                assert!(
++                    matches!(error, ProverClientError::Http(ref message) if message == expected)
++                );
++            }
++            let calls = Cell::new(0);
++            let accepted = preflight_then_encode_plaintext(value, prefix, budget, || {
++                calls.set(calls.get() + 1);
++                postcard::to_allocvec(value)
++            })
++            .unwrap();
++            assert_eq!(calls.get(), 1);
++            let mut reference = prefix.to_vec();
++            reference.extend(body);
++            assert_eq!(accepted, reference);
++        }
++        for witness in [
++            tests_support::sample_window().0,
++            tests_support::sample_window_no_deposits().0,
++        ] {
++            let clock = fixture_clock(&witness);
++            check(&(&witness.pre_state, &witness.ops, &witness.manifest), &[]);
++            check(
++                &(&witness.pre_state, &witness.ops, &witness.manifest, &clock),
++                perp_core::clock::WIRE_MAGIC,
++            );
++        }
++    }
++
++    #[test]
++    fn prefix_refusal_precedes_traversal_and_count_stops_early() {
++        struct Traced<'a> {
++            bytes: &'a [u8],
++            visits: &'a Cell<usize>,
++        }
++        impl serde::Serialize for Traced<'_> {
++            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
++                let mut seq = serializer.serialize_seq(Some(self.bytes.len()))?;
++                for byte in self.bytes {
++                    self.visits.set(self.visits.get() + 1);
++                    seq.serialize_element(byte)?;
++                }
++                seq.end()
++            }
++        }
++        let visits = Cell::new(0);
++        let traced = Traced {
++            bytes: &[1; 4096],
++            visits: &visits,
++        };
++        let error = preflight_then_encode_plaintext(
++            &traced,
++            perp_core::clock::WIRE_MAGIC,
++            sealed_request_json_bytes(7).unwrap(),
++            || panic!("prefix refusal encoded"),
++        )
++        .unwrap_err();
++        assert!(matches!(error, ProverClientError::Http(_)));
++        assert_eq!(visits.get(), 0);
++        let error = preflight_then_encode_plaintext(
++            &traced,
++            &[],
++            sealed_request_json_bytes(32).unwrap(),
++            || panic!("count refusal encoded"),
++        )
++        .unwrap_err();
++        assert!(
++            matches!(error, ProverClientError::Http(ref message) if message == "HTTP request exceeds byte limit")
++        );
++        assert!(visits.get() > 0 && visits.get() < 4096);
++    }
++
++    #[test]
++    fn count_codec_error_and_second_pass_length_drift_keep_decode_domain() {
++        struct UnknownLength;
++        impl serde::Serialize for UnknownLength {
++            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
++                serializer.serialize_seq(None)?.end()
++            }
++        }
++        let error = preflight_then_encode_plaintext(&UnknownLength, &[], 1024, || {
++            panic!("codec error encoded")
++        })
++        .unwrap_err();
++        assert!(
++            matches!(error, ProverClientError::Decode(ref message) if message.starts_with("witness encode:"))
++        );
++        struct Drifting(Cell<bool>);
++        impl serde::Serialize for Drifting {
++            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
++                if self.0.replace(true) {
++                    serializer.serialize_bytes(&[1; 16])
++                } else {
++                    serializer.serialize_bytes(&[])
++                }
++            }
++        }
++        // This demonstrates a post-allocation length check, not an allocation cap
++        // for arbitrary serializers. Same-length content drift is outside scope.
++        let error =
++            encode_plaintext_with_body_limit(&Drifting(Cell::new(false)), &[], 1024).unwrap_err();
++        assert!(
++            matches!(error, ProverClientError::Decode(ref message) if message == "witness encoded size changed")
++        );
++    }
++
++    #[test]
++    fn real_witness_matches_independent_old_plaintext_and_sealed_bytes() {
++        for witness in [
++            tests_support::sample_window().0,
++            tests_support::sample_window_no_deposits().0,
++        ] {
++            let clock = fixture_clock(&witness);
++            for clock in [None, Some(&clock)] {
++                // Independent pre-change encoder; does not call the new seam.
++                let reference = match clock {
++                    None => postcard::to_allocvec(&(
++                        &witness.pre_state,
++                        &witness.ops,
++                        &witness.manifest,
++                    ))
++                    .unwrap(),
++                    Some(c) => {
++                        let mut bytes = perp_core::clock::WIRE_MAGIC.to_vec();
++                        bytes.extend(
++                            postcard::to_allocvec(&(
++                                &witness.pre_state,
++                                &witness.ops,
++                                &witness.manifest,
++                                c,
++                            ))
++                            .unwrap(),
++                        );
++                        bytes
++                    }
++                };
++                let actual = match clock {
++                    None => encode_plaintext_with_body_limit(
++                        &(&witness.pre_state, &witness.ops, &witness.manifest),
++                        &[],
++                        MAX_PROVE_REQUEST_BODY_BYTES,
++                    ),
++                    Some(c) => encode_plaintext_with_body_limit(
++                        &(&witness.pre_state, &witness.ops, &witness.manifest, c),
++                        perp_core::clock::WIRE_MAGIC,
++                        MAX_PROVE_REQUEST_BODY_BYTES,
++                    ),
++                }
++                .unwrap();
++                assert_eq!(actual, reference);
++                let root = [0x71; 32];
++                let measurement = [0x21; 32];
++                let secret = [0x42; 32];
++                for session_secret in [None, Some(&secret)] {
++                    let nonce = seal_nonce(&root, &reference);
++                    let sealed = match session_secret {
++                        Some(secret) => prover::SealedWitness::seal(
++                            &reference,
++                            &prover::AttestedSealProvider {
++                                session_secret: *secret,
++                                measurement,
++                            },
++                            measurement,
++                            nonce,
++                        ),
++                        None => prover::SealedWitness::seal(
++                            &reference,
++                            &prover::SoftwareSealProvider::new(root, measurement),
++                            measurement,
++                            nonce,
++                        ),
++                    }
++                    .unwrap();
++                    let out = postcard::to_allocvec(&sealed).unwrap();
++                    let expected = format!(
++                        "0x{}",
++                        out.iter().map(|b| format!("{b:02x}")).collect::<String>()
++                    );
++                    let actual = seal_witness_with_clock(
++                        &witness,
++                        &root,
++                        &measurement,
++                        session_secret,
++                        clock,
++                    )
++                    .unwrap();
++                    assert_eq!(actual, expected);
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn real_small_witness_paired_encoding_cpu_observation() {
++        fn measure<T: serde::Serialize + ?Sized>(
++            value: &T,
++            prefix: &[u8],
++            fixture: usize,
++            clocked: bool,
++        ) {
++            use std::{hint::black_box, time::Instant};
++            let old_encode = || {
++                let body = postcard::to_allocvec(black_box(value)).unwrap();
++                if prefix.is_empty() {
++                    body
++                } else {
++                    let mut bytes = prefix.to_vec();
++                    bytes.extend(body);
++                    bytes
++                }
++            };
++            let new_encode = || {
++                encode_plaintext_with_body_limit(
++                    black_box(value),
++                    prefix,
++                    MAX_PROVE_REQUEST_BODY_BYTES,
++                )
++                .unwrap()
++            };
++            let expected = old_encode();
++            assert_eq!(new_encode(), expected);
++            for _ in 0..20 {
++                black_box(old_encode());
++                black_box(new_encode());
++            }
++            let repetitions = 500;
++            for pair in 0..5 {
++                let mut elapsed = [0u128; 2];
++                for which in if pair % 2 == 0 { [0, 1] } else { [1, 0] } {
++                    let start = Instant::now();
++                    for _ in 0..repetitions {
++                        black_box(if which == 0 {
++                            old_encode()
++                        } else {
++                            new_encode()
++                        });
++                    }
++                    elapsed[which] = start.elapsed().as_nanos();
++                }
++                // Diagnostic paired samples, never a wall-clock/throughput assertion.
++                println!("PLAINTEXT_CPU_SAMPLE {{\"fixture\":{fixture},\"clocked\":{clocked},\"plaintext_bytes\":{},\"pair\":{pair},\"repetitions\":{repetitions},\"old_encode_ns\":{},\"count_encode_ns\":{}}}", expected.len(), elapsed[0], elapsed[1]);
++            }
++        }
++        for (fixture, witness) in [
++            tests_support::sample_window().0,
++            tests_support::sample_window_no_deposits().0,
++        ]
++        .iter()
++        .enumerate()
++        {
++            let clock = fixture_clock(witness);
++            measure(
++                &(&witness.pre_state, &witness.ops, &witness.manifest),
++                &[],
++                fixture,
++                false,
++            );
++            measure(
++                &(&witness.pre_state, &witness.ops, &witness.manifest, &clock),
++                perp_core::clock::WIRE_MAGIC,
++                fixture,
++                true,
++            );
++        }
++    }
+ 
+     #[test]
+     fn expansion_matches_exact_small_sealed_postcard_and_json() {
