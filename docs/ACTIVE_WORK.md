@@ -791,3 +791,8 @@ Clippy PASS bound both source files. Old failedCI/packet38/zero-testUNACCEPTED
 records preserved; additive correction ledger in ci-correction-v2.
 Source380/927cfb188e76f7043ba620f96e42e7ce46c3e3af3168f18c59a2d4ea5a36b679.
 NewheadCI/merge/main pending; production HOLD/candidate disabled.
+
+
+## 2026-10-14: bounded preparation CPU observations
+
+Test-only fixed PR65 input profiling completed locally: 110 release thread-CPU samples on macOS/Apple M4, two correctness/observation tests PASS. Source382 map31d74fdd003299a7a64ff505537d50ca40578b552bcea2d8cfcf14ac013df23f. Native replay, not small-fixture State clone, is the next investigation candidate; no production optimization or capacity guarantee. Packet: docs/audits/2026-10-14-preparation-cpu-profile/. CI publication/normal merge acceptance is a separate later readback. PRODUCTION HOLD and candidate submission disabled.

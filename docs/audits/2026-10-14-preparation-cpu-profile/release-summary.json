@@ -1,0 +1,583 @@
+{
+  "actual_rust_test_summary": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 2
+  },
+  "fixtures": {
+    "normal": {
+      "notes": 0,
+      "ops": 4,
+      "sequencer_bytes": 3105,
+      "timed_ops": 4,
+      "withdrawals": 0,
+      "witness_bytes": 1639
+    },
+    "rollback_resealed": {
+      "notes": 0,
+      "ops": 6,
+      "sequencer_bytes": 3670,
+      "timed_ops": 6,
+      "withdrawals": 0,
+      "witness_bytes": 2062
+    }
+  },
+  "groups": {
+    "normal": {
+      "clock_extra_replay_validate": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 3196292,
+          "median": 3190584,
+          "min": 3184750
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 319629.2,
+          "median": 319058.4,
+          "min": 318475.0
+        },
+        "wall_ns_batch": {
+          "max": 3196417,
+          "median": 3190709,
+          "min": 3184875
+        },
+        "wall_ns_per_operation": {
+          "max": 319641.7,
+          "median": 319070.9,
+          "min": 318487.5
+        }
+      },
+      "clock_validate_derived": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 17250,
+          "median": 16084,
+          "min": 15792
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 1725.0,
+          "median": 1608.4,
+          "min": 1579.2
+        },
+        "wall_ns_batch": {
+          "max": 20041,
+          "median": 16500,
+          "min": 15958
+        },
+        "wall_ns_per_operation": {
+          "max": 2004.1,
+          "median": 1650.0,
+          "min": 1595.8
+        }
+      },
+      "clocked_prepare_cached_stub_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 6387875,
+          "median": 6386833,
+          "min": 6378250
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 638787.5,
+          "median": 638683.3,
+          "min": 637825.0
+        },
+        "wall_ns_batch": {
+          "max": 6388000,
+          "median": 6386958,
+          "min": 6378375
+        },
+        "wall_ns_per_operation": {
+          "max": 638800.0,
+          "median": 638695.8,
+          "min": 637837.5
+        }
+      },
+      "legacy_prepare_cached_stub_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 3182791,
+          "median": 3178333,
+          "min": 3172459
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 318279.1,
+          "median": 317833.3,
+          "min": 317245.9
+        },
+        "wall_ns_batch": {
+          "max": 3182916,
+          "median": 3178542,
+          "min": 3172584
+        },
+        "wall_ns_per_operation": {
+          "max": 318291.6,
+          "median": 317854.2,
+          "min": 317258.4
+        }
+      },
+      "prepare_unproved_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 3913334,
+          "median": 3694917,
+          "min": 3498166
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 391333.4,
+          "median": 369491.7,
+          "min": 349816.6
+        },
+        "wall_ns_batch": {
+          "max": 3913541,
+          "median": 3695042,
+          "min": 3498333
+        },
+        "wall_ns_per_operation": {
+          "max": 391354.1,
+          "median": 369504.2,
+          "min": 349833.3
+        }
+      },
+      "replay_owned": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 5423875,
+          "median": 4754125,
+          "min": 4167500
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 542387.5,
+          "median": 475412.5,
+          "min": 416750.0
+        },
+        "wall_ns_batch": {
+          "max": 5424167,
+          "median": 4754334,
+          "min": 4167625
+        },
+        "wall_ns_per_operation": {
+          "max": 542416.7,
+          "median": 475433.4,
+          "min": 416762.5
+        }
+      },
+      "seq_decode": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 537958,
+          "median": 523000,
+          "min": 518208
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 53795.8,
+          "median": 52300.0,
+          "min": 51820.8
+        },
+        "wall_ns_batch": {
+          "max": 538375,
+          "median": 523333,
+          "min": 518541
+        },
+        "wall_ns_per_operation": {
+          "max": 53837.5,
+          "median": 52333.3,
+          "min": 51854.1
+        }
+      },
+      "seq_encode": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 70375,
+          "median": 44875,
+          "min": 43000
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 7037.5,
+          "median": 4487.5,
+          "min": 4300.0
+        },
+        "wall_ns_batch": {
+          "max": 71375,
+          "median": 45167,
+          "min": 43250
+        },
+        "wall_ns_per_operation": {
+          "max": 7137.5,
+          "median": 4516.7,
+          "min": 4325.0
+        }
+      },
+      "seq_seal_owned": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 128375,
+          "median": 108584,
+          "min": 107250
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 12837.5,
+          "median": 10858.4,
+          "min": 10725.0
+        },
+        "wall_ns_batch": {
+          "max": 128708,
+          "median": 108833,
+          "min": 107584
+        },
+        "wall_ns_per_operation": {
+          "max": 12870.8,
+          "median": 10883.3,
+          "min": 10758.4
+        }
+      },
+      "snapshot_preview_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 596250,
+          "median": 592750,
+          "min": 591125
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 59625.0,
+          "median": 59275.0,
+          "min": 59112.5
+        },
+        "wall_ns_batch": {
+          "max": 596500,
+          "median": 593041,
+          "min": 591459
+        },
+        "wall_ns_per_operation": {
+          "max": 59650.0,
+          "median": 59304.1,
+          "min": 59145.9
+        }
+      },
+      "state_clone": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 5708,
+          "median": 2209,
+          "min": 2125
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 570.8,
+          "median": 220.9,
+          "min": 212.5
+        },
+        "wall_ns_batch": {
+          "max": 5958,
+          "median": 2416,
+          "min": 2333
+        },
+        "wall_ns_per_operation": {
+          "max": 595.8,
+          "median": 241.6,
+          "min": 233.3
+        }
+      }
+    },
+    "rollback_resealed": {
+      "clock_extra_replay_validate": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 4769083,
+          "median": 4729417,
+          "min": 4714792
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 476908.3,
+          "median": 472941.7,
+          "min": 471479.2
+        },
+        "wall_ns_batch": {
+          "max": 4776333,
+          "median": 4729542,
+          "min": 4714917
+        },
+        "wall_ns_per_operation": {
+          "max": 477633.3,
+          "median": 472954.2,
+          "min": 471491.7
+        }
+      },
+      "clock_validate_derived": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 15709,
+          "median": 15625,
+          "min": 15500
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 1570.9,
+          "median": 1562.5,
+          "min": 1550.0
+        },
+        "wall_ns_batch": {
+          "max": 16042,
+          "median": 15791,
+          "min": 15625
+        },
+        "wall_ns_per_operation": {
+          "max": 1604.2,
+          "median": 1579.1,
+          "min": 1562.5
+        }
+      },
+      "clocked_prepare_cached_stub_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 9480500,
+          "median": 9458917,
+          "min": 9450250
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 948050.0,
+          "median": 945891.7,
+          "min": 945025.0
+        },
+        "wall_ns_batch": {
+          "max": 9480583,
+          "median": 9459041,
+          "min": 9450417
+        },
+        "wall_ns_per_operation": {
+          "max": 948058.3,
+          "median": 945904.1,
+          "min": 945041.7
+        }
+      },
+      "legacy_prepare_cached_stub_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 4730500,
+          "median": 4721583,
+          "min": 4702708
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 473050.0,
+          "median": 472158.3,
+          "min": 470270.8
+        },
+        "wall_ns_batch": {
+          "max": 4730750,
+          "median": 4721709,
+          "min": 4702834
+        },
+        "wall_ns_per_operation": {
+          "max": 473075.0,
+          "median": 472170.9,
+          "min": 470283.4
+        }
+      },
+      "prepare_unproved_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 4734458,
+          "median": 4717375,
+          "min": 4707750
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 473445.8,
+          "median": 471737.5,
+          "min": 470775.0
+        },
+        "wall_ns_batch": {
+          "max": 4734583,
+          "median": 4717542,
+          "min": 4707916
+        },
+        "wall_ns_per_operation": {
+          "max": 473458.3,
+          "median": 471754.2,
+          "min": 470791.6
+        }
+      },
+      "replay_owned": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 4719875,
+          "median": 4713042,
+          "min": 4704375
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 471987.5,
+          "median": 471304.2,
+          "min": 470437.5
+        },
+        "wall_ns_batch": {
+          "max": 4720042,
+          "median": 4713209,
+          "min": 4704459
+        },
+        "wall_ns_per_operation": {
+          "max": 472004.2,
+          "median": 471320.9,
+          "min": 470445.9
+        }
+      },
+      "seq_decode": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 244375,
+          "median": 235167,
+          "min": 234209
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 24437.5,
+          "median": 23516.7,
+          "min": 23420.9
+        },
+        "wall_ns_batch": {
+          "max": 244500,
+          "median": 235292,
+          "min": 234334
+        },
+        "wall_ns_per_operation": {
+          "max": 24450.0,
+          "median": 23529.2,
+          "min": 23433.4
+        }
+      },
+      "seq_encode": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 23500,
+          "median": 22000,
+          "min": 21834
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 2350.0,
+          "median": 2200.0,
+          "min": 2183.4
+        },
+        "wall_ns_batch": {
+          "max": 23667,
+          "median": 22084,
+          "min": 21917
+        },
+        "wall_ns_per_operation": {
+          "max": 2366.7,
+          "median": 2208.4,
+          "min": 2191.7
+        }
+      },
+      "seq_seal_owned": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 64542,
+          "median": 63333,
+          "min": 60000
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 6454.2,
+          "median": 6333.3,
+          "min": 6000.0
+        },
+        "wall_ns_batch": {
+          "max": 64667,
+          "median": 63458,
+          "min": 60167
+        },
+        "wall_ns_per_operation": {
+          "max": 6466.7,
+          "median": 6345.8,
+          "min": 6016.7
+        }
+      },
+      "snapshot_preview_total": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 325125,
+          "median": 318000,
+          "min": 317458
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 32512.5,
+          "median": 31800.0,
+          "min": 31745.8
+        },
+        "wall_ns_batch": {
+          "max": 325250,
+          "median": 318125,
+          "min": 317625
+        },
+        "wall_ns_per_operation": {
+          "max": 32525.0,
+          "median": 31812.5,
+          "min": 31762.5
+        }
+      },
+      "state_clone": {
+        "repetitions_per_sample": 10,
+        "samples": 5,
+        "thread_cpu_ns_batch": {
+          "max": 1584,
+          "median": 1084,
+          "min": 1041
+        },
+        "thread_cpu_ns_per_operation": {
+          "max": 158.4,
+          "median": 108.4,
+          "min": 104.1
+        },
+        "wall_ns_batch": {
+          "max": 1709,
+          "median": 1209,
+          "min": 1208
+        },
+        "wall_ns_per_operation": {
+          "max": 170.9,
+          "median": 120.9,
+          "min": 120.8
+        }
+      }
+    }
+  },
+  "per_operation_basis": "Each ten-call batch divided by ten; not individual-call latency samples",
+  "profile": "release",
+  "profile_basis": "Explicit caller-supplied actual build mode; not inferred from timings/stdout",
+  "raw_log": {
+    "bytes": 34263,
+    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/cpu-profile-validation-20261014/release-profile.stdout.log",
+    "sha256": "552b1a37275dbd743fbc43fb051cce0809149d0fcf77da29b54c9220423c07ce"
+  },
+  "repetitions_per_sample": 10,
+  "rounds": 5,
+  "samples": 110,
+  "schema": "arcora-preparation-cpu-summary/v1",
+  "scope": {
+    "RSS_measured": false,
+    "clock": "macOS CLOCK_THREAD_CPUTIME_ID (16); wall_ns reported separately",
+    "elapsed_thresholds_asserted": false,
+    "phase_totals": "Phases overlap and must not be summed as an end-to-end total",
+    "preview_enclave": "serde placeholder, not original enclave identity",
+    "production_capacity_claimed": false,
+    "proof": "cached synthetic stub; no real proving/backend",
+    "proof_generated": false,
+    "timed": "Run, input destruction and result-vector pushes; setup, warmup, assertions and output cleanup excluded",
+    "withdrawals": 0
+  }
+}

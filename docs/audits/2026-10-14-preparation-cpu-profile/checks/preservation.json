@@ -1,0 +1,27 @@
+{
+  "PR66_protected_files": 409,
+  "current_source_files": 382,
+  "current_source_sha256": "31d74fdd003299a7a64ff505537d50ca40578b552bcea2d8cfcf14ac013df23f",
+  "external": [
+    {
+      "count": 13,
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "name": "primary"
+    },
+    {
+      "count": 7,
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "name": "kimi"
+    },
+    {
+      "count": 62,
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "name": "dark"
+    }
+  ],
+  "external_public_dirty_files": 82,
+  "named_old_files": 7,
+  "passed": true,
+  "pointer_backup": null,
+  "scope": "Finite named public original files, source382 and protected409, and external82 bodies checked. No private discovery or old/outside writes."
+}

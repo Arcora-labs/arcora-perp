@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "expected_exit": 2,
+  "actual_exit": 2,
+  "output_absent": true,
+  "basis": "Missing one actual row while retaining real successful Rust footer must fail closed"
+}

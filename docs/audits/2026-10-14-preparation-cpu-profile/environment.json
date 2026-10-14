@@ -1,0 +1,7 @@
+{
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80",
+  "arch": "arm64",
+  "cpu": "Apple M4",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "clock_source": "macOS SDK _time.h CLOCK_THREAD_CPUTIME_ID=16; clock_gettime_nsec_np returns uint64 ns"
+}

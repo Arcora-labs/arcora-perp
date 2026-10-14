@@ -1,0 +1,3 @@
+usage: summarize_preparation_cpu.py [-h] --log LOG --profile {debug,release}
+                                    --output OUTPUT
+summarize_preparation_cpu.py: error: Require exactly 110 distinct rows: two fixtures x eleven phases x five rounds

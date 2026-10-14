@@ -1,0 +1,32 @@
+{
+  "command": [
+    "/opt/homebrew/bin/python3.12",
+    "-B",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/summarize_preparation_cpu.py",
+    "--log",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/cpu-profile-validation-20261014/missing-sample-control.log",
+    "--profile",
+    "release",
+    "--output",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/cpu-profile-validation-20261014/missing-sample-output.json"
+  ],
+  "exit_code": 2,
+  "files": {
+    "stderr": {
+      "bytes": 244,
+      "sha256": "1e382cdcb6595414ac5b395b139d528727c5e0826128d3d44f1e085e0660cde1"
+    },
+    "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "runtime": {
+    "cargo_build_jobs": 2,
+    "rust_test_threads": 1,
+    "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+  },
+  "source_count": 382,
+  "source_sha256": "31d74fdd003299a7a64ff505537d50ca40578b552bcea2d8cfcf14ac013df23f",
+  "wall_seconds": 0.036037417012266815
+}
