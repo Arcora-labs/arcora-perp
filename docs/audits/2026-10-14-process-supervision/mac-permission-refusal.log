@@ -1,0 +1,6 @@
+test_permission_probe_failure_is_never_success (test_owned_process.OwnedProcessTests.test_permission_probe_failure_is_never_success) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.132s
+
+OK

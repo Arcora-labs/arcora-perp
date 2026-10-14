@@ -1,0 +1,8 @@
+test_refuses_disabled_bypass_missing_proof_check_or_forged_check_issuer (test_repository_policy.RepositoryPolicyTests.test_refuses_disabled_bypass_missing_proof_check_or_forged_check_issuer) ... ok
+test_required_workflows_run_on_every_pull_request (test_repository_policy.RepositoryPolicyTests.test_required_workflows_run_on_every_pull_request) ... ok
+test_reviewed_policy (test_repository_policy.RepositoryPolicyTests.test_reviewed_policy) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.006s
+
+OK
