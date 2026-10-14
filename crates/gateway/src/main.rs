@@ -98,6 +98,8 @@ mod clock_client;
 mod clock_wait;
 #[cfg(test)]
 mod continuation_settlement_tests;
+#[cfg(test)]
+mod cpu_profile_tests;
 mod credential_session;
 #[path = "../../service-transport/curl.rs"]
 mod curl_transport;

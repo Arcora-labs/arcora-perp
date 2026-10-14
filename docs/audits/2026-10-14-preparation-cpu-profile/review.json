@@ -1,0 +1,189 @@
+{
+  "authoritative_records": {
+    "environment.json": {
+      "bytes": 284,
+      "path": "target/cpu-profile-validation-20261014/environment.json",
+      "sha256": "9442f1f568c148a09f5777f6cf9d089cdac11b9363aa5a834c3abfced75d2e3d"
+    },
+    "missing-sample-control.json": {
+      "bytes": 1148,
+      "path": "target/cpu-profile-validation-20261014/missing-sample-control.json",
+      "sha256": "b581228d9d8a1713fad7a75e5a7ca56be8f0b63938faa9a0a2686f447b491cc5"
+    },
+    "missing-sample-control.log": {
+      "bytes": 33900,
+      "path": "target/cpu-profile-validation-20261014/missing-sample-control.log",
+      "sha256": "377bb16129501406438c9ce996a5f0604584cba2dbc1e69aebfdf7a9e65b40e5"
+    },
+    "release-profile.json": {
+      "bytes": 932,
+      "path": "target/cpu-profile-validation-20261014/release-profile.json",
+      "sha256": "d3f830f1b493a9202f88af01e1cdb6af9b5ce956427e09f61946ae75272e9c7d"
+    },
+    "release-profile.stderr.log": {
+      "bytes": 10323,
+      "path": "target/cpu-profile-validation-20261014/release-profile.stderr.log",
+      "sha256": "21b5d37d4eb0423e1eb765d8434aee12c1fb3980a28fbce5ee483dc2d82a45f0"
+    },
+    "release-profile.stdout.log": {
+      "bytes": 34263,
+      "path": "target/cpu-profile-validation-20261014/release-profile.stdout.log",
+      "sha256": "552b1a37275dbd743fbc43fb051cce0809149d0fcf77da29b54c9220423c07ce"
+    },
+    "release-summary.json": {
+      "bytes": 14798,
+      "path": "target/cpu-profile-validation-20261014/release-summary.json",
+      "sha256": "0e77647e446405716ea55dbcbeadb2fbf42c9545f5909e413fbe591e4f2c8a34"
+    },
+    "run_check.py": {
+      "bytes": 1517,
+      "path": "target/cpu-profile-validation-20261014/run_check.py",
+      "sha256": "67d9d92d7d3f79f7c2813457b480fd480e4c64a88704e220c062312d76b59b6a"
+    },
+    "summarize-release.json": {
+      "bytes": 1141,
+      "path": "target/cpu-profile-validation-20261014/summarize-release.json",
+      "sha256": "ebaa6c5a5b9f02babaddd3ea69f1add826c0f5a4e3ad4f5598c7dba3b40ecb7a"
+    }
+  },
+  "base": "d5d200d83a1e85e4625c66c3ed9fc0462da84b23",
+  "changed_source_files": {
+    "crates/gateway/src/cpu_profile_tests.rs": {
+      "bytes": 14417,
+      "path": "crates/gateway/src/cpu_profile_tests.rs",
+      "sha256": "7086587a8abf41550f87c8237f6b123d951918116936c8ea6898a151e4b0946a"
+    },
+    "crates/gateway/src/main.rs": {
+      "bytes": 811874,
+      "path": "crates/gateway/src/main.rs",
+      "sha256": "99b805999f0a8504c44e40d7e587001b03742612cef7410a821d4754eea45000"
+    },
+    "scripts/local-verification/summarize_preparation_cpu.py": {
+      "bytes": 6664,
+      "path": "scripts/local-verification/summarize_preparation_cpu.py",
+      "sha256": "f65ee52456cb5ca87d3b316e68d9cf191e414b1809853922cbd019e06438eaa2"
+    }
+  },
+  "checks": {
+    "actual_Rust_summary2_pass0_fail0_ignore": true,
+    "actual_optimized_release_command_exit0": true,
+    "all110_unique_positive_thread_CPU_and_wall_samples": true,
+    "all_group_min_median_max_recomputed_from_raw": true,
+    "cached_response_commitment_precomputed_constructor_outside_batch": true,
+    "full_live_source_map_and_canonical_digest_exact": true,
+    "input_identity_and_immutable_correctness_checks_kept": true,
+    "known_production_and_root_manifests_byte_exact_BASE": true,
+    "main_cfg_test_module_only": true,
+    "opaque_runtime_inputs_in_final_four_phases_and_ops_manifest": true,
+    "raw_stdout_stderr_hashes_bind_actual_receipts": true,
+    "source_runner_checks_all382_before_and_after_before_receipt": true,
+    "strict_missing_row109_refusal_exit2_no_output": true,
+    "timed_callbacks_no_replay_or_commitment_hash": true
+  },
+  "exact_original_compiled_inputs": {
+    "normal-00-before_first_seal_seq.bin": {
+      "bytes": 3105,
+      "path": "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-00-before_first_seal_seq.bin",
+      "sha256": "1ae7d052a52096ed0ad48c9fdd484f2b013866900a1c7272e9ab52211b8531d0"
+    },
+    "normal-01-first_witness.bin": {
+      "bytes": 1639,
+      "path": "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-01-first_witness.bin",
+      "sha256": "8cf1a130ae94db45636f0752ea7d01e0d46aac1ef4f6b0571d771a395282b6f8"
+    },
+    "rollback-06-after_rollback_seq.bin": {
+      "bytes": 3670,
+      "path": "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-06-after_rollback_seq.bin",
+      "sha256": "a6f646ebb4bd250449d70466ddc0120bf6ec7fbc2875d735159bef9680d29ba3"
+    },
+    "rollback-07-resealed_witness.bin": {
+      "bytes": 2062,
+      "path": "docs/audits/2026-10-14-seal-window-ownership/baseline-export/rollback-07-resealed_witness.bin",
+      "sha256": "aa8f94eae5d12ee10aac0e5b95a356ac9339673b01693905ca127b3dad1f3550"
+    }
+  },
+  "interpretation": "Both actual cached clocked totals are about2x legacy totals for these fixtures, and the isolated extra replay+validate cut is substantial while state clone is0.1\u20130.2us. This supports investigating removal of duplicated authoritative native replay via a separately reviewed design; it does not show that removing a clone alone saves replay cost, or choose/verify any production optimization. No production capacity, throughput/RSS, proof/backend/CC, service approval or release claim.",
+  "measurement_limits": [
+    "Two tiny fixed original PR65 fixtures only,4/6 timed ops,0 notes and0 withdrawals; not withdrawal-proof scale evidence.",
+    "Median is over five10-call batches divided by10, not individual request latency.",
+    "Setup/warmup/output-equality checks/output destruction excluded; input destruction/result pushes/timer calls and cached-stub counters/proof32 allocation/cheap guards included.",
+    "Snapshot preview total is Seq encode/decode/copied seal only; no archive disk IO, full checkpoint, encryption/fsync or backend.",
+    "Phases overlap and must not be added or subtracted as exact pipeline attribution; isolated normal replay_owned475.4125us differs hot total/extra~318\u2013319us.",
+    "Debug records are historical/different final module and never promoted as current release measurements.",
+    "Environment and measurements are local observations, no process/host attestation."
+  ],
+  "medians_microseconds_per_call_batch_divided_by10": {
+    "normal": {
+      "clock_extra_replay_validate": 319.0584,
+      "clock_validate_derived": 1.6084,
+      "clocked_prepare_cached_stub_total": 638.6833,
+      "legacy_prepare_cached_stub_total": 317.8333,
+      "prepare_unproved_total": 369.49170000000004,
+      "replay_owned": 475.4125,
+      "seq_decode": 52.3,
+      "seq_encode": 4.4875,
+      "seq_seal_owned": 10.8584,
+      "snapshot_preview_total": 59.275,
+      "state_clone": 0.2209
+    },
+    "rollback_resealed": {
+      "clock_extra_replay_validate": 472.9417,
+      "clock_validate_derived": 1.5625,
+      "clocked_prepare_cached_stub_total": 945.8916999999999,
+      "legacy_prepare_cached_stub_total": 472.1583,
+      "prepare_unproved_total": 471.7375,
+      "replay_owned": 471.30420000000004,
+      "seq_decode": 23.5167,
+      "seq_encode": 2.2,
+      "seq_seal_owned": 6.3333,
+      "snapshot_preview_total": 31.8,
+      "state_clone": 0.10840000000000001
+    }
+  },
+  "nonfatal_build_warning": "Actual release stderr preserves rust-objcopy strip failures due missinglibLLVM. Optimized test executable still ran and exited0; this is not proof generation or a global toolchain repair.",
+  "observed_utc": "2026-10-14T12:18:54.459036+00:00",
+  "passed": true,
+  "recorded_environment": {
+    "arch": "arm64",
+    "clock_source": "macOS SDK _time.h CLOCK_THREAD_CPUTIME_ID=16; clock_gettime_nsec_np returns uint64 ns",
+    "cpu": "Apple M4",
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "reviewer_runtime_or_build_executed": false,
+  "schema": "arcora-small-preparation-cpu-final-review/v1",
+  "source_count": 382,
+  "source_freeze": {
+    "bytes": 44764,
+    "path": "target/cpu-profile-validation-20261014/source-freeze.json",
+    "sha256": "e00201ac559478134c4afa2194ff7d97cdad55dd98376d6a130b511a4f006a62"
+  },
+  "source_sha256": "31d74fdd003299a7a64ff505537d50ca40578b552bcea2d8cfcf14ac013df23f",
+  "unchanged_base_files": {
+    "Cargo.lock": {
+      "bytes": 61374,
+      "path": "Cargo.lock",
+      "sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5"
+    },
+    "Cargo.toml": {
+      "bytes": 1303,
+      "path": "Cargo.toml",
+      "sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 102812,
+      "path": "crates/gateway/src/prover_client.rs",
+      "sha256": "dea48e5ea9af3676309fc9bada19b37d9273616c90ff098905d08580fbd47684"
+    },
+    "crates/gateway/src/rollback_journal.rs": {
+      "bytes": 52122,
+      "path": "crates/gateway/src/rollback_journal.rs",
+      "sha256": "5c8f2522a1177bd88406ee913c054d532d21d85c2d7065c0438883485fb1a5d9"
+    },
+    "crates/sequencer/src/lib.rs": {
+      "bytes": 137776,
+      "path": "crates/sequencer/src/lib.rs",
+      "sha256": "341e8483eae3b258edcbe3a2e2e19db6644f585e6ecb30b298954200051eeb53"
+    }
+  }
+}

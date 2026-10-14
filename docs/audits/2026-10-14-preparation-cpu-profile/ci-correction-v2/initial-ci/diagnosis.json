@@ -1,0 +1,16 @@
+{
+  "initial_head": "e19ac1dc6d428edd37b181bea41ba87cd7eccd31",
+  "failed_jobs": [
+    115850979544,
+    115850979815
+  ],
+  "cause": "Fixture.name read only in macOS observer; Linux clippy -D warnings rejects dead_code",
+  "correction": "Read and validate closed fixture labels in platform-independent assert_inputs",
+  "source_paths_changed": [
+    "crates/gateway/src/cpu_profile_tests.rs"
+  ],
+  "production_change": false,
+  "warnings_suppressed": false,
+  "reruns": 0,
+  "initial_logs_retained": true
+}

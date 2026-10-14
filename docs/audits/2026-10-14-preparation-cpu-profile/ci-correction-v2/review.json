@@ -1,0 +1,60 @@
+{
+  "actual_records": {
+    "clippy-v2": {
+      "bytes": 836,
+      "sha256": "16190892914c95d7724471284c39e6473f71afa424e435f008ea2e23c42bdd47"
+    },
+    "fmt-v2": {
+      "bytes": 746,
+      "sha256": "e8d7279612ebe7868b526d7f8b889c3517aa771f840e585f3c7dca45af7af567"
+    },
+    "release-profile-v2": {
+      "bytes": 930,
+      "sha256": "8324030091d18ac26c61e4d4b0f8d0928ea9420c568b2dc2f0dd04fd747000ab"
+    },
+    "summarize-release-v2": {
+      "bytes": 1147,
+      "sha256": "0e46d4ef95012d10ac13701e72739f60d328f26de471205e230d831b1dd943bd"
+    }
+  },
+  "checks": {
+    "110_unique_rows_and_all_summary_min_median_max_independently_recomputed": true,
+    "actual_v2_release_command_exit0_and_Rust2_0_0": true,
+    "all_timed_code_callbacks_inputs_blackbox_byte_exact": true,
+    "full382_live_map_exact_and_only_module_changed_from_original_freeze": true,
+    "main_CLI_known_production_root_manifests_byte_exact_initial_HEAD": true,
+    "new_name_guard_outside_warmup_and_timed_batches": true,
+    "owned_runner_checks_all_source_files_before_and_after": true,
+    "raw_command_stdout_stderr_hashes_exact": true,
+    "whole_module_minus_single_line_byte_exact_initial_HEAD": true
+  },
+  "limits": "Two tiny original PR65 fixtures; zero notes/withdrawals, cached synthetic proof, no actual proof/backend/release. Thread CPU and wall are separate; overlapping phases nonadditive and per-operation values are10-call batch averages. No production capacity/RSS/throughput claim or optimization chosen.",
+  "module_v2": {
+    "bytes": 14480,
+    "sha256": "e8c3565651dd3ec1cf236e882d2f6b49f99323e930fafdb10a3b71d8d1f128fc"
+  },
+  "observed_utc": "2026-10-14T12:38:38.286925+00:00",
+  "passed": true,
+  "raw_release_stderr": {
+    "bytes": 2259,
+    "sha256": "9e74f10579ad22cc84003cec9fd4333e0b3a7eb89c18353c9ed5fbf42c44ab22"
+  },
+  "raw_release_stdout": {
+    "bytes": 34263,
+    "sha256": "302f7fa9650035d8e70b61d0ae053f2c2c061544ad9ef8ea8d0833f1bbb152ba"
+  },
+  "reference_publication_head": "e19ac1dc6d428edd37b181bea41ba87cd7eccd31",
+  "release_summary_v2": {
+    "bytes": 14801,
+    "sha256": "a7e91766689caa3dfdcfe02ccbf7e48d89d2978cacf514449d3b517d2e055008"
+  },
+  "reviewer_build_runtime_network_executed": false,
+  "schema": "arcora-small-preparation-cpu-correction-review/v2",
+  "scope": "Only one fixture-label assertion in platform-independent assert_inputs; no allow, production change or timed-code change. Initial Linux dead-code failure remains historical/unaccepted; v2 CI is pending, not inferred from local PASS.",
+  "source_count": 382,
+  "source_freeze_v2": {
+    "bytes": 44902,
+    "sha256": "6664be2ce9b1848f3aa8ff668dbbc1d6bd43028a2f6a0c4d3e57ed013aecda7b"
+  },
+  "source_sha256": "dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14"
+}

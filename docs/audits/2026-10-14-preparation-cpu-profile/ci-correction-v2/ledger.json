@@ -1,0 +1,66 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1656,
+      "sha256": "3c7478229e9a4629a875e924f2baccbb9e997a2b025830b3a2298dc14622b6ac"
+    },
+    "checks/clippy.json": {
+      "bytes": 836,
+      "sha256": "16190892914c95d7724471284c39e6473f71afa424e435f008ea2e23c42bdd47"
+    },
+    "checks/format.json": {
+      "bytes": 746,
+      "sha256": "e8d7279612ebe7868b526d7f8b889c3517aa771f840e585f3c7dca45af7af567"
+    },
+    "checks/preservation.json": {
+      "bytes": 773,
+      "sha256": "c8caa801cdaf3bda07bff06895ef75d7f4b7bb89e6aa6b235fa898606f49980a"
+    },
+    "initial-ci/diagnosis.json": {
+      "bytes": 509,
+      "sha256": "b26fc27fa0c0d4532f1bd0b0eacc7edebf349f334466bd8557aa2b23defd48ab"
+    },
+    "initial-ci/lint.log": {
+      "bytes": 36069,
+      "sha256": "060825341bbff4432d5f206122cdee0bef307b63589b603bde5b14989a2949c3"
+    },
+    "initial-ci/monitor-closed.json": {
+      "bytes": 374,
+      "sha256": "dc257bfc3015a5f0aa29d9ac6d73b8e67479ebf6191beb06172644acc1e51804"
+    },
+    "initial-ci/release.log": {
+      "bytes": 36817,
+      "sha256": "99e0af1a06439343c483b0e2d9a9e74ae8e3d7e659bac8da44983dcc422703c8"
+    },
+    "release-summary.json": {
+      "bytes": 14801,
+      "sha256": "a7e91766689caa3dfdcfe02ccbf7e48d89d2978cacf514449d3b517d2e055008"
+    },
+    "release/run.json": {
+      "bytes": 930,
+      "sha256": "8324030091d18ac26c61e4d4b0f8d0928ea9420c568b2dc2f0dd04fd747000ab"
+    },
+    "release/stderr.log": {
+      "bytes": 2259,
+      "sha256": "9e74f10579ad22cc84003cec9fd4333e0b3a7eb89c18353c9ed5fbf42c44ab22"
+    },
+    "release/stdout.log": {
+      "bytes": 34263,
+      "sha256": "302f7fa9650035d8e70b61d0ae053f2c2c061544ad9ef8ea8d0833f1bbb152ba"
+    },
+    "review.json": {
+      "bytes": 2781,
+      "sha256": "bf4254bd1685ddf31a3c4853508f6a1a686b410c50808deba920dc8063ebc34a"
+    },
+    "source-freeze.json": {
+      "bytes": 44902,
+      "sha256": "6664be2ce9b1848f3aa8ff668dbbc1d6bd43028a2f6a0c4d3e57ed013aecda7b"
+    }
+  },
+  "initial_CI_acceptance": false,
+  "mapped_files": 14,
+  "production_release": "HOLD",
+  "schema": "arcora-preparation-cpu-correction-packet/v2",
+  "source_count": 382,
+  "source_sha256": "dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14"
+}
