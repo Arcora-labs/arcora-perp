@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "-p",
+    "gateway",
+    "--bin",
+    "gateway",
+    "--locked",
+    "--offline",
+    "--",
+    "--test-threads=1"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 632.9347379207611,
+  "log_sha256": "ab54cf83d8e5657b7d5682314f7b7b4ea72a5380206c11d28422c892e2015f8f",
+  "measurement_source_sha256": "96f6e8927c7a5fbed7598111d3d6f08e561d37d65b30d4c7291b2dfd7d80b7cf"
+}

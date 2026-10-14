@@ -1,0 +1,17 @@
+{
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts/local-verification",
+    "-p",
+    "test_finite_preparation_profile.py",
+    "-v"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 0.06349802017211914,
+  "log_sha256": "dfdf41c9624548417a2b98c875285f10909055aa93d750d09e890907366c2b8c",
+  "measurement_source_sha256": "189438f2e9f5f3ca6c0717d9a63500f11e6416edc5be608d7c3a447f59a5cffb"
+}

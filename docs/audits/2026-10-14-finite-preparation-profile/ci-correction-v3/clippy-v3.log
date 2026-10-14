@@ -1,0 +1,7 @@
+    Checking node v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/node)
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Checking e2e v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/e2e)
+    Checking demo v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/demo)
+    Checking chainlink-streams-client-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
+    Checking oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.65s

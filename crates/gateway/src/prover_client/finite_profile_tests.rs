@@ -264,11 +264,17 @@ fn frame_sizes(f: &Fixture) -> serde_json::Value {
             bytes(&(&w.pre_state, &w.ops, &w.manifest))
         };
         let hexed = sealed_hex(f, clocked);
-        let encoded: Vec<u8> = hexed
+        let (pairs, remainder) = hexed
             .strip_prefix("0x")
             .unwrap()
             .as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>();
+        assert!(
+            remainder.is_empty(),
+            "sealed hex must contain complete byte pairs"
+        );
+        let encoded: Vec<u8> = pairs
+            .iter()
             .map(|b| u8::from_str_radix(std::str::from_utf8(b).unwrap(), 16).unwrap())
             .collect();
         let expected = prover::SealedWitness::seal(

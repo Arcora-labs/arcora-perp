@@ -1,0 +1,10 @@
+{
+  "command": [
+    "python3",
+    "scripts/local-verification/check_sp1_release.py"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 0.053458213806152344,
+  "log_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8",
+  "measurement_source_sha256": "189438f2e9f5f3ca6c0717d9a63500f11e6416edc5be608d7c3a447f59a5cffb"
+}

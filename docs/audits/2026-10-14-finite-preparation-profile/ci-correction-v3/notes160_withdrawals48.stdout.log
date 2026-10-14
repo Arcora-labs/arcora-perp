@@ -1,0 +1,7 @@
+
+running 1 test
+test prover_client::finite_profile_tests::rss_160_48 ... FINITE_RSS_FIXTURE {"fixture":"notes160_withdrawals48","pre_live_notes":160,"post_live_notes":112,"withdrawals":48,"ops":49,"timed_ops":1,"claim_count":48,"claim_path_siblings":[6,6,6,5,5,6,5,6,6,6,6,6,6,6,5,6,5,6,5,6,5,5,6,5,5,6,6,6,6,6,6,5,6,6,6,6,6,6,5,5,5,6,6,5,6,5,6,6],"witness_sha256":"ab1c751f98f188eaaa46c0b2430012598126d5febc762b86662f9918bd97ea5f","prepared_intent_sha256":"85bdeccf8147943f5e5214ec2dd8cb87f5b4866da80d719342da624196801326","frames":{"pre_state_postcard_bytes":21843,"witness_postcard_bytes":26270,"prepared_intent_postcard_bytes":12086,"withdrawal_list_postcard_bytes":2737,"legacy_plaintext_bytes":26269,"legacy_sealed_envelope_bytes":26368,"legacy_request_json_bytes":52751,"clocked_plaintext_bytes":26398,"clocked_sealed_envelope_bytes":26497,"clocked_request_json_bytes":53009,"legacy_journal_intent_in_memory_bytes":41175},"proof":"synthetic_cached_stub","seal":"software_test_keys"}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 805 filtered out; finished in 0.04s
+
