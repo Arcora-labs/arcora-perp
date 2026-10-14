@@ -1,0 +1,117 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3049,
+      "sha256": "a173c1da6524a07cfc675d1da3c7bfd01cc9e3f03cae3113dd22091efdebf2ad"
+    },
+    "baseline-freeze.json": {
+      "bytes": 44746,
+      "sha256": "acb45f6c12cebbb3d7c7b23e912d80777d72640f1d3d8ed5938752d78a39ac90"
+    },
+    "baseline-profile.json": {
+      "bytes": 765,
+      "sha256": "41cf214770e814a12d5807a0d0b0a43152886cc6e249353d147f75582f372a6c"
+    },
+    "baseline-profile.stderr.log": {
+      "bytes": 2144,
+      "sha256": "6694310f629437f2f48a61a639919e9759c8817a96c34422e7d086593b28404a"
+    },
+    "baseline-profile.stdout.log": {
+      "bytes": 34253,
+      "sha256": "8f405ef75dcf09a580acecfd1feb82e33ecad460cba320249fc50891e384e832"
+    },
+    "baseline-summary.json": {
+      "bytes": 14793,
+      "sha256": "5a1701b3a96271407a894c0b60f5e50b68d64e0018388556776779278955a371"
+    },
+    "changed-profile.json": {
+      "bytes": 764,
+      "sha256": "00b0683344cc4e247b6d7f752a15a392a332eea4c1de8e9823c2cdfca6ec1bf1"
+    },
+    "changed-profile.stderr.log": {
+      "bytes": 2259,
+      "sha256": "dc7ecb6ed91fd92cffd4746d1c9c24ff0ff3b0a3aada855bdf2817d81af05a38"
+    },
+    "changed-profile.stdout.log": {
+      "bytes": 34261,
+      "sha256": "c4d47132da05665b5c94c59e687a3d2ecb09b540785fc003cf09e43e80c187a7"
+    },
+    "changed-summary.json": {
+      "bytes": 14800,
+      "sha256": "dfddcc7ba084da3979397e2f53b39574505ba7c5dc9925a991cf66b4521c6efc"
+    },
+    "clippy.json": {
+      "bytes": 668,
+      "sha256": "ee39faf59e69040208997be42d3414ff3fe35f280b783088e27433ee977c80c7"
+    },
+    "clippy.stderr.log": {
+      "bytes": 186,
+      "sha256": "eaedb3a00ff7be0a51057a50a6681463ff0004795d596463831a5f52ad8ed54f"
+    },
+    "clippy.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "comparison.json": {
+      "bytes": 1155,
+      "sha256": "777534072e7a6eb1675af5cb0f77b187b0740af95807351429805224e790e366"
+    },
+    "environment.json": {
+      "bytes": 354,
+      "sha256": "65170bebdd7ca8ecb2670255e66a6bc7087f19055ef3634a4112c6d38f5dd5e8"
+    },
+    "fmt.json": {
+      "bytes": 587,
+      "sha256": "3ff8b132422925f9b2ae24a08722941ba5b0db647234cb37590befd1750a7d0c"
+    },
+    "fmt.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fmt.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "focused.json": {
+      "bytes": 735,
+      "sha256": "4ae81aaca0e4720707cf8ea076bf427f6810e8a89e3d5d3163bf79161bd37736"
+    },
+    "focused.stderr.log": {
+      "bytes": 268,
+      "sha256": "1627fee1b869f74f498d5f5e7c857d7b27f16c6d817bb93ea4c4d374752a62f3"
+    },
+    "focused.stdout.log": {
+      "bytes": 799,
+      "sha256": "00ba1ea8d365999e3b1f5d967ad02b50bd4cd6ac3babb4ebcaed63fa050aa7b7"
+    },
+    "gateway-all.json": {
+      "bytes": 675,
+      "sha256": "2dc16e2cb9d66099440db56129ccf55b6fd06082fb598c2d2f6979372448ec9b"
+    },
+    "gateway-all.stderr.log": {
+      "bytes": 153,
+      "sha256": "1ca25a882cae8f441a5e0864802a8af1fe987f62c52db2fabeaf3318b6b316d5"
+    },
+    "gateway-all.stdout.log": {
+      "bytes": 75837,
+      "sha256": "e4a87240176ee45b76c63bd13ca3075345d0b33b2249e5760ca0c997f93293e8"
+    },
+    "preservation-prepublication.json": {
+      "bytes": 623,
+      "sha256": "be3014ea5b18daaeb9589aac9878f677677071b1e1685fd24063adb35bb29386"
+    },
+    "source-freeze.json": {
+      "bytes": 44875,
+      "sha256": "edcca84779bae7b092dc642e22ae80c6938cafc6fa756f55cd5e45fc641daf86"
+    },
+    "source-review.json": {
+      "bytes": 4367,
+      "sha256": "6bfd66fa6276df10f3cbee9f106f65f18d90b3de9098e73458598b2e56df8a9d"
+    }
+  },
+  "mapped_files": 27,
+  "production_release": "HOLD",
+  "schema": "arcora-clock-roots-carry-local-packet/v1",
+  "source_count": 383,
+  "source_sha256": "534293d5920c71e462138074fc59c243381729be6569be7dd9f6249824774bca"
+}

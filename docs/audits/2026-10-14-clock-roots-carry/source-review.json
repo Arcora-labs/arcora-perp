@@ -1,0 +1,81 @@
+{
+  "actual_root_focused_execution": {
+    "compile_and_test_wall_seconds": 14.622256207978353,
+    "executed_by": "root; reviewer read existing raw records only",
+    "failed": 0,
+    "ignored": 0,
+    "passed": true,
+    "raw_names_exact": [
+      "roots_carry_real_claim_paths_and_post_state_match_literal_prepare",
+      "roots_carry_legacy_clock_wire_receipts_and_journal_bodies_match_literal",
+      "roots_carry_local_multifault_errors_precede_all_callbacks",
+      "roots_carry_context_errors_omission_and_invalid_binding_precede_prove",
+      "roots_carry_remote_errors_diagnostics_and_empty_proof_precedence_match",
+      "roots_carry_withdrawal_leaf_semantics_match_literal_without_tightening"
+    ],
+    "receipt": {
+      "bytes": 735,
+      "sha256": "4ae81aaca0e4720707cf8ea076bf427f6810e8a89e3d5d3163bf79161bd37736"
+    },
+    "reported_test_seconds": 2.65,
+    "stderr": {
+      "bytes": 268,
+      "sha256": "1627fee1b869f74f498d5f5e7c857d7b27f16c6d817bb93ea4c4d374752a62f3"
+    },
+    "stdout": {
+      "bytes": 799,
+      "sha256": "00ba1ea8d365999e3b1f5d967ad02b50bd4cd6ac3babb4ebcaed63fa050aa7b7"
+    },
+    "tests": 6
+  },
+  "base": "c0694613003208968de9a6303302483f81ac3f3c",
+  "candidate_submission_activated": false,
+  "checks": {
+    "all_quoted_string_bytes_preserved_in_comparison": true,
+    "context_error_missing_and9_invalid_contexts_precede_prove_counts1_0_0": true,
+    "full383_live_map_and_canonical_digest_exact": true,
+    "helper_one_native_derive_and_prove_no_second_derive": true,
+    "known_main_clock_resume_journal_CPU_fixture_core_and_root_manifests_unchanged": true,
+    "legacy_DPCLK2_software_seal_wire_and_v5_v6_stage_bodies_owned_decode_equal": true,
+    "legacy_clock_remote_errors_diagnostics_empty_proof_and_fullbytes_counts_preserved": true,
+    "literal_old_prepare_and_prove_match_BASE_after_only_name_substitutions_and_external_whitespace_normalization": true,
+    "local_multifault_and_leaf_mismatch_counts0_0_0": true,
+    "planned_inverse_restores_entire_BASE_prover_client_bytes": true,
+    "post_deposit_count_mode_insurance_and_full_prepared_bytes_compared": true,
+    "private_d_is_Copy_digest_phase_value_no_poststate_or_heap_reference": true,
+    "sorted_pair_reverse_and_owner_only_BASE_acceptance_preserved": true,
+    "two_actual_native_withdrawals_have_exact_nonempty_sibling_paths_and_verify": true,
+    "withdrawal_root_and_proof_work_complete_before_callbacks": true,
+    "witness_and_ww_immutable_across_comparators": true
+  },
+  "limitations": [
+    "Fixture is direct native Sequencer.apply with fixed signed oracle transcripts and spend keys; not account-signed HTTP ingress, real deposits, DON reports or real funds.",
+    "Two withdrawals test sibling paths; in-window FundInsurance and EnterCloseOnly make post-state fields nontrivial. Positive wind-down phases1/2 are not claimed by this new fixed fixture; existing suites remain separate.",
+    "Journal assertions are in-memory body equality and owned-seed snapshot seal/open; no filesystem write/fsync/crash-WAL recovery or selected archive-record authenticity claimed.",
+    "Old after-context second derive error is redundant only for supported immutable typed inputs and deterministic native derivation; unsafe/interior mutation is outside the contract. Separate intent/resume replay remains.",
+    "Focused6 actualPASS does not imply pending full-gateway/Clippy/fmt/release or future CI acceptance. No fresh speedup/capacity/RSS/proof/backend/CC/release claim."
+  ],
+  "literal_BASE_archive": {
+    "bytes": 102812,
+    "sha256": "dea48e5ea9af3676309fc9bada19b37d9273616c90ff098905d08580fbd47684"
+  },
+  "observed_utc": "2026-10-14T14:06:04.946959+00:00",
+  "passed": true,
+  "production_file": {
+    "bytes": 103105,
+    "sha256": "7b06659fdf336de52f4134ab9e6682e7a67683cd190bb3640aad88c04e3fc5a0"
+  },
+  "production_release": "HOLD",
+  "reviewer_runtime_build_network_or_source_mutation": false,
+  "schema": "arcora-clock-roots-carry-independent-source-review/v1",
+  "source_count": 383,
+  "source_freeze": {
+    "bytes": 44875,
+    "sha256": "edcca84779bae7b092dc642e22ae80c6938cafc6fa756f55cd5e45fc641daf86"
+  },
+  "source_sha256": "534293d5920c71e462138074fc59c243381729be6569be7dd9f6249824774bca",
+  "test_file": {
+    "bytes": 24680,
+    "sha256": "e9d3652898d43366474af20c3076af919f9345329a2143a521095a22ec63b105"
+  }
+}

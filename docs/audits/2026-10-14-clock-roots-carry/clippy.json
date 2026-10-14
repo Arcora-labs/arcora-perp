@@ -1,0 +1,28 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "clippy",
+    "-p",
+    "gateway",
+    "--all-targets",
+    "--locked",
+    "--offline",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "exit_code": 0,
+  "files": {
+    "stderr": {
+      "bytes": 186,
+      "sha256": "eaedb3a00ff7be0a51057a50a6681463ff0004795d596463831a5f52ad8ed54f"
+    },
+    "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "source_count": 383,
+  "source_sha256": "534293d5920c71e462138074fc59c243381729be6569be7dd9f6249824774bca",
+  "wall_seconds": 4.905122249969281
+}

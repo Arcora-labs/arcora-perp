@@ -799,3 +799,8 @@ Test-only fixed PR65 input profiling completed locally: 110 release thread-CPU s
 
 
 PR67 corrected-source follow-up: first e19 Linux clippy FAILED on test fixture name; one untimed fixture-label assertion fixes it. Current382 source dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14 locally revalidated release2/0/0+110 samples, format/clippy PASS. Original21 packet bytes and failedCI logs preserved; corrected CI still a separate pending gate. Supplemental packet ci-correction-v2/. PRODUCTION HOLD.
+
+
+## 2026-10-14 - Clock preparation roots carry (local cut)
+
+Private prepare helper returns the same native roots after all withdrawal checks; clock validation reuses them instead of a second clone/derive. Public output, reachable errors and proof/wire/journal bodies stay unchanged; intent/resume replays remain. Source383/534293d5920c71e462138074fc59c243381729be6569be7dd9f6249824774bca. Literal BASE6/0/0, full Macgateway773/0/25, format/Clippy PASS. Same fixed-input release baseline/current each2/0/0+110; observed tiny-fixture clock CPU median reduction49.4-49.6%, no production/RSS/proof guarantee. Evidence docs/audits/2026-10-14-clock-roots-carry/. PR/normalmerge/main pending at this cut; outside final readbacks required. Candidate submission disabled; PRODUCTION HOLD.

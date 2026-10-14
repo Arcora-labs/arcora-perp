@@ -1,0 +1,11 @@
+
+running 6 tests
+test prover_client::roots_carry_tests::roots_carry_context_errors_omission_and_invalid_binding_precede_prove ... ok
+test prover_client::roots_carry_tests::roots_carry_legacy_clock_wire_receipts_and_journal_bodies_match_literal ... ok
+test prover_client::roots_carry_tests::roots_carry_local_multifault_errors_precede_all_callbacks ... ok
+test prover_client::roots_carry_tests::roots_carry_real_claim_paths_and_post_state_match_literal_prepare ... ok
+test prover_client::roots_carry_tests::roots_carry_remote_errors_diagnostics_and_empty_proof_precedence_match ... ok
+test prover_client::roots_carry_tests::roots_carry_withdrawal_leaf_semantics_match_literal_without_tightening ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 792 filtered out; finished in 2.65s
+

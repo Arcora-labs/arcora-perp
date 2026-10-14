@@ -14,7 +14,7 @@
 //! mismatch.
 
 use crate::withdrawals::Withdrawal;
-use perp_core::commitment::derive_roots;
+use perp_core::commitment::{derive_roots, DerivedRoots};
 use perp_core::hash::{Domain, Hasher};
 use perp_core::merkle::{merkle_proof, merkle_root};
 use perp_core::{Digest, EngineError, Keccak256};
@@ -195,6 +195,15 @@ pub fn prepare_unproved(
     witness: &WindowWitness,
     ww: &[Withdrawal],
 ) -> Result<PreparedSettle, String> {
+    prepare_unproved_with_roots(witness, ww).map(|(prepared, _)| prepared)
+}
+
+// Carry this invocation's native roots only after local preparation and withdrawal
+// checks complete, so clock validation shares the same authoritative replay.
+fn prepare_unproved_with_roots(
+    witness: &WindowWitness,
+    ww: &[Withdrawal],
+) -> Result<(PreparedSettle, DerivedRoots), String> {
     let mut post = witness.pre_state.clone();
     if witness.batch_id != witness.manifest.batch_id {
         return Err("local replay failed: ManifestMismatch (witness batch differs)".into());
@@ -230,10 +239,13 @@ pub fn prepare_unproved(
             )
         })
         .collect();
-    Ok(PreparedSettle {
-        outcome,
-        withdraw_proofs,
-    })
+    Ok((
+        PreparedSettle {
+            outcome,
+            withdraw_proofs,
+        },
+        d,
+    ))
 }
 
 pub fn prove_and_prepare(
@@ -241,7 +253,7 @@ pub fn prove_and_prepare(
     witness: &WindowWitness,
     ww: &[Withdrawal],
 ) -> Result<PreparedSettle, String> {
-    let mut prepared = prepare_unproved(witness, ww)?;
+    let (mut prepared, roots) = prepare_unproved_with_roots(witness, ww)?;
     let o = &prepared.outcome;
     let clock = client
         .clock_context(witness)
@@ -251,9 +263,6 @@ pub fn prove_and_prepare(
     }
     let expected = match &clock {
         Some(c) => {
-            let mut post = witness.pre_state.clone();
-            let roots = derive_roots(&mut post, &witness.ops, &witness.manifest)
-                .map_err(|e| format!("local replay: {e:?}"))?;
             c.validate(witness.batch_id, &roots, &witness.ops)
                 .map_err(|e| format!("clock context: {e:?}"))?;
             c.commitment()
@@ -1949,6 +1958,9 @@ mod clock_pipeline_tests {
 
 #[cfg(test)]
 mod window_ownership_tests;
+
+#[cfg(test)]
+mod roots_carry_tests;
 
 #[cfg(test)]
 mod request_body_tests {

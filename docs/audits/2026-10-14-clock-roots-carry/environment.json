@@ -1,0 +1,8 @@
+{
+  "architecture": "arm64",
+  "cpu": "Apple M4",
+  "fixed_inputs": "Same PR67 4ops/6ops fixtures; no notes/withdrawals in measurement; dedicated correctness fixture has two native withdrawals",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80",
+  "profile": "release",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)"
+}
