@@ -1,0 +1,31 @@
+{
+  "actual_gateway": {
+    "failed": 0,
+    "ignored": 25,
+    "passed": 773
+  },
+  "baseline_source_count": 382,
+  "baseline_source_sha256": "dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14",
+  "changed_source_count": 383,
+  "changed_source_sha256": "534293d5920c71e462138074fc59c243381729be6569be7dd9f6249824774bca",
+  "comparison": "Identical unchanged fixed-input Mac release diagnostics before and after roots carry, not a performance threshold",
+  "fixtures": {
+    "normal": {
+      "after_clock_us": 320.675,
+      "after_legacy_us": 318.5375,
+      "before_clock_us": 633.3041999999999,
+      "before_legacy_us": 314.4042,
+      "observed_clock_reduction_percent": 49.364776042855866
+    },
+    "rollback_resealed": {
+      "after_clock_us": 474.8125,
+      "after_legacy_us": 472.7958,
+      "before_clock_us": 942.3167,
+      "before_legacy_us": 459.2542,
+      "observed_clock_reduction_percent": 49.612216359956264
+    }
+  },
+  "passed": true,
+  "samples_each": 110,
+  "scope": "Zero notes/withdrawals, cached synthetic proof; batch-averaged thread CPU. Phases overlap; no sum, RSS/proving/production capacity guarantee."
+}

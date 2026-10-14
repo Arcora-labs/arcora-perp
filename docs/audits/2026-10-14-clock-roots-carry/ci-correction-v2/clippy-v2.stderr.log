@@ -1,0 +1,6 @@
+    Checking rustls v0.23.46
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Checking ureq v2.12.1
+    Checking chainlink-streams-client-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
+    Checking oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.54s

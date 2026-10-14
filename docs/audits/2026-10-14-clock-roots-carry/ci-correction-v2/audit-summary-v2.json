@@ -1,0 +1,915 @@
+{
+  "five_locks": [
+    {
+      "database_commit": "caee11f41fab07d676c0a4655a2a5dd1f94da97c",
+      "ignored_advisories": [],
+      "lock": "Cargo.lock",
+      "vulnerabilities": 0,
+      "warnings": {
+        "unmaintained": [
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2023-07-11",
+              "description": "The author has archived the GitHub repository and mentions deprecation in\nproject's\n[README](https://github.com/embassy-rs/atomic-polyfill/blob/48e55c166684f37af0b00fbee5a0809b1a2bae8e/README.md).\n\n## Possible alternatives\n\n * [portable-atomic](https://crates.io/crates/portable-atomic)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2023-0089",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "atomic-polyfill",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "atomic-polyfill is unmaintained",
+              "url": "https://github.com/embassy-rs/atomic-polyfill/commit/48e55c166684f37af0b00fbee5a0809b1a2bae8e",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4",
+              "dependencies": [
+                {
+                  "name": "critical-section",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.2.0"
+                }
+              ],
+              "name": "atomic-polyfill",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "1.0.3"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          }
+        ],
+        "yanked": [
+          {
+            "advisory": null,
+            "affected": null,
+            "kind": "yanked",
+            "package": {
+              "checksum": "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67",
+              "dependencies": [
+                {
+                  "name": "lock_api",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "0.4.14"
+                }
+              ],
+              "name": "spin",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.9.8"
+            },
+            "versions": null
+          }
+        ]
+      }
+    },
+    {
+      "database_commit": "caee11f41fab07d676c0a4655a2a5dd1f94da97c",
+      "ignored_advisories": [],
+      "lock": "crates/sp1-host/Cargo.lock",
+      "vulnerabilities": 0,
+      "warnings": {
+        "unmaintained": [
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2021-08-18",
+              "description": "The maintainer has advised that this crate is deprecated and will not receive any maintenance.\n\nThe crate does not seem to have much dependencies and may or may not be ok to use as-is.\n\nLast release seems to have been three years ago.\n\n## Possible Alternative(s)\n\n The below list has not been vetted in any way and may or may not contain alternatives;\n\n - [ansiterm](https://crates.io/crates/ansiterm)\n - [anstyle](https://github.com/epage/anstyle)\n - [console](https://crates.io/crates/console)\n - [nu-ansi-term](https://crates.io/crates/nu-ansi-term)\n - [owo-colors](https://crates.io/crates/owo-colors)\n - [stylish](https://crates.io/crates/stylish)\n - [yansi](https://crates.io/crates/yansi)\n\n## Dependency Specific Migration(s)\n\n - [structopt, clap2](https://github.com/clap-rs/clap/discussions/4172)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2021-0139",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "ansi_term",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "ansi_term is Unmaintained",
+              "url": "https://github.com/ogham/rust-ansi-term/issues/72",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2",
+              "dependencies": [
+                {
+                  "name": "winapi",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "0.3.9"
+                }
+              ],
+              "name": "ansi_term",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.12.1"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2023-07-11",
+              "description": "The author has archived the GitHub repository and mentions deprecation in\nproject's\n[README](https://github.com/embassy-rs/atomic-polyfill/blob/48e55c166684f37af0b00fbee5a0809b1a2bae8e/README.md).\n\n## Possible alternatives\n\n * [portable-atomic](https://crates.io/crates/portable-atomic)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2023-0089",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "atomic-polyfill",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "atomic-polyfill is unmaintained",
+              "url": "https://github.com/embassy-rs/atomic-polyfill/commit/48e55c166684f37af0b00fbee5a0809b1a2bae8e",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4",
+              "dependencies": [
+                {
+                  "name": "critical-section",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.2.0"
+                }
+              ],
+              "name": "atomic-polyfill",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "1.0.3"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2025-12-16",
+              "description": "Due to a doxxing and harassment incident, the bincode team has taken the decision to cease development permanently.\n\nThe team considers version 1.3.3 a complete version of bincode that is not in need of any updates.\n\n## Alternatives to consider\n\n* [wincode](https://crates.io/crates/wincode)\n* [postcard](https://crates.io/crates/postcard)\n* [bitcode](https://crates.io/crates/bitcode)\n* [rkyv](https://crates.io/crates/rkyv)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2025-0141",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "bincode",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "Bincode is unmaintained",
+              "url": "https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad",
+              "dependencies": [
+                {
+                  "name": "serde",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.229"
+                }
+              ],
+              "name": "bincode",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "1.3.3"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2024-06-26",
+              "description": "The [`derivative`](https://crates.io/crates/derivative) crate is no longer maintained.\nConsider using any alternative, for instance:\n- [derive_more](https://crates.io/crates/derive_more)\n- [derive-where](https://crates.io/crates/derive-where)\n- [educe](https://crates.io/crates/educe)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2024-0388",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "derivative",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "`derivative` is unmaintained; consider using an alternative",
+              "url": "https://github.com/mcarton/rust-derivative/issues/117",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b",
+              "dependencies": [
+                {
+                  "name": "proc-macro2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.107"
+                },
+                {
+                  "name": "quote",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.47"
+                },
+                {
+                  "name": "syn",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.109"
+                }
+              ],
+              "name": "derivative",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "2.2.0"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2025-11-17",
+              "description": "The `number_prefix` crate is no longer actively maintained.  If you rely on this crate, consider switching to a recommended alternative.\n\n## Recommended alternatives\n\n- [`unit-prefix`](https://crates.io/crates/unit-prefix)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2025-0119",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "number_prefix",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "number_prefix crate is unmaintained",
+              "url": "https://github.com/ogham/rust-number-prefix/pull/8",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3",
+              "name": "number_prefix",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.4.0"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2024-10-07",
+              "description": "The creator of the crate `paste` has stated in the [`README.md`](https://github.com/dtolnay/paste/blob/master/README.md) \nthat this project is not longer maintained as well as archived the repository\n\n## Possible Alternative(s)\n\n- [`pastey`]: a fork of paste and is aimed to be a drop-in replacement with additional features for paste crate\n- [`with_builtin_macros`]: crate providing a [superset of `paste`'s functionality including general `macro_rules!` eager expansions](https://docs.rs/with_builtin_macros/0.1.0/with_builtin_macros/macro.with_eager_expansions.html)  and `concat!`/`concat_idents!` macros\n\n[`pastey`]: https://crates.io/crates/pastey\n[`with_builtin_macros`]: https://crates.io/crates/with_builtin_macros",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2024-0436",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "paste",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "paste - no longer maintained",
+              "url": "https://github.com/dtolnay/paste",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a",
+              "name": "paste",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "1.0.15"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2026-06-07",
+              "description": "The author of `proc-macro-error2` has [confirmed](https://github.com/GnomedDev/proc-macro-error-2/issues/17#issuecomment-4643215473) that the crate is no longer maintained and recommends that users migrate away from it.\n\n`proc-macro-error2` was originally created as a maintained fork of [`proc-macro-error`](https://crates.io/crates/proc-macro-error) (see [RUSTSEC-2024-0370](https://rustsec.org/advisories/RUSTSEC-2024-0370)). Both the original crate and this fork are now unmaintained.\n\n## Possible Alternative(s)\n\n- [manyhow](https://crates.io/crates/manyhow)\n- [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2026-0173",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "proc-macro-error2",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "proc-macro-error2 is unmaintained",
+              "url": "https://github.com/GnomedDev/proc-macro-error-2/issues/17",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802",
+              "dependencies": [
+                {
+                  "name": "proc-macro-error-attr2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "2.0.0"
+                },
+                {
+                  "name": "proc-macro2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.107"
+                },
+                {
+                  "name": "quote",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.47"
+                },
+                {
+                  "name": "syn",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "2.0.119"
+                }
+              ],
+              "name": "proc-macro-error2",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "2.0.1"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2025-11-28",
+              "description": "The rustls-pemfile crate is no longer maintained. The repository has been archived since August\n2025, and users are encouraged to depend directly on the underlying PEM parsing code included\nin rustls-pki-types since 1.9.0. The latest version of rustls-pemfile is in fact a thin wrapper\naround the same code used in rustls-pki-types, so migrating should be straightforward.\n\nThe new API is represented by the [`PemObject`][PemObject] trait, which provides methods for\nreading a single or multiple PEM objects from a file or byte slice.\n\n[PemObject]: https://docs.rs/rustls-pki-types/latest/rustls_pki_types/pem/trait.PemObject.html",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2025-0134",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "rustls-pemfile",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "rustls-pemfile is unmaintained",
+              "url": "https://github.com/rustls/pemfile/issues/61",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50",
+              "dependencies": [
+                {
+                  "name": "rustls-pki-types",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.15.1"
+                }
+              ],
+              "name": "rustls-pemfile",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "2.2.0"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          }
+        ],
+        "yanked": [
+          {
+            "advisory": null,
+            "affected": null,
+            "kind": "yanked",
+            "package": {
+              "checksum": "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78",
+              "dependencies": [
+                {
+                  "name": "proc-macro2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.107"
+                },
+                {
+                  "name": "quote",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.47"
+                },
+                {
+                  "name": "syn",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "3.0.6"
+                },
+                {
+                  "name": "synstructure",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "0.14.0"
+                }
+              ],
+              "name": "yoke-derive",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.8.3"
+            },
+            "versions": null
+          }
+        ]
+      }
+    },
+    {
+      "database_commit": "caee11f41fab07d676c0a4655a2a5dd1f94da97c",
+      "ignored_advisories": [],
+      "lock": "crates/prover-service/Cargo.lock",
+      "vulnerabilities": 0,
+      "warnings": {
+        "unmaintained": [
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2021-08-18",
+              "description": "The maintainer has advised that this crate is deprecated and will not receive any maintenance.\n\nThe crate does not seem to have much dependencies and may or may not be ok to use as-is.\n\nLast release seems to have been three years ago.\n\n## Possible Alternative(s)\n\n The below list has not been vetted in any way and may or may not contain alternatives;\n\n - [ansiterm](https://crates.io/crates/ansiterm)\n - [anstyle](https://github.com/epage/anstyle)\n - [console](https://crates.io/crates/console)\n - [nu-ansi-term](https://crates.io/crates/nu-ansi-term)\n - [owo-colors](https://crates.io/crates/owo-colors)\n - [stylish](https://crates.io/crates/stylish)\n - [yansi](https://crates.io/crates/yansi)\n\n## Dependency Specific Migration(s)\n\n - [structopt, clap2](https://github.com/clap-rs/clap/discussions/4172)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2021-0139",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "ansi_term",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "ansi_term is Unmaintained",
+              "url": "https://github.com/ogham/rust-ansi-term/issues/72",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2",
+              "dependencies": [
+                {
+                  "name": "winapi",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "0.3.9"
+                }
+              ],
+              "name": "ansi_term",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.12.1"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2023-07-11",
+              "description": "The author has archived the GitHub repository and mentions deprecation in\nproject's\n[README](https://github.com/embassy-rs/atomic-polyfill/blob/48e55c166684f37af0b00fbee5a0809b1a2bae8e/README.md).\n\n## Possible alternatives\n\n * [portable-atomic](https://crates.io/crates/portable-atomic)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2023-0089",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "atomic-polyfill",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "atomic-polyfill is unmaintained",
+              "url": "https://github.com/embassy-rs/atomic-polyfill/commit/48e55c166684f37af0b00fbee5a0809b1a2bae8e",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4",
+              "dependencies": [
+                {
+                  "name": "critical-section",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.2.0"
+                }
+              ],
+              "name": "atomic-polyfill",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "1.0.3"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2025-12-16",
+              "description": "Due to a doxxing and harassment incident, the bincode team has taken the decision to cease development permanently.\n\nThe team considers version 1.3.3 a complete version of bincode that is not in need of any updates.\n\n## Alternatives to consider\n\n* [wincode](https://crates.io/crates/wincode)\n* [postcard](https://crates.io/crates/postcard)\n* [bitcode](https://crates.io/crates/bitcode)\n* [rkyv](https://crates.io/crates/rkyv)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2025-0141",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "bincode",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "Bincode is unmaintained",
+              "url": "https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad",
+              "dependencies": [
+                {
+                  "name": "serde",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.229"
+                }
+              ],
+              "name": "bincode",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "1.3.3"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2024-06-26",
+              "description": "The [`derivative`](https://crates.io/crates/derivative) crate is no longer maintained.\nConsider using any alternative, for instance:\n- [derive_more](https://crates.io/crates/derive_more)\n- [derive-where](https://crates.io/crates/derive-where)\n- [educe](https://crates.io/crates/educe)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2024-0388",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "derivative",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "`derivative` is unmaintained; consider using an alternative",
+              "url": "https://github.com/mcarton/rust-derivative/issues/117",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b",
+              "dependencies": [
+                {
+                  "name": "proc-macro2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.107"
+                },
+                {
+                  "name": "quote",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.47"
+                },
+                {
+                  "name": "syn",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.109"
+                }
+              ],
+              "name": "derivative",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "2.2.0"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2025-11-17",
+              "description": "The `number_prefix` crate is no longer actively maintained.  If you rely on this crate, consider switching to a recommended alternative.\n\n## Recommended alternatives\n\n- [`unit-prefix`](https://crates.io/crates/unit-prefix)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2025-0119",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "number_prefix",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "number_prefix crate is unmaintained",
+              "url": "https://github.com/ogham/rust-number-prefix/pull/8",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3",
+              "name": "number_prefix",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.4.0"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2024-10-07",
+              "description": "The creator of the crate `paste` has stated in the [`README.md`](https://github.com/dtolnay/paste/blob/master/README.md) \nthat this project is not longer maintained as well as archived the repository\n\n## Possible Alternative(s)\n\n- [`pastey`]: a fork of paste and is aimed to be a drop-in replacement with additional features for paste crate\n- [`with_builtin_macros`]: crate providing a [superset of `paste`'s functionality including general `macro_rules!` eager expansions](https://docs.rs/with_builtin_macros/0.1.0/with_builtin_macros/macro.with_eager_expansions.html)  and `concat!`/`concat_idents!` macros\n\n[`pastey`]: https://crates.io/crates/pastey\n[`with_builtin_macros`]: https://crates.io/crates/with_builtin_macros",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2024-0436",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "paste",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "paste - no longer maintained",
+              "url": "https://github.com/dtolnay/paste",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a",
+              "name": "paste",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "1.0.15"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2026-06-07",
+              "description": "The author of `proc-macro-error2` has [confirmed](https://github.com/GnomedDev/proc-macro-error-2/issues/17#issuecomment-4643215473) that the crate is no longer maintained and recommends that users migrate away from it.\n\n`proc-macro-error2` was originally created as a maintained fork of [`proc-macro-error`](https://crates.io/crates/proc-macro-error) (see [RUSTSEC-2024-0370](https://rustsec.org/advisories/RUSTSEC-2024-0370)). Both the original crate and this fork are now unmaintained.\n\n## Possible Alternative(s)\n\n- [manyhow](https://crates.io/crates/manyhow)\n- [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2026-0173",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "proc-macro-error2",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "proc-macro-error2 is unmaintained",
+              "url": "https://github.com/GnomedDev/proc-macro-error-2/issues/17",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802",
+              "dependencies": [
+                {
+                  "name": "proc-macro-error-attr2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "2.0.0"
+                },
+                {
+                  "name": "proc-macro2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.107"
+                },
+                {
+                  "name": "quote",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.47"
+                },
+                {
+                  "name": "syn",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "2.0.119"
+                }
+              ],
+              "name": "proc-macro-error2",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "2.0.1"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          },
+          {
+            "advisory": {
+              "aliases": [],
+              "categories": [],
+              "collection": "crates",
+              "cvss": null,
+              "date": "2025-11-28",
+              "description": "The rustls-pemfile crate is no longer maintained. The repository has been archived since August\n2025, and users are encouraged to depend directly on the underlying PEM parsing code included\nin rustls-pki-types since 1.9.0. The latest version of rustls-pemfile is in fact a thin wrapper\naround the same code used in rustls-pki-types, so migrating should be straightforward.\n\nThe new API is represented by the [`PemObject`][PemObject] trait, which provides methods for\nreading a single or multiple PEM objects from a file or byte slice.\n\n[PemObject]: https://docs.rs/rustls-pki-types/latest/rustls_pki_types/pem/trait.PemObject.html",
+              "expect-deleted": false,
+              "id": "RUSTSEC-2025-0134",
+              "informational": "unmaintained",
+              "keywords": [],
+              "license": "CC0-1.0",
+              "package": "rustls-pemfile",
+              "references": [],
+              "related": [],
+              "source": null,
+              "title": "rustls-pemfile is unmaintained",
+              "url": "https://github.com/rustls/pemfile/issues/61",
+              "withdrawn": null
+            },
+            "affected": null,
+            "kind": "unmaintained",
+            "package": {
+              "checksum": "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50",
+              "dependencies": [
+                {
+                  "name": "rustls-pki-types",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.15.1"
+                }
+              ],
+              "name": "rustls-pemfile",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "2.2.0"
+            },
+            "versions": {
+              "patched": [],
+              "unaffected": []
+            }
+          }
+        ],
+        "yanked": [
+          {
+            "advisory": null,
+            "affected": null,
+            "kind": "yanked",
+            "package": {
+              "checksum": "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78",
+              "dependencies": [
+                {
+                  "name": "proc-macro2",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.107"
+                },
+                {
+                  "name": "quote",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.47"
+                },
+                {
+                  "name": "syn",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "3.0.6"
+                },
+                {
+                  "name": "synstructure",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "0.14.0"
+                }
+              ],
+              "name": "yoke-derive",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.8.3"
+            },
+            "versions": null
+          }
+        ]
+      }
+    },
+    {
+      "database_commit": "caee11f41fab07d676c0a4655a2a5dd1f94da97c",
+      "ignored_advisories": [],
+      "lock": "scripts/tee-capture/Cargo.lock",
+      "vulnerabilities": 0,
+      "warnings": {
+        "yanked": [
+          {
+            "advisory": null,
+            "affected": null,
+            "kind": "yanked",
+            "package": {
+              "checksum": "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81",
+              "dependencies": [
+                {
+                  "name": "cfg-if",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "1.0.4"
+                },
+                {
+                  "name": "cpufeatures",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "0.3.0"
+                },
+                {
+                  "name": "rand_core",
+                  "source": "registry+https://github.com/rust-lang/crates.io-index",
+                  "version": "0.10.1"
+                }
+              ],
+              "name": "chacha20",
+              "replace": null,
+              "source": "registry+https://github.com/rust-lang/crates.io-index",
+              "version": "0.10.1"
+            },
+            "versions": null
+          }
+        ]
+      }
+    },
+    {
+      "database_commit": "caee11f41fab07d676c0a4655a2a5dd1f94da97c",
+      "ignored_advisories": [],
+      "lock": "crates/chainlink-streams-client/Cargo.lock",
+      "vulnerabilities": 0,
+      "warnings": {}
+    }
+  ],
+  "passed": true,
+  "scope": "Current RustSec database dependency gate; informational/yanked warnings retained; not application exploit or production acceptance"
+}

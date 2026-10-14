@@ -1,0 +1,24 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "check",
+    "--manifest-path",
+    "scripts/tee-capture/Cargo.toml",
+    "--locked",
+    "--offline"
+  ],
+  "exit_code": 0,
+  "files": {
+    "stderr": {
+      "bytes": 6714,
+      "sha256": "15d32d767154bffc47895799cb2d1c4abd5b69c07e810c67830a0d9cb38de1f7"
+    },
+    "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "source_count": 384,
+  "source_sha256": "cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a",
+  "wall_seconds": 48.32823750004172
+}

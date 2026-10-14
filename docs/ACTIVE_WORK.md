@@ -799,3 +799,11 @@ Test-only fixed PR65 input profiling completed locally: 110 release thread-CPU s
 
 
 PR67 corrected-source follow-up: first e19 Linux clippy FAILED on test fixture name; one untimed fixture-label assertion fixes it. Current382 source dfe3bbed1fd0b5c807096ec9f4588dd263fca5dd9e419cea11cf6460c16b7b14 locally revalidated release2/0/0+110 samples, format/clippy PASS. Original21 packet bytes and failedCI logs preserved; corrected CI still a separate pending gate. Supplemental packet ci-correction-v2/. PRODUCTION HOLD.
+
+
+## 2026-10-14 - Clock preparation roots carry (local cut)
+
+Private prepare helper returns the same native roots after all withdrawal checks; clock validation reuses them instead of a second clone/derive. Public output, reachable errors and proof/wire/journal bodies stay unchanged; intent/resume replays remain. Source383/534293d5920c71e462138074fc59c243381729be6569be7dd9f6249824774bca. Literal BASE6/0/0, full Macgateway773/0/25, format/Clippy PASS. Same fixed-input release baseline/current each2/0/0+110; observed tiny-fixture clock CPU median reduction49.4-49.6%, no production/RSS/proof guarantee. Evidence docs/audits/2026-10-14-clock-roots-carry/. PR/normalmerge/main pending at this cut; outside final readbacks required. Candidate submission disabled; PRODUCTION HOLD.
+
+
+PR68 required TLS correction: first1f0 dependency audit FAILED on four today Rustls advisories0346-49. Five owned locks only rustls.version/checksum ->0.23.46; no ignores/rerun/workflow change, guest32pins/program9 exact. Current384 input closure (addsTEElock) cdd75d543cd31ee2f3463b4db449b416a101caf6da63e5d9209ded8fe408d57a: audits5zero-vuln, SP1guard, gateway773/0/25, focused6/0/0,REST69/0/1,TEEcheck,Clippy/format and release2/0/0+110 PASS. Old27+ledger packet historical unchanged; current additive ci-correction-v2/. Current clock CPU321.250/474.592us vsBASE633.304/942.317, observed combined-source microfixtures only. NewheadCI/normalmerge/main acceptance remains later. PRODUCTION HOLD/candidate disabled.
