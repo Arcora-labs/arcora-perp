@@ -3,10 +3,17 @@
 //! alone, before any L1, attestation, prover or state-file access.
 
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-// Anvil's well-known first and second development keys: public test material.
-const KEY_A: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const KEY_B: &str = "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
+// Two fixed test scalars that are NOT default Anvil accounts, so this mode prints a
+// root for them. Test material only.
+const KEY_A: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const KEY_B: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+
+// Anvil's well-known first and second development keys (#1 is the built-in dev
+// oracle default): public, so this mode must refuse them even when set explicitly.
+const ANVIL_0: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const ANVIL_1: &str = "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
 
 fn run(args: &[&str], key: Option<&str>, state: &std::path::Path) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_gateway"));
@@ -20,7 +27,8 @@ fn run(args: &[&str], key: Option<&str>, state: &std::path::Path) -> Output {
             "L1_SETTLEMENT",
             "0x0000000000000000000000000000000000000001",
         )
-        .env("L1_SEQUENCER_KEY", KEY_B)
+        // Never read by this mode.
+        .env("L1_SEQUENCER_KEY", ANVIL_1)
         .env("L1_RPC", "http://127.0.0.1:9")
         .env("PROVER_URL", "http://127.0.0.1:9")
         .env("DARKPERP_STATE", state);
@@ -39,13 +47,18 @@ fn root_line(output: &Output) -> Option<String> {
 }
 
 fn scratch() -> std::path::PathBuf {
+    // The tests run in parallel inside one process and the clock can repeat between
+    // them (microsecond resolution on macOS), so a per-process counter keeps the
+    // directory names distinct.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     let dir = std::env::temp_dir().join(format!(
-        "arcora-genesis-{}-{}",
+        "arcora-genesis-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&dir).unwrap();
     dir
@@ -95,5 +108,22 @@ fn refuses_the_built_in_development_oracle_key_and_extra_arguments() {
     );
     assert!(!extra.status.success());
     assert_eq!(root_line(&extra), None);
+    std::fs::remove_dir(&dir).unwrap();
+}
+
+#[test]
+fn refuses_an_explicitly_set_public_development_oracle_key() {
+    let dir = scratch();
+    for key in [ANVIL_0, ANVIL_1] {
+        let output = run(&["--print-genesis-root"], Some(key), &dir.join("s"));
+        assert_eq!(output.status.code(), Some(2), "{key}");
+        assert_eq!(root_line(&output), None, "{key}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("REFUSING"),
+            "{key}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
     std::fs::remove_dir(&dir).unwrap();
 }
