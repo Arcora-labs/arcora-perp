@@ -253,7 +253,7 @@ mod audit_remediation {
         let new_sk = k256::ecdsa::SigningKey::from_bytes((&[4; 32]).into()).unwrap();
         gw.accounts.get_mut(&key).unwrap().deposit_address = Some(old);
         let commit = gw.account_authorize_deposit(&key, old, 1000).unwrap();
-        let new_sig = sign(&new_sk, &deposit_bind_digest(&owner, &new));
+        let new_sig = sign(&new_sk, &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &new));
         let current_sig = sign(
             &old_sk,
             &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &old, &new),
@@ -438,5 +438,286 @@ mod audit_remediation {
         let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
         assert!(restored.receipt_cache.lock().unwrap().is_empty());
         assert_eq!(restored.receipt_json(&stored), wire);
+    }
+
+    /// User deposit permit issuance is bounded per account (outstanding count + rate)
+    /// and in total; only issued permits count against the rate, and the operator's
+    /// insurance bootstrap is exempt.
+    #[tokio::test]
+    async fn deposit_permit_issuance_is_bounded_per_account_and_in_total() {
+        use deposit_ingestion::Purpose::{Collateral, InsuranceBootstrap};
+        let app = test_app();
+        let key = payer(&app).await;
+        let mut gw = app.gw.lock().await;
+        let t = 1_000_000;
+        for i in 0..DEPOSIT_AUTHORIZE_RATE {
+            gw.admit_deposit_permit(&key, Collateral, t + u64::from(i))
+                .unwrap();
+            gw.charge_deposit_permit(&key, Collateral, t + u64::from(i));
+        }
+        assert_eq!(
+            gw.admit_deposit_permit(&key, Collateral, t + 59)
+                .unwrap_err()
+                .0,
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        gw.admit_deposit_permit(&key, Collateral, t + 60)
+            .expect("the per-account window refills after a minute");
+
+        let full = {
+            let (key, _) = gw.register_account(None);
+            let a = gw.accounts.get_mut(&key).unwrap();
+            for i in 0..MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT {
+                a.deposit_authorizations.insert([i as u8; 32], [0; 32]);
+            }
+            key
+        };
+        let (status, error) = gw.admit_deposit_permit(&full, Collateral, t).unwrap_err();
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert!(error.contains("outstanding"), "{error}");
+
+        let other = gw.register_account(None).0;
+        for i in 0..MAX_OPEN_DEPOSIT_PERMITS as u64 {
+            let mut commit = [0u8; 32];
+            commit[..8].copy_from_slice(&i.to_be_bytes());
+            gw.deposits.routes.insert(
+                commit,
+                deposit_ingestion::Route {
+                    key: other,
+                    from: [0x42; 20],
+                    amount: 1,
+                    market: 0,
+                    purpose: Collateral,
+                },
+            );
+        }
+        assert_eq!(
+            gw.admit_deposit_permit(&other, Collateral, t)
+                .unwrap_err()
+                .0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        gw.admit_deposit_permit(&other, InsuranceBootstrap, t)
+            .expect("the operator's insurance bootstrap is not blocked by user permits");
+    }
+
+    fn permit_request_from(key: &[u8; 32], from: [u8; 20]) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/accounts/deposit/authorize")
+            .header("content-type", "application/json")
+            .header("x-api-key", hex0x(key))
+            .body(Body::from(
+                serde_json::json!({"from": hex0x(&from), "amount": "5000000", "marketId": 0, "purpose": "collateral"}).to_string(),
+            ))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn rate_limited_authorization_issues_no_permit_and_no_signature() {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+        let writer = tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                let _ = ack.send(true);
+            }
+        });
+        let key = payer(&app).await;
+        let router = build_router(app.clone(), true);
+        // Refused requests (wrong payer) issue nothing and use none of the rate.
+        for _ in 0..DEPOSIT_AUTHORIZE_RATE {
+            let response = router
+                .clone()
+                .oneshot(permit_request_from(&key, [0x43; 20]))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
+        for _ in 0..DEPOSIT_AUTHORIZE_RATE {
+            let response = router.clone().oneshot(permit_request(&key)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        let response = router.oneshot(permit_request(&key)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(json_body(response).await.get("sig").is_none());
+        assert_eq!(
+            app.gw.lock().await.accounts[&key].deposit_authorizations.len(),
+            DEPOSIT_AUTHORIZE_RATE as usize
+        );
+        writer.abort();
+    }
+
+    fn reuse_request(key: &[u8; 32], amount: &str, reuse: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/accounts/deposit/authorize")
+            .header("content-type", "application/json")
+            .header("x-api-key", hex0x(key))
+            .body(Body::from(
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": amount, "marketId": 0,
+                    "purpose": "collateral", "reuseOwnerCommit": reuse}).to_string(),
+            ))
+            .unwrap()
+    }
+
+    /// A retry of a never-sent deposit may name its earlier permit: the gateway re-signs
+    /// it only while it still holds that permit for exactly the same request, without a
+    /// new permit, snapshot or rate charge; anything else gets a fresh permit.
+    #[tokio::test]
+    async fn an_outstanding_permit_is_re_signed_only_for_the_same_request() {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+        let writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = writes.clone();
+        let writer = tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = ack.send(true);
+            }
+        });
+        let key = payer(&app).await;
+        let router = build_router(app.clone(), true);
+        let first = json_body(router.clone().oneshot(permit_request(&key)).await.unwrap()).await;
+        let commit = first["ownerCommit"].as_str().unwrap().to_string();
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let again = router
+            .clone()
+            .oneshot(reuse_request(&key, "5000000", &commit))
+            .await
+            .unwrap();
+        assert_eq!(again.status(), StatusCode::OK);
+        let again = json_body(again).await;
+        assert_eq!(again["ownerCommit"], first["ownerCommit"]);
+        assert_eq!(again["sig"], first["sig"]);
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1, "no new durable write");
+        {
+            let gw = app.gw.lock().await;
+            assert_eq!(gw.accounts[&key].deposit_authorizations.len(), 1);
+            assert_eq!(gw.accounts[&key].deposit_authorize_window.1, 1, "no rate charge");
+        }
+
+        // A different amount, or a commit the gateway does not hold, is a new permit.
+        for (amount, reuse) in [("6000000", commit.clone()), ("5000000", hex0x(&[0x77; 32]))] {
+            let response = json_body(
+                router
+                    .clone()
+                    .oneshot(reuse_request(&key, amount, &reuse))
+                    .await
+                    .unwrap(),
+            )
+            .await;
+            assert_ne!(response["ownerCommit"].as_str().unwrap(), reuse);
+        }
+        assert_eq!(app.gw.lock().await.accounts[&key].deposit_authorizations.len(), 3);
+        let bad = router.oneshot(reuse_request(&key, "5000000", "0x12")).await.unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        writer.abort();
+    }
+
+    /// Concurrent durability barriers share one snapshot write: every request queued
+    /// before the capture starts is answered by it.
+    #[tokio::test]
+    async fn snapshot_writer_answers_every_queued_request_with_one_write() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        let mut replies = Vec::new();
+        for _ in 0..3 {
+            let (ack, reply) = tokio::sync::oneshot::channel();
+            tx.send(ack).await.unwrap();
+            replies.push(reply);
+        }
+        let mut acks = vec![rx.recv().await.unwrap()];
+        drain_queued_snapshot_requests(&mut rx, &mut acks);
+        assert_eq!(acks.len(), 3);
+        for ack in acks {
+            ack.send(true).unwrap();
+        }
+        for reply in replies {
+            assert!(reply.await.unwrap());
+        }
+    }
+
+    fn register_from(ip: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/accounts")
+            .extension(axum::extract::ConnectInfo(
+                format!("{ip}:4000").parse::<SocketAddr>().unwrap(),
+            ))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    /// The per-IP registration limit alone let many sources register without bound;
+    /// the total rate and the total account count are bounded too.
+    #[tokio::test]
+    async fn registration_is_bounded_across_clients() {
+        let app = test_app();
+        let router = build_router(app.clone(), true);
+        for i in 0..V1_REGISTER_GLOBAL_RATE {
+            let ip = format!("10.{}.{}.1", i / 256, i % 256);
+            let response = router.clone().oneshot(register_from(&ip)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{ip}");
+        }
+        let tracked = app.reg_limit.lock().await.len();
+        let response = router.clone().oneshot(register_from("10.200.0.1")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(json_body(response).await.get("apiKey").is_none());
+        assert_eq!(
+            app.reg_limit.lock().await.len(),
+            tracked,
+            "a globally refused request records no per-client window"
+        );
+
+        // One IPv6 /64 is one client: rotating addresses inside it does not reset the
+        // per-client limit.
+        let app = test_app();
+        let router = build_router(app.clone(), true);
+        for i in 0..V1_REGISTER_RATE {
+            let ip = format!("[2001:db8:1:2::{:x}]", i + 1);
+            let response = router.clone().oneshot(register_from(&ip)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{ip}");
+        }
+        let response = router
+            .clone()
+            .oneshot(register_from("[2001:db8:1:2:ffff::1]"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let response = router.oneshot(register_from("[2001:db8:1:3::1]")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "another /64 is another client");
+
+        let app = test_app();
+        {
+            let mut gw = app.gw.lock().await;
+            while gw.accounts.len() < MAX_ACCOUNTS {
+                gw.register_account(None);
+            }
+        }
+        let response = build_router(app.clone(), true)
+            .oneshot(register_from("192.0.2.7"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(app.gw.lock().await.accounts.len(), MAX_ACCOUNTS);
+    }
+
+    #[tokio::test]
+    async fn stale_registration_windows_are_pruned() {
+        let app = test_app();
+        {
+            let mut reg = app.reg_limit.lock().await;
+            for i in 0..REGISTER_LIMIT_PRUNE_AT as u32 {
+                reg.insert(IpAddr::V4(std::net::Ipv4Addr::from(i)), (0, 1));
+            }
+        }
+        let response = build_router(app.clone(), true)
+            .oneshot(register_from("192.0.2.8"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(app.reg_limit.lock().await.len(), 1);
     }
 }

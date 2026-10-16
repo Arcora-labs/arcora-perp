@@ -5,13 +5,18 @@ use super::service_shutdown::Shutdown;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Request, State,
+        ConnectInfo, Request, State,
     },
     http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri},
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tower_http::cors::CorsLayer;
 
@@ -20,6 +25,7 @@ pub(crate) struct Config {
     pub(crate) allowed_origins: Vec<HeaderValue>,
     pub(crate) max_connections: usize,
     pub(crate) http_max_in_flight: usize,
+    pub(crate) http_max_in_flight_per_client: usize,
     pub(crate) http_max_body_bytes: usize,
     pub(crate) http_body_timeout: Duration,
     pub(crate) max_message_bytes: usize,
@@ -56,10 +62,12 @@ impl Config {
                 .filter(|n| (1..=max).contains(n))
                 .ok_or_else(|| format!("{name} must be an integer in 1..={max}")),
         };
-        let config = Self {
+        let mut config = Self {
             allowed_origins,
             max_connections: number("GATEWAY_WS_MAX_CONNECTIONS", 256, 10_000)?,
             http_max_in_flight: number("GATEWAY_HTTP_MAX_IN_FLIGHT", 64, 4096)?,
+            // placeholder; resolved against the global cap below
+            http_max_in_flight_per_client: 0,
             http_max_body_bytes: number(
                 "GATEWAY_HTTP_MAX_BODY_BYTES",
                 2 * 1024 * 1024,
@@ -86,6 +94,18 @@ impl Config {
         if config.max_write_buffer_bytes <= config.write_buffer_bytes {
             return Err(
                 "GATEWAY_WS_MAX_WRITE_BUFFER_BYTES must exceed GATEWAY_WS_WRITE_BUFFER_BYTES"
+                    .into(),
+            );
+        }
+        // Unset: 8, or the global cap when that is lower (a small global cap configured
+        // before this setting existed keeps booting). Set explicitly: must fit inside it.
+        config.http_max_in_flight_per_client = match get("GATEWAY_HTTP_MAX_IN_FLIGHT_PER_CLIENT")? {
+            None => config.http_max_in_flight.min(8),
+            Some(_) => number("GATEWAY_HTTP_MAX_IN_FLIGHT_PER_CLIENT", 8, 4096)?,
+        };
+        if config.http_max_in_flight_per_client > config.http_max_in_flight {
+            return Err(
+                "GATEWAY_HTTP_MAX_IN_FLIGHT_PER_CLIENT must not exceed GATEWAY_HTTP_MAX_IN_FLIGHT"
                     .into(),
             );
         }
@@ -123,6 +143,7 @@ pub(crate) struct ServicePolicy {
     pub(crate) config: Config,
     slots: Arc<Semaphore>,
     http_slots: Arc<Semaphore>,
+    client_shares: Arc<ClientShares>,
     socket_finished: Arc<tokio::sync::Notify>,
     pub(crate) shutdown: Arc<Shutdown>,
 }
@@ -143,6 +164,10 @@ impl ServicePolicy {
         Self {
             slots: Arc::new(Semaphore::new(config.max_connections)),
             http_slots: Arc::new(Semaphore::new(config.http_max_in_flight)),
+            client_shares: Arc::new(ClientShares {
+                limit: config.http_max_in_flight_per_client,
+                in_flight: std::sync::Mutex::new(HashMap::new()),
+            }),
             socket_finished: Arc::new(tokio::sync::Notify::new()),
             shutdown: Arc::new(Shutdown::default()),
             config,
@@ -226,6 +251,63 @@ impl ServicePolicy {
     }
 }
 
+/// Per-client share of the HTTP slots, so one source cannot hold all of them (e.g.
+/// with slow request bodies). An entry exists only while that client has a request in
+/// flight, so the map is bounded by the requests being admitted.
+struct ClientShares {
+    limit: usize,
+    in_flight: std::sync::Mutex<HashMap<IpAddr, usize>>,
+}
+
+/// One admitted request's share; released on drop.
+struct ClientSlot {
+    shares: Arc<ClientShares>,
+    client: IpAddr,
+}
+impl Drop for ClientSlot {
+    fn drop(&mut self) {
+        let mut in_flight = self
+            .shares
+            .in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = in_flight.get_mut(&self.client) {
+            *n -= 1;
+            if *n == 0 {
+                in_flight.remove(&self.client);
+            }
+        }
+    }
+}
+
+impl ClientShares {
+    fn acquire(self: &Arc<Self>, client: IpAddr) -> Option<ClientSlot> {
+        let mut in_flight = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        let n = in_flight.entry(client).or_insert(0);
+        if *n >= self.limit {
+            return None;
+        }
+        *n += 1;
+        Some(ClientSlot {
+            shares: self.clone(),
+            client,
+        })
+    }
+}
+
+/// The per-client key for a client address (HTTP slot share and registration limit).
+/// IPv6 is keyed by its /64 — one subscriber usually controls a whole /64, so
+/// per-address keys would not bound it.
+pub(crate) fn client_share_key(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(_) => ip,
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => IpAddr::V6((u128::from(v6) & !((1u128 << 64) - 1)).into()),
+        },
+    }
+}
+
 /// Reject an unapproved browser origin before a handler can mutate state; CORS
 /// response headers alone would only prevent the browser from reading its reply.
 pub(crate) async fn enforce_origin(
@@ -239,6 +321,26 @@ pub(crate) async fn enforce_origin(
     if policy.shutdown.started() {
         return (StatusCode::SERVICE_UNAVAILABLE, "gateway is draining").into_response();
     }
+    // The client is the proxy-reported address when the peer is the trusted loopback
+    // proxy (same rule as the registration limiter). Without connection info (an
+    // in-process test router) only the global cap applies.
+    let client = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(peer)| client_share_key(super::client_ip(*peer, request.headers())));
+    let _client_slot = match client {
+        Some(client) => match policy.client_shares.acquire(client) {
+            Some(slot) => Some(slot),
+            None => {
+                return (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "too many concurrent requests from this client",
+                )
+                    .into_response()
+            }
+        },
+        None => None,
+    };
     let Ok(_permit) = policy.http_slots.clone().try_acquire_owned() else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -342,6 +444,131 @@ mod tests {
         assert!(config(&[("GATEWAY_WS_MAX_CONNECTIONS", "0")], false).is_err());
         assert!(config(&[("GATEWAY_WS_SEND_TIMEOUT_MS", "bad")], false).is_err());
         assert!(config(&[("GATEWAY_WS_MAX_WRITE_BUFFER_BYTES", "16384")], false).is_err());
+        assert!(config(
+            &[
+                ("GATEWAY_HTTP_MAX_IN_FLIGHT", "4"),
+                ("GATEWAY_HTTP_MAX_IN_FLIGHT_PER_CLIENT", "5")
+            ],
+            false
+        )
+        .is_err());
+        // unset per-client share: 8, capped by a lower global limit
+        assert_eq!(config(&[], false).unwrap().http_max_in_flight_per_client, 8);
+        assert_eq!(
+            config(&[("GATEWAY_HTTP_MAX_IN_FLIGHT", "4")], false)
+                .unwrap()
+                .http_max_in_flight_per_client,
+            4
+        );
+    }
+
+    #[test]
+    fn client_share_key_groups_ipv6_by_slash_64() {
+        let v4: IpAddr = "198.51.100.7".parse().unwrap();
+        assert_eq!(client_share_key(v4), v4);
+        let mapped: IpAddr = "::ffff:198.51.100.7".parse().unwrap();
+        assert_eq!(client_share_key(mapped), v4);
+        let a: IpAddr = "2001:db8:1:2:aaaa::1".parse().unwrap();
+        let b: IpAddr = "2001:db8:1:2:ffff:ffff:ffff:ffff".parse().unwrap();
+        let other: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        assert_eq!(
+            client_share_key(a),
+            "2001:db8:1:2::".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(client_share_key(a), client_share_key(b));
+        assert_ne!(client_share_key(a), client_share_key(other));
+    }
+
+    /// One source holding slow requests (e.g. slow bodies) used to be able to take
+    /// every global HTTP slot; now it is capped at its share and others still get in.
+    #[tokio::test]
+    async fn one_client_cannot_hold_every_http_slot() {
+        let policy = Arc::new(ServicePolicy::new(
+            config(
+                &[
+                    ("GATEWAY_HTTP_MAX_IN_FLIGHT", "4"),
+                    ("GATEWAY_HTTP_MAX_IN_FLIGHT_PER_CLIENT", "2"),
+                ],
+                false,
+            )
+            .unwrap(),
+        ));
+        let gate = Arc::new(Semaphore::new(0));
+        let handler_gate = gate.clone();
+        let app = Router::new()
+            .route(
+                "/",
+                get(move || {
+                    let gate = handler_gate.clone();
+                    async move {
+                        let _ = gate.acquire().await;
+                        StatusCode::NO_CONTENT
+                    }
+                }),
+            )
+            .layer(middleware::from_fn_with_state(
+                policy.clone(),
+                enforce_origin,
+            ));
+        let from = |peer: &str, forwarded: Option<&str>| {
+            let mut request = Request::get("/").extension(axum::extract::ConnectInfo(
+                peer.parse::<SocketAddr>().unwrap(),
+            ));
+            if let Some(ip) = forwarded {
+                request = request.header("x-forwarded-for", ip);
+            }
+            request.body(Body::empty()).unwrap()
+        };
+        let wait_for_free = |free: usize| {
+            let policy = policy.clone();
+            async move {
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    while policy.http_slots.available_permits() != free {
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .expect("requests reach the handler");
+            }
+        };
+        let mut held = Vec::new();
+        for _ in 0..2 {
+            held.push(tokio::spawn(
+                app.clone().oneshot(from("198.51.100.7:1000", None)),
+            ));
+        }
+        wait_for_free(2).await;
+        // The same client is refused at its share, without consuming a global slot.
+        let refused = app
+            .clone()
+            .oneshot(from("198.51.100.7:1001", None))
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(policy.http_slots.available_permits(), 2);
+        // Behind the trusted loopback proxy the forwarded address is the client, so a
+        // different real client still gets a slot...
+        held.push(tokio::spawn(
+            app.clone()
+                .oneshot(from("127.0.0.1:1002", Some("203.0.113.9"))),
+        ));
+        wait_for_free(1).await;
+        // ...while the hog cannot dodge its share through the proxy either.
+        let refused = app
+            .clone()
+            .oneshot(from("127.0.0.1:1003", Some("198.51.100.7")))
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
+        gate.add_permits(16);
+        for request in held {
+            assert_eq!(
+                request.await.unwrap().unwrap().status(),
+                StatusCode::NO_CONTENT
+            );
+        }
+        assert_eq!(policy.http_slots.available_permits(), 4);
+        assert!(policy.client_shares.in_flight.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -201,7 +201,10 @@ fn local_rebind_nonce_exhaustion_rejects_before_any_mutation() {
     let new_sk = SigningKey::from_bytes((&[9u8; 32]).into()).unwrap();
     let new_address = local_address(&new_sk);
     gw.accounts.get_mut(&key).unwrap().rebind_counter = u64::MAX;
-    let proof = local_sign(&new_sk, &deposit_bind_digest(&owner, &new_address));
+    let proof = local_sign(
+        &new_sk,
+        &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &new_address),
+    );
     let authorization = local_sign(
         &old_sk,
         &rebind_auth_digest(

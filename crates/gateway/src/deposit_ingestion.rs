@@ -154,6 +154,70 @@ impl Gw {
         }
         Ok(())
     }
+    /// Capacity and pacing for one new user permit, checked before it is issued and
+    /// charged with `charge_deposit_permit` only once it is. Global capacity is counted
+    /// by routes: every permit this endpoint issues is routed. The operator's
+    /// insurance bootstrap (FIN_ADMIN_KEY-authenticated) is exempt from these bounds.
+    pub(super) fn admit_deposit_permit(
+        &self,
+        key: &[u8; 32],
+        purpose: Purpose,
+        now_s: u64,
+    ) -> Result<(), (StatusCode, String)> {
+        if purpose == Purpose::InsuranceBootstrap {
+            return Ok(());
+        }
+        if self.deposits.routes.len() >= MAX_OPEN_DEPOSIT_PERMITS {
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "deposit authorization capacity reached; retry after pending deposits land".into(),
+            ));
+        }
+        let a = self
+            .accounts
+            .get(key)
+            .ok_or((StatusCode::BAD_REQUEST, "Unknown account.".to_string()))?;
+        if a.deposit_authorizations.len() >= MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                format!(
+                    "this account already has {MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT} outstanding \
+                     deposit authorizations; complete those deposits first"
+                ),
+            ));
+        }
+        let (start, count) = a.deposit_authorize_window;
+        if now_s.saturating_sub(start) < 60 && count >= DEPOSIT_AUTHORIZE_RATE {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                "RATE_LIMIT: too many deposit authorizations for this account".into(),
+            ));
+        }
+        Ok(())
+    }
+    /// Count one issued user permit against the account's `DEPOSIT_AUTHORIZE_RATE`.
+    pub(super) fn charge_deposit_permit(&mut self, key: &[u8; 32], purpose: Purpose, now_s: u64) {
+        if purpose == Purpose::InsuranceBootstrap {
+            return;
+        }
+        if let Some(a) = self.accounts.get_mut(key) {
+            let window = &mut a.deposit_authorize_window;
+            if now_s.saturating_sub(window.0) >= 60 {
+                *window = (now_s, 0);
+            }
+            window.1 += 1;
+        }
+    }
+    /// Whether this gateway still holds `commit` as an outstanding permit for exactly
+    /// `route` (same account, payer, amount, market and purpose, blind still stored).
+    pub(super) fn holds_permit(&self, commit: &[u8; 32], route: &Route) -> bool {
+        self.deposits.routes.get(commit) == Some(route)
+            && self.validate_route(route).is_ok()
+            && self
+                .accounts
+                .get(&route.key)
+                .is_some_and(|a| a.deposit_authorizations.contains_key(commit))
+    }
     pub(super) fn authorize_routed_deposit(
         &mut self,
         key: &[u8; 32],

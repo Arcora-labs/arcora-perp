@@ -88,6 +88,7 @@ function install(provider: Eip1193Provider) {
 function makeClient() {
   const bindCalls: [string, string][] = [];
   const authorizeCalls: [string, bigint][] = [];
+  const reuseCalls: (string | undefined)[] = [];
   const creditCalls: string[] = [];
   const client = {
     captureDepositContext: async () => ({ owner: "0x" + bytesToHex(OWNER), base: "http://localhost", chainId: 84532, vault: COLLATERAL_VAULT, marketId: 0, recoveryNonce: 0, assertCurrent() {} }),
@@ -95,8 +96,9 @@ function makeClient() {
     bindDepositAddress: async (a: string, s: string) => {
       bindCalls.push([a, s]);
     },
-    authorizeDeposit: async (from: string, amount: bigint) => {
+    authorizeDeposit: async (from: string, amount: bigint, _context?: unknown, reuse?: string) => {
       authorizeCalls.push([from, amount]);
+      reuseCalls.push(reuse);
       return { ownerCommit: COMMIT, sig: GWSIG };
     },
     creditOnchainDeposit: async (txHash: string) => {
@@ -104,7 +106,7 @@ function makeClient() {
       return authorizeCalls[authorizeCalls.length - 1]?.[1] ?? 1_000_000_000n;
     },
   };
-  return { client, bindCalls, authorizeCalls, creditCalls };
+  return { client, bindCalls, authorizeCalls, reuseCalls, creditCalls };
 }
 
 function txField(call: Call, field: "to" | "data" | "from"): string {
@@ -159,7 +161,7 @@ describe("WalletDepositCard", () => {
     // [4] bind BEFORE the deposit: personal_sign over the exact bind digest, POSTed
     const signs = p.signs();
     expect(signs.length).toBe(1);
-    expect(signs[0].params).toEqual(["0x" + bytesToHex(bindDepositDigest(OWNER, addr)), addr]);
+    expect(signs[0].params).toEqual(["0x" + bytesToHex(bindDepositDigest(84532n, COLLATERAL_VAULT, OWNER, addr)), addr]);
     expect(bindCalls).toEqual([[addr, SIG]]);
     expect(Object.keys(localStorage).some(key => key.startsWith("darkperp.deposit.v1:"))).toBe(false);
 
@@ -257,7 +259,7 @@ describe("WalletDepositCard", () => {
     expect(creditCalls.length).toBe(1);
   });
 
-  it("re-authorizes on a re-run when the deposit tx was never sent (sig binds the amount)", async () => {
+  it("asks to re-sign its authorization on a re-run when the deposit tx was never sent", async () => {
     let rejectDeposit = true;
     const p = makeProvider({
       eth_sendTransaction: (_call, calls) => {
@@ -270,7 +272,7 @@ describe("WalletDepositCard", () => {
       },
     });
     install(p.provider);
-    const { client, authorizeCalls, creditCalls } = makeClient();
+    const { client, authorizeCalls, reuseCalls, creditCalls } = makeClient();
     render(<WalletDepositCard client={client} />);
 
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
@@ -282,12 +284,15 @@ describe("WalletDepositCard", () => {
     expect(await screen.findByText(/Transaction rejected in the wallet/i)).toBeTruthy();
     expect(authorizeCalls.length).toBe(1);
 
-    // Re-run: mint/approve/bind are skipped (done) but authorize runs AGAIN —
-    // a fresh gateway sig for the re-sent deposit.
+    // Re-run: mint/approve/bind are skipped (done); authorize runs again but names
+    // the never-sent permit, so the gateway can re-sign it instead of leaving a
+    // second one outstanding.
     fireEvent.click(screen.getByRole("button", { name: /resume original deposit/i }));
     expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
     expect(authorizeCalls.length).toBe(2);
+    expect(reuseCalls).toEqual([undefined, COMMIT]);
     expect(p.sent().length).toBe(4); // mint, approve, rejected deposit, re-sent deposit
+    expect(txField(p.sent()[3], "data")).toBe(txField(p.sent()[2], "data"));
     expect(creditCalls).toEqual(["0x" + (4).toString(16).padStart(64, "0")]);
   });
 
@@ -320,9 +325,9 @@ describe("WalletDepositCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /resume original deposit/i }));
     await screen.findByText(/credited to your trading account/i);
 
-    // Resume keeps the original mint/approval and re-authorizes its exact amount.
-    expect(authorizeCalls.length).toBe(2);
-    expect(authorizeCalls[1]).toEqual([addr, 1_000_000_000n]);
+    // Resume keeps the original mint/approval and re-authorizes its exact amount,
+    // naming the never-sent permit.
+    expect(authorizeCalls).toEqual([[addr, 1_000_000_000n], [addr, 1_000_000_000n]]);
     expect(p.sent().length).toBe(4);
     expect(creditCalls).toEqual(["0x" + (4).toString(16).padStart(64, "0")]);
   });

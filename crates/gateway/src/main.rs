@@ -554,6 +554,15 @@ const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows wit
 const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
+/// Registration bounds across all clients, on top of the per-client limit above.
+const V1_REGISTER_GLOBAL_RATE: u32 = 300; // max account registrations/min, all clients
+const MAX_ACCOUNTS: usize = 50_000;
+/// Stale per-client registration windows are pruned once the map reaches this size.
+const REGISTER_LIMIT_PRUNE_AT: usize = 4_096;
+/// Bounds on outstanding user deposit permits and on their issuance rate.
+const MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT: usize = 64;
+const MAX_OPEN_DEPOSIT_PERMITS: usize = 20_000;
+const DEPOSIT_AUTHORIZE_RATE: u32 = 10; // max deposit authorizations/min per account
 const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
 /// How long an acknowledged snapshot waits before giving up. A wedge here means the
 /// writer cannot make progress — most likely a caller holding `App.gw` across the await —
@@ -1294,6 +1303,9 @@ struct Account {
     /// Runtime-only synchronization; no positional or trailer schema change.
     #[serde(skip)]
     credential_control: Arc<credential_session::Control>,
+    /// Runtime-only `(window start s, count)` for `DEPOSIT_AUTHORIZE_RATE`; not persisted.
+    #[serde(skip)]
+    deposit_authorize_window: (u64, u32),
     /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
     /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
     /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
@@ -2300,6 +2312,7 @@ impl Gw {
                 rebind_counter: 0,
                 recovery_nonce: 0,
                 credential_control: Arc::default(),
+                deposit_authorize_window: (0, 0),
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
@@ -2337,7 +2350,7 @@ impl Gw {
         // and browser-wallet `personal_sign` work — see `eip191_prehash_candidates`
         // for the WHY of each and the security invariant (all shapes commit to the
         // same (owner, addr), so this widens signer ergonomics, never authorization).
-        let digest = deposit_bind_digest(&owner, &addr);
+        let digest = deposit_bind_digest(self.chain_id, &self.vault, &owner, &addr);
         let proven = eip191_prehash_candidates(&digest)
             .iter()
             .any(|prehash| recover_eth_address(prehash, sig) == Some(addr));
@@ -5713,6 +5726,19 @@ async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> R
         .map_err(|_| format!("snapshot request timed out after {SNAPSHOT_ACK_TIMEOUT_SECS}s (queue or writer stalled)"))?
 }
 
+/// Group commit for the snapshot writer: take every request already queued before the
+/// capture starts. Each caller mutated state BEFORE sending its request, so one write
+/// that begins after all of them were received covers every one, and concurrent
+/// durability barriers share a single write + fsync instead of one each.
+fn drain_queued_snapshot_requests(
+    rx: &mut tokio::sync::mpsc::Receiver<SnapshotAck>,
+    acks: &mut Vec<SnapshotAck>,
+) {
+    while let Ok(ack) = rx.try_recv() {
+        acks.push(ack);
+    }
+}
+
 /// Stop state mutations before the final capture and keep them stopped through
 /// process exit. The returned guard is deliberately retained by the signal task;
 /// releasing it after a successful save would permit an acknowledged API mutation
@@ -5930,6 +5956,8 @@ struct App {
     events_tx: broadcast::Sender<String>,
     /// Per-IP registration counter (a sliding 60s window) to throttle account spam.
     reg_limit: Mutex<HashMap<IpAddr, (u64, u32)>>,
+    /// The same window across all clients (`V1_REGISTER_GLOBAL_RATE`).
+    reg_global: Mutex<(u64, u32)>,
     /// The L1 bridge (Base Sepolia), if configured — used by the deposit-confirm
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
@@ -6033,7 +6061,8 @@ struct V1DepositReq {
 struct DepositAddrReq {
     address: String,
     /// secp256k1 signature (65-byte r‖s‖v) proving the caller controls `address`.
-    /// Accepted over any of three shapes of `deposit_bind_digest(owner, address)`:
+    /// Accepted over any of three shapes of
+    /// `deposit_bind_digest(chain_id, vault, owner, address)`:
     /// the raw digest, EIP-191 `personal_sign` over its 32 bytes, or EIP-191 over
     /// its "0x<64 hex>" string — see `eip191_prehash_candidates`.
     signature: String,
@@ -6077,6 +6106,11 @@ struct DepositAuthorizeReq {
     /// USDC base units to be deposited — bound into the signed digest (a sig for one
     /// amount cannot authorize another).
     amount: String,
+    /// Optional: an `ownerCommit` this account was already issued and never sent. If
+    /// the gateway still holds that permit for exactly this request, it is re-signed
+    /// instead of issuing another one; otherwise a fresh permit is issued as usual.
+    #[serde(rename = "reuseOwnerCommit", default)]
+    reuse_owner_commit: Option<String>,
 }
 #[derive(Deserialize)]
 struct WithdrawReq {
@@ -6204,6 +6238,21 @@ fn parse_l1_vault(raw: Option<String>) -> Result<[u8; 20], String> {
     }
 }
 
+/// The ten default Anvil/Hardhat accounts (the public `test … junk` mnemonic). Their
+/// keys are published, so none of them may sign on a production deployment.
+const PUBLIC_DEV_ADDRESSES: [&str; 10] = [
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+    "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+    "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
+    "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+    "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+    "0x14dc79964da2c08b23698b3d3cc7ca32193d9955",
+    "0x23618e81e3f5cdf7f54c3d65f7fbc0abf5b21e8f",
+    "0xa0ee7a142d267c1f36714e4a8f75612f20a79720",
+];
+
 /// SEC-019 (Task 7b) demo/test default for the gateway deposit-authorization key. NEVER
 /// use it on a real deployment — the deployed `CollateralVault.gatewaySigner` must be the
 /// ADDRESS of a SECRET production key set via `GATEWAY_SIGNER_KEY`. This fixed scalar only
@@ -6242,8 +6291,9 @@ impl GatewaySigner {
 
     /// Load from env: `GATEWAY_SIGNER_KEY` (32-byte hex scalar), `L1_CHAIN_ID`, `L1_VAULT`.
     /// Falls back to the demo key / a dev chain id (Base Sepolia) / a zero vault when a var
-    /// is unset — fine for the demo build and unit tests (live-key provisioning + the real
-    /// vault/chain wiring are the deferred deploy phase). All three vars share one
+    /// is unset — fine for the demo build and unit tests; a production boot refuses the
+    /// demo key (`gateway_signer_ok_for_mode`) and the zero vault
+    /// (`vault_binding_ok_for_mode`). All three vars share one
     /// convention: a SET-but-malformed value fails closed (the caller exits) rather than
     /// silently taking its fallback — the key because silently signing with the demo key
     /// would be a catastrophe, and the deployment identity (final-review M-e) because a
@@ -6260,6 +6310,13 @@ impl GatewaySigner {
         let chain_id = parse_l1_chain_id(std::env::var("L1_CHAIN_ID").ok())?;
         let vault = parse_l1_vault(std::env::var("L1_VAULT").ok())?;
         Self::from_parts(key, chain_id, vault)
+    }
+
+    /// Whether this signer is a PUBLIC development key — the demo default or any other
+    /// default Anvil account — however it was supplied. Value-based, like the oracle
+    /// signer check: presence in an environment variable is not secrecy.
+    fn is_public_dev_key(&self) -> bool {
+        PUBLIC_DEV_ADDRESSES.contains(&hex0x(&self.address()).as_str())
     }
 
     /// The 20-byte Ethereum address of this signer — the value the deployed
@@ -6316,22 +6373,34 @@ impl GatewaySigner {
     }
 }
 
-/// The digest a deposit-address bind signature must cover: `keccak256("dark-perp:
-/// bind-deposit:" ‖ owner ‖ addr)`. Binding the account owner stops the proof being
-/// replayed to bind the same address to a different account.
+/// The digest a deposit-address bind signature must cover:
+/// `keccak256("dark-perp:bind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖ addr)`. Binding the
+/// account owner stops the proof being replayed to bind the same address to a
+/// different account; binding the deployment (chain id + vault, like every other
+/// authorization digest here) stops it being replayed on another deployment.
 ///
 /// Byte layout (fixed-width fields, no length prefixes, no separators):
 /// ```text
 /// offset  len  field
 ///      0   23  "dark-perp:bind-deposit:"  (ASCII, no trailing space)
-///     23   32  owner
-///     55   20  addr                       (total preimage: 75 bytes)
+///     23    8  chain_id   u64 BE
+///     31   20  vault
+///     51   32  owner
+///     83   20  addr                       (total preimage: 103 bytes)
 /// ```
+/// The earlier 75-byte form (no chain id / vault) is no longer accepted.
 /// Layout frozen by `auth_digests_match_known_answer_vectors`.
-fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
+fn deposit_bind_digest(
+    chain_id: u64,
+    vault: &[u8; 20],
+    owner: &PubKey,
+    addr: &[u8; 20],
+) -> [u8; 32] {
     use sha3::{Digest as _, Keccak256 as RawKeccak};
     let mut h = RawKeccak::new();
     h.update(b"dark-perp:bind-deposit:");
+    h.update(chain_id.to_be_bytes());
+    h.update(vault);
     h.update(owner);
     h.update(addr);
     h.finalize().into()
@@ -6869,23 +6938,41 @@ async fn post_v1_register(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    // throttle registrations per real client IP (sliding 60s window)
+    // throttle registrations per real client (IPv6 by /64) and across all clients
+    // (sliding 60s windows). Both are checked before either is charged, and a request
+    // the global window refuses records nothing, so refused traffic cannot grow the
+    // per-client map.
     {
         let now = now_ms() / 1000;
-        let ip = client_ip(addr, &headers);
+        let client = service_policy::client_share_key(client_ip(addr, &headers));
         let mut reg = app.reg_limit.lock().await;
-        let e = reg.entry(ip).or_insert((now, 0));
+        let mut global = app.reg_global.lock().await;
+        if now.saturating_sub(global.0) >= 60 {
+            *global = (now, 0);
+        }
+        if global.1 >= V1_REGISTER_GLOBAL_RATE {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({ "error": "RATE_LIMIT: registration capacity reached, retry shortly" })),
+            )
+                .into_response();
+        }
+        if reg.len() >= REGISTER_LIMIT_PRUNE_AT {
+            reg.retain(|_, (start, _)| now.saturating_sub(*start) < 60);
+        }
+        let e = reg.entry(client).or_insert((now, 0));
         if now.saturating_sub(e.0) >= 60 {
             *e = (now, 0);
         }
         if e.1 >= V1_REGISTER_RATE {
             return (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(serde_json::json!({ "error": "RATE_LIMIT: too many registrations from this IP" })),
+                Json(serde_json::json!({ "error": "RATE_LIMIT: too many registrations from this client" })),
             )
                 .into_response();
         }
         e.1 += 1;
+        global.1 += 1;
     }
     // optional body `{ "signer": "0x<40 hex>" }` → caller-signed account (every order
     // must carry the caller's signature). A bad signer value is rejected.
@@ -6908,6 +6995,13 @@ async fn post_v1_register(
     };
     let (key, owner, chain_id, vault) = {
         let mut gw = app.gw.lock().await;
+        if gw.accounts.len() >= MAX_ACCOUNTS {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({ "error": "account capacity reached; registration is closed" })),
+            )
+                .into_response();
+        }
         let (key, owner) = gw.register_account(signer);
         (key, owner, gw.chain_id, gw.vault)
     };
@@ -7040,35 +7134,64 @@ async fn post_v1_deposit_authorize(
         )
             .into_response();
     }
-    // Release the account lock before requesting durability. No signature may be
-    // constructed or returned until the writer acknowledges the stored blind.
-    let commit = {
-        match app.gw.lock().await.authorize_routed_deposit(
-            &key,
-            from,
-            amount,
-            req.market_id,
-            req.purpose,
-        ) {
-            Ok(c) => c,
-            Err(e) => return err400(e).into_response(),
+    let reuse = match req.reuse_owner_commit.as_deref().map(parse_hex32) {
+        None => None,
+        Some(Some(commit)) => Some(commit),
+        Some(None) => {
+            return err400("bad `reuseOwnerCommit` (expected 32-byte 0x hex)".into())
+                .into_response()
         }
     };
-    if let Err(e) = snapshot_now(&app.snapshot_req).await {
-        // No signature was released, so this specific permit cannot have reached
-        // L1. Remove it to avoid exhausting capacity after repeated disk failures.
+    // Release the account lock before requesting durability. No signature may be
+    // constructed or returned until the writer acknowledges the stored blind.
+    let (commit, reused) = {
         let mut gw = app.gw.lock().await;
-        gw.deposits.routes.remove(&commit);
-        if let Some(a) = gw.accounts.get_mut(&key) {
-            a.deposit_authorizations.remove(&commit);
+        let route = deposit_ingestion::Route {
+            key,
+            from,
+            amount,
+            market: req.market_id,
+            purpose: req.purpose,
+        };
+        // A permit still held for exactly this request was made durable before its
+        // signature was first released: re-signing it issues nothing new.
+        if let Some(commit) = reuse.filter(|c| gw.holds_permit(c, &route)) {
+            if let Err(e) = gw.refuse_if_wind_down_started() {
+                return err400(e).into_response();
+            }
+            (commit, true)
+        } else {
+            let now_s = now_ms() / 1000;
+            if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
+                return (status, Json(serde_json::json!({ "error": error }))).into_response();
+            }
+            match gw.authorize_routed_deposit(&key, from, amount, req.market_id, req.purpose) {
+                Ok(c) => {
+                    gw.charge_deposit_permit(&key, req.purpose, now_s);
+                    (c, false)
+                }
+                Err(e) => return err400(e).into_response(),
+            }
         }
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": format!("deposit authorization not issued: {e}")
-            })),
-        )
-            .into_response();
+    };
+    // A re-signed permit is already durable; a new one is not until the writer ACKs.
+    if !reused {
+        if let Err(e) = snapshot_now(&app.snapshot_req).await {
+            // No signature was released, so this specific permit cannot have reached
+            // L1. Remove it to avoid exhausting capacity after repeated disk failures.
+            let mut gw = app.gw.lock().await;
+            gw.deposits.routes.remove(&commit);
+            if let Some(a) = gw.accounts.get_mut(&key) {
+                a.deposit_authorizations.remove(&commit);
+            }
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": format!("deposit authorization not issued: {e}")
+                })),
+            )
+                .into_response();
+        }
     }
     match app.gateway_signer.sign(&from, &commit, amount) {
         Ok(sig) => Json(serde_json::json!({
@@ -7643,11 +7766,11 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
             "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven; a REBIND additionally requires currentSignature)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
             "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + gateway sig for deposit(amount, ownerCommit, sig)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" } } } } } },
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
                 "responses": ok("ownerCommit + sig") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
@@ -7686,6 +7809,11 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         .unwrap()
         .push(serde_json::json!("ownerCommit"));
     schema["properties"]["ownerCommit"] = serde_json::json!({"type":"string"});
+    // Re-signing an issued permit belongs to `/authorize`, not to legacy adoption.
+    schema["properties"]
+        .as_object_mut()
+        .unwrap()
+        .remove("reuseOwnerCommit");
     route["post"]["responses"] = ok("ownerCommit + routing + durability; no new signature");
     spec["paths"]["/v1/accounts/deposit/route"] = route;
     if !prod {
@@ -8190,6 +8318,14 @@ fn enclave_seed_ok_for_mode(prod: bool, seed_is_secret: bool) -> bool {
 /// `enclave_seed_ok_for_mode` (ZK-001 follow-up); the demo/dev build boots either way.
 fn oracle_signer_ok_for_mode(prod: bool, is_default: bool) -> bool {
     !is_default || !prod
+}
+
+/// Whether the gateway may boot given the deposit-authorization signer provenance:
+/// production requires a SECRET `GATEWAY_SIGNER_KEY`, never a public development key
+/// (`PUBLIC_DEV_ADDRESSES`). Mirrors `oracle_signer_ok_for_mode`; the demo/dev build
+/// boots either way.
+fn gateway_signer_ok_for_mode(prod: bool, is_public: bool) -> bool {
+    !is_public || !prod
 }
 
 /// Whether the attested measurement satisfies the production pin policy. In production the
@@ -8769,7 +8905,8 @@ async fn main() {
     }
     // SEC-019 (Task 7b): load the deposit-authorization signer. A SET-but-malformed
     // GATEWAY_SIGNER_KEY fails closed with a clear message (never silently signs with
-    // the demo key); unset falls back to the demo key for the demo build. Loaded BEFORE
+    // the demo key); unset falls back to the demo key for the demo build only —
+    // production refuses the demo key below, however it was supplied. Loaded BEFORE
     // the state restore below (SEC-021 review Finding 8): `from_env` reads only the
     // environment, and hoisting it lets the SEC-021 deployment binding be applied
     // beside `gw.prod` — so no code between restore and wiring can ever observe the
@@ -8788,6 +8925,23 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    if !gateway_signer_ok_for_mode(prod, gateway_signer.is_public_dev_key()) {
+        eprintln!(
+            "[sec-019] REFUSING to start: GATEWAY_SIGNER_KEY must be set in production to a \
+             secret key — refusing to boot with a public development key (the demo default \
+             or another default Anvil account). Set GATEWAY_SIGNER_KEY to a secret 32-byte \
+             hex secp256k1 scalar and deploy the CollateralVault with its address as \
+             GATEWAY_SIGNER."
+        );
+        std::process::exit(1);
+    }
+    if gateway_signer.is_public_dev_key() {
+        // non-prod only (prod exits above), mirroring the oracle-signer WARN.
+        eprintln!(
+            "WARN gateway: deposit-authorization signer is a PUBLIC development key — \
+             demo/test only, never production"
+        );
+    }
     // SEC-021 (review Finding 3): in production the deployment binding must be real.
     if !vault_binding_ok_for_mode(prod, gateway_signer.vault) {
         eprintln!(
@@ -9409,6 +9563,7 @@ async fn main() {
         tx: tx.clone(),
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
+        reg_global: Mutex::new((0, 0)),
         l1: l1.clone(),
         snapshot_req,
         gateway_signer,
@@ -9512,16 +9667,17 @@ async fn main() {
             let mut iv = tokio::time::interval(Duration::from_secs(SNAPSHOT_SECS));
             iv.tick().await;
             loop {
-                let mut ack: Option<SnapshotAck> = None;
+                let mut acks: Vec<SnapshotAck> = Vec::new();
                 tokio::select! {
                     biased;
                     _ = stop.cancelled() => break,
-                    Some(a) = snapshot_req_rx.recv() => { ack = Some(a); }
+                    Some(a) = snapshot_req_rx.recv() => { acks.push(a); }
                     _ = notify.notified() => {}
                     _ = iv.tick() => {}
                 }
+                drain_queued_snapshot_requests(&mut snapshot_req_rx, &mut acks);
                 let ok = write_snapshot(&app, &path, enclave_seed, serial.clone()).await;
-                if let Some(ack) = ack {
+                for ack in acks {
                     let _ = ack.send(ok);
                 }
             }
@@ -12054,6 +12210,7 @@ mod tests {
             tx,
             events_tx,
             reg_limit: Mutex::new(HashMap::new()),
+            reg_global: Mutex::new((0, 0)),
             l1: None,
             snapshot_req: None,
             gateway_signer: GatewaySigner::from_env().expect("demo gateway signer"),
@@ -13208,6 +13365,36 @@ mod tests {
         );
     }
 
+    // Production must refuse every public development key as the deposit-authorization
+    // signer: the demo default (Anvil #0, unset GATEWAY_SIGNER_KEY) and the other
+    // default Anvil accounts, however they are supplied.
+    #[test]
+    fn production_requires_a_secret_gateway_signer() {
+        assert!(!gateway_signer_ok_for_mode(true, true));
+        assert!(gateway_signer_ok_for_mode(true, false));
+        assert!(gateway_signer_ok_for_mode(false, true));
+        assert!(gateway_signer_ok_for_mode(false, false));
+        let signer = |key: [u8; 32]| GatewaySigner::from_parts(key, 84532, [0x22; 20]).unwrap();
+        assert!(signer(DEMO_GATEWAY_SIGNER_KEY).is_public_dev_key());
+        assert_eq!(
+            hex0x(&signer(DEMO_GATEWAY_SIGNER_KEY).address()),
+            PUBLIC_DEV_ADDRESSES[0]
+        );
+        // Anvil #1 (also the public dev oracle key) and #9 are public too.
+        for key in [
+            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+            "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
+        ] {
+            assert!(
+                signer(parse_hex32(key).unwrap()).is_public_dev_key(),
+                "{key}"
+            );
+        }
+        let mut other = DEMO_GATEWAY_SIGNER_KEY;
+        other[31] ^= 1;
+        assert!(!signer(other).is_public_dev_key());
+    }
+
     // audit DP-006 review follow-up: a malformed ENCLAVE_SEED must be rejected cleanly, and
     // the value-based demo-seed check flags the public constant even when supplied by value.
     #[test]
@@ -13874,7 +14061,10 @@ mod tests {
 
         // a proof signed by a DIFFERENT key (not the address being bound) is rejected
         let wrong = SigningKey::from_bytes((&[4u8; 32]).into()).unwrap();
-        let bad = sign(&wrong, &deposit_bind_digest(&owner, &addr));
+        let bad = sign(
+            &wrong,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &addr),
+        );
         assert!(
             gw.account_set_deposit_address(&key, addr, &bad, None)
                 .is_err(),
@@ -13882,7 +14072,10 @@ mod tests {
         );
 
         // the address's own key proves control → bind succeeds
-        let good = sign(&eoa, &deposit_bind_digest(&owner, &addr));
+        let good = sign(
+            &eoa,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &addr),
+        );
         assert!(
             gw.account_set_deposit_address(&key, addr, &good, None)
                 .is_ok(),
@@ -13891,7 +14084,10 @@ mod tests {
 
         // exclusivity: another account can't bind the same address (even controlling it)
         let (key2, owner2) = gw.register_account(None);
-        let good2 = sign(&eoa, &deposit_bind_digest(&owner2, &addr));
+        let good2 = sign(
+            &eoa,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner2, &addr),
+        );
         assert!(
             gw.account_set_deposit_address(&key2, addr, &good2, None)
                 .is_err(),
@@ -13948,7 +14144,7 @@ mod tests {
         let (key, owner) = gw.register_account(None);
         let eoa = SigningKey::from_bytes((&[5u8; 32]).into()).unwrap();
         let addr = eth_addr(&eoa);
-        let digest = deposit_bind_digest(&owner, &addr);
+        let digest = deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &addr);
         let sig = sign(&eoa, &eip191_prehash(&digest));
         assert!(
             gw.account_set_deposit_address(&key, addr, &sig, None)
@@ -13961,7 +14157,7 @@ mod tests {
         let (key2, owner2) = gw.register_account(None);
         let eoa2 = SigningKey::from_bytes((&[6u8; 32]).into()).unwrap();
         let addr2 = eth_addr(&eoa2);
-        let digest2 = deposit_bind_digest(&owner2, &addr2);
+        let digest2 = deposit_bind_digest(gw.chain_id, &gw.vault, &owner2, &addr2);
         let hex_msg = hex_string(&digest2);
         assert_eq!(hex_msg.len(), 66, "sanity: 0x + 64 hex chars");
         let sig2 = sign(&eoa2, &eip191_prehash(hex_msg.as_bytes()));
@@ -13977,7 +14173,7 @@ mod tests {
         let eoa3 = SigningKey::from_bytes((&[7u8; 32]).into()).unwrap();
         let addr3 = eth_addr(&eoa3);
         let wrong = SigningKey::from_bytes((&[8u8; 32]).into()).unwrap();
-        let digest3 = deposit_bind_digest(&owner3, &addr3);
+        let digest3 = deposit_bind_digest(gw.chain_id, &gw.vault, &owner3, &addr3);
         let forms: [[u8; 32]; 3] = [
             digest3,
             eip191_prehash(&digest3),
@@ -14069,14 +14265,19 @@ mod tests {
         let (key, owner) = gw.register_account(None);
 
         // Victim binds their own address — one signature, unchanged flow.
-        let bind_sig = sign_digest(&victim_sk, &deposit_bind_digest(&owner, &victim_eoa));
+        let bind_sig = sign_digest(
+            &victim_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &victim_eoa),
+        );
         gw.account_set_deposit_address(&key, victim_eoa, &bind_sig, None)
             .expect("first bind succeeds");
 
         // Attacker has the API key and their own key. They can sign for their OWN
         // address trivially — that was the whole bypass.
-        let attacker_bind_sig =
-            sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
+        let attacker_bind_sig = sign_digest(
+            &attacker_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &attacker_eoa),
+        );
         let err = gw
             .account_set_deposit_address(&key, attacker_eoa, &attacker_bind_sig, None)
             .expect_err("rebind without the current address's signature must be refused");
@@ -14130,8 +14331,14 @@ mod tests {
         let a = eth_addr(&a_sk);
         let b = eth_addr(&b_sk);
         let (key, owner) = gw.register_account(None);
-        let bind_a = sign_digest(&a_sk, &deposit_bind_digest(&owner, &a));
-        let bind_b = sign_digest(&b_sk, &deposit_bind_digest(&owner, &b));
+        let bind_a = sign_digest(
+            &a_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &a),
+        );
+        let bind_b = sign_digest(
+            &b_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &b),
+        );
         gw.account_set_deposit_address(&key, a, &bind_a, None)
             .unwrap();
 
@@ -14187,7 +14394,10 @@ mod tests {
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let a = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &a));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &a),
+        );
         gw.account_set_deposit_address(&key, a, &bind, None)
             .expect("first bind succeeds");
 
@@ -14213,7 +14423,10 @@ mod tests {
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let a = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &a));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &a),
+        );
         gw.account_set_deposit_address(&key, a, &bind, None)
             .expect("first bind succeeds");
 
@@ -14245,13 +14458,19 @@ mod tests {
         let attacker_sk = SigningKey::from_slice(&[0xA5u8; 32]).unwrap();
         let attacker_eoa = eth_addr(&attacker_sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&victim_sk, &deposit_bind_digest(&owner, &victim_eoa));
+        let bind = sign_digest(
+            &victim_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &victim_eoa),
+        );
         gw.account_set_deposit_address(&key, victim_eoa, &bind, None)
             .expect("first bind succeeds");
 
         // The attacker computes the CORRECT current rebind digest — everything in
         // it is public — but can only sign it with their own key.
-        let attacker_bind = sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
+        let attacker_bind = sign_digest(
+            &attacker_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &attacker_eoa),
+        );
         let forged = sign_digest(
             &attacker_sk,
             &rebind_auth_digest(
@@ -14304,7 +14523,10 @@ mod tests {
         assert_eq!(v["chainId"], gw.chain_id);
         assert_eq!(v["vault"], hex0x(&gw.vault));
 
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &eoa),
+        );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
         let v = gw.v1_account(&key).unwrap();
@@ -14331,7 +14553,10 @@ mod tests {
         // rebind digest over this value.
         let b_sk = SigningKey::from_slice(&[0xB7u8; 32]).unwrap();
         let b = eth_addr(&b_sk);
-        let bind_b = sign_digest(&b_sk, &deposit_bind_digest(&owner, &b));
+        let bind_b = sign_digest(
+            &b_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &b),
+        );
         let rotate = sign_digest(
             &sk,
             &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &eoa, &b),
@@ -14386,7 +14611,10 @@ mod tests {
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &eoa),
+        );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
         fund_test_account(&mut gw, &key, 10_000);
@@ -14433,7 +14661,10 @@ mod tests {
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &eoa),
+        );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
         fund_test_account(&mut gw, &key, 1_000);
@@ -14470,7 +14701,10 @@ mod tests {
         let eoa_sk = SigningKey::from_slice(&[0xE0u8; 32]).unwrap();
         let eoa = eth_addr(&eoa_sk);
         let (key, owner) = gw.register_account(Some(eth_addr(&signer_sk)));
-        let bind = sign_digest(&eoa_sk, &deposit_bind_digest(&owner, &eoa));
+        let bind = sign_digest(
+            &eoa_sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &eoa),
+        );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
         fund_test_account(&mut gw, &key, 10_000);
@@ -14570,7 +14804,10 @@ mod tests {
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &eoa),
+        );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
         fund_test_account(&mut gw, &key, 10_000);
@@ -14595,7 +14832,10 @@ mod tests {
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &eoa),
+        );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
         fund_test_account(&mut gw, &key, 10_000);
@@ -14647,7 +14887,10 @@ mod tests {
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
-        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        let bind = sign_digest(
+            &sk,
+            &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &eoa),
+        );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
         fund_test_account(&mut gw, &key, 10_000);
@@ -14788,7 +15031,7 @@ mod tests {
         let w = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &addr, 1);
         let lp = lp_withdraw_auth_digest(84532, &vault, &owner, 1_000, 1);
         let rb = rebind_auth_digest(84532, &vault, &owner, 0, &addr, &[0x33u8; 20]);
-        let bind = deposit_bind_digest(&owner, &addr);
+        let bind = deposit_bind_digest(84532, &vault, &owner, &addr);
         assert_ne!(w, lp);
         assert_ne!(w, rb);
         assert_ne!(lp, rb);
@@ -14851,10 +15094,11 @@ mod tests {
             "0x6499ac5025078970b4d4aea3031d0704d6a0398c8a748c299dbad105b0c00914",
             "lp_withdraw_auth_digest layout drifted"
         );
-        // Frozen baseline: the pre-SEC-021 bind digest must never move either.
+        // The bind digest binds the deployment like the others. Vector computed
+        // independently (`cast keccak` over the 103-byte preimage).
         assert_eq!(
-            hex0x(&deposit_bind_digest(&owner, &to)),
-            "0x2ba386f057ba44415aab7b46643ed103af568763a1f9c31afd7ce639a07f983f",
+            hex0x(&deposit_bind_digest(84532, &vault, &owner, &to)),
+            "0xd237d23574783f22d8251ededad804ab974052d9f14f617a1608e6e321eae647",
             "deposit_bind_digest layout drifted"
         );
         // rebind_counter = 1 (not 0), so a big-endian↔little-endian flip of the counter
@@ -14896,6 +15140,7 @@ mod tests {
             rebind_counter: 3,
             recovery_nonce: 0,
             credential_control: Arc::default(),
+            deposit_authorize_window: (0, 0),
         };
         a.nonce = 7;
         let bytes = postcard::to_allocvec(&a).expect("serialize");

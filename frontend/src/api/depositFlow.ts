@@ -162,6 +162,13 @@ async function reconcileOriginalDeposit(client: WalletDepositClient, pending: Pe
   });
 }
 
+/** Gateway permits issued in this page session, by journal key. A retry of the SAME
+ * saved deposit that sent no deposit transaction (e.g. a rejected wallet prompt) asks
+ * the gateway to re-sign that permit rather than leave another one outstanding; the
+ * gateway does so only while it still holds it. Memory only, so no signature enters
+ * the durable journal; dropped once a deposit transaction is sent. */
+const sessionPermits = new Map<string, { owner: string; marketId: number; amount: string; auth: { ownerCommit: string; sig: string } }>();
+
 /** No credentials or signatures enter this durable, origin-wide recovery journal. */
 function readJournal(key: string): Journal | null {
   const raw = localStorage.getItem(key);
@@ -229,6 +236,7 @@ export async function runWalletDeposit({ client, address, amount, assertView, pr
       }
       journal = null;
     }
+    if (!journal) sessionPermits.delete(key); // a new deposit intent never reuses a permit
     journal ??= { version: 1, owner: context.owner, marketId: context.marketId, recoveryNonce: context.recoveryNonce,
       amount: amount.toString(), txs: {}, done: [], sending: null };
     const save = () => saveJournal(key, journal);
@@ -260,6 +268,7 @@ export async function runWalletDeposit({ client, address, amount, assertView, pr
           throw error;
         }
         journal.txs[step] = hash;
+        if (step === "deposit") sessionPermits.delete(key); // that permit is now spent or pending
         journal.sending = null;
         save(); // preserve an old-context hash even if the wallet changed meanwhile
       }
@@ -280,13 +289,18 @@ export async function runWalletDeposit({ client, address, amount, assertView, pr
       ["mint", () => sendAndWait("mint", MOCK_USDC, () => encodeMint(address, amount))],
       ["approve", () => sendAndWait("approve", MOCK_USDC, () => encodeApprove(context.vault, amount))],
       ["bind", async () => {
-        const signature = await personalSign("0x" + bytesToHex(bindDepositDigest(hexToBytes(context.owner.slice(2)), address)), address);
+        const digest = bindDepositDigest(BigInt(context.chainId), context.vault, hexToBytes(context.owner.slice(2)), address);
+        const signature = await personalSign("0x" + bytesToHex(digest), address);
         await check();
         await client.bindDepositAddress(address, signature, context);
         await check();
       }],
       ["authorize", async () => {
-        auth = await client.authorizeDeposit(address, amount, context);
+        const kept = sessionPermits.get(key);
+        const reuse = kept && kept.owner === context.owner && kept.marketId === context.marketId && kept.amount === amount.toString()
+          ? kept.auth.ownerCommit : undefined;
+        auth = await client.authorizeDeposit(address, amount, context, reuse);
+        sessionPermits.set(key, { owner: context.owner, marketId: context.marketId, amount: amount.toString(), auth });
         await check();
       }],
       ["deposit", () => sendAndWait("deposit", context.vault, () => {

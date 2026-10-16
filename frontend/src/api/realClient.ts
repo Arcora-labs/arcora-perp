@@ -1767,13 +1767,14 @@ export class RealDarkPerpClient implements DarkPerpClient {
     from: string,
     amount: bigint,
     context?: DepositContext,
+    reuseOwnerCommit?: string,
   ): Promise<{ ownerCommit: string; sig: string }> {
     context ??= await this.captureDepositContext();
     const acct = this.depositContextAccount(context);
     const marketId = context.marketId;
     const r = await this.post<{ ownerCommit?: unknown; sig?: unknown }>(
       "/v1/accounts/deposit/authorize",
-      { from, amount: s(amount), marketId, purpose: "collateral" },
+      { from, amount: s(amount), marketId, purpose: "collateral", ...(reuseOwnerCommit ? { reuseOwnerCommit } : {}) },
       { "X-Api-Key": acct.apiKey },
     );
     context.assertCurrent();

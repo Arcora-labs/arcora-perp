@@ -172,28 +172,42 @@ describe("calldata builders (pinned)", () => {
 // ── gateway bind digest ───────────────────────────────────────────────────────
 
 describe("bindDepositDigest", () => {
-  it("matches keccak256(ascii tag ‖ owner(32) ‖ addr(20)) — fixed vector", () => {
+  const VAULT = "0x" + "33".repeat(20);
+
+  it("matches keccak256(ascii tag ‖ chainId(8) ‖ vault(20) ‖ owner(32) ‖ addr(20)) — fixed vector", () => {
     const owner = new Uint8Array(32).fill(0x11);
     const addr = "0x" + "22".repeat(20);
     // Expected computed HERE from the documented preimage, independently of the
-    // implementation's concatenation.
+    // implementation's concatenation. 84532 = 0x014a34 as a u64 big-endian word.
     const preimage = concatBytes(
       utf8ToBytes("dark-perp:bind-deposit:"),
+      new Uint8Array([0, 0, 0, 0, 0, 0x01, 0x4a, 0x34]),
+      new Uint8Array(20).fill(0x33),
       new Uint8Array(32).fill(0x11),
       new Uint8Array(20).fill(0x22),
     );
     const expected = keccak_256(preimage);
-    expect(bytesToHex(bindDepositDigest(owner, addr))).toBe(bytesToHex(expected));
+    expect(bytesToHex(bindDepositDigest(84532n, VAULT, owner, addr))).toBe(bytesToHex(expected));
     // Belt-and-braces literal pin (recomputed out-of-band) so a drift in BOTH
     // sides of the comparison above cannot slip through.
     expect(bytesToHex(expected)).toBe(
-      "203d0b34d62b88553cb0246a75d36c1a306b3a884669cb7c6ba5a3796a99e4b5",
+      "c3b1cbf9400cde57e873396e7f4f641dfd6fd7f49d94443df9feda1ca394face",
     );
   });
 
-  it("rejects a non-32-byte owner and a malformed address", () => {
-    expect(() => bindDepositDigest(new Uint8Array(31), "0x" + "22".repeat(20))).toThrow(/32 bytes/);
-    expect(() => bindDepositDigest(new Uint8Array(32), "0x1234")).toThrow(/20-byte/);
+  it("binds the deployment: another chain or vault gives another digest", () => {
+    const owner = new Uint8Array(32).fill(0x11);
+    const addr = "0x" + "22".repeat(20);
+    const base = bytesToHex(bindDepositDigest(84532n, VAULT, owner, addr));
+    expect(bytesToHex(bindDepositDigest(8453n, VAULT, owner, addr))).not.toBe(base);
+    expect(bytesToHex(bindDepositDigest(84532n, "0x" + "44".repeat(20), owner, addr))).not.toBe(base);
+  });
+
+  it("rejects a non-32-byte owner, a malformed address, vault or chain id", () => {
+    expect(() => bindDepositDigest(84532n, VAULT, new Uint8Array(31), "0x" + "22".repeat(20))).toThrow(/32 bytes/);
+    expect(() => bindDepositDigest(84532n, VAULT, new Uint8Array(32), "0x1234")).toThrow(/20-byte/);
+    expect(() => bindDepositDigest(84532n, "0x1234", new Uint8Array(32), "0x" + "22".repeat(20))).toThrow(/vault/);
+    expect(() => bindDepositDigest(1n << 64n, VAULT, new Uint8Array(32), "0x" + "22".repeat(20))).toThrow(/u64/);
   });
 });
 

@@ -51,7 +51,7 @@ async function setup() {
     },
     async depositAccount() { return { apiKey: "synthetic", owner: new Uint8Array(32).fill(0x22) }; },
     async bindDepositAddress(_address, _signature, ctx) { ctx!.assertCurrent(); calls.push("bind"); await control.hook("bind"); },
-    async authorizeDeposit(_address, _amount, ctx) { ctx!.assertCurrent(); calls.push("authorize"); await control.hook("authorize"); return { ownerCommit: OWNER, sig: SIG }; },
+    async authorizeDeposit(_address, _amount, ctx, reuse) { ctx!.assertCurrent(); calls.push(reuse ? `authorize:${reuse}` : "authorize"); await control.hook("authorize"); return { ownerCommit: OWNER, sig: SIG }; },
     async creditOnchainDeposit(_hash, ctx) { ctx!.assertCurrent(); calls.push("credit"); creditHashes.push(_hash); await control.hook("credit"); return 1_000_000n; },
   };
   await connect();
@@ -60,6 +60,36 @@ async function setup() {
 }
 beforeEach(() => { vi.stubGlobal("localStorage", new Storage()); installTestLocks(); });
 afterEach(() => { disconnectWallet(); delete window.ethereum; localStorage.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+describe("deposit permit reuse", () => {
+  const authorizations = (calls: string[]) => calls.filter(call => call.startsWith("authorize"));
+
+  it("asks to re-sign this session's permit when a retry sent no deposit transaction", async () => {
+    const f = await setup();
+    f.control.hook = async stage => { if (stage === "deposit") throw { code: 4001 }; };
+    await expect(f.run()).rejects.toThrow(/rejected/);
+    f.control.hook = async () => {};
+    await f.run();
+    expect(authorizations(f.calls)).toEqual(["authorize", `authorize:${OWNER}`]);
+  });
+
+  it("requests a fresh permit for the next deposit once one was sent", async () => {
+    const f = await setup();
+    await f.run();
+    await f.run();
+    expect(authorizations(f.calls)).toEqual(["authorize", "authorize"]);
+  });
+
+  it("requests a fresh permit after a sent deposit reverted", async () => {
+    const f = await revertedFixture("deposit");
+    await prepareRevertedDepositRetry(f.client, f.pending, () => {});
+    const ready = pendingDeposits()[0];
+    f.control.receiptStatus = "0x1";
+    await expect(runWalletDeposit({ client: f.client, address: ADDRESS, amount: ready.amount, resume: ready, assertView() {}, progress() {} })).resolves.toBe(1_000_000n);
+    // the sent permit is never offered again, even though its transaction reverted
+    expect(authorizations(f.calls)).toEqual(["authorize", "authorize"]);
+  });
+});
 
 describe("deposit immutable context barriers", () => {
   for (const stage of ["capture", "chain", "mint", `receipt:${hash(1)}`, "approve", `receipt:${hash(2)}`, "signature", "bind", "authorize", "deposit", `receipt:${hash(3)}`, "credit"]) {

@@ -770,6 +770,14 @@ describe("authorizeDeposit (SEC-019)", () => {
     expect(call!.body).toEqual({ from: FROM, amount: "1000000000", marketId: 0, purpose: "collateral" });
   });
 
+  it("names an earlier never-sent permit only when asked to", async () => {
+    const client = await bootstrapClient();
+    const kept = "0x" + "ab".repeat(32);
+    await client.authorizeDeposit(FROM, 1_000_000_000n, undefined, kept);
+    const call = calls.filter((c) => c.path === "/v1/accounts/deposit/authorize").at(-1);
+    expect(call!.body).toEqual({ from: FROM, amount: "1000000000", marketId: 0, purpose: "collateral", reuseOwnerCommit: kept });
+  });
+
   it("surfaces the gateway's bind-first error text verbatim", async () => {
     authorizeStatus = 400;
     const client = await bootstrapClient();

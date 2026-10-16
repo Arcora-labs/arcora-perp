@@ -482,17 +482,25 @@ export function encodeClaim(w: {
 /**
  * The digest the deposit-address bind signature must cover — byte-identical to
  * the gateway's `deposit_bind_digest`:
- * `keccak256( ascii("dark-perp:bind-deposit:") ‖ owner (32) ‖ depositAddress (20) )`.
+ * `keccak256( ascii("dark-perp:bind-deposit:") ‖ chainId (u64 BE, 8) ‖ vault (20)
+ *   ‖ owner (32) ‖ depositAddress (20) )`.
  * Binding the account owner into the preimage stops the proof being replayed to
- * bind the same EOA to a different account.
+ * bind the same EOA to a different account; binding the deployment (chain id +
+ * vault) stops it being replayed on another deployment.
  */
-export function bindDepositDigest(owner: Uint8Array, depositAddress: string): Uint8Array {
+export function bindDepositDigest(chainId: bigint, vault: string, owner: Uint8Array, depositAddress: string): Uint8Array {
+  if (chainId < 0n || chainId > (1n << 64n) - 1n) throw new Error("chain id out of u64 range");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(vault)) throw new Error("vault must be a 20-byte 0x address");
   if (owner.length !== 32) throw new Error("owner pubkey must be 32 bytes");
   if (!/^0x[0-9a-fA-F]{40}$/.test(depositAddress)) {
     throw new Error(`not a 20-byte 0x address: ${depositAddress}`);
   }
+  const chain = new Uint8Array(8);
+  for (let i = 7, v = chainId; i >= 0; i--, v >>= 8n) chain[i] = Number(v & 255n);
   const addr = hexToBytes(depositAddress.slice(2).toLowerCase());
-  return keccak_256(concatBytes(utf8ToBytes("dark-perp:bind-deposit:"), owner, addr));
+  return keccak_256(concatBytes(
+    utf8ToBytes("dark-perp:bind-deposit:"), chain, hexToBytes(vault.slice(2).toLowerCase()), owner, addr,
+  ));
 }
 
 /** A07 credential-recovery digest. Byte-identical to gateway account_recovery::digest. */
@@ -556,8 +564,10 @@ export interface WalletDepositClient {
   /** POST /v1/accounts/deposit/authorize — SEC-019: the gateway pre-authorizes
    *  this exact (from, amount), returning the blinded ownerCommit + 65-byte
    *  gateway sig that `deposit(amount, ownerCommit, sig)` requires on-chain.
-   *  `from` must be the account's already-bound deposit address. */
-  authorizeDeposit(from: string, amount: bigint, context?: DepositContext): Promise<{ ownerCommit: string; sig: string }>;
+   *  `from` must be the account's already-bound deposit address. `reuseOwnerCommit`
+   *  names an earlier, never-sent permit to re-sign if the gateway still holds it
+   *  for exactly this request (otherwise a fresh permit is issued). */
+  authorizeDeposit(from: string, amount: bigint, context?: DepositContext, reuseOwnerCommit?: string): Promise<{ ownerCommit: string; sig: string }>;
   /** POST /v1/accounts/deposit/onchain — credit a confirmed deposit tx. Returns
    *  the credited amount in USDC base units. */
   creditOnchainDeposit(txHash: string, context?: DepositContext): Promise<bigint>;

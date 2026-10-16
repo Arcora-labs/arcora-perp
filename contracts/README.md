@@ -43,10 +43,15 @@ forge test
 forge script script/Deploy.s.sol
 
 # broadcast to a testnet
-PRIVATE_KEY=0x... forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC --broadcast
+PRIVATE_KEY=0x... GATEWAY_SIGNER=0x... \
+  forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC --broadcast
 ```
 
-All parameters have env defaults (`ENCLAVE_SIGNER`, `GENESIS_ROOT`,
+Off the local anvil chain (31337), `PRIVATE_KEY` and `GATEWAY_SIGNER` are
+required and the default anvil accounts are refused for both (`GATEWAY_SIGNER` must
+be the address of the gateway's secret `GATEWAY_SIGNER_KEY`). A fork dry run
+that really wants the public keys sets `ALLOW_PUBLIC_DEV_KEYS=1`. The other
+parameters have env defaults (`ENCLAVE_SIGNER`, `GENESIS_ROOT`,
 `LIVENESS_BLOCKS`, `CHALLENGE_BLOCKS`, `CHALLENGE_BOND`). It ships with
 `MockZkVerifier` — swap in the real SP1/Risc0 verifier before a non-testnet
 deploy.

@@ -101,6 +101,19 @@ class Guards(CastFixture):
         self.assertEqual(self.sends(), [])
         self.assertFalse(self.output.exists())
 
+    def test_public_dev_gateway_signer_is_refused_off_anvil(self):
+        anvil0 = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        config = policy()
+        config["vault"]["gateway_signer"] = anvil0
+        self.write_config(chain_id=84532, operator_policy=config)
+        code = self.run_cli(extra=["--allow-public-chain"], env={"FAKE_CHAIN": "84532", "FAKE_CLIENT": "Geth/v1.14"})
+        self.assertEqual(code, 2)
+        self.assertEqual(self.sends(), [])
+        self.assertFalse(self.output.exists())
+        # The same signer is fine on an owned Anvil (local and fork dry runs).
+        self.write_config(operator_policy=config)
+        self.assertEqual(self.run_cli(), 0)
+
     def test_config_chain_must_match_rpc(self):
         self.write_config(chain_id=84532)
         self.assertEqual(self.run_cli(), 2)

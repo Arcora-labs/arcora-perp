@@ -1694,7 +1694,6 @@ async fn local_real_rebind_before_recovery_rechecks_current_authorizer() {
         let hash = <RawKeccak as sha3::Digest>::digest(&public.as_bytes()[1..]);
         let new_address: [u8; 20] = hash[12..].try_into().unwrap();
         let sig = signature(&app, &old_sk, &owner, 0).await;
-        let proof = local_sign_digest(&new_sk, &deposit_bind_digest(&owner, &new_address));
         let (chain, vault, old_address) = {
             let gw = app.gw.lock().await;
             (
@@ -1703,6 +1702,10 @@ async fn local_real_rebind_before_recovery_rechecks_current_authorizer() {
                 gw.accounts[&key].deposit_address.unwrap(),
             )
         };
+        let proof = local_sign_digest(
+            &new_sk,
+            &deposit_bind_digest(chain, &vault, &owner, &new_address),
+        );
         let authorization = local_sign_digest(
             &old_sk,
             &rebind_auth_digest(chain, &vault, &owner, 0, &old_address, &new_address),
