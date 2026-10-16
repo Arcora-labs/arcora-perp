@@ -1,0 +1,387 @@
+{
+  "deployment": {
+    "chain_id": 31337,
+    "genesis_root": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+    "rpc_client": "anvil/v1.7.2",
+    "transactions": [
+      {
+        "block": "0x1",
+        "hash": "0x0c54a3beeadbdde7ca9c6c97b287098c33e00d3596e68209753a67263ee725fd",
+        "step": "sp1_verifier"
+      },
+      {
+        "block": "0x2",
+        "hash": "0x6764cda3484a441793d9a970c856764d46e5d80e6f6dcfb5aaf7addac767cc43",
+        "step": "sp1_gateway"
+      },
+      {
+        "block": "0x3",
+        "hash": "0x9237b29bf8f31048321bcce87154eae50ee3c96aa827a6c3a1d135bb73309559",
+        "step": "sp1_gateway.addRoute"
+      },
+      {
+        "block": "0x4",
+        "hash": "0xb3e6eb52d0be2822b48ebde99ff9c18583f825cb125f7f3da976fc3253c49e5a",
+        "step": "sp1_adapter"
+      },
+      {
+        "block": "0x5",
+        "hash": "0x6a07c984da88a5d70fe8972acbebdae9a8fa97230e2991920b9d029e69e1e976",
+        "step": "clock_verifier"
+      },
+      {
+        "block": "0x6",
+        "hash": "0x4599299db3a031adde23044820665dca0f6f29941f9416bd6a617135d5c305b9",
+        "step": "settlement"
+      },
+      {
+        "block": "0x7",
+        "hash": "0x6915c86f0673aa2d59cd2d120c26691f86a3470b73b9c395fa35d81ce23ce063",
+        "step": "token"
+      },
+      {
+        "block": "0x8",
+        "hash": "0x611ee2d1a9a9f819878b3a28791afd1e9b39541c3c396ecd5acd9b93dca6084c",
+        "step": "vault"
+      },
+      {
+        "block": "0x9",
+        "hash": "0xa548f1f6f1fbec6e84282da209b1ed78ae34adb69a8cb1ae523b3d67898c8ca3",
+        "step": "settlement.setVault"
+      },
+      {
+        "block": "0xa",
+        "hash": "0x3428917051907b68eee985fedbfab3e727be1a27a8ea6a9ceacbaca31218212d",
+        "step": "clock_verifier.bindSettlement"
+      }
+    ]
+  },
+  "observed": {
+    "bindings": [
+      {
+        "contract": "settlement",
+        "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "getter": "verifier()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "getter": "vault()",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "getter": "settlement()",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+        "getter": "token()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "getter": "settlement()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "getter": "innerVerifier()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "getter": "gateway()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "expected": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+        "getter": "programVKey()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": 30000,
+        "getter": "maxWindowMs()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": 10000,
+        "getter": "clockSkewMs()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": 2,
+        "getter": "proofVersion()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_verifier",
+        "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+        "getter": "VERIFIER_HASH()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "sequencer()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "getter": "enclaveSigner()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "governance()",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "expected": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+        "getter": "gatewaySigner()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "configurator()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_gateway",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "owner()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 100,
+        "getter": "livenessTimeoutBlocks()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 50,
+        "getter": "challengeWindowBlocks()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 1000,
+        "getter": "challengeBond()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 600,
+        "getter": "inclusionDeadlineSecs()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 10,
+        "getter": "finalSettleGraceBlocks()",
+        "matches": true
+      }
+    ],
+    "block_hash": "0xeeeeb383d44158ccb1dbb1c1c5e0fa1fe2b110cdc11d7e454b6a922e702d8f44",
+    "block_number": 74,
+    "chain_id": 31337,
+    "contracts": {
+      "clock_verifier": {
+        "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "getters": {
+          "clockSkewMs()": 10000,
+          "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "maxWindowMs()": 30000,
+          "proofVersion()": 2,
+          "settlement()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707"
+        },
+        "immutable_words_by_compiler_id": {
+          "1605": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "1608": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "1610": "0x0000000000000000000000000000000000000000000000000000000000007530",
+          "1612": "0x0000000000000000000000000000000000000000000000000000000000002710"
+        },
+        "runtime_bytes": 5498,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "9b20ec2406fe26eb17db181c8d7783527ad1934d143fa28f6b8894fed55dc0d7"
+      },
+      "settlement": {
+        "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "getters": {
+          "challengeBond()": 1000,
+          "challengeWindowBlocks()": 50,
+          "enclaveSigner()": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "finalSettleGraceBlocks()": 10,
+          "governance()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "inclusionDeadlineSecs()": 600,
+          "livenessTimeoutBlocks()": 100,
+          "sequencer()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "vault()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "verifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9"
+        },
+        "immutable_words_by_compiler_id": {
+          "2856": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "2859": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "2862": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "2880": "0x0000000000000000000000000000000000000000000000000000000000000064",
+          "2882": "0x0000000000000000000000000000000000000000000000000000000000000032",
+          "2885": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+          "2888": "0x0000000000000000000000000000000000000000000000000000000000000258",
+          "2897": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "2900": "0x000000000000000000000000000000000000000000000000000000000000000a"
+        },
+        "runtime_bytes": 11146,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "11ab7d95373cc32325c269467e9e47f23e6bca562dd6fdabc9c606afad8c213a"
+      },
+      "sp1_adapter": {
+        "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "getters": {
+          "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "programVKey()": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+        },
+        "immutable_words_by_compiler_id": {
+          "4542": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+          "4545": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+        },
+        "runtime_bytes": 734,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "a2f77a51e560861d87387a259a74ae57b4eb542b96b0305d08060fcc71249445"
+      },
+      "sp1_gateway": {
+        "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "getters": {
+          "owner()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        },
+        "immutable_words_by_compiler_id": {},
+        "runtime_bytes": 1931,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+      },
+      "sp1_verifier": {
+        "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+        "getters": {
+          "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+        },
+        "immutable_words_by_compiler_id": {},
+        "runtime_bytes": 6741,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+      },
+      "vault": {
+        "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "getters": {
+          "gatewaySigner()": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+          "settlement()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "token()": "0x0165878a594ca255338adfa4d48449f69242eb8f"
+        },
+        "immutable_words_by_compiler_id": {
+          "2288": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "2292": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f"
+        },
+        "runtime_bytes": 3257,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "850606c22ab88480eb466e2d5c42d3e21ba9472bdccdd6272abe841cc88f8d3f"
+      }
+    },
+    "limitations": [
+      "RPC responses are trusted; no light-client or independent endpoint consensus.",
+      "Declared operator/settlement policy can be matched; its security and economic suitability are not approved.",
+      "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
+      "No proof is generated or submitted; no service identity, state migration or release readiness is established."
+    ],
+    "manifest_sha256": "fc68e05e9b861c4e72120c10d559a00a1c4ab10d59ec51fbb9e3870b5620cf66",
+    "observed_at_utc": "2026-10-16T12:51:44.624881+00:00",
+    "operator_policy_sha256": "88bf69569f92ed01079fcaac6039137e8a0bf89870484af01d95df6b69c79504",
+    "rpc_origin": "http://127.0.0.1:59732",
+    "scope": {
+      "fresh_guest_build_performed": false,
+      "local_identity_checked": true,
+      "operator_and_settlement_policy_approved": false,
+      "operator_and_settlement_policy_matches": true,
+      "release_gate": "HOLD",
+      "running_services_attested": false,
+      "runtime_bytecode_verified": true,
+      "state_migration_rehearsed": false,
+      "target_chain_observed": true,
+      "token_runtime_verified": false
+    },
+    "sp1_route": {
+      "frozen": false,
+      "selector": "0x4388a21c",
+      "verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+    },
+    "status": "VERIFIED_AT_FINALIZED_BLOCK",
+    "token": {
+      "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+      "runtime_bytes": 1442,
+      "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+    }
+  },
+  "public_config": {
+    "addresses": {
+      "clock_verifier": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "settlement": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+      "sp1_adapter": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+      "sp1_gateway": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+      "sp1_verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+      "token": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+      "vault": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+    },
+    "chain_id": 31337,
+    "clock": {
+      "clock_skew_ms": 10000,
+      "max_window_ms": 30000
+    },
+    "gateway": {
+      "CLOCK_BOUND_VERIFIER": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "L1_ALLOW_MOCK_PROOF": "0",
+      "L1_CHAIN_ID": "31337",
+      "L1_SETTLEMENT": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+      "L1_USDC": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+      "L1_VAULT": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+    },
+    "operator_policy": {
+      "clock_verifier": {
+        "configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "settlement": {
+        "challenge_bond_wei": 1000,
+        "challenge_window_blocks": 50,
+        "enclave_signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "final_settle_grace_blocks": 10,
+        "governance": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "inclusion_deadline_seconds": 600,
+        "liveness_timeout_blocks": 100,
+        "sequencer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "sp1_gateway": {
+        "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "vault": {
+        "gateway_signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+      }
+    },
+    "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+    "prover": {
+      "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+      "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+    }
+  }
+}

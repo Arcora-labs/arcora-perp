@@ -1538,6 +1538,36 @@ struct Gw {
 /// SET-but-malformed `ORACLE_SIGNER_KEY` fails closed (exit) rather than silently
 /// signing with the dev key — `main()` validates it up front, so this only fires on
 /// a genuinely broken restore environment.
+/// `--print-genesis-root`: the markets-only production genesis root for the
+/// configured ORACLE_SIGNER_KEY (the root depends on it via each market's
+/// `oracle_pubkey`). Refuses the built-in development key, which would yield a
+/// root for a publisher nobody operates. Returns the process exit code.
+fn print_genesis_root() -> i32 {
+    if std::env::args().count() != 2 {
+        eprintln!("[genesis] usage: gateway --print-genesis-root");
+        return 2;
+    }
+    match oracle_feed::signer_from_env_checked() {
+        Ok((_, false)) => {}
+        Ok((_, true)) => {
+            eprintln!(
+                "[genesis] REFUSING: set ORACLE_SIGNER_KEY to the operator's oracle publisher key"
+            );
+            return 2;
+        }
+        Err(error) => {
+            eprintln!("[genesis] REFUSING: {error}");
+            return 2;
+        }
+    }
+    let root = Gw::boot_with(GenesisMode::Production)
+        .seq
+        .state
+        .state_root();
+    println!("GENESIS_ROOT={}", hex32(&root));
+    0
+}
+
 fn boot_oracle_signer() -> k256::ecdsa::SigningKey {
     oracle_feed::signer_from_env().unwrap_or_else(|e| {
         eprintln!("[fatal] oracle publisher signer: {e}");
@@ -8469,6 +8499,13 @@ fn after_settle_journal<T>(
 
 #[tokio::main]
 async fn main() {
+    // Deploy aid: the L1 settlement is constructed with GENESIS_ROOT, but a
+    // production boot only computes it after verifying a live clock-bound
+    // settlement. This mode prints that root and exits before any L1,
+    // attestation, prover, listener or state-file access.
+    if std::env::args().nth(1).as_deref() == Some("--print-genesis-root") {
+        std::process::exit(print_genesis_root());
+    }
     let oracle_crosscheck_policy = oracle_feed::crosscheck::CrosscheckPolicy::from_value(
         std::env::var("DARKPERP_ORACLE_CROSSCHECK_MAX_DEVIATION_PPM"),
     )

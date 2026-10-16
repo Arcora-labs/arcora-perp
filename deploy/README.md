@@ -26,8 +26,13 @@ tekrarlanabilir hâle getirir.
 useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin darkperp
 useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin darkperp-ops
 
-# Kaynak kimliği kayıtlı release build (docs/PUBLIC_SERVICE_IDENTITY.md):
-install -m 0755 target/release/gateway /usr/local/bin/darkperp-gateway
+# Binary: main'deki her commit için "gateway release binary" workflow'u
+# derler (Ubuntu 24.04 / glibc 2.39); sunucuda derleme gerekmez:
+#   gh run download <run-id> -n darkperp-gateway-linux-x86_64 -D dist
+#   (cd dist && sha256sum -c darkperp-gateway.sha256)
+# dist/service-build-identity.json, çalışan servisin GET /identity yanıtıyla
+# karşılaştırılır (docs/PUBLIC_SERVICE_IDENTITY.md).
+install -m 0755 dist/darkperp-gateway /usr/local/bin/darkperp-gateway
 # Gateway L1 için `cast`, prover ve alarm için `curl` çağırır. ProtectHome=yes
 # nedeniyle ~/.foundry görünmez: cast'i /usr/local/bin'e kurun.
 
