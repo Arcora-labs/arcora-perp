@@ -14,12 +14,12 @@ onaylandı" ayrı düzeylerdir; bu belge birini diğerinin yerine kullanmaz.
 
 | Alan | Durum (16 Ekim 2026 salt-okuma) |
 |---|---|
-| main | `c31d1647` — PR71 normal merge, 14 Ekim 19:03 UTC |
-| Main CI | `ci`, `A11 release evidence`, `Chainlink candidate` push akışları SUCCESS (run `38620427076`, `38620427021`, `38620426946`) |
-| Açık PR | Yok |
+| main | #72–#75 normal merge ile birleşti (16 Ekim); bu PR #75'ten sonra birleşir |
+| PR kabulü | #72–#75'in her biri kendi head'inde 19–20 kontrolün tamamı SUCCESS iken, head'e sabitlenmiş normal merge ile birleşti |
+| Açık PR | Bu belge güncellemesi dışında yok |
 | Ürün konumu | Custodial testnet alpha ([README](../README.md), [SECURITY](SECURITY.md)) |
 | Release | **HOLD**. Candidate submission kapalı; v3 witness v2 prover'a gönderilmez |
-| Kabul kapıları | G1–G6'nın altısı da açık (aşağıda) |
+| Kabul kapıları | G1–G6'nın altısı da açık. G1 ve G5'te GPU gerektirmeyen ilerleme var (aşağıda) |
 
 ## Çalışan sistem gözlemi
 
@@ -28,8 +28,13 @@ onaylandı" ayrı düzeylerdir; bu belge birini diğerinin yerine kullanmaz.
 - Kayıtlı Base Sepolia dağıtımı
   ([base-sepolia.json](../contracts/deployments/base-sepolia.json), 11 Temmuz)
   main'den önceki program key'ine bağlıdır. Settlement `batchCount` = 3.
-- Çalışan testnet servislerinin main kaynağıyla eşleştiği gösterilmemiştir.
-  Prover host'unun durumu bu okumada doğrulanmadı.
+- 16 Ekim: Ops host'unda Haziran tarihli eski bir prototip gateway bulundu. Bu
+  gateway, repo'da kayıtlı olmayan bir test stack'ine yaklaşık 30 saniyede bir
+  boş batch settle ediyordu. Servis durduruldu ve devre dışı bırakıldı.
+- main'in gateway'i ops host'unda yalnız tatbikat için, demo modda ve
+  `deploy/` unit'leriyle çalıştırıldı. `/identity` kaynak checksum'ı CI
+  artifact'ıyla eşleşti. Tatbikattan sonra durduruldu. L1'e bağlı çalışan bir
+  servis yoktur; prover host'unun durumu doğrulanmadı.
 - Repo merge'i web sitesini, servis binary'sini, on-chain bytecode'u veya
   program anahtarını kendiliğinden güncellemez.
 
@@ -53,15 +58,25 @@ Hepsi normal merge. Daha önceki paketler ve her paketin yerel test sayıları
 Ölçümler sentetik fixture ve tekil süreç gözlemleridir; gerçek proof süresi,
 throughput, servis gecikmesi veya kapasite garantisi değildir.
 
+## 16 Ekim: GPU ve para gerektirmeyen paket (PR72–)
+
+| PR | Konu | Kanıt |
+|---|---|---|
+| #72 | Bu belgenin kısaltılması; 9–14 Ekim günlüğünün ayrı dosyaya taşınması | [ACTIVE_WORK_HISTORY](ACTIVE_WORK_HISTORY.md) |
+| #73 | Canlı yedek, dış sağlık izleyicisi, alarm yeniden denemesi, `deploy/` systemd/Caddy dosyaları | [RECOVERY_RESTORE](RECOVERY_RESTORE.md), [deploy](../deploy/README.md) |
+| #74 | Kişiye özel claim dosyası ve operatörden bağımsız claim kontrol aracı | [FUNDS_LIFECYCLE](FUNDS_LIFECYCLE.md) |
+| #75 | `--print-genesis-root`, release artifact'larıyla deploy aracı, env tabanlı frontend adresleri, Linux release binary workflow'u | [clock-stack-deploy-kit](audits/2026-10-16-clock-stack-deploy-kit/README.md) |
+| bu PR | Restore/alarm tatbikatı; `RestartMode=direct` düzeltmesi | [g5-restore-alarm-drill](audits/2026-10-16-g5-restore-alarm-drill/README.md) |
+
 ## Açık kabul kapıları
 
 | Kapı | Eksik olan | Kapanış kanıtı | Önceki öncelik satırı |
 |---|---|---|---|
-| **G1** Çalışan hedef ve servis kimliği | Onaylı chain ve kontratlar; çalışan gateway/prover sürümü; config/program/peer/key kimlikleri; uptime feed/grace immutables | Aynı kesite bağlı deployment manifest'i, [public-service identity](PUBLIC_SERVICE_IDENTITY.md) karşılaştırması ve finalized zincir gözlemleri. Beyan eşleşmesi attestation değildir | P0 deployment/servis kimliği · P1 uptime canlı kabulü |
+| **G1** Çalışan hedef ve servis kimliği | Onaylı chain ve kontratlar; çalışan gateway/prover sürümü; config/program/peer/key kimlikleri; uptime feed/grace immutables. *16 Ekim:* Genesis ve deploy araçları ile Linux release binary'si hazır. Kendi SP1 stack'imizle Base Sepolia fork'unda VERIFIED; Succinct gateway'iyle BLOCKED. Gerçek deploy prover (G3) ve attestation (G4) bekliyor | Aynı kesite bağlı deployment manifest'i, [public-service identity](PUBLIC_SERVICE_IDENTITY.md) karşılaştırması ve finalized zincir gözlemleri. Beyan eşleşmesi attestation değildir | P0 deployment/servis kimliği · P1 uptime canlı kabulü |
 | **G2** Gerçek DPCLK3 backend ve kalıcı recovery | Aday protokolün gerçek transport/servis/backend'e bağlanması; yetkili Chainlink stream, gerçek feed/decimal/quote pinleri, DON verifier | Gerçek backend ile başarı akışı ve kesinti matrisi (pending, cevap/ACK kaybı, restart, finalize olmamış sonuç); tekrar kayıt veya broadcast yok | P1 Chainlink canlı entegrasyon · P1 kesinti sonrası pending batch recovery |
 | **G3** Exact witness → gerçek proof → zincir kabulü | Dört exact wallet witness için yeni proof; SP1/clock/settlement/claim doğrulaması. CPU yürütmesi ve setup/vkey yeterli değildir | Witness hash, guest/ELF/vkey, proof, public değerler, hedef settlement/claim sonucu; yanlış proof/program/batch/chain ve tekrar claim negatifleri; ölçülmüş proof süresi, p95 ve RSS | P0 dört exact wallet witness · P1 prover kapasite/finalite |
 | **G4** Donanım doğrulaması ve anahtar teslimi | Gerçek CC/TEE backend; nonce, measurement ve quote bağları; canlı handshake. Mevcut backend fail-closed stub'dır | Olumlu attestation/key release; yanlış measurement, eski nonce, geçersiz quote ve uygunsuz peer için ret kanıtı | P0 NVIDIA CC/key release |
-| **G5** Custody, çıkış verisi ve operasyonel kurtarma | Başka makinede restore, L1/pending işlem uzlaşması, kullanıcı exit verisine erişim, RTO/RPO, alarm teslimi | Restore tutanağı, ölçülmüş süre ve veri kaybı, alarm teslim kaydı, operatör/prover/governance kaybında claim ve withdrawal yolları | P1 operatör kaybında exit · P2 operasyonel recovery |
+| **G5** Custody, çıkış verisi ve operasyonel kurtarma | Başka makinede restore, L1/pending işlem uzlaşması, kullanıcı exit verisine erişim, RTO/RPO, alarm teslimi. *16 Ekim:* Canlı yedek, dış izleyici, alarm yeniden denemesi, kişiye özel claim dosyası ve operatörsüz claim kontrolü eklendi. Demo modda başka makinede restore yapıldı (RTO 9,6 s) ve alarm gerçek ntfy topic'ine teslim edildi. Kalan: L1/pending uzlaşması, hedef RTO/RPO, sorumlular, fencing | Restore tutanağı, ölçülmüş süre ve veri kaybı, alarm teslim kaydı, operatör/prover/governance kaybında claim ve withdrawal yolları | P1 operatör kaybında exit · P2 operasyonel recovery |
 | **G6** Ekonomi, fairness ve bağımsız release | Oracle değerlemesi ve USD/USDC ilişkisi; rapor zaman politikası; guest içinde matching fairness ve ret meşruiyeti; bağımsız denetim | Kritik bulguları kapanmış dış denetim, onaylı oracle/çalışma politikaları ve açık release kararı | P1 oracle ekonomisi · P1 matching fairness · P2 bağımsız audit |
 
 Önerilen sıra: hedef ve release girdilerini dondur → G1 → G2 → G4 → G3 →
@@ -71,8 +86,10 @@ yüzdesi veya süre tahmini değildir.
 
 ## Operatör kararı bekleyen girdiler
 
-- **Hedef:** Mevcut 11 Temmuz Base Sepolia stack'i mi kullanılacak, yoksa main'in
-  program key'iyle yeni dağıtım mı yapılacak?
+- **Hedef:** 11 Temmuz stack'i main ile uyumsuz. Öneri, kendi SP1 verifier ve
+  gateway'imizle yeni bir Base Sepolia dağıtımı
+  ([runbook](REDEPLOY-CC-RUNBOOK.md)). Succinct gateway'ini kullanmak,
+  manifest'e onların bytecode'unu ekleyen ayrı bir karar gerektirir.
 - **Makineler:** Gateway ve prover host'ları; CC/TEE donanımı.
 - **Chainlink stream erişimi:** 10 Ekim'de kullanıcı kararıyla ertelendi; G2 bunu
   bekler. Ertelenme sürdükçe discovery veya credential denemesi yapılmaz;
@@ -81,6 +98,8 @@ yüzdesi veya süre tahmini değildir.
   olarak mı etiketlenecek?
 - **Sorumlular:** Recovery/alarm sorumluları, bağımsız denetim kapsamı ve release
   karar sahibi.
+- **Hedef RTO/RPO:** Ölçüm yöntemi ve ilk ölçüm var; kabul edilecek hedef
+  değerler operatör kararıdır.
 
 ## Küçük açık işler
 

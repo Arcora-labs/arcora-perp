@@ -55,6 +55,9 @@ class Units(unittest.TestCase):
             ("NoNewPrivileges", "yes"), ("ProtectSystem", "strict"), ("ProtectHome", "yes"),
             ("PrivateTmp", "yes"), ("CapabilityBoundingSet", ""), ("ReadWritePaths", "/var/lib/darkperp"),
             ("KillSignal", "SIGTERM"), ("UMask", "0077"),
+            # Without it systemd 255 passes through "failed" on every automatic
+            # restart and fires OnFailure= each time (drill: 4 alerts in 18 s).
+            ("RestartMode", "direct"),
         ]:
             self.assertEqual(values(s, "Service", key), [value], key)
         self.assertEqual(values(s, "Unit", "OnFailure"), ["darkperp-notify@gateway_service_failed.service"])
