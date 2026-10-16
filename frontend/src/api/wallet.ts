@@ -564,8 +564,10 @@ export interface WalletDepositClient {
   /** POST /v1/accounts/deposit/authorize — SEC-019: the gateway pre-authorizes
    *  this exact (from, amount), returning the blinded ownerCommit + 65-byte
    *  gateway sig that `deposit(amount, ownerCommit, sig)` requires on-chain.
-   *  `from` must be the account's already-bound deposit address. */
-  authorizeDeposit(from: string, amount: bigint, context?: DepositContext): Promise<{ ownerCommit: string; sig: string }>;
+   *  `from` must be the account's already-bound deposit address. `reuseOwnerCommit`
+   *  names an earlier, never-sent permit to re-sign if the gateway still holds it
+   *  for exactly this request (otherwise a fresh permit is issued). */
+  authorizeDeposit(from: string, amount: bigint, context?: DepositContext, reuseOwnerCommit?: string): Promise<{ ownerCommit: string; sig: string }>;
   /** POST /v1/accounts/deposit/onchain — credit a confirmed deposit tx. Returns
    *  the credited amount in USDC base units. */
   creditOnchainDeposit(txHash: string, context?: DepositContext): Promise<bigint>;

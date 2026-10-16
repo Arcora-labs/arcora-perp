@@ -48,7 +48,7 @@ PRIVATE_KEY=0x... GATEWAY_SIGNER=0x... \
 ```
 
 Off the local anvil chain (31337), `PRIVATE_KEY` and `GATEWAY_SIGNER` are
-required and the public anvil #0 key is refused for both (`GATEWAY_SIGNER` must
+required and the default anvil accounts are refused for both (`GATEWAY_SIGNER` must
 be the address of the gateway's secret `GATEWAY_SIGNER_KEY`). A fork dry run
 that really wants the public keys sets `ALLOW_PUBLIC_DEV_KEYS=1`. The other
 parameters have env defaults (`ENCLAVE_SIGNER`, `GENESIS_ROOT`,

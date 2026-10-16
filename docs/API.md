@@ -47,7 +47,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }` |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
 | POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
-| POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose }` — durable permit with explicit routing |
+| POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose, reuseOwnerCommit? }` — durable permit with explicit routing |
 | POST | `/v1/accounts/deposit/route` | ✓ | `{ ownerCommit, from, amount, marketId, purpose }` — explicitly adopt a legacy pending permit |
 | POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — optional finalized ingestion accelerator / durable receipt |
 | POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
@@ -164,7 +164,11 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
 2. `POST /v1/accounts/deposit/authorize { "from": "0x<your EOA>", "amount": "<base units>", "marketId": 0, "purpose": "collateral" }`
    — the gateway records a secret blind for this deposit and returns its `ownerCommit`
    plus a signature. The vault accepts **only** pre-authorized deposits, so this step is
-   not optional.
+   not optional. To retry a deposit you never sent (for example after rejecting the
+   wallet prompt), pass the earlier `ownerCommit` as `reuseOwnerCommit`: the gateway
+   re-signs that permit if it still holds it for exactly this request, and issues a
+   fresh one otherwise. Outstanding permits are limited per account and in total, and
+   issuance is rate-limited per account (429 / 503 when exceeded).
 3. On Base Sepolia, from that EOA: `usdc.approve(vault, amount)` then
    `vault.deposit(amount, ownerCommit, signature)` — three arguments, all from step 2.
 

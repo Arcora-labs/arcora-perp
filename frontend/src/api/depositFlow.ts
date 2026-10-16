@@ -163,9 +163,10 @@ async function reconcileOriginalDeposit(client: WalletDepositClient, pending: Pe
 }
 
 /** Gateway permits issued in this page session, by journal key. A retry of the SAME
- * saved deposit that sent no deposit transaction (e.g. a rejected wallet prompt) reuses
- * its permit rather than leaving another one outstanding. Memory only, so no signature
- * enters the durable journal; dropped once a deposit transaction is sent. */
+ * saved deposit that sent no deposit transaction (e.g. a rejected wallet prompt) asks
+ * the gateway to re-sign that permit rather than leave another one outstanding; the
+ * gateway does so only while it still holds it. Memory only, so no signature enters
+ * the durable journal; dropped once a deposit transaction is sent. */
 const sessionPermits = new Map<string, { owner: string; marketId: number; amount: string; auth: { ownerCommit: string; sig: string } }>();
 
 /** No credentials or signatures enter this durable, origin-wide recovery journal. */
@@ -296,11 +297,9 @@ export async function runWalletDeposit({ client, address, amount, assertView, pr
       }],
       ["authorize", async () => {
         const kept = sessionPermits.get(key);
-        if (kept && kept.owner === context.owner && kept.marketId === context.marketId && kept.amount === amount.toString()) {
-          auth = kept.auth;
-          return;
-        }
-        auth = await client.authorizeDeposit(address, amount, context);
+        const reuse = kept && kept.owner === context.owner && kept.marketId === context.marketId && kept.amount === amount.toString()
+          ? kept.auth.ownerCommit : undefined;
+        auth = await client.authorizeDeposit(address, amount, context, reuse);
         sessionPermits.set(key, { owner: context.owner, marketId: context.marketId, amount: amount.toString(), auth });
         await check();
       }],

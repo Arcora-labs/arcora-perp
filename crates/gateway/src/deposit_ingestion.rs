@@ -208,6 +208,16 @@ impl Gw {
             window.1 += 1;
         }
     }
+    /// Whether this gateway still holds `commit` as an outstanding permit for exactly
+    /// `route` (same account, payer, amount, market and purpose, blind still stored).
+    pub(super) fn holds_permit(&self, commit: &[u8; 32], route: &Route) -> bool {
+        self.deposits.routes.get(commit) == Some(route)
+            && self.validate_route(route).is_ok()
+            && self
+                .accounts
+                .get(&route.key)
+                .is_some_and(|a| a.deposit_authorizations.contains_key(commit))
+    }
     pub(super) fn authorize_routed_deposit(
         &mut self,
         key: &[u8; 32],

@@ -548,6 +548,75 @@ mod audit_remediation {
         writer.abort();
     }
 
+    fn reuse_request(key: &[u8; 32], amount: &str, reuse: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/accounts/deposit/authorize")
+            .header("content-type", "application/json")
+            .header("x-api-key", hex0x(key))
+            .body(Body::from(
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": amount, "marketId": 0,
+                    "purpose": "collateral", "reuseOwnerCommit": reuse}).to_string(),
+            ))
+            .unwrap()
+    }
+
+    /// A retry of a never-sent deposit may name its earlier permit: the gateway re-signs
+    /// it only while it still holds that permit for exactly the same request, without a
+    /// new permit, snapshot or rate charge; anything else gets a fresh permit.
+    #[tokio::test]
+    async fn an_outstanding_permit_is_re_signed_only_for_the_same_request() {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+        let writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = writes.clone();
+        let writer = tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = ack.send(true);
+            }
+        });
+        let key = payer(&app).await;
+        let router = build_router(app.clone(), true);
+        let first = json_body(router.clone().oneshot(permit_request(&key)).await.unwrap()).await;
+        let commit = first["ownerCommit"].as_str().unwrap().to_string();
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let again = router
+            .clone()
+            .oneshot(reuse_request(&key, "5000000", &commit))
+            .await
+            .unwrap();
+        assert_eq!(again.status(), StatusCode::OK);
+        let again = json_body(again).await;
+        assert_eq!(again["ownerCommit"], first["ownerCommit"]);
+        assert_eq!(again["sig"], first["sig"]);
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1, "no new durable write");
+        {
+            let gw = app.gw.lock().await;
+            assert_eq!(gw.accounts[&key].deposit_authorizations.len(), 1);
+            assert_eq!(gw.accounts[&key].deposit_authorize_window.1, 1, "no rate charge");
+        }
+
+        // A different amount, or a commit the gateway does not hold, is a new permit.
+        for (amount, reuse) in [("6000000", commit.clone()), ("5000000", hex0x(&[0x77; 32]))] {
+            let response = json_body(
+                router
+                    .clone()
+                    .oneshot(reuse_request(&key, amount, &reuse))
+                    .await
+                    .unwrap(),
+            )
+            .await;
+            assert_ne!(response["ownerCommit"].as_str().unwrap(), reuse);
+        }
+        assert_eq!(app.gw.lock().await.accounts[&key].deposit_authorizations.len(), 3);
+        let bad = router.oneshot(reuse_request(&key, "5000000", "0x12")).await.unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        writer.abort();
+    }
+
     /// Concurrent durability barriers share one snapshot write: every request queued
     /// before the capture starts is answered by it.
     #[tokio::test]

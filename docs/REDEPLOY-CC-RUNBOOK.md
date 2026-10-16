@@ -111,8 +111,8 @@ a changed `ORACLE_SIGNER_KEY` after genesis = fail-closed oracle outage, see
 ZK-001 minors):
 - `GATEWAY_SIGNER_KEY` (fresh secp256k1 scalar). Its ADDRESS goes to the vault
   ctor (`GATEWAY_SIGNER` env of `Deploy.s.sol`) — off the local anvil chain it is
-  required and the public anvil #0 address is refused. A production gateway
-  likewise refuses to boot without a non-demo `GATEWAY_SIGNER_KEY`.
+  required and the default anvil accounts are refused. A production gateway
+  likewise refuses to boot without a secret (non-public) `GATEWAY_SIGNER_KEY`.
 - `ORACLE_SIGNER_KEY` (fresh scalar). Its address becomes every
   `Market.oracle_pubkey` at genesis.
 - Confirm `ENCLAVE_SEED` + `ENCLAVE_SIGNER` stay what the live CVM uses today

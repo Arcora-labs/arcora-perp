@@ -6106,6 +6106,11 @@ struct DepositAuthorizeReq {
     /// USDC base units to be deposited — bound into the signed digest (a sig for one
     /// amount cannot authorize another).
     amount: String,
+    /// Optional: an `ownerCommit` this account was already issued and never sent. If
+    /// the gateway still holds that permit for exactly this request, it is re-signed
+    /// instead of issuing another one; otherwise a fresh permit is issued as usual.
+    #[serde(rename = "reuseOwnerCommit", default)]
+    reuse_owner_commit: Option<String>,
 }
 #[derive(Deserialize)]
 struct WithdrawReq {
@@ -6962,7 +6967,7 @@ async fn post_v1_register(
         if e.1 >= V1_REGISTER_RATE {
             return (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(serde_json::json!({ "error": "RATE_LIMIT: too many registrations from this IP" })),
+                Json(serde_json::json!({ "error": "RATE_LIMIT: too many registrations from this client" })),
             )
                 .into_response();
         }
@@ -7129,37 +7134,64 @@ async fn post_v1_deposit_authorize(
         )
             .into_response();
     }
-    // Release the account lock before requesting durability. No signature may be
-    // constructed or returned until the writer acknowledges the stored blind.
-    let commit = {
-        let mut gw = app.gw.lock().await;
-        let now_s = now_ms() / 1000;
-        if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
-            return (status, Json(serde_json::json!({ "error": error }))).into_response();
-        }
-        match gw.authorize_routed_deposit(&key, from, amount, req.market_id, req.purpose) {
-            Ok(c) => {
-                gw.charge_deposit_permit(&key, req.purpose, now_s);
-                c
-            }
-            Err(e) => return err400(e).into_response(),
+    let reuse = match req.reuse_owner_commit.as_deref().map(parse_hex32) {
+        None => None,
+        Some(Some(commit)) => Some(commit),
+        Some(None) => {
+            return err400("bad `reuseOwnerCommit` (expected 32-byte 0x hex)".into())
+                .into_response()
         }
     };
-    if let Err(e) = snapshot_now(&app.snapshot_req).await {
-        // No signature was released, so this specific permit cannot have reached
-        // L1. Remove it to avoid exhausting capacity after repeated disk failures.
+    // Release the account lock before requesting durability. No signature may be
+    // constructed or returned until the writer acknowledges the stored blind.
+    let (commit, reused) = {
         let mut gw = app.gw.lock().await;
-        gw.deposits.routes.remove(&commit);
-        if let Some(a) = gw.accounts.get_mut(&key) {
-            a.deposit_authorizations.remove(&commit);
+        let route = deposit_ingestion::Route {
+            key,
+            from,
+            amount,
+            market: req.market_id,
+            purpose: req.purpose,
+        };
+        // A permit still held for exactly this request was made durable before its
+        // signature was first released: re-signing it issues nothing new.
+        if let Some(commit) = reuse.filter(|c| gw.holds_permit(c, &route)) {
+            if let Err(e) = gw.refuse_if_wind_down_started() {
+                return err400(e).into_response();
+            }
+            (commit, true)
+        } else {
+            let now_s = now_ms() / 1000;
+            if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
+                return (status, Json(serde_json::json!({ "error": error }))).into_response();
+            }
+            match gw.authorize_routed_deposit(&key, from, amount, req.market_id, req.purpose) {
+                Ok(c) => {
+                    gw.charge_deposit_permit(&key, req.purpose, now_s);
+                    (c, false)
+                }
+                Err(e) => return err400(e).into_response(),
+            }
         }
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": format!("deposit authorization not issued: {e}")
-            })),
-        )
-            .into_response();
+    };
+    // A re-signed permit is already durable; a new one is not until the writer ACKs.
+    if !reused {
+        if let Err(e) = snapshot_now(&app.snapshot_req).await {
+            // No signature was released, so this specific permit cannot have reached
+            // L1. Remove it to avoid exhausting capacity after repeated disk failures.
+            let mut gw = app.gw.lock().await;
+            gw.deposits.routes.remove(&commit);
+            if let Some(a) = gw.accounts.get_mut(&key) {
+                a.deposit_authorizations.remove(&commit);
+            }
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": format!("deposit authorization not issued: {e}")
+                })),
+            )
+                .into_response();
+        }
     }
     match app.gateway_signer.sign(&from, &commit, amount) {
         Ok(sig) => Json(serde_json::json!({
@@ -7738,7 +7770,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
             "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + gateway sig for deposit(amount, ownerCommit, sig)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" } } } } } },
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
                 "responses": ok("ownerCommit + sig") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
@@ -7777,6 +7809,11 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         .unwrap()
         .push(serde_json::json!("ownerCommit"));
     schema["properties"]["ownerCommit"] = serde_json::json!({"type":"string"});
+    // Re-signing an issued permit belongs to `/authorize`, not to legacy adoption.
+    schema["properties"]
+        .as_object_mut()
+        .unwrap()
+        .remove("reuseOwnerCommit");
     route["post"]["responses"] = ok("ownerCommit + routing + durability; no new signature");
     spec["paths"]["/v1/accounts/deposit/route"] = route;
     if !prod {
