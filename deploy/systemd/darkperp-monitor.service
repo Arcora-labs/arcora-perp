@@ -1,0 +1,23 @@
+# External health check of the gateway's public surfaces (gateway_monitor.py).
+[Unit]
+Description=Arcora gateway health monitor
+OnFailure=darkperp-notify@monitor_failed.service
+
+[Service]
+Type=oneshot
+User=darkperp-ops
+Group=darkperp-ops
+EnvironmentFile=-/etc/darkperp/ops.env
+ExecStart=/usr/local/lib/darkperp-ops/gateway_monitor.py --base-url http://127.0.0.1:8080 --state-file /var/lib/darkperp-ops/monitor.json --stall-seconds 900
+StateDirectory=darkperp-ops
+StateDirectoryMode=0700
+TimeoutStartSec=120
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+UMask=0077

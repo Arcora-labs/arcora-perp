@@ -1,6 +1,7 @@
 //! Redacted, best-effort operational notifications. Application state and durable
 //! ACK decisions never depend on delivery. Episode state is runtime-only; logs are
-//! always emitted, while at most one bounded worker delivers optional HTTP alerts.
+//! always emitted, while at most one bounded worker delivers optional HTTP alerts,
+//! retrying each event a bounded number of times (`DELIVERY_RETRY`).
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -127,7 +128,33 @@ impl Target {
             written && output.status.success() && status.is_some_and(|s| (200..300).contains(&s))
         })
     }
+
+    /// Same body every attempt; nothing about the failure is fed back into it.
+    fn deliver_with_retry(&self, body: &str, retry: RetryPolicy) -> bool {
+        for attempt in 0..retry.attempts {
+            if self.deliver(body) {
+                return true;
+            }
+            if attempt + 1 < retry.attempts {
+                std::thread::sleep(retry.backoff * 2u32.pow(attempt));
+            }
+        }
+        false
+    }
 }
+
+/// Bounded redelivery of one event: `attempts` tries, waiting `backoff`, then
+/// twice that, between them. Delivery stays best effort after the last try.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RetryPolicy {
+    pub(crate) attempts: u32,
+    pub(crate) backoff: std::time::Duration,
+}
+
+pub(crate) const DELIVERY_RETRY: RetryPolicy = RetryPolicy {
+    attempts: 3,
+    backoff: std::time::Duration::from_secs(1),
+};
 
 enum Work {
     Deliver(String),
@@ -165,6 +192,14 @@ impl OpsAlerts {
     }
 
     fn configured(local: Option<&str>, topic: Option<&str>) -> Result<Self, &'static str> {
+        Self::configured_with(local, topic, DELIVERY_RETRY)
+    }
+
+    fn configured_with(
+        local: Option<&str>,
+        topic: Option<&str>,
+        retry: RetryPolicy,
+    ) -> Result<Self, &'static str> {
         let target = Target::parse(local, topic)?;
         let Some(target) = target else {
             return Ok(Self::default());
@@ -176,7 +211,7 @@ impl OpsAlerts {
                 while let Ok(work) = rx.recv() {
                     match work {
                         Work::Deliver(body) => {
-                            if !target.deliver(&body) {
+                            if !target.deliver_with_retry(&body, retry) {
                                 eprintln!("[ops-alert-delivery] failed; structured event remains in local log");
                             }
                         }
