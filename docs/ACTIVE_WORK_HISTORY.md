@@ -1,3 +1,11 @@
+> **Tarihsel kayıt — güncel değildir.** Bu dosya 9–14 Ekim 2026 arasında
+> `docs/ACTIVE_WORK.md` olarak tutulan çalışma günlüğüdür ve PR71 (`c31d1647`)
+> ile dondurulmuştur. Aşağıdaki "güncel", "aktif" ve "pending" ifadeleri yazıldıkları
+> commit için geçerlidir. Güncel durum ve kabul kapıları: [ACTIVE_WORK.md](ACTIVE_WORK.md).
+> Bu notun eklenmesinden önceki byte-exact içerik, taşıma commit'inde ve main
+> `c31d1647`'deki `docs/ACTIVE_WORK.md`'dedir
+> (SHA-256 `ea605cccdcff8a071b0168c5e0ee34bb86d0ab2592650ac7019634c6a0202566`).
+
 # Arcora Perp: aktif iş ve kalan kabul kapıları
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
@@ -812,3 +820,36 @@ PR68 required TLS correction: first1f0 dependency audit FAILED on four today Rus
 ## 2026-10-14 - Invocation-local withdrawal Merkle levels (local cut)
 
 Private claim preparation reuses native parent levels per invocation; core/guest, wire and durable replay boundaries stay unchanged. Focused61/0/4 includes 234 trees and 12,195 exact paths. The release build supervisor timed out; its later-produced source-verified executable ran8/0/0 +120 samples. Eight counterbalanced CPU invocations add960 samples; claim medians fall80.5-92.7%, small total differences remain noisy. Source 7f8874a7b75b8aa067e1ea36e7076c683366c3aed50ee243de434bedbaa816d7. Raw failures/provenance retained in docs/audits/2026-10-14-merkle-levels/. Full local/CI/merge/main acceptance is separate. PRODUCTION RELEASE HOLD; candidate submission disabled.
+
+
+## 2026-10-14 - Finite native preparation CPU/RSS (PR69, sonradan eklendi)
+
+PR69 normal merge `93ac853e` (16:47:18 UTC); main push ci, A11 ve Chainlink
+candidate akışları SUCCESS. Test-only kod, değişmemiş PR65 native Sequencer
+golden'ından 64/16, 160/16 ve 160/48 (canlı note / withdrawal) sabit fixture'ları
+üretir; post-state, whole PreparedSettle, bütün claim path'leri ve legacy/clocked
+cached proof zarfları byte düzeyinde doğrulanır. Apple M4 release ölçümü 120 CPU
+sample'ı ve fixture başına tek child RSS tepesi kaydeder (5,4–6,0 MiB; harness
+dahil). Medyanlar p95/p99 değildir, fazlar toplanamaz; proof callback'i 32 byte
+sentetik cached değerdir. Throughput, gerçek proof, servis gecikmesi veya
+kapasite iddiası yoktur. [Kanıt](audits/2026-10-14-finite-preparation-profile/README.md).
+
+
+## 2026-10-14 - Owned process-group supervision (PR71, sonradan eklendi)
+
+PR71 normal merge `c31d1647` (19:03:21 UTC); PR'da 11/11 required ve 16/16
+gerçek job SUCCESS, merge sonrası üç main push akışı da SUCCESS. Profil
+runner'ı artık yeni POSIX session/process group açar, deadline/iptal/hata
+durumunda TERM→KILL ile grubu temizler ve kayıtlarını yazar. Linux'ta 10
+supervisor + 10 capture/parser testi PASS; A11 bunları dependency-advisories
+job'unda çalıştırır. Bağlı Mac'te grup sinyali `Operation not permitted`
+verdi; o koşu başarı sayılmadı ve yetki aşılmadı. Yetkili ortamda tam suite
+kabulü açık kalır. [Kanıt](audits/2026-10-14-process-supervision/README.md).
+
+
+## Günlük kapanışı
+
+Bu günlük PR71 ile dondurulmuştur. 16 Ekim 2026 salt-okuma kontrolünde main
+`c31d1647` üzerindeki üç push akışı SUCCESS, açık PR yoktu; PR65–PR71 için
+yukarıdaki "pending" satırları o tarihte kapanmıştır. Sonraki durum ve açık
+kapılar [ACTIVE_WORK.md](ACTIVE_WORK.md)'dedir. **PRODUCTION RELEASE HOLD**.
