@@ -25,7 +25,10 @@ def main():
     args = parser.parse_args()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    argv = ["cargo", "test", "--locked", "-p", "gateway", "ops_alerts::", "--", "--nocapture", "--test-threads=1"]
+    # --bin: the ops_alerts tests live in the gateway binary; other test targets
+    # (e.g. tests/print_genesis_root.rs) would add empty summaries.
+    argv = ["cargo", "test", "--locked", "-p", "gateway", "--bin", "gateway", "ops_alerts::",
+            "--", "--nocapture", "--test-threads=1"]
     before = identity()
     started = time.time()
     log = output / "drill.log"
