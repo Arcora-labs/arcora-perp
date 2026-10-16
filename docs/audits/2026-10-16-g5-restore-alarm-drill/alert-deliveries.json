@@ -1,0 +1,76 @@
+{
+  "source": "ntfy.sh poll API of the operator's ops topic (topic name withheld)",
+  "systemd": "255 (255.4-1ubuntu8.18)",
+  "deliveries": [
+    {
+      "ntfy_time": 1792157868,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_unreachable",
+      "transition": "active",
+      "episode": 1
+    },
+    {
+      "ntfy_time": 1792157926,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_unreachable",
+      "transition": "recovered",
+      "episode": 1
+    },
+    {
+      "ntfy_time": 1792157945,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_service_failed",
+      "transition": "active",
+      "episode": 1
+    },
+    {
+      "ntfy_time": 1792157951,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_service_failed",
+      "transition": "active",
+      "episode": 2
+    },
+    {
+      "ntfy_time": 1792157956,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_service_failed",
+      "transition": "active",
+      "episode": 3
+    },
+    {
+      "ntfy_time": 1792157961,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_service_failed",
+      "transition": "active",
+      "episode": 4
+    },
+    {
+      "ntfy_time": 1792157987,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_unreachable",
+      "transition": "active",
+      "episode": 2
+    },
+    {
+      "ntfy_time": 1792158015,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_service_failed",
+      "transition": "active",
+      "episode": 5
+    },
+    {
+      "ntfy_time": 1792158115,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_unreachable",
+      "transition": "recovered",
+      "episode": 2
+    },
+    {
+      "ntfy_time": 1792158175,
+      "schema": "arcora.ops-monitor.v1",
+      "event": "gateway_unreachable",
+      "transition": "active",
+      "episode": 3
+    }
+  ]
+}

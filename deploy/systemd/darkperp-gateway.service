@@ -27,6 +27,9 @@ StateDirectoryMode=0700
 WorkingDirectory=/var/lib/darkperp
 Restart=on-failure
 RestartSec=5
+# Restart without passing through "failed", so OnFailure= fires once when the
+# start limit is hit rather than on every automatic restart (systemd >= 254).
+RestartMode=direct
 # SIGTERM drains accepted work and writes a final snapshot.
 KillSignal=SIGTERM
 TimeoutStopSec=90

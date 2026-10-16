@@ -244,7 +244,19 @@ hemen sonra alınmış bir yedek, o settle finalize olana kadar reddedilebilir.
   Emirler ve withdrawal istekleri ise diske yazılmadan onaylanır; son
   snapshot'tan sonraki onaylar kaybolabilir.
 
-Hedef RTO/RPO değerleri henüz belirlenmedi. Gerçek değerler, başka makinedeki
-bir tatbikatla ölçülüp burada ayrıca kaydedilmelidir. L1 ve pending tx
+Hedef RTO/RPO değerleri henüz belirlenmedi.
+
+**İlk ölçüm (16 Ekim 2026, demo modu):** Linux ops host'undan alınan yedek,
+bir macOS makinesinde pinlerle restore edildi. Ölçülen RTO 9,6 s:
+
+| Adım | Süre |
+|---|---|
+| Aktarım | 3,3 s |
+| Anahtar teslimi | 1,3 s |
+| Boot ve status | 5,0 s |
+
+Arıza tespiti ve makine hazırlığı bu süreye dahil değildir. Bu tatbikatta RPO
+0'dır, çünkü yedek düzgün bir durdurmadan sonra alındı. Ayrıntılar:
+[tatbikat kaydı](audits/2026-10-16-g5-restore-alarm-drill/README.md). L1 ve pending tx
 uzlaşması L1 modu gerektirir; bu nedenle prover ve attestation kapılarına
 bağlıdır.

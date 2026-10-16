@@ -1,0 +1,70 @@
+{
+  "backup": "20261016T134252Z",
+  "excluded_from_rto": [
+    "failure detection",
+    "machine provisioning",
+    "binary install",
+    "operator decision time"
+  ],
+  "fields_equal": {
+    "accounts": true,
+    "chainId": true,
+    "insuranceFund": true,
+    "mode": true,
+    "nextBatchId": false,
+    "openWindowId": true,
+    "treasury": true,
+    "vault": true
+  },
+  "manifest": {
+    "attempts": 1,
+    "created_utc": "2026-10-16T13:42:52Z",
+    "journal": "absent",
+    "restore_env": {
+      "DARKPERP_REQUIRE_RESTORE": "1",
+      "DARKPERP_RESTORE_JOURNAL": "absent",
+      "DARKPERP_RESTORE_SHA256": "a83f5b90827999e86bfa25e45e4204faf8b2adb6fde3257542a0cb73ecf5c66e"
+    },
+    "schema": "arcora.gateway-backup.v1",
+    "snapshot": {
+      "bytes": 821918,
+      "file": "state.snap",
+      "sha256": "a83f5b90827999e86bfa25e45e4204faf8b2adb6fde3257542a0cb73ecf5c66e"
+    }
+  },
+  "restored_from_snapshot": true,
+  "restored_status": {
+    "accounts": 0,
+    "chainId": 84532,
+    "clockAdmission": {
+      "enabled": false,
+      "paused": false
+    },
+    "insuranceFund": "25000000000",
+    "mode": "Normal",
+    "nextBatchId": 352,
+    "openWindowId": 0,
+    "treasury": "0",
+    "vault": "0x0000000000000000000000000000000000000000"
+  },
+  "source_status": {
+    "accounts": 0,
+    "chainId": 84532,
+    "clockAdmission": {
+      "enabled": false,
+      "paused": false
+    },
+    "insuranceFund": "25000000000",
+    "mode": "Normal",
+    "nextBatchId": 349,
+    "openWindowId": 0,
+    "treasury": "0",
+    "vault": "0x0000000000000000000000000000000000000000"
+  },
+  "timings_seconds": {
+    "boot_to_status": 5.007,
+    "key_delivery": 1.335,
+    "rto_measured": 9.618,
+    "transfer": 3.275
+  }
+}
