@@ -6239,7 +6239,8 @@ fn parse_l1_vault(raw: Option<String>) -> Result<[u8; 20], String> {
 }
 
 /// The ten default Anvil/Hardhat accounts (the public `test … junk` mnemonic). Their
-/// keys are published, so none of them may sign on a production deployment.
+/// keys are published, so none of them may sign on a production deployment — as the
+/// deposit-authorization signer, the oracle publisher or the enclave identity.
 const PUBLIC_DEV_ADDRESSES: [&str; 10] = [
     "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
     "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
@@ -6252,6 +6253,24 @@ const PUBLIC_DEV_ADDRESSES: [&str; 10] = [
     "0x23618e81e3f5cdf7f54c3d65f7fbc0abf5b21e8f",
     "0xa0ee7a142d267c1f36714e4a8f75612f20a79720",
 ];
+
+/// The 20-byte Ethereum address of a secp256k1 signing key: the last 20 bytes of the
+/// keccak256 of its uncompressed public key.
+fn eth_address(key: &k256::ecdsa::SigningKey) -> [u8; 20] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let point = key.verifying_key().to_encoded_point(false);
+    let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+    let mut a = [0u8; 20];
+    a.copy_from_slice(&hash[12..]);
+    a
+}
+
+/// Whether `key` belongs to one of the default Anvil accounts (`PUBLIC_DEV_ADDRESSES`).
+/// Value-based, so a published key is caught however it was supplied: presence in an
+/// environment variable is not secrecy.
+fn is_public_dev_signing_key(key: &k256::ecdsa::SigningKey) -> bool {
+    PUBLIC_DEV_ADDRESSES.contains(&hex0x(&eth_address(key)).as_str())
+}
 
 /// SEC-019 (Task 7b) demo/test default for the gateway deposit-authorization key. NEVER
 /// use it on a real deployment — the deployed `CollateralVault.gatewaySigner` must be the
@@ -6316,18 +6335,13 @@ impl GatewaySigner {
     /// default Anvil account — however it was supplied. Value-based, like the oracle
     /// signer check: presence in an environment variable is not secrecy.
     fn is_public_dev_key(&self) -> bool {
-        PUBLIC_DEV_ADDRESSES.contains(&hex0x(&self.address()).as_str())
+        is_public_dev_signing_key(&self.key)
     }
 
     /// The 20-byte Ethereum address of this signer — the value the deployed
     /// `CollateralVault.gatewaySigner` must equal for the on-chain gate to accept our sigs.
     fn address(&self) -> [u8; 20] {
-        use sha3::{Digest as _, Keccak256 as RawKeccak};
-        let point = self.key.verifying_key().to_encoded_point(false);
-        let hash = RawKeccak::digest(&point.as_bytes()[1..]);
-        let mut a = [0u8; 20];
-        a.copy_from_slice(&hash[12..]);
-        a
+        eth_address(&self.key)
     }
 
     /// The digest the contract recomputes and `ecrecover`s in `deposit(...)`:
@@ -8275,11 +8289,12 @@ fn attestation_ok_for_mode(prod: bool, attested: bool) -> bool {
 /// production enclave identity regardless of HOW it is supplied.
 const DEMO_ENCLAVE_SEED: [u8; 32] = [7u8; 32];
 
-/// Resolve the enclave seed and whether it is the public demo default. `Err` distinguishes a
-/// SET-but-malformed/invalid ENCLAVE_SEED (bad hex/length, or not a valid secp256k1 scalar)
-/// from an UNSET one — so a mistyped secret is reported clearly instead of silently becoming
-/// the demo constant (code-review follow-up). VALUE-based demo detection: the public constant
-/// counts as "default" even when supplied via ENCLAVE_SEED (audit DP-006 review follow-up).
+/// Resolve the enclave seed and whether it is PUBLIC (`enclave_seed_is_public`). `Err`
+/// distinguishes a SET-but-malformed/invalid ENCLAVE_SEED (bad hex/length, or not a valid
+/// secp256k1 scalar) from an UNSET one — so a mistyped secret is reported clearly instead of
+/// silently becoming the demo constant (code-review follow-up). VALUE-based detection: a
+/// public seed counts as public even when supplied via ENCLAVE_SEED (audit DP-006 review
+/// follow-up).
 fn enclave_seed_from_env() -> Result<([u8; 32], bool), String> {
     match std::env::var("ENCLAVE_SEED") {
         Err(_) => Ok((DEMO_ENCLAVE_SEED, true)), // unset → the demo build's default
@@ -8291,9 +8306,17 @@ fn enclave_seed_from_env() -> Result<([u8; 32], bool), String> {
                             (must be nonzero and below the curve order)"
                     .into());
             }
-            Ok((seed, seed == DEMO_ENCLAVE_SEED))
+            Ok((seed, enclave_seed_is_public(seed)))
         }
     }
+}
+
+/// Whether `seed` is a PUBLIC enclave signing seed: the demo constant, or the key of a
+/// default Anvil account. Either lets anyone sign as the enclave.
+fn enclave_seed_is_public(seed: [u8; 32]) -> bool {
+    seed == DEMO_ENCLAVE_SEED
+        || k256::ecdsa::SigningKey::from_bytes((&seed).into())
+            .is_ok_and(|key| is_public_dev_signing_key(&key))
 }
 
 /// Whether `seed` is a usable secp256k1 signing scalar (nonzero, below the curve order),
@@ -8304,20 +8327,28 @@ fn enclave_seed_is_valid(seed: [u8; 32]) -> bool {
 }
 
 /// Whether the gateway may boot given the enclave-seed provenance: production requires a
-/// secret seed, not the public demo default (audit DP-006 follow-up).
+/// secret seed, never a public one — the demo default or a default Anvil account key
+/// (audit DP-006 follow-up).
 fn enclave_seed_ok_for_mode(prod: bool, seed_is_secret: bool) -> bool {
     seed_is_secret || !prod
 }
 
 /// Whether the gateway may boot given the oracle-signer provenance: production requires a
-/// SECRET oracle-publisher key, not the public `oracle_feed::DEV_ORACLE_SIGNER_KEY`
-/// (well-known Anvil account #1, a PUBLISHED scalar). Booting prod on the dev default pins
-/// every `Market.oracle_pubkey` to a PUBLIC address — anyone could then sign fabricated
+/// SECRET oracle-publisher key, never a public development key — the
+/// `oracle_feed::DEV_ORACLE_SIGNER_KEY` default (Anvil account #1) or any other default
+/// Anvil account (`PUBLIC_DEV_ADDRESSES`). Booting prod on a public key pins every
+/// `Market.oracle_pubkey` to a PUBLIC address — anyone could then sign fabricated
 /// oracle transcripts that recover to it and clear the fail-closed §8 signature gate,
 /// re-opening the exact prover-price-fabrication hole ZK-001 closes. Mirrors
 /// `enclave_seed_ok_for_mode` (ZK-001 follow-up); the demo/dev build boots either way.
-fn oracle_signer_ok_for_mode(prod: bool, is_default: bool) -> bool {
-    !is_default || !prod
+fn oracle_signer_ok_for_mode(prod: bool, is_public: bool) -> bool {
+    !is_public || !prod
+}
+
+/// Whether the resolved oracle-publisher key is PUBLIC: the dev default taken because
+/// ORACLE_SIGNER_KEY is unset, or a default Anvil account key however it was supplied.
+fn oracle_signer_is_public(signer: &k256::ecdsa::SigningKey, is_default: bool) -> bool {
+    is_default || is_public_dev_signing_key(signer)
 }
 
 /// Whether the gateway may boot given the deposit-authorization signer provenance:
@@ -8848,7 +8879,7 @@ async fn main() {
     // audit DP-006 (+ review): resolve + validate the enclave seed BEFORE building the identity
     // in boot(), so a malformed/invalid ENCLAVE_SEED fails closed with a CLEAR message (not a
     // misleading "demo seed" one, and not a panic inside EnclaveIdentity::from_seed).
-    let (enclave_seed, seed_is_default) = match enclave_seed_from_env() {
+    let (enclave_seed, seed_is_public) = match enclave_seed_from_env() {
         Ok(x) => x,
         Err(e) => {
             eprintln!(
@@ -8858,11 +8889,12 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    if !enclave_seed_ok_for_mode(prod, !seed_is_default) {
+    if !enclave_seed_ok_for_mode(prod, !seed_is_public) {
         eprintln!(
-            "[enclave] REFUSING to start in production with the public demo signing seed. \
-             Set ENCLAVE_SEED to a secret 32-byte hex secp256k1 scalar, and set the settlement \
-             contract's ENCLAVE_SIGNER to that key's address."
+            "[enclave] REFUSING to start in production with a public signing seed (the demo \
+             default or a default Anvil account key). Set ENCLAVE_SEED to a secret 32-byte hex \
+             secp256k1 scalar, and set the settlement contract's ENCLAVE_SIGNER to that key's \
+             address."
         );
         std::process::exit(1);
     }
@@ -8872,10 +8904,11 @@ async fn main() {
     // refused BEFORE boot pins every Market.oracle_pubkey to the public dev address. Without
     // this, a prod gateway booted without ORACLE_SIGNER_KEY would trust a well-known scalar,
     // letting anyone sign fabricated oracle transcripts that clear the §8 gate (re-opening
-    // the price-fabrication hole ZK-001 closes). Explicitly setting the known public
-    // key is also refused; presence in an environment variable is not secrecy.
-    let oracle_signer_is_default = match oracle_feed::signer_from_env_checked() {
-        Ok((signer, is_default)) => is_default || oracle_feed::is_known_dev_signer(&signer),
+    // the price-fabrication hole ZK-001 closes). Explicitly setting the dev key or any
+    // other default Anvil key is also refused; presence in an environment variable is
+    // not secrecy.
+    let oracle_signer_is_public = match oracle_feed::signer_from_env_checked() {
+        Ok((signer, is_default)) => oracle_signer_is_public(&signer, is_default),
         Err(e) => {
             eprintln!(
                 "[oracle] REFUSING to start: {e}. Set ORACLE_SIGNER_KEY to a valid 32-byte hex \
@@ -8884,23 +8917,24 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    if !oracle_signer_ok_for_mode(prod, oracle_signer_is_default) {
+    if !oracle_signer_ok_for_mode(prod, oracle_signer_is_public) {
         eprintln!(
-            "[oracle] REFUSING to start: ORACLE_SIGNER_KEY must be set in production — refusing \
-             to boot with the public dev oracle key. Every Market.oracle_pubkey would be pinned \
-             to a well-known address, letting anyone sign fabricated oracle transcripts that \
-             clear the §8 signature gate. Set ORACLE_SIGNER_KEY to a secret 32-byte hex \
-             secp256k1 scalar and pin its address as each Market.oracle_pubkey."
+            "[oracle] REFUSING to start: ORACLE_SIGNER_KEY must be set in production to a \
+             secret key — refusing to boot with a public development key (the dev default or \
+             another default Anvil account). Every Market.oracle_pubkey would be pinned to a \
+             well-known address, letting anyone sign fabricated oracle transcripts that clear \
+             the §8 signature gate. Set ORACLE_SIGNER_KEY to a secret 32-byte hex secp256k1 \
+             scalar and pin its address as each Market.oracle_pubkey."
         );
         std::process::exit(1);
     }
-    if oracle_signer_is_default {
-        // non-prod only (prod exits above): the public dev oracle key is fine for the demo
+    if oracle_signer_is_public {
+        // non-prod only (prod exits above): a public dev oracle key is fine for the demo
         // build / tests, but must never sign on a real deployment (mirrors the enclave-seed
         // posture and the DEV_INSECURE WARN).
         eprintln!(
-            "WARN gateway: oracle publisher signer is the PUBLIC dev default (ORACLE_SIGNER_KEY \
-             unset) — demo/test only, never production"
+            "WARN gateway: oracle publisher signer is a PUBLIC development key — demo/test \
+             only, never production"
         );
     }
     // SEC-019 (Task 7b): load the deposit-authorization signer. A SET-but-malformed
@@ -13365,6 +13399,21 @@ mod tests {
         );
     }
 
+    // The private keys of the ten default Anvil accounts, in `PUBLIC_DEV_ADDRESSES` order
+    // (`cast wallet private-key --mnemonic "test … junk" --mnemonic-index i`).
+    const ANVIL_DEV_KEYS: [&str; 10] = [
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+        "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+        "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+        "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+        "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+        "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+        "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+        "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
+    ];
+
     // Production must refuse every public development key as the deposit-authorization
     // signer: the demo default (Anvil #0, unset GATEWAY_SIGNER_KEY) and the other
     // default Anvil accounts, however they are supplied.
@@ -13380,19 +13429,75 @@ mod tests {
             hex0x(&signer(DEMO_GATEWAY_SIGNER_KEY).address()),
             PUBLIC_DEV_ADDRESSES[0]
         );
-        // Anvil #1 (also the public dev oracle key) and #9 are public too.
-        for key in [
-            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-            "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
-        ] {
-            assert!(
-                signer(parse_hex32(key).unwrap()).is_public_dev_key(),
-                "{key}"
-            );
+        for (key, address) in ANVIL_DEV_KEYS.iter().zip(PUBLIC_DEV_ADDRESSES) {
+            let gs = signer(parse_hex32(key).unwrap());
+            assert_eq!(hex0x(&gs.address()), address);
+            assert!(gs.is_public_dev_key(), "{key}");
         }
         let mut other = DEMO_GATEWAY_SIGNER_KEY;
         other[31] ^= 1;
         assert!(!signer(other).is_public_dev_key());
+    }
+
+    // The oracle publisher key is held to the same rule: the dev default (Anvil #1) and
+    // every other default Anvil account is public, so production refuses it even when
+    // ORACLE_SIGNER_KEY sets it explicitly. Checked against the address the oracle's
+    // signatures actually recover to, which is what each Market.oracle_pubkey pins.
+    #[test]
+    fn production_refuses_every_public_oracle_signer() {
+        let key = |hex: &str| k256::ecdsa::SigningKey::from_slice(&parse_hex32(hex).unwrap());
+        for (hex, address) in ANVIL_DEV_KEYS.iter().zip(PUBLIC_DEV_ADDRESSES) {
+            let signer = key(hex).unwrap();
+            assert_eq!(hex0x(&oracle_feed::signer_address(&signer)), address);
+            // explicitly configured, so not the unset default — still public
+            assert!(oracle_signer_is_public(&signer, false), "{hex}");
+            assert!(!oracle_signer_ok_for_mode(
+                true,
+                oracle_signer_is_public(&signer, false)
+            ));
+        }
+        let mut other = parse_hex32(ANVIL_DEV_KEYS[1]).unwrap();
+        other[31] ^= 1;
+        let other = key(&hex0x(&other)).unwrap();
+        assert!(!oracle_signer_is_public(&other, false));
+        assert!(oracle_signer_is_public(&other, true));
+        assert!(oracle_signer_ok_for_mode(
+            true,
+            oracle_signer_is_public(&other, false)
+        ));
+    }
+
+    // The enclave seed too: besides the demo constant, a default Anvil account key is a
+    // public seed, and the enclave identity it yields recovers to that public address.
+    #[test]
+    fn production_refuses_every_public_enclave_seed() {
+        assert!(enclave_seed_is_public(DEMO_ENCLAVE_SEED));
+        assert!(!enclave_seed_ok_for_mode(
+            true,
+            !enclave_seed_is_public(DEMO_ENCLAVE_SEED)
+        ));
+        for (hex, address) in ANVIL_DEV_KEYS.iter().zip(PUBLIC_DEV_ADDRESSES) {
+            let seed = parse_hex32(hex).unwrap();
+            assert!(enclave_seed_is_valid(seed));
+            assert_eq!(
+                hex0x(&EnclaveIdentity::from_seed(seed, 1, [0u8; 32]).eth_address()),
+                address
+            );
+            assert!(enclave_seed_is_public(seed), "{hex}");
+            assert!(!enclave_seed_ok_for_mode(
+                true,
+                !enclave_seed_is_public(seed)
+            ));
+        }
+        let mut other = DEMO_ENCLAVE_SEED;
+        other[31] ^= 1;
+        assert!(!enclave_seed_is_public(other));
+        assert!(enclave_seed_ok_for_mode(
+            true,
+            !enclave_seed_is_public(other)
+        ));
+        // Not a valid scalar: not public, and rejected earlier by enclave_seed_is_valid.
+        assert!(!enclave_seed_is_public([0u8; 32]));
     }
 
     // audit DP-006 review follow-up: a malformed ENCLAVE_SEED must be rejected cleanly, and
