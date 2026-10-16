@@ -4,8 +4,17 @@ import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { WithdrawalEntry } from "../domain/types";
 import { validateWithdrawal } from "../domain/withdrawal";
+import {
+  buildClaimBundle,
+  claimBundleFileName,
+  loadClaimBundles,
+  rememberClaimBundles,
+  serializeClaimBundles,
+  type ClaimBundle,
+} from "../domain/claimBundle";
 import type { DarkPerpClient } from "../api/client";
 import {
+  BASE_SEPOLIA_CHAIN_ID,
   EXPLORER_TX,
   connect,
   encodeClaim,
@@ -419,6 +428,21 @@ export function buildClaimCommand(w: WithdrawalEntry, vault: string): string {
   ].join(" ");
 }
 
+const CLAIM_CHAIN_ID = Number.parseInt(BASE_SEPOLIA_CHAIN_ID, 16);
+
+/// Hand the user a local file; nothing leaves the browser.
+function downloadText(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 /// One claim tx's lifecycle, keyed by the withdrawal nonce.
 interface ClaimTxState {
   status: "pending" | "done" | "error";
@@ -438,6 +462,21 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
   const [copiedNonce, setCopiedNonce] = useState<number | null>(null);
   const wallet = useWalletAddress();
   const [claims, setClaims] = useState<Record<number, ClaimTxState>>({});
+  const [savedBundles, setSavedBundles] = useState<ClaimBundle[]>(() => loadClaimBundles());
+
+  // Keep every claimable entry's bundle in this browser as soon as it is
+  // seen, so the claim data survives the operator going away.
+  useEffect(() => {
+    if (!data) return;
+    const fresh = data.withdrawals.flatMap((w) => {
+      try {
+        return [buildClaimBundle(w, data.vault, CLAIM_CHAIN_ID)];
+      } catch {
+        return []; // not claimable yet, or invalid claim data
+      }
+    });
+    if (fresh.length > 0 && rememberClaimBundles(fresh)) setSavedBundles(loadClaimBundles());
+  }, [data]);
 
   useEffect(() => {
     let alive = true;
@@ -464,6 +503,15 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
       setCopiedNonce(w.nonce);
       setTimeout(() => setCopiedNonce((n) => (n === w.nonce ? null : n)), 2000);
     } catch { /* clipboard unavailable (permissions) — the button simply stays */ }
+  }
+
+  function downloadBundle(w: WithdrawalEntry) {
+    const bundle = buildClaimBundle(w, data!.vault, CLAIM_CHAIN_ID);
+    downloadText(claimBundleFileName(bundle), serializeClaimBundles([bundle]));
+  }
+
+  function exportAll() {
+    downloadText(`arcora-claims-${CLAIM_CHAIN_ID}.json`, serializeClaimBundles(savedBundles));
   }
 
   /// Send the on-chain `claim` directly from the connected wallet. The vault
@@ -520,6 +568,9 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
                 <button type="button" className="btn btn--ghost" onClick={() => copy(w)}>
                   {copiedNonce === w.nonce ? "Copied" : "Copy claim command"}
                 </button>
+                <button type="button" className="btn btn--ghost" onClick={() => downloadBundle(w)}>
+                  Download claim file
+                </button>
               </div>
             )}
             {claim?.hash && (
@@ -543,6 +594,16 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
         funded wallet (replace <code>&lt;YOUR_KEY&gt;</code> — anyone can send the
         claim; funds always go to the withdrawal address).
       </p>
+      <p className="muted small">
+        Each claimable withdrawal is also kept in this browser as a claim file. Keep a
+        downloaded copy: it lets you claim without the operator, checked with{" "}
+        <code>scripts/claim/claim_withdrawal.py</code>.
+      </p>
+      {savedBundles.length > 0 && (
+        <button type="button" className="btn btn--ghost" onClick={exportAll}>
+          Export all claim files ({savedBundles.length})
+        </button>
+      )}
     </div>
   );
 }
