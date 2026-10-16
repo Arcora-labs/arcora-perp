@@ -1,0 +1,23 @@
+# One redacted one-shot ops event; %i is the event name (see ops_notify.py).
+# Triggered by OnFailure= of the gateway, backup and monitor units.
+[Unit]
+Description=Arcora ops notification (%i)
+
+[Service]
+Type=oneshot
+User=darkperp-ops
+Group=darkperp-ops
+EnvironmentFile=-/etc/darkperp/ops.env
+ExecStart=/usr/local/lib/darkperp-ops/ops_notify.py --event %i --state-file /var/lib/darkperp-ops/notify.json
+StateDirectory=darkperp-ops
+StateDirectoryMode=0700
+TimeoutStartSec=60
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+UMask=0077

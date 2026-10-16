@@ -19,9 +19,18 @@ struct Collector {
     url: String,
     events: Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     status: Arc<AtomicU16>,
+    /// Requests still to be answered 503 before `status` applies.
+    reject_first: Arc<AtomicUsize>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
+
+/// Same attempt bound as production with millisecond backoff, so retry tests
+/// exercise the real worker loop without slowing the suite.
+const FAST_RETRY: RetryPolicy = RetryPolicy {
+    attempts: DELIVERY_RETRY.attempts,
+    backoff: Duration::from_millis(5),
+};
 impl Collector {
     fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -33,6 +42,8 @@ impl Collector {
         let stopped = stop.clone();
         let status = Arc::new(AtomicU16::new(204));
         let response = status.clone();
+        let reject_first = Arc::new(AtomicUsize::new(0));
+        let rejecting = reject_first.clone();
         let worker = std::thread::spawn(move || {
             while !stopped.load(Ordering::SeqCst) {
                 match listener.accept() {
@@ -51,7 +62,18 @@ impl Collector {
                         let body = read_body(&mut socket);
                         let event: serde_json::Value = serde_json::from_slice(&body).unwrap();
                         output.lock().unwrap().push(event);
-                        let status = response.load(Ordering::SeqCst);
+                        // Only this collector thread decrements; tests set the
+                        // count before any alert is raised.
+                        let remaining = rejecting.load(Ordering::SeqCst);
+                        let rejected = remaining > 0;
+                        if rejected {
+                            rejecting.store(remaining - 1, Ordering::SeqCst);
+                        }
+                        let status = if rejected {
+                            503
+                        } else {
+                            response.load(Ordering::SeqCst)
+                        };
                         write!(socket, "HTTP/1.1 {status} Test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -65,12 +87,13 @@ impl Collector {
             url,
             events,
             status,
+            reject_first,
             stop,
             worker: Some(worker),
         }
     }
     fn dispatcher(&self) -> OpsAlerts {
-        OpsAlerts::configured(Some(&self.url), None).unwrap()
+        OpsAlerts::configured_with(Some(&self.url), None, FAST_RETRY).unwrap()
     }
     fn observed(&self, alerts: &OpsAlerts) -> Vec<serde_json::Value> {
         alerts.flush();
@@ -346,10 +369,52 @@ async fn collector_rejection_never_makes_failed_persistence_succeed() {
             .await
         );
     }
+    // One episode; a rejecting collector receives the same redacted body once
+    // per bounded attempt and the failure stays failed.
     let events = collector.observed(&alerts);
-    assert_eq!(events.len(), 1);
-    check_event(&events[0], "persistence_failed", "active", 1);
+    assert_eq!(events.len(), DELIVERY_RETRY.attempts as usize);
+    for event in &events {
+        check_event(event, "persistence_failed", "active", 1);
+    }
     evidence("collector-503-retains-failure", &events);
+}
+
+#[test]
+fn rejected_delivery_stops_at_the_attempt_bound() {
+    let collector = Collector::start();
+    collector.status.store(503, Ordering::SeqCst);
+    let alerts = collector.dispatcher();
+    alerts.activate(AlertKind::SettlementHeld);
+    let events = collector.observed(&alerts);
+    assert_eq!(events.len(), DELIVERY_RETRY.attempts as usize);
+    for event in &events {
+        check_event(event, "settlement_held", "active", 1);
+    }
+}
+
+#[test]
+fn delivery_retries_a_transient_rejection_then_stops() {
+    let collector = Collector::start();
+    collector.reject_first.store(1, Ordering::SeqCst);
+    let alerts = collector.dispatcher();
+    alerts.activate(AlertKind::DepositHalted);
+    let events = collector.observed(&alerts);
+    assert_eq!(events.len(), 2, "one rejected attempt, one accepted retry");
+    for event in &events {
+        check_event(event, "deposit_halted", "active", 1);
+    }
+}
+
+#[test]
+fn production_retry_is_bounded() {
+    assert_eq!(DELIVERY_RETRY.attempts, 3);
+    // Worst case per event: every attempt hits curl's 2 s max-time, plus the
+    // doubling backoff between attempts. One stuck event must not hold the
+    // single worker (32-slot queue) for long.
+    let backoff: Duration = (0..DELIVERY_RETRY.attempts - 1)
+        .map(|i| DELIVERY_RETRY.backoff * 2u32.pow(i))
+        .sum();
+    assert!(backoff + Duration::from_secs(2) * DELIVERY_RETRY.attempts <= Duration::from_secs(10));
 }
 
 #[test]

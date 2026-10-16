@@ -1,0 +1,20 @@
+# Reverse proxy for the gateway on 127.0.0.1:8080. Replace the host name.
+# WebSocket upgrades (/ws, /v1/ws) pass through reverse_proxy unchanged.
+perp-api.example.com {
+	request_body {
+		# Keep at or above GATEWAY_HTTP_MAX_BODY_BYTES (default 2 MiB); the
+		# gateway enforces its own limit and timeout behind this one.
+		max_size 2MiB
+	}
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 30s
+		}
+	}
+	header {
+		-Server
+		Strict-Transport-Security "max-age=63072000"
+		X-Content-Type-Options nosniff
+	}
+}

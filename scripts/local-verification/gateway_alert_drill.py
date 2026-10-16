@@ -14,7 +14,8 @@ EXPECTED_CASES = {
     "held-recovery-rearm": 3,
     "filesystem-failure-recovery-rearm": 3,
     "durable-deposit-halt": 1,
-    "collector-503-retains-failure": 1,
+    # One episode, redelivered once per bounded attempt (ops_alerts DELIVERY_RETRY).
+    "collector-503-retains-failure": 3,
 }
 
 
@@ -51,7 +52,7 @@ def main():
             events_valid = events_valid and event.get("schema") == "arcora.ops-alert.v1"
     passed = (
         exit_code == 0 and not timed_out and source_unchanged and events_valid
-        and len(summaries) == 1 and summaries[0][:5] == ("ok", "6", "0", "0", "0")
+        and len(summaries) == 1 and summaries[0][:5] == ("ok", "9", "0", "0", "0")
     )
     record = {
         "status": "PASS" if passed else "FAIL",
@@ -65,7 +66,7 @@ def main():
             "Controlled local event sources and real loopback HTTP delivery, not live-chain or operator delivery.",
             "Persistence scope is actual snapshot/final-snapshot writes, not every missing writer, ACK timeout, or journal failure.",
             "Deposit halt is terminal until separately reconciled; no automatic recovery or rearm is invented.",
-            "Best effort bounded delivery; local structured log retained when collector rejects or times out.",
+            "Best effort bounded delivery with three attempts per event; local structured log retained when every attempt is rejected or times out.",
         ],
     }
     (output / "result.json").write_text(json.dumps(record, indent=2) + "\n")

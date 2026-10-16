@@ -1,0 +1,25 @@
+# Consistent snapshot/journal backup of the running gateway (gateway_backup.py).
+# Optional offsite copy: DARKPERP_BACKUP_OFFSITE and RSYNC_RSH in /etc/darkperp/ops.env.
+[Unit]
+Description=Arcora gateway state backup
+After=darkperp-gateway.service
+OnFailure=darkperp-notify@backup_failed.service
+
+[Service]
+Type=oneshot
+# Same user as the gateway: the state directory is 0700.
+User=darkperp
+Group=darkperp
+EnvironmentFile=-/etc/darkperp/ops.env
+ExecStart=/usr/local/lib/darkperp-ops/gateway_backup.py --state /var/lib/darkperp/state.snap --dest /var/lib/darkperp-backups --keep 96
+StateDirectory=darkperp-backups
+StateDirectoryMode=0700
+TimeoutStartSec=600
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+CapabilityBoundingSet=
+UMask=0077

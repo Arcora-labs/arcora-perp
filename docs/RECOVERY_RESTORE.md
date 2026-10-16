@@ -146,9 +146,9 @@ parent dizinler ve servis ayarları yine güvenilen operatör sınırındadır.
 
 Snapshot/journal kopyası alınırken yazıcıların durdurulması veya koordineli bir
 checkpoint alınması gerekir. İki ayrı hash birbirleriyle semantik uyumu ya da
-son zincir durumunu kendiliğinden kanıtlamaz. Bu değişiklik canlı backup alma,
-ikili dosyanın atomik kopyalanması, rollback korumalı uzaktan imza veya key release
-servisi kurmaz.
+son zincir durumunu kendiliğinden kanıtlamaz. Çalışan gateway'i durdurmadan
+koordineli çift almak için aşağıdaki [canlı yedek](#canlı-yedek-ve-başka-makinede-restore)
+aracını kullanın. Rollback korumalı uzaktan imza veya key release servisi yoktur.
 
 **Cursor yerleşimi:** deposit domain, tüketilen count/tip, receipt ledger ve
 finalized anchor snapshot içindedir; ayrıca taşınacak bir deposit-cursor dosyası
@@ -169,3 +169,82 @@ yeni oluşturulmuş test hesaplarından üretilmiştir. Bilinen açık test seed
 aynı baytları gerçek decoder/recovery fonksiyonlarıyla açar. Bu, fixture ve
 kurtarma mantığının platformlar arası testidir; canlı production servisi, RPC,
 attestation, anahtar temini ve gerçek fonların başka makineye taşınması değildir.
+
+## Canlı yedek ve başka makinede restore
+
+[`scripts/ops/gateway_backup.py`](../scripts/ops/gateway_backup.py), çalışan
+gateway'i durdurmadan snapshot ve `.rollback` journal çiftini kopyalar.
+[`deploy/`](../deploy/README.md) altındaki timer bunu 30 dakikada bir çalıştırır.
+
+**Tutarlılık gerekçesi.** Gateway iki dosyayı da yalnız atomik `rename` ile
+değiştirir (`snapshot.rs` `write_atomic`). Araç her dosyanın
+`(dev, inode, boyut, mtime_ns)` kimliğini kopyadan önce ve sonra okur. İkisi de
+değişmediyse iki kopya diskte aynı anda var olmuştur. Bu çift, gateway o anda
+çökseydi diskte kalacak çiftle aynıdır ve boot kurtarma tablosu (Stale,
+SealNeverPersisted, RollBack, RollForward, Hold) tam olarak bu durumlar için
+vardır. Kimlik değiştiyse deneme silinir ve yeniden denenir; varsayılan en
+fazla 5 deneme yapılır. Candidate arşiv modu (`<state>.chainlink`) kapsanmaz,
+eksik yedek üretmek yerine reddedilir.
+
+**Checkpoint kaydı.** Her yedek dizini `manifest.json` taşır. İçindeki
+`restore_env` alanında `DARKPERP_REQUIRE_RESTORE=1`, `DARKPERP_RESTORE_SHA256`
+ve `DARKPERP_RESTORE_JOURNAL` (hash veya `absent`) bulunur. Bu değerler kopyalanan
+baytlardan yedek anında hesaplanır. Yukarıdaki kural geçerlidir: restore sırasında
+hash hedef dosyadan yeniden hesaplanmaz, manifest'ten alınır. Manifest'in
+korunması için yedeği başka bir makineye kopyalayın
+(`DARKPERP_BACKUP_OFFSITE`).
+
+**Yedekle taşınmayanlar.** Snapshot ve journal `ENCLAVE_SEED` altında
+şifrelidir. Anahtarlar yedekte bulunmaz ve ayrı, güvenli bir kanalla taşınmalıdır:
+- `ENCLAVE_SEED`
+- `L1_SEQUENCER_KEY`
+- `GATEWAY_SIGNER_KEY`
+- `ORACLE_SIGNER_KEY` (genesis sonrası değişirse oracle kesintisi olur)
+- `FIN_ADMIN_KEY`
+- `PROVER_SEAL_ROOT`
+
+Bunlara ek olarak L1 adresleri ve attestation paketi de ayrıca taşınır.
+
+### Restore adımları
+
+1. **Eski hostu durdurun ve kapalı tutun.** İki aktif gateway aynı sequencer
+   anahtarıyla settle göndermemelidir. Split-brain'i önleyen otomatik bir
+   fencing mekanizması yoktur.
+2. Yeni makinede [deploy kurulumunu](../deploy/README.md) yapın. Gateway'i
+   henüz başlatmayın.
+3. En yeni yedeğin `state.snap` (ve varsa `state.snap.rollback`) dosyasını
+   `/var/lib/darkperp/` altına kopyalayın. Sahip `darkperp`, mod `0600` olmalı.
+4. Manifest'teki `restore_env` değerlerini `/etc/darkperp/gateway.env`'e yazın,
+   anahtarları ayrı kanaldan ekleyin ve servisi başlatın.
+5. `/api/state` ile durumu doğrulayın.
+6. Başarılı açılıştan sonra `DARKPERP_RESTORE_*` satırlarını kaldırın.
+   Snapshot yazıcısı dosyayı yeni nonce ile yeniden şifreler; eski pin bir
+   sonraki açılışı haklı olarak durdurur.
+
+L1 modunda boot, snapshot'ın settle edilmiş root'unun zincirdeki finalized
+`currentStateRoot` ile birebir eşleşmesini ister (`main.rs` boot continuity).
+Son finalized settle'dan eski bir yedek reddedilir; tek istisna, journal'da
+ileri sarılabilecek tek penceredir. Bu yüzden en yeni yedek seçilir. Settle'dan
+hemen sonra alınmış bir yedek, o settle finalize olana kadar reddedilebilir.
+
+### RTO ve RPO nasıl ölçülür
+
+- **RTO:** Restore kararından, yeni hostta `/api/state`'in beklenen
+  `settlement_health` ile yanıt verdiği ana kadar geçen süre. Adım adım
+  kaydedilir: makine hazırlığı, yedek indirme, anahtar teslimi, boot doğrulaması.
+  Yukarıdaki `copy_to_verified_state_seconds` bunun yalnız son adımıdır.
+- **RPO:** Kayıp penceresi, son yedekten (timer 30 dakika) arıza anına kadar
+  geçen süredir. Canlı hostun kendi kaybı, snapshot aralığıyla (30 s) sınırlıdır.
+  Yalnız şu onaylar diske yazıldıktan sonra verilir:
+  - deposit yetkilendirme/rota,
+  - hesap kurtarma,
+  - iptal,
+  - wind-down.
+
+  Emirler ve withdrawal istekleri ise diske yazılmadan onaylanır; son
+  snapshot'tan sonraki onaylar kaybolabilir.
+
+Hedef RTO/RPO değerleri henüz belirlenmedi. Gerçek değerler, başka makinedeki
+bir tatbikatla ölçülüp burada ayrıca kaydedilmelidir. L1 ve pending tx
+uzlaşması L1 modu gerektirir; bu nedenle prover ve attestation kapılarına
+bağlıdır.
