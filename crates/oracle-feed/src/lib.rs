@@ -74,15 +74,6 @@ fn signer_from_value(
     Ok((signer, is_default))
 }
 
-/// Detect the known public demonstration publisher even if explicitly configured.
-/// This does not establish secrecy or compromise status of any other key.
-pub fn is_known_dev_signer(signer: &SigningKey) -> bool {
-    signer.verifying_key()
-        == SigningKey::from_slice(&DEV_ORACLE_SIGNER_KEY)
-            .expect("valid public fixture scalar")
-            .verifying_key()
-}
-
 /// Load the oracle-publisher signing key from the environment (mirrors SEC-019's
 /// `GatewaySigner::from_env`): `ORACLE_SIGNER_KEY` is a `0x`-optional 32-byte hex
 /// secp256k1 scalar. Unset ⇒ the documented [`DEV_ORACLE_SIGNER_KEY`] (fine for the
@@ -447,17 +438,15 @@ mod tests {
     #[test]
     fn signer_configuration_only_falls_back_when_truly_absent() {
         use std::env::VarError;
+        let dev = SigningKey::from_slice(&DEV_ORACLE_SIGNER_KEY).unwrap();
         let (default, used_default) = signer_from_value(Err(VarError::NotPresent)).unwrap();
-        assert!(used_default && is_known_dev_signer(&default));
+        assert!(used_default && default.verifying_key() == dev.verifying_key());
         let configured: String = DEV_ORACLE_SIGNER_KEY
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
         let (explicit, used_default) = signer_from_value(Ok(configured)).unwrap();
-        assert!(!used_default && is_known_dev_signer(&explicit));
-        assert!(!is_known_dev_signer(
-            &SigningKey::from_slice(&[0x33; 32]).unwrap()
-        ));
+        assert!(!used_default && explicit.verifying_key() == dev.verifying_key());
         for bad in [
             "private-sentinel".to_string(),
             "00".repeat(32),
