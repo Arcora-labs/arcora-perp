@@ -166,4 +166,59 @@ mod tests {
             }
         }
     }
+
+    /// The operator-free claim tool (scripts/claim/claim_withdrawal.py) rebuilds
+    /// leaves, roots and proofs in pure Python. Its shared vectors must equal what
+    /// perp-core builds, so a bundle the tool accepts is one the vault accepts.
+    #[test]
+    fn claim_tool_vectors_match_rust_tree() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../scripts/claim/fixtures/withdrawal-vectors.json"
+        ))
+        .unwrap();
+        let hex = |d: &[u8; 32]| {
+            format!(
+                "0x{}",
+                d.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            )
+        };
+        let trees = vectors["trees"].as_array().unwrap();
+        assert!(trees.len() >= 4);
+        for tree in trees {
+            let leaves: Vec<[u8; 32]> = tree["withdrawals"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|w| {
+                    let addr = w["to"].as_str().unwrap().strip_prefix("0x").unwrap();
+                    let mut to = [0u8; 20];
+                    for (i, slot) in to.iter_mut().enumerate() {
+                        *slot = u8::from_str_radix(&addr[i * 2..i * 2 + 2], 16).unwrap();
+                    }
+                    let amount: u128 = w["amount"].as_str().unwrap().parse().unwrap();
+                    withdrawal_leaf(&to, amount, w["nonce"].as_u64().unwrap())
+                })
+                .collect();
+            let expected_leaves: Vec<&str> = tree["leaves"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap())
+                .collect();
+            assert_eq!(leaves.iter().map(hex).collect::<Vec<_>>(), expected_leaves);
+            let root = merkle_root(&leaves);
+            assert_eq!(root, h(tree["root"].as_str().unwrap()));
+            for (i, leaf) in leaves.iter().enumerate() {
+                let proof = merkle_proof(&leaves, i);
+                let expected: Vec<[u8; 32]> = tree["proofs"][i]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|p| h(p.as_str().unwrap()))
+                    .collect();
+                assert_eq!(proof, expected, "tree of {} leaf {i}", leaves.len());
+                assert!(verify(root, *leaf, &proof));
+            }
+        }
+    }
 }
