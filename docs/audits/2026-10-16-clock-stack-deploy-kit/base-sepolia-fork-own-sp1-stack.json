@@ -1,0 +1,388 @@
+{
+  "deploy_exit": 0,
+  "deployment": {
+    "chain_id": 84532,
+    "genesis_root": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+    "rpc_client": "anvil/v1.7.2",
+    "transactions": [
+      {
+        "block": "0x2df5fb9",
+        "hash": "0x94d440b8597d834587fc791656e76a06b4851aa9c6659689c69a5b61ae0a8019",
+        "step": "sp1_verifier"
+      },
+      {
+        "block": "0x2df5fba",
+        "hash": "0x09b3ba42f13a37ec388429e6f740717c3628c316143ebb609039a25d4bd6be03",
+        "step": "sp1_gateway"
+      },
+      {
+        "block": "0x2df5fbb",
+        "hash": "0x96c2436f3b2bf69e234e6edb7f3292586f2ae2261d91ed7f6f2d751dbcec2dac",
+        "step": "sp1_gateway.addRoute"
+      },
+      {
+        "block": "0x2df5fbc",
+        "hash": "0xb6e0d659d31c5e1ac8260651527002f27f68fc306ef40f533931ae929eefa527",
+        "step": "sp1_adapter"
+      },
+      {
+        "block": "0x2df5fbd",
+        "hash": "0x250ba2b6b8ea9c6d0a2c6768c7ec19d2ab8a548eea6f2647a13cfd5e1520648a",
+        "step": "clock_verifier"
+      },
+      {
+        "block": "0x2df5fbe",
+        "hash": "0x1182d7aec7804fc37661d38f72badee3586262adee7b258f9b64bbc7a00b1fa0",
+        "step": "settlement"
+      },
+      {
+        "block": "0x2df5fbf",
+        "hash": "0xe45d5cd8856777d0433ef3870ebd6fdbf068f96b70369dee2e618768ff45f0d5",
+        "step": "token"
+      },
+      {
+        "block": "0x2df5fc0",
+        "hash": "0x3da1254117e3ce820ee2458df4112d7837d9505c6635bb567f8f36ae59a5565d",
+        "step": "vault"
+      },
+      {
+        "block": "0x2df5fc1",
+        "hash": "0xc0d07d9203d6450552673cd9eb071ecbe481c95e67ecdf1db5fb533bab5605ba",
+        "step": "settlement.setVault"
+      },
+      {
+        "block": "0x2df5fc2",
+        "hash": "0xaa228de464f952a5194a3b91429286421fd5d879963542ae3b93a7723bb2ffd9",
+        "step": "clock_verifier.bindSettlement"
+      }
+    ]
+  },
+  "observed": {
+    "bindings": [
+      {
+        "contract": "settlement",
+        "expected": "0x145ea184903401d6f313a0d589fe7624b69505c0",
+        "getter": "verifier()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0x357bcedacbb4a7bdca0dc31995423b408febe610",
+        "getter": "vault()",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "expected": "0x62e3f503bf5497e6422348dccfc1ad70e764ec71",
+        "getter": "settlement()",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "expected": "0x4e9f597f791a46d4df4e1661aa7af1b465fad43f",
+        "getter": "token()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": "0x62e3f503bf5497e6422348dccfc1ad70e764ec71",
+        "getter": "settlement()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": "0x94007b4c34b67cef814ee2533ef01809a85669b6",
+        "getter": "innerVerifier()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "expected": "0x96160571138e7871675821e7023c345ea6b9dd71",
+        "getter": "gateway()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "expected": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+        "getter": "programVKey()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": 30000,
+        "getter": "maxWindowMs()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": 10000,
+        "getter": "clockSkewMs()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": 2,
+        "getter": "proofVersion()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_verifier",
+        "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+        "getter": "VERIFIER_HASH()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "sequencer()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "getter": "enclaveSigner()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "governance()",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "expected": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+        "getter": "gatewaySigner()",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "configurator()",
+        "matches": true
+      },
+      {
+        "contract": "sp1_gateway",
+        "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "getter": "owner()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 100,
+        "getter": "livenessTimeoutBlocks()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 50,
+        "getter": "challengeWindowBlocks()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 1000,
+        "getter": "challengeBond()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 600,
+        "getter": "inclusionDeadlineSecs()",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "expected": 10,
+        "getter": "finalSettleGraceBlocks()",
+        "matches": true
+      }
+    ],
+    "block_hash": "0x10551002567cf8e1b9a90ec2c66198b50337dfe64ef7803677ca83dd13d096aa",
+    "block_number": 48193538,
+    "chain_id": 84532,
+    "contracts": {
+      "clock_verifier": {
+        "address": "0x145ea184903401d6f313a0d589fe7624b69505c0",
+        "getters": {
+          "clockSkewMs()": 10000,
+          "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "innerVerifier()": "0x94007b4c34b67cef814ee2533ef01809a85669b6",
+          "maxWindowMs()": 30000,
+          "proofVersion()": 2,
+          "settlement()": "0x62e3f503bf5497e6422348dccfc1ad70e764ec71"
+        },
+        "immutable_words_by_compiler_id": {
+          "1605": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "1608": "0x00000000000000000000000094007b4c34b67cef814ee2533ef01809a85669b6",
+          "1610": "0x0000000000000000000000000000000000000000000000000000000000007530",
+          "1612": "0x0000000000000000000000000000000000000000000000000000000000002710"
+        },
+        "runtime_bytes": 5498,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "c99fd4be83fd0aa4b44d7ebcb40abea0d45190426c9c2038b25a529064ec45ac"
+      },
+      "settlement": {
+        "address": "0x62e3f503bf5497e6422348dccfc1ad70e764ec71",
+        "getters": {
+          "challengeBond()": 1000,
+          "challengeWindowBlocks()": 50,
+          "enclaveSigner()": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "finalSettleGraceBlocks()": 10,
+          "governance()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "inclusionDeadlineSecs()": 600,
+          "livenessTimeoutBlocks()": 100,
+          "sequencer()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "vault()": "0x357bcedacbb4a7bdca0dc31995423b408febe610",
+          "verifier()": "0x145ea184903401d6f313a0d589fe7624b69505c0"
+        },
+        "immutable_words_by_compiler_id": {
+          "2856": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "2859": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "2862": "0x000000000000000000000000145ea184903401d6f313a0d589fe7624b69505c0",
+          "2880": "0x0000000000000000000000000000000000000000000000000000000000000064",
+          "2882": "0x0000000000000000000000000000000000000000000000000000000000000032",
+          "2885": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+          "2888": "0x0000000000000000000000000000000000000000000000000000000000000258",
+          "2897": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "2900": "0x000000000000000000000000000000000000000000000000000000000000000a"
+        },
+        "runtime_bytes": 11146,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "27fc7819fc4461507037094d8b0571f51037b7ded25e9e7c9ffddcfec3fa5362"
+      },
+      "sp1_adapter": {
+        "address": "0x94007b4c34b67cef814ee2533ef01809a85669b6",
+        "getters": {
+          "gateway()": "0x96160571138e7871675821e7023c345ea6b9dd71",
+          "programVKey()": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+        },
+        "immutable_words_by_compiler_id": {
+          "4542": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+          "4545": "0x00000000000000000000000096160571138e7871675821e7023c345ea6b9dd71"
+        },
+        "runtime_bytes": 734,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "a6b4cb32df06ef74ab715b01e0c5566b261557e47c01c957662abcd0ed5c2151"
+      },
+      "sp1_gateway": {
+        "address": "0x96160571138e7871675821e7023c345ea6b9dd71",
+        "getters": {
+          "owner()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        },
+        "immutable_words_by_compiler_id": {},
+        "runtime_bytes": 1931,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+      },
+      "sp1_verifier": {
+        "address": "0x3f163edce54059cb3e6ac6d2045ca913650ea5c9",
+        "getters": {
+          "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+        },
+        "immutable_words_by_compiler_id": {},
+        "runtime_bytes": 6741,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+      },
+      "vault": {
+        "address": "0x357bcedacbb4a7bdca0dc31995423b408febe610",
+        "getters": {
+          "gatewaySigner()": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+          "settlement()": "0x62e3f503bf5497e6422348dccfc1ad70e764ec71",
+          "token()": "0x4e9f597f791a46d4df4e1661aa7af1b465fad43f"
+        },
+        "immutable_words_by_compiler_id": {
+          "2288": "0x00000000000000000000000062e3f503bf5497e6422348dccfc1ad70e764ec71",
+          "2292": "0x0000000000000000000000004e9f597f791a46d4df4e1661aa7af1b465fad43f"
+        },
+        "runtime_bytes": 3257,
+        "runtime_matches_compiler_template": true,
+        "runtime_sha256": "27b705d0b5d53f3fc45b3397e80630cd1c8e2cf1784c85a79e2ad4ff502b7429"
+      }
+    },
+    "limitations": [
+      "RPC responses are trusted; no light-client or independent endpoint consensus.",
+      "Declared operator/settlement policy can be matched; its security and economic suitability are not approved.",
+      "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
+      "No proof is generated or submitted; no service identity, state migration or release readiness is established."
+    ],
+    "manifest_sha256": "8b929d9795f85512f77772d047a128ab84f4400e6fec557f3b428717eb773c53",
+    "observed_at_utc": "2026-10-16T12:54:15.447231+00:00",
+    "operator_policy_sha256": "88bf69569f92ed01079fcaac6039137e8a0bf89870484af01d95df6b69c79504",
+    "rpc_origin": "http://127.0.0.1:59876",
+    "scope": {
+      "fresh_guest_build_performed": false,
+      "local_identity_checked": true,
+      "operator_and_settlement_policy_approved": false,
+      "operator_and_settlement_policy_matches": true,
+      "release_gate": "HOLD",
+      "running_services_attested": false,
+      "runtime_bytecode_verified": true,
+      "state_migration_rehearsed": false,
+      "target_chain_observed": true,
+      "token_runtime_verified": false
+    },
+    "sp1_route": {
+      "frozen": false,
+      "selector": "0x4388a21c",
+      "verifier": "0x3f163edce54059cb3e6ac6d2045ca913650ea5c9"
+    },
+    "status": "VERIFIED_AT_FINALIZED_BLOCK",
+    "token": {
+      "address": "0x4e9f597f791a46d4df4e1661aa7af1b465fad43f",
+      "runtime_bytes": 1442,
+      "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+    }
+  },
+  "public_config": {
+    "addresses": {
+      "clock_verifier": "0x145ea184903401d6f313a0d589fe7624b69505c0",
+      "settlement": "0x62e3f503bf5497e6422348dccfc1ad70e764ec71",
+      "sp1_adapter": "0x94007b4c34b67cef814ee2533ef01809a85669b6",
+      "sp1_gateway": "0x96160571138e7871675821e7023c345ea6b9dd71",
+      "sp1_verifier": "0x3f163edce54059cb3e6ac6d2045ca913650ea5c9",
+      "token": "0x4e9f597f791a46d4df4e1661aa7af1b465fad43f",
+      "vault": "0x357bcedacbb4a7bdca0dc31995423b408febe610"
+    },
+    "chain_id": 84532,
+    "clock": {
+      "clock_skew_ms": 10000,
+      "max_window_ms": 30000
+    },
+    "gateway": {
+      "CLOCK_BOUND_VERIFIER": "0x145ea184903401d6f313a0d589fe7624b69505c0",
+      "L1_ALLOW_MOCK_PROOF": "0",
+      "L1_CHAIN_ID": "84532",
+      "L1_SETTLEMENT": "0x62e3f503bf5497e6422348dccfc1ad70e764ec71",
+      "L1_USDC": "0x4e9f597f791a46d4df4e1661aa7af1b465fad43f",
+      "L1_VAULT": "0x357bcedacbb4a7bdca0dc31995423b408febe610"
+    },
+    "operator_policy": {
+      "clock_verifier": {
+        "configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "settlement": {
+        "challenge_bond_wei": 1000,
+        "challenge_window_blocks": 50,
+        "enclave_signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "final_settle_grace_blocks": 10,
+        "governance": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "inclusion_deadline_seconds": 600,
+        "liveness_timeout_blocks": 100,
+        "sequencer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "sp1_gateway": {
+        "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "vault": {
+        "gateway_signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+      }
+    },
+    "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+    "prover": {
+      "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+      "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+    }
+  }
+}

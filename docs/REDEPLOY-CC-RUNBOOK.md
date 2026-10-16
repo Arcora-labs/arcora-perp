@@ -120,19 +120,25 @@ ZK-001 minors):
 - SP1 guest rebuild on merged `main` (per `docs/PROVING-RUNBOOK.md`) → record
   the NEW `programVKey`. The old verifier `0x8012F3b3` pins the OLD guest's
   vkey — a NEW `SP1ZkVerifier` must be deployed.
-- Compute the CLEAN PROD GENESIS on the merged tree with the real keys from 0c:
-  no sentinel deposit leaves (SEC-019 genesis gate — a shipped demo genesis
-  bricks the deposit path), `oracle_pubkey` = real signer address (not
-  Anvil/0x0), the two new Market fields in `markets_digest`. Record
-  `GENESIS_ROOT`.
-- Dry-run `contracts/script/Deploy.s.sol` against a local anvil fork with the
-  full env set; `forge test` (84) + workspace `cargo test` green on the exact
-  commit being shipped.
+- Compute the CLEAN PROD GENESIS on the merged tree with the real oracle key
+  from 0c: `ORACLE_SIGNER_KEY=… darkperp-gateway --print-genesis-root` prints
+  `GENESIS_ROOT=0x…` and exits before any L1, attestation, prover or state-file
+  access (a production boot only reaches its genesis log line after verifying a
+  live clock-bound settlement, so it cannot be used for this). It refuses the
+  built-in development oracle key. The root is the markets-only production
+  genesis: no sentinel deposit leaves (SEC-019), `oracle_pubkey` = that signer.
+- Dry-run `scripts/local-verification/deploy_clock_stack.py` against a local
+  Anvil fork of Base Sepolia (`anvil --fork-url https://sepolia.base.org`),
+  then `release_manifest.py create` + `observe-target` must report
+  `VERIFIED_AT_FINALIZED_BLOCK`. `forge test` + workspace `cargo test` green on
+  the exact commit being shipped. Recorded dry runs:
+  `docs/audits/2026-10-16-clock-stack-deploy-kit/`.
 
-**0e. Stage the frontend build.** Everything is merged; only
-`frontend/src/api/wallet.ts` consts (`COLLATERAL_VAULT`, `MOCK_USDC` if it
-changes) + `contracts/deployments/base-sepolia.json` + the `TestnetNotice`
-deploy-info line get filled mid-window. Pre-run `pnpm typecheck && pnpm vitest
+**0e. Stage the frontend build.** Everything is merged; contract addresses
+are build-time env (`VITE_COLLATERAL_VAULT`, `VITE_MOCK_USDC`; unset keeps the
+July 11 record, a malformed value fails the build), so only those values,
+`contracts/deployments/base-sepolia.json` and the `TestnetNotice` deploy-info
+line get filled mid-window. Pre-run `pnpm typecheck && pnpm vitest
 run` (183) so the only window-day delta is the constants.
 
 **0f. Shared-host prep.**
@@ -195,11 +201,17 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
      **then** remove `state.snap`, then start. A plain restart lets the old
      process rewrite an old-format snapshot on shutdown, and the new binary
      then boots against exactly the bytes you meant to wipe.
-2. Deploy with `Deploy.s.sol` (env from 0c/0d): new `SP1ZkVerifier` (NEW
-   programVKey), `DarkPerpSettlement` (`GENESIS_ROOT`, governance, bonds),
-   `CollateralVault` (`GATEWAY_SIGNER` = real address). `MockUSDC`: reuse
-   `0x8a52…` (keeps user balances + the frontend const) unless the script
-   forces a fresh one — decide at dry-run (0d).
+2. Deploy with `deploy_clock_stack.py --allow-public-chain` and your own
+   signer flags after `--` (`--account NAME` or `--ledger`; the tool never
+   handles keys). It deploys, in order: our own SP1 verifier + gateway +
+   `addRoute`, `SP1ZkVerifier` (reviewed program key, not configurable),
+   `ClockBoundVerifier`, `DarkPerpSettlement` (`GENESIS_ROOT` from 0d,
+   governance, bonds), `MockUSDC`, `CollateralVault` (`GATEWAY_SIGNER` = real
+   address), `setVault`, `bindSettlement`. Do **not** reuse Succinct's Base
+   Sepolia gateway `0x397A…`: its runtime code differs from the vendored
+   artifact the release manifest pins, so `observe-target` reports BLOCKED
+   (2026-10-16 fork dry run). Then run `release_manifest.py observe-target`
+   against the public chain; it must report `VERIFIED_AT_FINALIZED_BLOCK`.
 3. Repoint the gateway env (addresses, `ORACLE_SIGNER_KEY`,
    `GATEWAY_SIGNER_KEY`, `PROVER_URL`, seal-root config) and boot. The boot
    itself is a test: prod-mode refusals must NOT fire with real keys (if one
@@ -231,7 +243,8 @@ fields). Both directions fail closed, but withdrawals are down for any window
 where the two are split — keep the split inside the maintenance window and
 publish this phase immediately after Phase 2's boot check passes.
 
-1. Fill the constants (0e list), update `deployments/base-sepolia.json`
+1. Set `VITE_COLLATERAL_VAULT` / `VITE_MOCK_USDC` (with `VITE_API_URL` and
+   `VITE_ENCLAVE_SIGNER`) in the frontend build env, update `deployments/base-sepolia.json`
    (addresses, `deployedAt`, deploy block, new `programVKey`), commit + push.
 2. `pnpm typecheck && pnpm vitest run` (183) → build → publish to the CVM
    (`perp.arcoralabs.xyz`).
