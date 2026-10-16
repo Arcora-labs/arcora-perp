@@ -1,0 +1,71 @@
+name: gateway release binary
+# Builds the Linux x86_64 release gateway that deploy/ installs as
+# /usr/local/bin/darkperp-gateway, so no server has to compile it. The
+# artifact carries the binary, its SHA-256 and the service build identity the
+# running binary reports at GET /identity. Not a release approval:
+# PRODUCTION RELEASE HOLD is unchanged.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/gateway-binary.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    name: gateway release binary (linux x86_64)
+    # Pinned image: its glibc (2.39) is the floor the binary needs on the host.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: |
+          set -euo pipefail
+          cargo build --locked --release -p gateway --message-format=json-render-diagnostics > build-messages.jsonl
+          # This build's own OUT_DIR (rust-cache may restore older gateway-* dirs).
+          python3 - <<'PY' > identity-path.txt
+          import json
+          dirs = {m["out_dir"] for m in map(json.loads, open("build-messages.jsonl"))
+                  if m.get("reason") == "build-script-executed" and "/crates/gateway#" in m["package_id"]}
+          assert len(dirs) == 1, dirs
+          print(dirs.pop() + "/service-build-identity.json")
+          PY
+      - name: Package with identity
+        run: |
+          set -euo pipefail
+          mkdir dist
+          install -m 0755 target/release/gateway dist/darkperp-gateway
+          cp "$(cat identity-path.txt)" dist/service-build-identity.json
+          (cd dist && sha256sum darkperp-gateway > darkperp-gateway.sha256)
+          python3 - <<'PY' > dist/build.json
+          import json, os, platform, subprocess
+          print(json.dumps({
+              "commit": os.environ["GITHUB_SHA"],
+              "ref": os.environ["GITHUB_REF"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
+              "glibc": platform.libc_ver()[1],
+              "binary_sha256": open("dist/darkperp-gateway.sha256").read().split()[0],
+          }, indent=2, sort_keys=True))
+          PY
+          cat dist/build.json
+      - name: Smoke the packaged binary
+        run: |
+          set -euo pipefail
+          # Refuses the built-in dev oracle key without touching L1 or disk.
+          if ./dist/darkperp-gateway --print-genesis-root; then exit 1; fi
+          ORACLE_SIGNER_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+            ./dist/darkperp-gateway --print-genesis-root | grep -E '^GENESIS_ROOT=0x[0-9a-f]{64}$'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: darkperp-gateway-linux-x86_64
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
