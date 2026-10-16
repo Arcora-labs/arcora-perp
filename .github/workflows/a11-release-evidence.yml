@@ -36,6 +36,8 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_owned_process.py -v
           python3 -m unittest discover -s scripts/local-verification -p test_finite_preparation_profile.py -v
+      - name: Gateway backup, external monitor, ops notification and deploy unit guards
+        run: python3 -W error::ResourceWarning -m unittest discover -s scripts/ops -p 'test_*.py' -v
       - name: RustSec workspace and excluded application locks
         run: |
           set -o pipefail

@@ -1,0 +1,59 @@
+# Arcora Perp gateway. Install: see deploy/README.md.
+# Secrets live only in /etc/darkperp/gateway.env (root:root 0600; systemd reads it as root).
+[Unit]
+Description=Arcora Perp gateway
+Documentation=https://github.com/Arcora-labs/arcora-perp/blob/main/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+# A crash restarts; five failed starts in ten minutes (e.g. a boot refusal)
+# put the unit in failed state, which raises a redacted ops alert.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=darkperp-notify@gateway_service_failed.service
+
+[Service]
+Type=simple
+User=darkperp
+Group=darkperp
+ExecStart=/usr/local/bin/darkperp-gateway
+EnvironmentFile=/etc/darkperp/gateway.env
+# Fixed layout the backup unit relies on; listen on loopback behind Caddy.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=DARKPERP_STATE=/var/lib/darkperp/state.snap
+Environment=GATEWAY_BIND_ADDRESS=127.0.0.1
+Environment=PORT=8080
+StateDirectory=darkperp
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/darkperp
+Restart=on-failure
+RestartSec=5
+# SIGTERM drains accepted work and writes a final snapshot.
+KillSignal=SIGTERM
+TimeoutStopSec=90
+LimitNOFILE=65536
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/darkperp
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
