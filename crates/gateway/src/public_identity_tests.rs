@@ -97,6 +97,7 @@ async fn public_identity_post_retains_bounded_intake_and_cannot_change_state() {
         allowed_origins: vec![],
         max_connections: 1,
         http_max_in_flight: 8,
+        http_max_in_flight_per_client: 8,
         http_max_body_bytes: 16,
         http_body_timeout: Duration::from_secs(1),
         max_message_bytes: 128,

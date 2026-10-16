@@ -37,7 +37,8 @@ if (p.kind === 'address') { process.stdout.write(JSON.stringify({address})); }
 else {
   const u64 = n => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(n)); return b; };
   const preimage = p.kind === 'bind'
-    ? Buffer.concat([Buffer.from('dark-perp:bind-deposit:'), raw(p.owner), raw(address)])
+    ? Buffer.concat([Buffer.from('dark-perp:bind-deposit:'), u64(p.chainId), raw(p.vault),
+        raw(p.owner), raw(address)])
     : Buffer.concat([Buffer.from('dark-perp:recover-account:'), u64(p.chainId),
         raw(p.vault), raw(p.owner), u64(p.nonce)]);
   const signed = secp256k1.sign(keccak_256(preimage), key);
@@ -204,7 +205,8 @@ def main():
                     account = ok(port, 'POST', '/v1/accounts', {})
                     key = account['apiKey']
                     address = sign(wallet_key, 'address')['address']
-                    bind = sign(wallet_key, 'bind', owner=account['owner'])['signature']
+                    bind = sign(wallet_key, 'bind', owner=account['owner'], chainId=account['chainId'],
+                                vault=account['vault'])['signature']
                     ok(port, 'POST', '/v1/accounts/deposit/address', {'address': address, 'signature': bind}, key)
                     permit = {'from': address, 'amount': '1000000', 'marketId': 0, 'purpose': 'collateral'}
                     if operation == 'cancel':

@@ -159,7 +159,7 @@ describe("WalletDepositCard", () => {
     // [4] bind BEFORE the deposit: personal_sign over the exact bind digest, POSTed
     const signs = p.signs();
     expect(signs.length).toBe(1);
-    expect(signs[0].params).toEqual(["0x" + bytesToHex(bindDepositDigest(OWNER, addr)), addr]);
+    expect(signs[0].params).toEqual(["0x" + bytesToHex(bindDepositDigest(84532n, COLLATERAL_VAULT, OWNER, addr)), addr]);
     expect(bindCalls).toEqual([[addr, SIG]]);
     expect(Object.keys(localStorage).some(key => key.startsWith("darkperp.deposit.v1:"))).toBe(false);
 
@@ -257,7 +257,7 @@ describe("WalletDepositCard", () => {
     expect(creditCalls.length).toBe(1);
   });
 
-  it("re-authorizes on a re-run when the deposit tx was never sent (sig binds the amount)", async () => {
+  it("reuses its authorization on a re-run when the deposit tx was never sent", async () => {
     let rejectDeposit = true;
     const p = makeProvider({
       eth_sendTransaction: (_call, calls) => {
@@ -282,12 +282,14 @@ describe("WalletDepositCard", () => {
     expect(await screen.findByText(/Transaction rejected in the wallet/i)).toBeTruthy();
     expect(authorizeCalls.length).toBe(1);
 
-    // Re-run: mint/approve/bind are skipped (done) but authorize runs AGAIN —
-    // a fresh gateway sig for the re-sent deposit.
+    // Re-run: mint/approve/bind are skipped (done), and the never-sent deposit's
+    // gateway permit (same amount, still unused on-chain) is reused instead of
+    // leaving a second one outstanding.
     fireEvent.click(screen.getByRole("button", { name: /resume original deposit/i }));
     expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
-    expect(authorizeCalls.length).toBe(2);
+    expect(authorizeCalls.length).toBe(1);
     expect(p.sent().length).toBe(4); // mint, approve, rejected deposit, re-sent deposit
+    expect(txField(p.sent()[3], "data")).toBe(txField(p.sent()[2], "data"));
     expect(creditCalls).toEqual(["0x" + (4).toString(16).padStart(64, "0")]);
   });
 
@@ -320,9 +322,8 @@ describe("WalletDepositCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /resume original deposit/i }));
     await screen.findByText(/credited to your trading account/i);
 
-    // Resume keeps the original mint/approval and re-authorizes its exact amount.
-    expect(authorizeCalls.length).toBe(2);
-    expect(authorizeCalls[1]).toEqual([addr, 1_000_000_000n]);
+    // Resume keeps the original mint/approval and the authorization of its exact amount.
+    expect(authorizeCalls).toEqual([[addr, 1_000_000_000n]]);
     expect(p.sent().length).toBe(4);
     expect(creditCalls).toEqual(["0x" + (4).toString(16).padStart(64, "0")]);
   });

@@ -152,8 +152,10 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
 1. `POST /v1/accounts/deposit/address { "address": "0x<your EOA>", "signature": "0x.." }`
    — bind the external wallet you will deposit from. The `signature` is a secp256k1
    signature **recovering to `address`** over `keccak256("dark-perp:bind-deposit:" ‖
-   owner ‖ address)` (so only the controller of the EOA can bind it, and an address
-   binds to at most one account) — accepted over any of the three shapes in
+   chainId (u64 BE, 8) ‖ vault (20) ‖ owner (32) ‖ address (20))`, with `chainId` and
+   `vault` from `POST /v1/accounts` or `GET /v1/accounts/me` (so only the controller of
+   the EOA can bind it, the proof is bound to this deployment, and an address binds to
+   at most one account) — accepted over any of the three shapes in
    § Accepted signature shapes. Only `Deposit` logs whose `from` matches the bound
    address are credited to you. **Changing an existing binding (a rebind) requires
    the consent of the currently bound address** via `currentSignature` — see

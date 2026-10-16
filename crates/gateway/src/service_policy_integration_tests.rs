@@ -13,6 +13,7 @@ fn policy() -> Arc<service_policy::ServicePolicy> {
         allowed_origins: vec!["http://localhost:5173".parse().unwrap()],
         max_connections: 1,
         http_max_in_flight: 64,
+        http_max_in_flight_per_client: 64,
         http_max_body_bytes: 2 * 1024 * 1024,
         http_body_timeout: Duration::from_secs(5),
         max_message_bytes: 128,

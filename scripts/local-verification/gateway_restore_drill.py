@@ -171,7 +171,8 @@ def run(binary, out):
                 account = ok(port, 'POST', '/v1/accounts', {})
                 old_key = account['apiKey']
                 address = sign(wallet_key, 'address')['address']
-                binding = sign(wallet_key, 'bind', owner=account['owner'])['signature']
+                binding = sign(wallet_key, 'bind', owner=account['owner'], chainId=account['chainId'],
+                               vault=account['vault'])['signature']
                 ok(port, 'POST', '/v1/accounts/deposit/address', {'address': address, 'signature': binding}, old_key)
                 ok(port, 'POST', '/v1/accounts/deposit', {'marketId': 0, 'amount': '20000000000'}, old_key)
                 ok(port, 'POST', '/v1/orders', {'marketId': 0, 'side': 'Buy', 'size': '10000000',

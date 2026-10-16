@@ -61,6 +61,24 @@ async function setup() {
 beforeEach(() => { vi.stubGlobal("localStorage", new Storage()); installTestLocks(); });
 afterEach(() => { disconnectWallet(); delete window.ethereum; localStorage.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+describe("deposit permit reuse", () => {
+  it("reuses this session's permit when a retry sent no deposit transaction", async () => {
+    const f = await setup();
+    f.control.hook = async stage => { if (stage === "deposit") throw { code: 4001 }; };
+    await expect(f.run()).rejects.toThrow(/rejected/);
+    f.control.hook = async () => {};
+    await f.run();
+    expect(f.calls.filter(call => call === "authorize")).toHaveLength(1);
+  });
+
+  it("requests a fresh permit for the next deposit once one was sent", async () => {
+    const f = await setup();
+    await f.run();
+    await f.run();
+    expect(f.calls.filter(call => call === "authorize")).toHaveLength(2);
+  });
+});
+
 describe("deposit immutable context barriers", () => {
   for (const stage of ["capture", "chain", "mint", `receipt:${hash(1)}`, "approve", `receipt:${hash(2)}`, "signature", "bind", "authorize", "deposit", `receipt:${hash(3)}`, "credit"]) {
     it(`stops credential-generation change while ${stage} awaits`, async () => {

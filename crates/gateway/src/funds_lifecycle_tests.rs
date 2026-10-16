@@ -418,7 +418,15 @@ impl Http {
         );
         user.key = value["apiKey"].as_str().unwrap().into();
         user.owner = parse_hex32(value["owner"].as_str().unwrap()).unwrap();
-        let sig = sign(&user.sk, &deposit_bind_digest(&user.owner, &user.address));
+        let sig = sign(
+            &user.sk,
+            &deposit_bind_digest(
+                CHAIN,
+                &self.app.gateway_signer.vault,
+                &user.owner,
+                &user.address,
+            ),
+        );
         self.request(
             "POST",
             "/v1/accounts/deposit/address",

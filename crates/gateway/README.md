@@ -71,10 +71,13 @@ HTTP body intake and handler admission also have per-process bounds:
 | Variable | Default | Accepted range |
 | --- | ---: | ---: |
 | `GATEWAY_HTTP_MAX_IN_FLIGHT` | 64 | 1–4,096 |
+| `GATEWAY_HTTP_MAX_IN_FLIGHT_PER_CLIENT` | 8 (or the global cap, if lower) | 1–global cap |
 | `GATEWAY_HTTP_MAX_BODY_BYTES` | 2,097,152 | 1–8,388,608 |
 | `GATEWAY_HTTP_BODY_TIMEOUT_MS` | 5,000 | 1–60,000 |
 
-Capacity or draining returns 503 before polling the body. A body deadline returns
+Capacity or draining returns 503 before polling the body. A client already at its
+per-client share gets 429; the client is the forwarded address when the peer is the
+trusted loopback proxy, and IPv6 clients are grouped by /64. A body deadline returns
 408, while an oversized/invalid body returns 413 before handler mutation. The
 permit remains held through the handler; HTTP mutation/durability is not cancelled
 by the body deadline. The body is buffered within these bounds. WebSocket streams
