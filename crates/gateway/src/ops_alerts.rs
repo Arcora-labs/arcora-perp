@@ -29,12 +29,16 @@ pub enum AlertKind {
     StaleAnchor,
     /// Half of the settlement's liveness window has passed without progress.
     LivenessLow,
+    /// Finalized block headers have not re-hashed for a long stretch, so expired
+    /// deposit permits are not being removed. Intake and settlement continue; the
+    /// header format probably gained a field this gateway does not know.
+    PermitGcStalled,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 9] = [
+    pub const ALL: [AlertKind; 10] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -44,6 +48,7 @@ impl AlertKind {
         AlertKind::ChallengeDiscoveryFailed,
         AlertKind::StaleAnchor,
         AlertKind::LivenessLow,
+        AlertKind::PermitGcStalled,
     ];
 }
 

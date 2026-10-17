@@ -679,6 +679,64 @@ fn expired_permits_are_dropped_against_the_finalized_block_time_only() {
 }
 
 #[test]
+fn a_header_that_does_not_re_hash_only_pauses_permit_gc_and_alerts_when_long() {
+    use crate::ops_alerts::AlertKind::PermitGcStalled;
+    let mut gw = fresh();
+    let (key, _) = gw.register_account(None);
+    gw.accounts.get_mut(&key).unwrap().deposit_address = Some([0x42; 20]);
+    let expired = gw
+        .authorize_routed_deposit(&key, [0x42; 20], 5_000_000, 0, Purpose::Collateral, 1_000)
+        .unwrap();
+    let live = gw
+        .authorize_routed_deposit(
+            &key,
+            [0x42; 20],
+            6_000_000,
+            0,
+            Purpose::Collateral,
+            u64::MAX,
+        )
+        .unwrap();
+    let at = |gw: &Gw, number: u64, timestamp: Option<u64>, commits: &[[u8; 32]]| {
+        let mut p = page(gw, commits);
+        p.end = Block {
+            number,
+            hash: [(number % 251) as u8 + 1; 32],
+            timestamp,
+        };
+        for e in &mut p.events {
+            e.block = p.end.clone();
+        }
+        p
+    };
+    let stalled = |gw: &Gw| gw.ops_alerts.active().contains(&PermitGcStalled);
+    // A page whose end header did not re-hash still credits; only GC waits.
+    assert_eq!(
+        gw.apply_deposit_page(at(&gw, 10, None, &[live])).unwrap(),
+        1
+    );
+    // Once the page is durable, intake (and so settlement) is ready as usual.
+    gw.deposits.dirty = false;
+    assert!(gw.deposits.check_ready().is_ok());
+    assert_eq!(gw.deposits.credits.len(), 1);
+    assert!(gw.deposits.routes.contains_key(&expired));
+    assert_eq!(gw.deposits.gc_unverified_since, Some(10));
+    gw.apply_deposit_page(at(&gw, 9 + PERMIT_GC_STALL_BLOCKS, None, &[]))
+        .unwrap();
+    assert!(!stalled(&gw));
+    gw.apply_deposit_page(at(&gw, 10 + PERMIT_GC_STALL_BLOCKS, None, &[]))
+        .unwrap();
+    assert!(stalled(&gw), "a long run without header time is raised");
+    assert!(gw.deposits.routes.contains_key(&expired));
+    // A header that re-hashes again collects what expired and recovers.
+    gw.apply_deposit_page(at(&gw, 11 + PERMIT_GC_STALL_BLOCKS, Some(1_001), &[]))
+        .unwrap();
+    assert!(!gw.deposits.routes.contains_key(&expired));
+    assert_eq!(gw.deposits.gc_unverified_since, None);
+    assert!(!stalled(&gw));
+}
+
+#[test]
 fn ingestion_checks_the_permit_payer_not_the_current_binding() {
     let mut gw = fresh();
     let (key, c) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);

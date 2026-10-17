@@ -154,6 +154,7 @@ impl Server {
             verifier: c.verifier,
             chain_id: c.chain_id,
             stop: None,
+            program_vkey: Default::default(),
         });
         l1
     }

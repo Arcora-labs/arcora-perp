@@ -289,10 +289,13 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
    and boot. The boot itself is a test: prod-mode refusals must NOT fire with real
    keys (if one fires, the env is wrong — that's the guard working).
    - The boot handshake also refuses unless the settlement reports
-     `ABI_VERSION() == 3`, the verifier reports proof version 2 with
-     `CLOCK_BOUND_VERIFIER` set, the vault names the settlement,
-     `anchorTimeoutMs()` covers the gateway's finality and proving budgets, and
-     `DEPOSIT_PERMIT_TTL_SECS` fits the liveness window.
+     `ABI_VERSION() == 3`, its `enclaveSigner()` is the address `ENCLAVE_SEED`
+     signs as and its `sequencer()` is the sequencer keystore's address, the
+     verifier reports proof version 2 with `CLOCK_BOUND_VERIFIER` set, the vault
+     names the settlement, `anchorTimeoutMs()` covers the gateway's finality and
+     proving budgets, and `DEPOSIT_PERMIT_TTL_SECS` fits the liveness window. A
+     wrong `ENCLAVE_SEED` would otherwise go unnoticed: trading and settlement
+     work, but no receipt's `l1Challenge` could open a challenge.
    - **Bond before deposits.** Without a bond the deposit capacity is 19 base
      units, so the vault refuses any real deposit until a bond is posted. The gateway's bond top-up posts toward
      `max(2 × requiredBond, 5% of L1_BOND_TARGET_TVL)` before it issues permits.

@@ -31,6 +31,7 @@ GATEWAY_ALERTS = (
     "challenge_discovery_failed",
     "stale_anchor",
     "liveness_low",
+    "permit_gc_stalled",
 )
 # Monitor conditions (episodic) and one-shot unit failures.
 EVENTS = (

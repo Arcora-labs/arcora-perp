@@ -391,18 +391,29 @@ pub enum DeadIntent {
 /// Classify a journaled clock intent at one finalized block. `None` when the
 /// window may still settle: the batch moved on, a transaction of ours could still
 /// be mined, or its own anchor is registered (outside close-only).
+///
+/// A phase-0 window in close-only needs no nonce fence: close-only never ends, and
+/// from then on every phase-0 `register` reverts (`BadContext`) and every
+/// `settleBatch` reverts (`InCloseOnly`), so a transaction of ours that is still
+/// pending can never land. It also takes precedence over a cancelled receipt, since
+/// its recovery (the close-only rebase) is the one a cancelled timed phase-0
+/// window is directed to.
 pub fn classify_dead_intent(
     j_batch: u64,
     j_phase: u8,
     e: &DeadIntentEvidence,
 ) -> Option<DeadIntent> {
-    if e.batch_count != j_batch || !e.fenced {
+    if e.batch_count != j_batch {
+        return None;
+    }
+    if j_phase == 0 && e.close_only {
+        return Some(DeadIntent::CloseOnlyPhaseZero);
+    }
+    if !e.fenced {
         return None;
     }
     if e.slot == AnchorSlot::Cancelled {
         Some(DeadIntent::Cancelled)
-    } else if j_phase == 0 && e.close_only {
-        Some(DeadIntent::CloseOnlyPhaseZero)
     } else if e.slot == AnchorSlot::Empty {
         Some(DeadIntent::EmptyAfterFence)
     } else if e.slot == AnchorSlot::Different {
@@ -1346,25 +1357,27 @@ mod tests {
     fn dead_intent_classification_matrix() {
         use AnchorSlot::{Different, Empty, Matching};
         use DeadIntent::{CloseOnlyPhaseZero, EmptyAfterFence, Replaced};
-        // (a) a cancelled receipt is dead in every phase, inside or outside close-only.
-        for phase in 0..=2 {
-            for close_only in [false, true] {
+        // (a) a cancelled receipt is dead in every phase, inside or outside
+        // close-only, except a phase-0 window in close-only, which is (b).
+        for (phase, close_only) in [(0, false), (1, false), (1, true), (2, false), (2, true)] {
+            assert_eq!(
+                classify_dead_intent(
+                    5,
+                    phase,
+                    &evidence(AnchorSlot::Cancelled, close_only, true, 5)
+                ),
+                Some(DeadIntent::Cancelled)
+            );
+        }
+        // (b) phase 0 in close-only is dead whatever the slot holds, with or without
+        // the nonce fence: no pending register or settle of it can land there.
+        for slot in [Matching, AnchorSlot::Cancelled, Empty, Different] {
+            for fenced in [false, true] {
                 assert_eq!(
-                    classify_dead_intent(
-                        5,
-                        phase,
-                        &evidence(AnchorSlot::Cancelled, close_only, true, 5)
-                    ),
-                    Some(DeadIntent::Cancelled)
+                    classify_dead_intent(5, 0, &evidence(slot, true, fenced, 5)),
+                    Some(CloseOnlyPhaseZero)
                 );
             }
-        }
-        // (b) phase 0 in close-only is dead whatever the slot holds.
-        for slot in [Matching, Empty, Different] {
-            assert_eq!(
-                classify_dead_intent(5, 0, &evidence(slot, true, true, 5)),
-                Some(CloseOnlyPhaseZero)
-            );
         }
         // (c) an empty slot after the fence, and (d) another anchor.
         for (phase, close_only) in [(0, false), (1, true), (2, true)] {
@@ -1382,14 +1395,16 @@ mod tests {
                 None
             );
         }
-        // Nothing is dead before the fence, or once the batch moved on.
+        // Nothing else is dead before the fence, and nothing once the batch moved on.
         for slot in [Matching, AnchorSlot::Cancelled, Empty, Different] {
             for close_only in [false, true] {
                 for phase in 0..=2 {
-                    assert_eq!(
-                        classify_dead_intent(5, phase, &evidence(slot, close_only, false, 5)),
-                        None
-                    );
+                    if !(phase == 0 && close_only) {
+                        assert_eq!(
+                            classify_dead_intent(5, phase, &evidence(slot, close_only, false, 5)),
+                            None
+                        );
+                    }
                     for bc in [4, 6] {
                         assert_eq!(
                             classify_dead_intent(5, phase, &evidence(slot, close_only, true, bc)),

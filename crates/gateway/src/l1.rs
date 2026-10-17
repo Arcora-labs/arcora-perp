@@ -118,6 +118,10 @@ pub struct L1 {
     /// the state path is known and shared by every clone. Unset (tests, or no
     /// persistence) records nothing, and recovery then treats the fence as unknown.
     nonce_fence: std::sync::Arc<std::sync::OnceLock<NonceFence>>,
+    /// Set when answers may have routed stakes to the sequencer's `pendingEth`.
+    /// The settle loop sweeps them before admission pauses, so the claim never
+    /// sits on the sequencer lane while a window waits to register.
+    stake_sweep: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// A second signing key and its nonce tracker. The key file is the operator's;
@@ -149,6 +153,27 @@ pub(crate) struct BondPolicy {
     acknowledged_slashes: std::sync::atomic::AtomicU64,
     /// Set while one top-up is being sent.
     in_flight: std::sync::atomic::AtomicBool,
+}
+
+impl BondPolicy {
+    /// Record an operator's acknowledgement of `requested` slashes. Only the
+    /// exact `observed` count is accepted: a stale count would leave a newer slash
+    /// unseen, and a future one would pre-acknowledge slashes that have not
+    /// happened. The acknowledged count never goes down.
+    fn acknowledge(&self, observed: u64, requested: u64) -> Result<u64, String> {
+        if observed != requested {
+            return Err(format!(
+                "slashCount() is {observed}; acknowledge that exact value"
+            ));
+        }
+        self.acknowledged_slashes
+            .fetch_max(observed, std::sync::atomic::Ordering::SeqCst);
+        Ok(observed)
+    }
+}
+
+fn read_slash_count(r: &CanonicalRead<'_>, s: &str) -> Result<u64, String> {
+    abi_u64(r.word(s, "slashCount()", None)?, "slashCount")
 }
 
 /// Bond needed to cover `target_tvl` at `BOND_BPS`, rounded up.
@@ -244,6 +269,11 @@ pub(crate) struct BootPosture {
     pub liveness_timeout_blocks: u64,
     pub consumed_deposit_count: u64,
     pub current_root: Digest,
+    /// `enclaveSigner()`: the only key whose challenge authorization the
+    /// settlement accepts.
+    pub enclave_signer: [u8; 20],
+    /// `sequencer()`: the only key that may register phase-0 anchors and settle.
+    pub sequencer: [u8; 20],
 }
 
 /// What this gateway is configured for and holds locally.
@@ -252,6 +282,11 @@ pub(crate) struct BootExpectation {
     pub settlement: [u8; 20],
     pub vault: Option<[u8; 20]>,
     pub clock_verifier: Option<[u8; 20]>,
+    /// The address of this gateway's enclave key, which signs every receipt's
+    /// `l1Challenge` authorization.
+    pub enclave_signer: [u8; 20],
+    /// The address of the sequencer keystore this gateway sends from.
+    pub sequencer: [u8; 20],
     pub min_anchor_timeout_ms: u64,
     pub last_settled_root: Digest,
     pub live_root: Digest,
@@ -271,14 +306,32 @@ pub(crate) fn min_anchor_timeout_ms(prover_timeout_secs: u64) -> u64 {
         .saturating_mul(1000)
 }
 
-/// Refuse to run against a settlement this binary does not speak, an unclocked
-/// or foreign verifier, an unpaired vault, a too-short anchor timeout, or a
-/// consumed-deposit count that disagrees with the settled root.
+/// Refuse to run against a settlement this binary does not speak, keys other
+/// than the settlement's enclave signer and sequencer, an unclocked or foreign
+/// verifier, an unpaired vault, a too-short anchor timeout, or a consumed-deposit
+/// count that disagrees with the settled root.
 pub(crate) fn check_boot_posture(p: &BootPosture, e: &BootExpectation) -> Result<(), String> {
     if p.abi_version != ABI_VERSION {
         return Err(format!(
             "settlement ABI_VERSION is {}, this gateway speaks {ABI_VERSION}",
             p.abi_version
+        ));
+    }
+    // Nothing else on L1 checks the enclave key: with another seed every
+    // receipt's l1Challenge would be refused (BadReceiptSignature) while trading,
+    // deposits and settlement all kept working.
+    if p.enclave_signer != e.enclave_signer {
+        return Err(format!(
+            "the settlement's enclaveSigner() is {} but ENCLAVE_SEED signs as {}; no inclusion challenge could be opened with this gateway's receipts",
+            crate::hex0x(&p.enclave_signer),
+            crate::hex0x(&e.enclave_signer)
+        ));
+    }
+    if p.sequencer != e.sequencer {
+        return Err(format!(
+            "the settlement's sequencer() is {} but the sequencer keystore is {}",
+            crate::hex0x(&p.sequencer),
+            crate::hex0x(&e.sequencer)
         ));
     }
     if p.proof_version != 2 {
@@ -564,6 +617,21 @@ fn witness_chain_override(declared: Option<&str>) -> Result<u64, String> {
         })
 }
 
+/// The read methods a settlement observation may send. `eth_getTransactionCount`
+/// is the sequencer nonce that the boot dead-intent check compares with the nonce
+/// fence. Nothing here signs or mutates.
+fn settlement_read_method(method: &str) -> bool {
+    matches!(
+        method,
+        "eth_chainId"
+            | "eth_getBlockByNumber"
+            | "eth_call"
+            | "eth_getCode"
+            | "eth_getLogs"
+            | "eth_getTransactionCount"
+    )
+}
+
 /// A restricted adapter for the optional witness policy. Neither endpoint receives
 /// keys or mutation calls. Do not propagate cast stderr or provider JSON errors:
 /// those can echo credential-bearing URL paths, userinfo, queries or response data.
@@ -578,10 +646,7 @@ impl crate::deposit_rpc::Rpc for SettlementReader<'_> {
         method: &str,
         params: Vec<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
-        if !matches!(
-            method,
-            "eth_chainId" | "eth_getBlockByNumber" | "eth_call" | "eth_getCode" | "eth_getLogs"
-        ) {
+        if !settlement_read_method(method) {
             return Err("settlement observation: unsupported read method".into());
         }
         let mut args = vec![
@@ -646,6 +711,7 @@ impl L1 {
             challenge_discovery: Default::default(),
             sequencer_addr: Default::default(),
             nonce_fence: Default::default(),
+            stake_sweep: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
         }
     }
 
@@ -761,6 +827,8 @@ impl L1 {
             challenge_discovery: Default::default(),
             sequencer_addr: Default::default(),
             nonce_fence: Default::default(),
+            // Stakes may have accrued before this start.
+            stake_sweep: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
         };
         match answer_paths {
             Some((keystore_path, password_file)) => {
@@ -1352,20 +1420,17 @@ impl L1 {
     /// `slashCount()`, so acknowledging can never cover a slash not yet seen.
     pub(crate) fn acknowledge_slashes(&self, slash_count: u64) -> Result<u64, String> {
         let observed = self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            abi_u64(
-                r.word(&self.settlement, "slashCount()", None)?,
-                "slashCount",
-            )
+            read_slash_count(r, &self.settlement)
         })?;
-        if observed != slash_count {
-            return Err(format!(
-                "slashCount() is {observed}; acknowledge that exact value"
-            ));
-        }
+        self.bond_policy.acknowledge(observed, slash_count)
+    }
+
+    /// The highest `slashCount()` acknowledged so far.
+    #[cfg(test)]
+    pub(crate) fn acknowledged_slash_count(&self) -> u64 {
         self.bond_policy
             .acknowledged_slashes
-            .fetch_max(observed, std::sync::atomic::Ordering::SeqCst);
-        Ok(observed)
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Settlement immutables the gateway's timing depends on.
@@ -1381,9 +1446,11 @@ impl L1 {
         self.observe(|r| read_boot_posture(r, &self.settlement, clock.as_deref()))
     }
 
-    /// The expectation the boot handshake compares against.
+    /// The expectation the boot handshake compares against. Reads the sequencer
+    /// keystore's address (a local `cast` call), so call it off the async runtime.
     pub(crate) fn boot_expectation(
         &self,
+        enclave_signer: [u8; 20],
         last_settled_root: Digest,
         live_root: Digest,
         local_consumed: u64,
@@ -1397,6 +1464,9 @@ impl L1 {
                 None => None,
             },
             clock_verifier: self.clock.as_ref().map(|c| c.verifier),
+            enclave_signer,
+            sequencer: crate::parse_addr20_hex(&self.sequencer_address()?)
+                .ok_or("invalid sequencer address")?,
             min_anchor_timeout_ms: min_anchor_timeout_ms(
                 crate::prover_client::prover_timeout_secs(),
             ),
@@ -1605,10 +1675,31 @@ impl L1 {
         )
     }
 
+    /// Ask the settle loop to sweep stake refunds (after answers were sent).
+    pub(crate) fn request_stake_sweep(&self) {
+        self.stake_sweep
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// `sweep_stake_refunds` once per request. Called by the settle loop
+    /// before admission pauses, when no window is sealed: the claim is sent from
+    /// the sequencer key, so it must not queue a register behind it. A failed
+    /// sweep stays requested.
+    pub(crate) fn sweep_requested_stake_refunds(&self) -> Result<Option<String>, String> {
+        if !take_request(&self.stake_sweep) {
+            return Ok(None);
+        }
+        let swept = self.sweep_stake_refunds();
+        if swept.is_err() {
+            self.request_stake_sweep();
+        }
+        swept
+    }
+
     /// Stakes that answers routed to the sequencer accrue in `pendingEth`. With a
     /// separate answer key configured, move them there once they reach
     /// `STAKE_SWEEP_MIN_WEI`, so they fund answer gas. Returns the claim tx.
-    pub(crate) fn sweep_stake_refunds(&self) -> Result<Option<String>, String> {
+    fn sweep_stake_refunds(&self) -> Result<Option<String>, String> {
         let Some(answer) = &self.answer else {
             return Ok(None);
         };
@@ -1631,6 +1722,11 @@ impl L1 {
         )
         .map(Some)
     }
+}
+
+/// Clear a one-shot request flag, reporting whether it was set.
+fn take_request(flag: &std::sync::atomic::AtomicBool) -> bool {
+    flag.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
 
 /// `DarkPerpSettlement.answerChallenges(uint256,bytes32[],bool[],bytes32[][])`.
@@ -1750,6 +1846,8 @@ fn read_boot_posture(
             "consumedDepositCount",
         )?,
         current_root: r.word(s, "currentStateRoot()", None)?,
+        enclave_signer: abi_address(r.word(s, "enclaveSigner()", None)?, "enclaveSigner")?,
+        sequencer: abi_address(r.word(s, "sequencer()", None)?, "sequencer")?,
     })
 }
 
@@ -2706,12 +2804,86 @@ mod tests {
     }
 
     #[test]
+    fn a_slash_acknowledgement_must_name_the_exact_observed_count() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let policy = BondPolicy {
+            target_tvl_bond: 50,
+            ..Default::default()
+        };
+        // Two slashes happened; top-ups are paused.
+        let paused = |p: &BondPolicy| {
+            matches!(
+                bond_plan(
+                    40,
+                    0,
+                    2,
+                    p.acknowledged_slashes.load(SeqCst),
+                    p.target_tvl_bond
+                ),
+                BondPlan::Paused { .. }
+            )
+        };
+        assert!(paused(&policy));
+        // A stale count would leave the second slash unseen; a future one would
+        // cover a slash that has not happened yet. Neither changes anything.
+        for requested in [0, 1, 3, u64::MAX] {
+            let error = policy.acknowledge(2, requested).unwrap_err();
+            assert!(error.contains("slashCount() is 2"), "{error}");
+            assert_eq!(policy.acknowledged_slashes.load(SeqCst), 0);
+            assert!(paused(&policy));
+        }
+        assert_eq!(policy.acknowledge(2, 2), Ok(2));
+        assert_eq!(policy.acknowledged_slashes.load(SeqCst), 2);
+        assert!(!paused(&policy), "top-ups resume");
+        // The acknowledged count never goes down.
+        assert_eq!(policy.acknowledge(1, 1), Ok(1));
+        assert_eq!(policy.acknowledged_slashes.load(SeqCst), 2);
+        // A later slash pauses again until it is acknowledged in turn.
+        assert!(matches!(
+            bond_plan(40, 0, 3, policy.acknowledged_slashes.load(SeqCst), 50),
+            BondPlan::Paused {
+                slash_count: 3,
+                acknowledged: 2
+            }
+        ));
+    }
+
+    #[test]
     fn bond_top_up_runs_one_at_a_time() {
         let flag = std::sync::atomic::AtomicBool::new(false);
         let first = InFlight::take(&flag).expect("first top-up");
         assert!(InFlight::take(&flag).is_none(), "second waits");
         drop(first);
         assert!(InFlight::take(&flag).is_some(), "released on drop");
+    }
+
+    #[test]
+    fn stake_sweeps_run_once_per_request_and_a_failure_stays_requested() {
+        use std::sync::atomic::Ordering::SeqCst;
+        // Without an answer key there is nothing to sweep and nothing is read.
+        let mut l1 = L1::test_reader("http://127.0.0.1:9".into());
+        assert_eq!(l1.sweep_requested_stake_refunds(), Ok(None));
+        assert!(
+            !l1.stake_sweep.load(SeqCst),
+            "the start-up request was taken"
+        );
+        l1.clone().request_stake_sweep();
+        assert!(l1.stake_sweep.load(SeqCst), "requests are shared by clones");
+        // A sweep that cannot complete is asked for again on the next tick.
+        l1.answer = Some(AnswerLane {
+            keystore_path: String::new(),
+            password_file: String::new(),
+            address: crate::hex0x(&[0x66; 20]),
+            nonce: Default::default(),
+        });
+        assert!(l1.sweep_requested_stake_refunds().is_err());
+        assert!(l1.stake_sweep.load(SeqCst));
+        assert!(take_request(&l1.stake_sweep));
+        assert_eq!(
+            l1.sweep_requested_stake_refunds(),
+            Ok(None),
+            "not requested"
+        );
     }
 
     #[test]
@@ -2754,6 +2926,8 @@ mod tests {
             liveness_timeout_blocks: 43_200,
             consumed_deposit_count: 5,
             current_root: [3; 32],
+            enclave_signer: [0x55; 20],
+            sequencer: [0x44; 20],
         }
     }
     fn expectation() -> BootExpectation {
@@ -2761,6 +2935,8 @@ mod tests {
             settlement: [0xaa; 20],
             vault: Some([0x22; 20]),
             clock_verifier: Some([0x11; 20]),
+            enclave_signer: [0x55; 20],
+            sequencer: [0x44; 20],
             min_anchor_timeout_ms: min_anchor_timeout_ms(900),
             last_settled_root: [3; 32],
             live_root: [3; 32],
@@ -2784,6 +2960,32 @@ mod tests {
                 },
                 e.clone(),
                 "ABI_VERSION",
+            ),
+            // An enclave seed the settlement was not deployed with: every receipt's
+            // challenge authorization would be refused on L1.
+            (
+                p.clone(),
+                BootExpectation {
+                    enclave_signer: [0x56; 20],
+                    ..e.clone()
+                },
+                "enclaveSigner()",
+            ),
+            (
+                BootPosture {
+                    enclave_signer: [0x57; 20],
+                    ..p.clone()
+                },
+                e.clone(),
+                "ENCLAVE_SEED",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    sequencer: [0x45; 20],
+                    ..e.clone()
+                },
+                "sequencer()",
             ),
             (
                 BootPosture {

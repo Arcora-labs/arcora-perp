@@ -96,7 +96,7 @@
 
 <div class="endpoint">
   <div class="sig"><span class="method post">POST</span>/v1/orders</div>
-  <p>Place an order. Sealed body: <code>{"epochId": &lt;n&gt;, "sealed": "0x&hellip;"}</code> (see <a href="#sealed">wire format</a>). Returns an <strong>enclave-signed receipt</strong> — store it; it is your inclusion evidence in the on-chain challenge game. Responses: <code>200</code> signed receipt, <code>400</code> rejected, <code>429</code> rate-limited (10/s per account).</p>
+  <p>Place an order. Sealed body: <code>{"epochId": &lt;n&gt;, "sealed": "0x&hellip;"}</code> (see <a href="#sealed">wire format</a>). Returns an <strong>enclave-signed receipt</strong> — store it whole. For an account with a bound deposit address its <code>l1Challenge</code> field is the authorization that opens the on-chain inclusion challenge; the receipt's own signature is not accepted on L1. Responses: <code>200</code> signed receipt, <code>400</code> rejected, <code>429</code> rate-limited (10/s per account).</p>
 </div>
 
 <div class="endpoint">

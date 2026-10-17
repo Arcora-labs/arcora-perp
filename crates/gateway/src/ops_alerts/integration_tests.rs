@@ -517,6 +517,7 @@ fn alert_kinds_have_stable_names_and_active_lists_open_episodes() {
             "challenge_discovery_failed",
             "stale_anchor",
             "liveness_low",
+            "permit_gc_stalled",
         ]
     );
     let alerts = OpsAlerts::default();

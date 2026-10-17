@@ -88,7 +88,16 @@ pub struct DepositState {
     /// at or above it are applied off-chain but not yet in settled state.
     #[serde(skip)]
     pub settled_count: Option<u64>,
+    /// The first finalized page end, of the current unbroken run, whose header
+    /// did not re-hash. Permit GC waits while it is set; after
+    /// `PERMIT_GC_STALL_BLOCKS` more blocks the operator is alerted.
+    #[serde(skip)]
+    pub gc_unverified_since: Option<u64>,
 }
+
+/// Finalized blocks (one hour of 2 s blocks) of headers that do not re-hash
+/// before `PermitGcStalled` is raised.
+pub const PERMIT_GC_STALL_BLOCKS: u64 = 1_800;
 
 /// The v6 route, without the permit deadline.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -698,14 +707,36 @@ impl Gw {
             || !ops.is_empty()
             || self.deposits.domain.is_none();
         self.deposits.domain = Some(page.start.domain);
-        let block_time = page.end.timestamp;
+        let (block, block_time) = (page.end.number, page.end.timestamp);
         self.deposits.anchor = Some(page.end);
         self.deposits.ready = true;
         self.deposits.dirty |= changed;
-        if let Some(t) = block_time {
-            self.gc_expired_permits(t);
-        }
+        self.collect_expired_permits(block, block_time);
         Ok(page.events.len())
+    }
+    /// Permit GC against the page end's header time. Without a time (the header
+    /// did not re-hash) only GC waits: intake goes on, and after
+    /// `PERMIT_GC_STALL_BLOCKS` such blocks in a row `PermitGcStalled` is raised.
+    fn collect_expired_permits(&mut self, block: u64, block_time: Option<u64>) {
+        use crate::ops_alerts::AlertKind::PermitGcStalled;
+        match block_time {
+            Some(t) => {
+                self.gc_expired_permits(t);
+                if self.deposits.gc_unverified_since.take().is_some() {
+                    println!("[deposits] finalized block {block} header re-hashes again; expired permits are collected");
+                }
+                self.ops_alerts.recover(PermitGcStalled);
+            }
+            None => {
+                let since = *self.deposits.gc_unverified_since.get_or_insert_with(|| {
+                    eprintln!("[deposits] finalized block {block} header does not hash to its reported hash with the fields this gateway knows; deposits are still ingested, but expired permits are not collected until headers re-hash");
+                    block
+                });
+                if block.saturating_sub(since) >= PERMIT_GC_STALL_BLOCKS {
+                    self.ops_alerts.activate(PermitGcStalled);
+                }
+            }
+        }
     }
 }
 

@@ -149,16 +149,66 @@ pub trait ProverClient: Send + Sync {
     fn public_identity(&self) -> Result<Option<ProverPublicIdentity>, String> {
         Ok(None)
     }
+    /// The registration checks that do not depend on the sealed window, read
+    /// before clock admission pauses. `None` for a client that registers nothing.
+    fn register_preconditions(&self) -> Result<Option<RegisterPreconditions>, PreflightRefusal> {
+        Ok(None)
+    }
     /// Checks that must pass before a window of wind-down `phase` is registered,
-    /// with no chain mutation. The default bounds the sealed request by the
-    /// transport's own 512 MiB limit.
-    fn preflight(&self, w: &WindowWitness, phase: u8) -> Result<(), PreflightRefusal> {
+    /// with no chain mutation. `pre` is what [`ProverClient::register_preconditions`]
+    /// read before the seal; with it, nothing here waits on a remote read. The
+    /// default bounds the sealed request by the transport's own 512 MiB limit.
+    fn preflight(
+        &self,
+        w: &WindowWitness,
+        phase: u8,
+        _pre: Option<&RegisterPreconditions>,
+    ) -> Result<(), PreflightRefusal> {
         check_sealed_body(
             w,
             phase,
             crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES,
         )
         .map_err(PreflightRefusal::Refused)
+    }
+}
+
+/// The registration preconditions that do not depend on the sealed window, read
+/// before admission pauses. A timed window must register within `clockSkewMs` of
+/// its last operation, and admission stays open until the pause, so these reads
+/// (several L1 round trips, and the prover's identity) are not spent from that
+/// budget. Only the comparison with the sealed window runs after the seal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisterPreconditions {
+    /// The settlement's `batchCount()` at the latest block.
+    pub batch_count: u64,
+    /// The settlement's wind-down phase at the same block.
+    pub phase: u8,
+    /// The request-body limit the prover advertised, when its identity was read.
+    pub prover_body_bytes: Option<usize>,
+}
+impl RegisterPreconditions {
+    /// Whether window `batch`, sealed for wind-down `phase`, can register against
+    /// what was read. A phase mismatch is reported apart, since a phase-0 window
+    /// after close-only can never register.
+    pub fn admit(&self, batch: u64, phase: u8) -> Result<(), PreflightRefusal> {
+        if self.phase != phase {
+            return Err(PreflightRefusal::WrongPhase(if phase == 0 {
+                "the settlement is in close-only: an ordinary window cannot register or settle; start the wind-down".into()
+            } else {
+                format!(
+                    "the settlement is in wind-down phase {}, not {phase}",
+                    self.phase
+                )
+            }));
+        }
+        if self.batch_count != batch {
+            return Err(PreflightRefusal::Refused(format!(
+                "window {batch} is not the settlement's next batch {}",
+                self.batch_count
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -1101,9 +1151,9 @@ impl ProverClient for HttpProverClient {
     ) -> Result<RemoteProveResp, ProverClientError> {
         self.prove_http(w, Some(c))
     }
-    /// Fetched with short bounds and cached for `IDENTITY_CACHE`: the preflight
-    /// runs between the seal and the registration, which must land within
-    /// `clockSkewMs` of the window's last operation.
+    /// Fetched with short bounds and cached for `IDENTITY_CACHE`. The clock
+    /// client reads it before admission pauses, so the fetch is not spent from
+    /// the `clockSkewMs` budget a timed window has to register in.
     fn public_identity(&self) -> Result<Option<ProverPublicIdentity>, String> {
         if let Some((at, identity)) = self.identity.lock().unwrap().as_ref() {
             if at.elapsed() < IDENTITY_CACHE {
@@ -1122,14 +1172,21 @@ impl ProverClient for HttpProverClient {
     /// prover advertises. A timed window registers only within `clockSkewMs` of
     /// its last operation, so a transient identity failure must not stop the
     /// registration: the anchor fixes the window's times and proving can resume.
-    /// Without the identity only the transport limit is checked.
-    fn preflight(&self, w: &WindowWitness, phase: u8) -> Result<(), PreflightRefusal> {
-        let limit = match self.public_identity() {
-            Ok(Some(identity)) => identity
-                .body_bytes
-                .min(crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES),
-            Ok(None) | Err(_) => crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES,
+    /// Without the identity only the transport limit is checked. Given `pre`, the
+    /// limit read before the seal is used and nothing is fetched.
+    fn preflight(
+        &self,
+        w: &WindowWitness,
+        phase: u8,
+        pre: Option<&RegisterPreconditions>,
+    ) -> Result<(), PreflightRefusal> {
+        let advertised = match pre {
+            Some(pre) => pre.prover_body_bytes,
+            None => self.public_identity().ok().flatten().map(|i| i.body_bytes),
         };
+        let limit = advertised.map_or(crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES, |b| {
+            b.min(crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES)
+        });
         check_sealed_body(w, phase, limit).map_err(PreflightRefusal::Refused)
     }
 }
@@ -2741,8 +2798,51 @@ mod preflight_tests {
     #[test]
     fn the_default_preflight_bounds_every_client_by_the_transport_limit() {
         let (w, _) = tests_support::sample_window();
-        assert_eq!(MockProverClient.preflight(&w, 0), Ok(()));
+        assert_eq!(MockProverClient.preflight(&w, 0, None), Ok(()));
+        assert_eq!(MockProverClient.register_preconditions(), Ok(None));
         assert_eq!(MockProverClient.public_identity(), Ok(None));
+    }
+
+    /// After the seal the remote prover's size check uses the limit read before
+    /// the seal and fetches nothing. The client points at a closed port, so a
+    /// fetch would fall back to the transport limit and accept the window.
+    #[test]
+    fn the_remote_size_check_uses_the_limit_read_before_the_seal() {
+        let client = HttpProverClient {
+            url: "http://127.0.0.1:9".into(),
+            seal_root: [0; 32],
+            measurement: [0; 32],
+            timeout_secs: 1,
+            session: std::sync::Mutex::new(SessionState {
+                token: None,
+                secret: None,
+                not_after: 0,
+            }),
+            rehandshake: None,
+            identity: std::sync::Mutex::new(None),
+        };
+        let (w, _) = tests_support::sample_window();
+        let real = serde_json::json!({
+            "sealed": seal_witness_with_clock(&w, &[1; 32], &[2; 32], None, Some(&real_clock(&w)))
+                .unwrap()
+        })
+        .to_string()
+        .len();
+        let pre = |prover_body_bytes| RegisterPreconditions {
+            batch_count: w.batch_id,
+            phase: 0,
+            prover_body_bytes,
+        };
+        assert!(matches!(
+            client.preflight(&w, 0, Some(&pre(Some(real / 2)))),
+            Err(PreflightRefusal::Refused(e)) if e.contains("not registered")
+        ));
+        // No advertised limit was read: only the transport limit applies.
+        client.preflight(&w, 0, Some(&pre(None))).unwrap();
+        assert!(
+            client.identity.lock().unwrap().is_none(),
+            "nothing was fetched"
+        );
     }
 
     #[test]

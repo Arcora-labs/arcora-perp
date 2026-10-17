@@ -156,6 +156,8 @@ impl Rpc for Fixture {
                     ("slashPayoutCap()", U(1_000_000_000)),
                     ("challengeBond()", U(10_000_000_000_000_000)),
                     ("inclusionDeadlineSecs()", U(3_600)),
+                    ("enclaveSigner()", Addr),
+                    ("sequencer()", Addr),
                 ];
                 let data = params[0]["data"].as_str().unwrap();
                 let (index, (_, value)) = words

@@ -182,6 +182,10 @@ fn runtime_state_native_cast_gate_vault_claims_terminal_and_bond_positive() {
     assert_eq!(gate.deposit_capacity, 1_000_000);
     let live = l1.liveness_observation().unwrap();
     assert_eq!((live.head, live.last_progress_block), (28, 20));
+    // slashCount() is 0: only that exact count is acknowledged.
+    assert!(l1.acknowledge_slashes(1).is_err());
+    assert_eq!(l1.acknowledged_slash_count(), 0);
+    assert_eq!(l1.acknowledge_slashes(0), Ok(0));
     assert_eq!(l1.settlement_params().unwrap().progress_batches, 2);
     assert!(primary
         .fixture
@@ -555,6 +559,8 @@ fn boot_posture_reads_every_term_from_one_snapshot() {
             liveness_timeout_blocks: 43_200,
             consumed_deposit_count: 5,
             current_root: [3; 32],
+            enclave_signer: me,
+            sequencer: me,
         }
     );
     let error = read(Fault::Word(14), Fault::Word(14)).unwrap_err();
@@ -564,9 +570,38 @@ fn boot_posture_reads_every_term_from_one_snapshot() {
         Fault::Word(16),
         Fault::Word(19),
         Fault::Word(21),
+        Fault::Word(30),
+        Fault::Word(31),
         Fault::Failure(4),
     ] {
         assert!(read(Fault::None, f).is_err(), "witness {f:?}");
+    }
+}
+#[test]
+fn the_slash_count_an_acknowledgement_is_checked_against_is_read_strictly() {
+    let read = |p: Fault, w: Fault| {
+        let primary = Fixture::new(p);
+        let witness = Fixture::new(w);
+        let r = CanonicalRead::with_policy(
+            &primary,
+            Some(&witness),
+            Some(84532),
+            AnchorPolicy::Latest,
+        )?;
+        let count = super::read_slash_count(&r, SETTLEMENT)?;
+        r.finish()?;
+        Ok::<_, String>(count)
+    };
+    assert_eq!(read(Fault::None, Fault::None), Ok(0));
+    // index 8 is slashCount(): a disagreeing witness, or a malformed or
+    // overflowing word, is refused rather than acknowledged.
+    for (p, w) in [
+        (Fault::None, Fault::Word(8)),
+        (Fault::MalformedWord, Fault::MalformedWord),
+        (Fault::Overflow, Fault::Overflow),
+        (Fault::None, Fault::CanonicalAfter),
+    ] {
+        assert!(read(p, w).is_err(), "{p:?} {w:?}");
     }
 }
 #[test]
@@ -615,6 +650,7 @@ fn runtime_state_native_cast_open_set_and_boot_posture_are_hash_pinned() {
         verifier: crate::parse_addr20_hex(SETTLEMENT).unwrap(),
         chain_id: 84532,
         stop: None,
+        program_vkey: Default::default(),
     });
     assert_eq!(
         l1.open_challenge_set(&Default::default(), 16)

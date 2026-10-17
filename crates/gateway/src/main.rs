@@ -10024,9 +10024,9 @@ async fn main() {
                                                 if check.evidence.close_only {
                                                     gw.deposits.l1_close_only = true;
                                                 }
-                                                if !check.evidence.fenced {
+                                                if !check.evidence.fenced && check.dead.is_none() {
                                                     eprintln!(
-                                                        "[recovery] window {}: at finalized block {} the sequencer nonce has not passed every recorded sequencer-key send; a transaction of ours may still be mined",
+                                                        "[recovery] window {}: at finalized block {} the sequencer nonce has not passed every recorded sequencer-key send; a transaction of ours may still be mined. If none is pending (a send that was refused before broadcast leaves its nonce unused), mine any transaction from the sequencer key and restart; see docs/PROVING-RUNBOOK.md",
                                                         j.batch_id, check.evidence.block
                                                     );
                                                 }
@@ -10192,24 +10192,28 @@ async fn main() {
         }
     }
     // L1 boot handshake: refuse a settlement ABI this binary does not speak, an
+    // enclave seed or sequencer key the settlement was not deployed with, an
     // unclocked or foreign verifier, an unpaired vault, an anchor timeout that an
     // honest in-flight proof could outlive, and a consumed-deposit count that
     // disagrees with the settled root, before any later read relies on them.
     if let Some(l1c) = &l1 {
-        let expectation = l1c.boot_expectation(
+        let local = (
+            gw.seq.enclave().eth_address(),
             gw.last_settled_root,
             gw.seq.state.state_root(),
             gw.seq.state.consumed_deposit_count,
-            permit_ttl_secs,
         );
-        let posture = {
+        let verdict = {
             let l1c = l1c.clone();
-            tokio::task::spawn_blocking(move || l1c.boot_posture())
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()))
+            tokio::task::spawn_blocking(move || {
+                let (enclave, settled, live, consumed) = local;
+                let e = l1c.boot_expectation(enclave, settled, live, consumed, permit_ttl_secs)?;
+                let p = l1c.boot_posture()?;
+                l1::check_boot_posture(&p, &e).map(|()| p)
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
         };
-        let verdict = expectation
-            .and_then(|e| posture.and_then(|p| l1::check_boot_posture(&p, &e).map(|()| p)));
         match verdict {
             Ok(p) => {
                 println!(
@@ -10912,7 +10916,7 @@ async fn main() {
                     }
                     let send_l1 = l1a.clone();
                     sending = Some(tokio::task::spawn_blocking(move || {
-                        let (_, error) = challenge_scan::send_answers(plan.sends, |batch, answers| {
+                        let (answered, error) = challenge_scan::send_answers(plan.sends, |batch, answers| {
                             let tx = send_l1.answer_challenges(batch, answers)?;
                             println!("[l1] answered {} inclusion challenge(s) from batch {batch} tx {tx}", answers.len());
                             Ok(tx)
@@ -10920,10 +10924,11 @@ async fn main() {
                         if let Some(e) = error {
                             eprintln!("[l1] some challenge answers will retry: {e}");
                         }
-                        match send_l1.sweep_stake_refunds() {
-                            Ok(Some(tx)) => println!("[l1] swept stake refunds to the answer key: {tx}"),
-                            Ok(None) => {}
-                            Err(e) => eprintln!("[l1] stake refund sweep will retry: {e}"),
+                        if answered > 0 {
+                            // Answers can route stakes to the sequencer's pendingEth. The
+                            // claim is a sequencer-key send, so the settle loop makes it
+                            // before admission pauses, never while a window waits to register.
+                            send_l1.request_stake_sweep();
                         }
                     }));
                 }
@@ -10976,16 +10981,29 @@ async fn main() {
                     continue;
                 }
                 if let Some(client) = app.prover.clone() {
-                    let mut admission = match app.clock_admission.pause(&stop).await {
-                        Ok(p) => p, Err(_) => break,
-                    };
-                    // (A) keep the bond at its target (deposit capacity) and read the
-                    // on-chain batch count (RPC, no lock). Settlement never depends on the
+                    // (A) Everything that reads or sends on L1 without depending on the
+                    // window runs BEFORE admission pauses (RPC, no lock). A timed window
+                    // must register within clockSkewMs of its last operation, and
+                    // operations are admitted until the pause, so none of this is spent
+                    // from that budget: the bond top-up and the stake-refund sweep (both
+                    // sequencer-key sends, made while no window is sealed), the batch
+                    // count, and, when there may be a window to seal, the registration
+                    // checks that do not depend on it. Settlement never depends on the
                     // bond, so a bond problem only raises an alert; only a failed batch
                     // count read skips this tick.
+                    let clocked = client.clock_enabled();
+                    let liveness_due = tokio::time::Instant::now() >= liveness_read_at;
+                    let read_pre =
+                        clocked && (liveness_due || !app.gw.lock().await.window_is_idle());
                     let l1c = l1.clone();
-                    let (bond, bc) = match tokio::task::spawn_blocking(move || {
-                        (l1c.ensure_bond(), l1c.batch_count())
+                    let pre_client = client.clone();
+                    let (bond, swept, bc, pre) = match tokio::task::spawn_blocking(move || {
+                        (
+                            l1c.ensure_bond(),
+                            l1c.sweep_requested_stake_refunds(),
+                            l1c.batch_count(),
+                            read_pre.then(|| pre_client.register_preconditions()),
+                        )
                     })
                     .await
                     {
@@ -10995,6 +11013,11 @@ async fn main() {
                             continue;
                         }
                     };
+                    match swept {
+                        Ok(Some(tx)) => println!("[l1] swept stake refunds to the answer key: {tx}"),
+                        Ok(None) => {}
+                        Err(e) => eprintln!("[l1] stake refund sweep will retry: {e}"),
+                    }
                     {
                         let alerts = app.gw.lock().await.ops_alerts.clone();
                         match bond {
@@ -11023,6 +11046,9 @@ async fn main() {
                             continue;
                         }
                     };
+                    let mut admission = match app.clock_admission.pause(&stop).await {
+                        Ok(p) => p, Err(_) => break,
+                    };
                     // No progress while blind to open challenges: refuse to seal unless
                     // the watcher's latest open-set read succeeded recently.
                     if let Err(e) = l1.challenge_discovery().settle_permitted(
@@ -11036,9 +11062,7 @@ async fn main() {
                     // livenessTimeoutBlocks without progress anyone may close the
                     // settlement. While idle, read the liveness clock and, once a
                     // quarter of the window has passed, seal and settle an empty window.
-                    let keepalive = if app.gw.lock().await.window_is_idle()
-                        && tokio::time::Instant::now() >= liveness_read_at
-                    {
+                    let keepalive = if liveness_due && app.gw.lock().await.window_is_idle() {
                         let l1c = l1.clone();
                         let read = tokio::task::spawn_blocking(move || l1c.liveness_observation())
                             .await
@@ -11086,6 +11110,12 @@ async fn main() {
                         if close_only_seen && !gw.wind_down_started {
                             // A latest-block close-only refused the last ordinary window;
                             // only the wind-down's windows can settle from here.
+                            continue;
+                        }
+                        if clocked && pre.is_none() && !gw.window_is_idle() {
+                            // The window gained work after the idle check before the
+                            // pause, so its registration checks were not read. It seals
+                            // on the next tick; reading them now would spend its budget.
                             continue;
                         }
                         if client.clock_enabled()
@@ -11177,13 +11207,21 @@ async fn main() {
                                 break;
                             }
                         };
-                        // Preflight: request size, batch and wind-down phase, and in
-                        // production the prover's program. Nothing has been sent, so a
-                        // refusal rolls the window back like a failed prove.
+                        // Preflight: request size, batch and wind-down phase. The reads
+                        // it compares against (and, in production, the prover's program)
+                        // were done before the pause, so this is local work only. A
+                        // refusal from either part sends nothing and rolls the window
+                        // back like a failed prove.
                         let phase = intent.outcome.wind_down_phase;
                         let pf_client = client.clone();
                         let (returned, preflight) = match tokio::task::spawn_blocking(move || {
-                            let result = pf_client.preflight(&journal.witness, phase);
+                            let result = match pre {
+                                Some(Err(refusal)) => Err(refusal),
+                                Some(Ok(pre)) => {
+                                    pf_client.preflight(&journal.witness, phase, pre.as_ref())
+                                }
+                                None => pf_client.preflight(&journal.witness, phase, None),
+                            };
                             (journal, result)
                         })
                         .await
@@ -14156,6 +14194,74 @@ mod tests {
         assert_ne!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert_ne!(status, StatusCode::OK);
         drop(paused);
+        match previous {
+            Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),
+            None => std::env::remove_var("FIN_ADMIN_KEY"),
+        }
+    }
+
+    /// The slash acknowledgement is operator-only, needs the count and a bridge,
+    /// and acknowledges nothing it could not check against the settlement.
+    #[tokio::test]
+    async fn acknowledge_slash_endpoint_is_gated_and_refuses_an_unchecked_count() {
+        let _env = wind_down::ADMIN_ENV_LOCK.lock().await;
+        use tower::ServiceExt as _;
+        let key = "0x".to_string() + &"aa".repeat(32);
+        let call = |app: &Shared, admin: Option<&str>, body: serde_json::Value| {
+            let mut req = axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/admin/bond/acknowledge-slash")
+                .header("content-type", "application/json");
+            if let Some(k) = admin {
+                req = req.header("x-admin-key", k);
+            }
+            let req = req.body(axum::body::Body::from(body.to_string())).unwrap();
+            let router = build_router(app.clone(), false);
+            async move {
+                let response = router.oneshot(req).await.unwrap();
+                let status = response.status();
+                let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+                    .await
+                    .unwrap();
+                (status, String::from_utf8_lossy(&bytes).to_string())
+            }
+        };
+        let body = serde_json::json!({"slashCount": 2});
+        let previous = std::env::var_os("FIN_ADMIN_KEY");
+        std::env::remove_var("FIN_ADMIN_KEY");
+        let app = test_app();
+        assert_eq!(
+            call(&app, Some(&key), body.clone()).await.0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        std::env::set_var("FIN_ADMIN_KEY", &key);
+        assert_eq!(
+            call(&app, Some("0x00"), body.clone()).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            call(&app, None, body.clone()).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        for bad in [
+            serde_json::json!({}),
+            serde_json::json!({"slashCount": "2"}),
+            serde_json::json!({"slashCount": -1}),
+        ] {
+            assert_eq!(call(&app, Some(&key), bad).await.0, StatusCode::BAD_REQUEST);
+        }
+        // No settlement bridge configured.
+        assert_eq!(
+            call(&app, Some(&key), body.clone()).await.0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        // A count that cannot be read from the settlement is not acknowledged.
+        let mut app = test_app();
+        let l1 = L1::test_reader("http://127.0.0.1:9".into());
+        Arc::get_mut(&mut app).unwrap().l1 = Some(l1.clone());
+        let (status, text) = call(&app, Some(&key), body.clone()).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{text}");
+        assert_eq!(l1.acknowledged_slash_count(), 0);
         match previous {
             Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),
             None => std::env::remove_var("FIN_ADMIN_KEY"),

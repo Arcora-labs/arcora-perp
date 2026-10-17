@@ -271,9 +271,19 @@ fn dead_intent_classification_follows_the_evidence() {
     assert_eq!(classify(moved, intent(None, 0), Ceiling::None), None);
 }
 
-fn preflight(chain: &Chain, batch: u64, phase: u8) -> Result<(), PreflightRefusal> {
+fn preconditions(chain: &Chain) -> Result<crate::prover_client::RegisterPreconditions, String> {
     let r = CanonicalRead::with_policy(chain, None, None, AnchorPolicy::Latest).unwrap();
-    super::read_register_preflight(&r, SETTLEMENT, &VERIFIER, batch, phase)
+    let (batch_count, phase) = super::read_register_state(&r, SETTLEMENT, &VERIFIER)?;
+    Ok(crate::prover_client::RegisterPreconditions {
+        batch_count,
+        phase,
+        prover_body_bytes: None,
+    })
+}
+fn preflight(chain: &Chain, batch: u64, phase: u8) -> Result<(), PreflightRefusal> {
+    preconditions(chain)
+        .map_err(PreflightRefusal::Refused)?
+        .admit(batch, phase)
 }
 
 #[test]
@@ -298,6 +308,23 @@ fn register_preflight_refuses_phase_zero_in_close_only_before_any_send() {
         preflight(&Chain::default(), 8, 0),
         Err(PreflightRefusal::Refused(e)) if e.contains("next batch")
     ));
+}
+
+#[test]
+fn program_vkey_is_read_once_and_only_a_success_is_kept() {
+    let cell = std::sync::OnceLock::new();
+    let reads = std::cell::Cell::new(0);
+    let read = |result: Result<Digest, String>| {
+        reads.set(reads.get() + 1);
+        result
+    };
+    assert!(super::cached_vkey(&cell, || read(Err("execution reverted".into()))).is_err());
+    assert_eq!(super::cached_vkey(&cell, || read(Ok(VKEY))).unwrap(), VKEY);
+    assert_eq!(
+        super::cached_vkey(&cell, || panic!("the immutable route was read again")).unwrap(),
+        VKEY
+    );
+    assert_eq!(reads.get(), 2);
 }
 
 #[test]

@@ -9,6 +9,20 @@ pub(crate) struct ClockConfig {
     pub verifier: [u8; 20],
     pub chain_id: u64,
     pub stop: Option<std::sync::Arc<crate::service_shutdown::Shutdown>>,
+    /// The route's program vkey once read; shared by every clone.
+    pub program_vkey: std::sync::Arc<std::sync::OnceLock<Digest>>,
+}
+
+/// `cell`'s value, or the result of `read`, kept only when it succeeds.
+fn cached_vkey(
+    cell: &std::sync::OnceLock<Digest>,
+    read: impl FnOnce() -> Result<Digest, String>,
+) -> Result<Digest, String> {
+    if let Some(v) = cell.get() {
+        return Ok(*v);
+    }
+    let v = read()?;
+    Ok(*cell.get_or_init(|| v))
 }
 impl ClockConfig {
     pub(crate) fn from_values(
@@ -30,6 +44,7 @@ impl ClockConfig {
             verifier,
             chain_id,
             stop: None,
+            program_vkey: Default::default(),
         }))
     }
     pub(crate) fn from_env() -> Result<Option<Self>, String> {
@@ -305,36 +320,19 @@ pub(super) fn read_dead_intent_evidence(
     })
 }
 
-/// The registration preconditions that do not depend on time: the binding, the
-/// canonical batch and the settlement's wind-down phase. A phase mismatch is
-/// reported apart, since a phase-0 window after close-only can never register.
-pub(super) fn read_register_preflight(
+/// The registration state that does not depend on the window: the binding is
+/// checked, then the settlement's batch count and wind-down phase are returned,
+/// all at one block. `RegisterPreconditions::admit` compares a sealed window
+/// against them.
+pub(super) fn read_register_state(
     r: &CanonicalRead<'_>,
     settlement: &str,
     verifier: &[u8; 20],
-    batch: u64,
-    phase: u8,
-) -> Result<(), crate::prover_client::PreflightRefusal> {
-    use crate::prover_client::PreflightRefusal;
-    check_binding(r, settlement, verifier).map_err(PreflightRefusal::Refused)?;
-    let actual = settlement_phase(r, settlement).map_err(PreflightRefusal::Refused)?;
-    if actual != phase {
-        return Err(PreflightRefusal::WrongPhase(if phase == 0 {
-            "the settlement is in close-only: an ordinary window cannot register or settle; start the wind-down".into()
-        } else {
-            format!("the settlement is in wind-down phase {actual}, not {phase}")
-        }));
-    }
-    let count = r
-        .word(settlement, "batchCount()", None)
-        .and_then(|w| abi_u64(w, "batchCount"))
-        .map_err(PreflightRefusal::Refused)?;
-    if count != batch {
-        return Err(PreflightRefusal::Refused(format!(
-            "window {batch} is not the settlement's next batch {count}"
-        )));
-    }
-    Ok(())
+) -> Result<(u64, u8), String> {
+    check_binding(r, settlement, verifier)?;
+    let phase = settlement_phase(r, settlement)?;
+    let count = abi_u64(r.word(settlement, "batchCount()", None)?, "batchCount")?;
+    Ok((count, phase))
 }
 
 /// The program vkey the clock route verifies: `innerVerifier()` is the SP1
@@ -374,6 +372,7 @@ impl L1 {
             verifier,
             chain_id,
             stop: None,
+            program_vkey: Default::default(),
         });
         l1
     }
@@ -497,30 +496,24 @@ impl L1 {
             )
         })
     }
-    /// The time-independent registration preconditions at the latest block.
-    pub(crate) fn clock_register_preflight(
-        &self,
-        batch: u64,
-        phase: u8,
-    ) -> Result<(), crate::prover_client::PreflightRefusal> {
-        use crate::prover_client::PreflightRefusal;
-        let cfg = self
-            .clock
-            .as_ref()
-            .ok_or_else(|| PreflightRefusal::Refused("clock mode not configured".into()))?;
-        let mut outcome = Ok(());
-        self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            outcome = read_register_preflight(r, &self.settlement, &cfg.verifier, batch, phase);
-            Ok(())
-        })
-        .map_err(PreflightRefusal::Refused)?;
-        outcome
-    }
-    /// The program vkey of the clock verifier route's SP1 adapter, at the latest block.
-    pub(crate) fn clock_program_vkey(&self) -> Result<Digest, String> {
+    /// The settlement's batch count and wind-down phase at the latest block, with
+    /// the clock binding checked at the same block.
+    pub(crate) fn clock_register_state(&self) -> Result<(u64, u8), String> {
         let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
         self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            read_program_vkey(r, &cfg.verifier)
+            read_register_state(r, &self.settlement, &cfg.verifier)
+        })
+    }
+    /// The program vkey of the clock verifier route's SP1 adapter. The route is
+    /// immutable (the clock verifier's `innerVerifier`, an oracle wrapper's
+    /// `innerVerifier` and the adapter's `programVKey` are all constructor-set),
+    /// so the first successful read is kept for every clone of this bridge.
+    pub(crate) fn clock_program_vkey(&self) -> Result<Digest, String> {
+        let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
+        cached_vkey(&cfg.program_vkey, || {
+            self.observe_at(observation::AnchorPolicy::Latest, |r| {
+                read_program_vkey(r, &cfg.verifier)
+            })
         })
     }
     /// Cancel a dead anchor after `anchorTimeoutMs`, as its registrant role (the
@@ -816,6 +809,7 @@ mod configuration_tests {
             verifier: [1; 20],
             chain_id: 84532,
             stop: None,
+            program_vkey: Default::default(),
         });
         p.outcome.proof = vec![1; 32];
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());

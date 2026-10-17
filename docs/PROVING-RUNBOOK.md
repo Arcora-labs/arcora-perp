@@ -199,6 +199,16 @@ Before the gateway registers a window with the clock it checks:
   release or candidate manifest in use. Mock and Chainlink-candidate stacks, whose
   inner verifier has no `programVKey`, skip only this identity check.
 
+A timed window must register within `clockSkewMs` of its last operation, and
+operations are admitted until the settle tick pauses admission. So everything that
+does not depend on the window is read before the pause: the bond top-up, the
+stake-refund sweep, the batch count, the clock binding, the settlement's batch
+count and phase, the prover's identity and, in production, the adapter's
+`programVKey()` (read once; the route is immutable). Between the seal and the
+register only local work remains: the body-size check against the limit read
+before the pause, and the sealed window's batch and phase against the settlement's.
+The register's own read and send are the only L1 round trips left in that budget.
+
 ## Stale clock anchor: cancel
 
 Every settle path needs a clock anchor for the current batch and phase before its

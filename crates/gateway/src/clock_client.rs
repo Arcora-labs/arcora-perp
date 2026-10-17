@@ -1,7 +1,9 @@
 //! Gateway clock protocol selector. Registration is a chain mutation, so callers
 //! MUST durably persist an unproved intent before prove_and_prepare is called.
 use crate::{
-    prover_client::{PreflightRefusal, ProverClient, ProverClientError, RemoteProveResp},
+    prover_client::{
+        PreflightRefusal, ProverClient, ProverClientError, RegisterPreconditions, RemoteProveResp,
+    },
     L1,
 };
 use perp_core::clock::ClockContext;
@@ -43,36 +45,61 @@ impl ProverClient for ClockProverClient {
     ) -> Result<Option<crate::prover_client::ProverPublicIdentity>, String> {
         self.inner.public_identity()
     }
-    fn preflight(&self, w: &WindowWitness, phase: u8) -> Result<(), PreflightRefusal> {
-        self.preflight_with(w, phase, crate::strict_production())
+    fn register_preconditions(&self) -> Result<Option<RegisterPreconditions>, PreflightRefusal> {
+        self.register_preconditions_with(crate::strict_production())
+            .map(Some)
+    }
+    /// After the seal only local work remains: the prover's request-size check,
+    /// with the limit read before the seal, and the sealed window's batch and
+    /// phase against the settlement's. A timed window must register within
+    /// `clockSkewMs` of its last operation, so no L1 or prover read happens here.
+    fn preflight(
+        &self,
+        w: &WindowWitness,
+        phase: u8,
+        pre: Option<&RegisterPreconditions>,
+    ) -> Result<(), PreflightRefusal> {
+        let pre = pre.ok_or_else(|| {
+            PreflightRefusal::Refused(
+                "the registration preconditions were not read before the seal".into(),
+            )
+        })?;
+        self.inner.preflight(w, phase, Some(pre))?;
+        pre.admit(w.batch_id, phase)
     }
 }
 
 impl ClockProverClient {
-    /// The prover's own checks (request size), then the settlement's batch and
-    /// phase at the latest block, then, in production with a remote prover, its
-    /// program against the on-chain SP1 adapter. All before any registration.
-    pub(crate) fn preflight_with(
+    /// Everything the registration preflight needs that does not depend on the
+    /// window, read before admission pauses: in production with a remote prover,
+    /// its program against the on-chain SP1 adapter (whose vkey is read once),
+    /// then the clock binding, batch count and wind-down phase at the latest block.
+    pub(crate) fn register_preconditions_with(
         &self,
-        w: &WindowWitness,
-        phase: u8,
         production: bool,
-    ) -> Result<(), PreflightRefusal> {
-        self.inner.preflight(w, phase)?;
-        self.l1.clock_register_preflight(w.batch_id, phase)?;
+    ) -> Result<RegisterPreconditions, PreflightRefusal> {
+        // A transient identity failure is not a property of the window: the size
+        // check then falls back to the transport limit.
+        let identity = self.inner.public_identity().ok().flatten();
         if production {
-            // A transient identity failure is not a property of the window; the
-            // size check above already fell back to the transport limit.
-            if let Ok(Some(identity)) = self.inner.public_identity() {
+            if let Some(identity) = &identity {
                 check_program_identity(
-                    &identity,
+                    identity,
                     self.l1.clock_program_vkey(),
                     expected_elf_sha256()?,
                 )
                 .map_err(PreflightRefusal::Refused)?;
             }
         }
-        Ok(())
+        let (batch_count, phase) = self
+            .l1
+            .clock_register_state()
+            .map_err(PreflightRefusal::Refused)?;
+        Ok(RegisterPreconditions {
+            batch_count,
+            phase,
+            prover_body_bytes: identity.map(|i| i.body_bytes),
+        })
     }
 }
 
@@ -217,4 +244,40 @@ pub(crate) fn resume_exact(
     crate::rollback_journal::write_versioned(path, journal, envelope, seed)?;
     l1.settle_proved(&prepared.outcome)?;
     l1.settlement_observation()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prover_client::{tests_support::sample_window, MockProverClient};
+
+    /// The post-seal check is local. The bridge here points at a closed port, so
+    /// any L1 read would fail the check instead of passing it.
+    #[test]
+    fn the_post_seal_check_compares_the_sealed_window_without_reading_l1() {
+        let client = ClockProverClient {
+            inner: Arc::new(MockProverClient),
+            l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+        };
+        let (w, _) = sample_window();
+        let pre = |batch_count, phase| RegisterPreconditions {
+            batch_count,
+            phase,
+            prover_body_bytes: None,
+        };
+        client.preflight(&w, 0, Some(&pre(w.batch_id, 0))).unwrap();
+        assert!(matches!(
+            client.preflight(&w, 0, Some(&pre(w.batch_id, 1))),
+            Err(PreflightRefusal::WrongPhase(e)) if e.contains("close-only")
+        ));
+        assert!(matches!(
+            client.preflight(&w, 0, Some(&pre(w.batch_id + 1, 0))),
+            Err(PreflightRefusal::Refused(e)) if e.contains("next batch")
+        ));
+        // Without what was read before the seal nothing is registered.
+        assert!(matches!(
+            client.preflight(&w, 0, None),
+            Err(PreflightRefusal::Refused(e)) if e.contains("before the seal")
+        ));
+    }
 }

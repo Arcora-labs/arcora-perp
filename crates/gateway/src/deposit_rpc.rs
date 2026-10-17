@@ -15,8 +15,10 @@ pub struct Block {
     pub hash: [u8; 32],
     /// Header timestamp in seconds. `VaultSource` sets it only after recomputing
     /// the block hash from the returned header fields, so the time is as
-    /// authentic as the block identity. It is not persisted: a restored anchor
-    /// carries `None`, and time-based decisions use a freshly fetched block.
+    /// authentic as the block identity. A header this gateway cannot re-hash (an
+    /// unknown later field, or a provider quirk) leaves it `None`, and only the
+    /// time-based permit GC waits. It is not persisted: a restored anchor carries
+    /// `None`, and time-based decisions use a freshly fetched block.
     #[serde(skip)]
     pub timestamp: Option<u64>,
 }
@@ -158,12 +160,30 @@ pub(crate) fn validated_block(v: &Value) -> Result<Block, Error> {
     })
 }
 
+/// Parse a block's identity, and its timestamp only when the header hashes to
+/// the reported block hash. Deposit ingestion depends on the identity alone; the
+/// time only drives permit GC, so a header this gateway cannot re-hash (a field
+/// added by a later fork, say) must not stop intake, settlement or keepalives.
+pub(crate) fn block_identity(v: &Value) -> Result<Block, Error> {
+    let number = quantity(&v["number"])?;
+    let hash = digest(&v["hash"])?;
+    let timestamp = validated_block(v)
+        .ok()
+        .filter(|b| (b.number, b.hash) == (number, hash))
+        .and_then(|b| b.timestamp);
+    Ok(Block {
+        number,
+        hash,
+        timestamp,
+    })
+}
+
 impl<R: Rpc> VaultSource<R> {
     fn block(&self, tag: Value) -> Result<Block, Error> {
         let v = self
             .rpc
             .call("eth_getBlockByNumber", vec![tag.clone(), json!(false)])?;
-        let block = validated_block(&v)?;
+        let block = block_identity(&v)?;
         if tag != json!("finalized") && quantity(&tag)? != block.number {
             return Err("RPC returned the wrong block height".into());
         }

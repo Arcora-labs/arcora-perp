@@ -1697,16 +1697,16 @@ impl Sequencer {
     }
 }
 
-/// Overflow-safe book midpoint used as the funding mark. Halving each side before
-/// summing keeps the mid from overflowing `i128` when an unvalidated resting price
-/// sits near the type bound (audit DP-008): a plain `(bid + ask) / 2` panics in a
-/// debug build and wraps in release. At most one unit of precision is lost.
 /// Keep the first occurrence of each hash, in order.
 fn dedup_in_order(hashes: Vec<Digest>) -> Vec<Digest> {
     let mut seen = BTreeSet::new();
     hashes.into_iter().filter(|h| seen.insert(*h)).collect()
 }
 
+/// Overflow-safe book midpoint used as the funding mark. Halving each side before
+/// summing keeps the mid from overflowing `i128` when an unvalidated resting price
+/// sits near the type bound (audit DP-008): a plain `(bid + ask) / 2` panics in a
+/// debug build and wraps in release. At most one unit of precision is lost.
 fn book_mid(bid: i128, ask: i128) -> i128 {
     (bid / 2).saturating_add(ask / 2)
 }

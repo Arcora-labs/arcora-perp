@@ -369,8 +369,12 @@ directly:
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
-   claimable, proof }] }`. Once `claimable` is `true`, `proof` is the Merkle path.
-4. On Base Sepolia: `vault.claim(to, amount, nonce, root, proof)` releases the USDC.
+   root, claimable, proof }] }`. Once `claimable` is `true`, `proof` is the Merkle path
+   and `root` is the published root that path verifies against. Pass that `root` to
+   `claim`, not the vault's current `withdrawalsRoot()`: a later published root can
+   differ, and a proof checked against the wrong root reverts `BadWithdrawalProof`.
+4. On Base Sepolia: `vault.claim(to, amount, nonce, root, proof)`, with `root` and
+   `proof` from step 3, releases the USDC.
    The leaf is single-claim (`AlreadyClaimed` on replay). A claim never draws on the
    principal of deposits that no settled batch has consumed: if paying it would leave
    the vault holding less than `refundableOutstanding()`, it reverts
@@ -466,10 +470,11 @@ on L1, and an authorization for one chain or settlement is useless on another.
 `challengeBond()` wei:
 
 ```bash
+# cast prints a decoded uint with a suffix ("10000000000000000 [1e16]"); keep the integer.
+BOND=$(cast call $SETTLEMENT "challengeBond()(uint256)" --rpc-url $RPC | cut -d' ' -f1)
 cast send $SETTLEMENT "challengeInclusion(bytes32,uint64,uint64,uint64,address,bytes)" \
   <orderHash> <seqNo> <recvTimeMs> <batchIdHint> <beneficiary> <l1Challenge.signature> \
-  --value $(cast call $SETTLEMENT "challengeBond()(uint256)" --rpc-url $RPC) \
-  --rpc-url $RPC --private-key <KEY>
+  --value "$BOND" --rpc-url $RPC --private-key <KEY>
 ```
 
 Each order hash can be challenged once; it is refused in close-only.

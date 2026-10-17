@@ -430,7 +430,11 @@ fn a01_rpc_wrong_historical_header_number_is_rejected() {
 
 #[test]
 fn a01_rpc_header_time_must_hash_to_the_reported_block() {
-    // A provider that keeps the hash but changes the time is caught.
+    let honest = VaultSource::new(MockRpc::default())
+        .fetch(cursor())
+        .unwrap();
+    assert!(honest.end.timestamp.is_some());
+    // A provider that keeps the hash but changes the time: the time is not used.
     struct ShiftedTime(MockRpc);
     impl Rpc for ShiftedTime {
         fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
@@ -441,11 +445,20 @@ fn a01_rpc_header_time_must_hash_to_the_reported_block() {
             Ok(v)
         }
     }
-    assert!(matches!(
-        VaultSource::new(ShiftedTime(MockRpc::default())).fetch(cursor()),
-        Err(Error::Retry(_))
-    ));
-    // A header without the fields needed to recompute its hash is refused too.
+    // A header with a field this gateway does not know (a later fork's, say)
+    // cannot be re-hashed either.
+    struct UnknownField(MockRpc);
+    impl Rpc for UnknownField {
+        fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
+            let mut v = self.0.call(m, p)?;
+            if m == "eth_getBlockByNumber" {
+                v["blockAccessListHash"] = json!(hex0x(&[0x42; 32]));
+                v["hash"] = json!(hex0x(&[0x43; 32]));
+            }
+            Ok(v)
+        }
+    }
+    // A header without the fields needed to recompute its hash.
     struct Minimal(MockRpc);
     impl Rpc for Minimal {
         fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
@@ -457,9 +470,39 @@ fn a01_rpc_header_time_must_hash_to_the_reported_block() {
             })
         }
     }
-    assert!(VaultSource::new(Minimal(MockRpc::default()))
+    // Ingestion only needs the block identity: the same page is read, with no time,
+    // so permit GC waits instead of deposits, settlement and keepalives stopping.
+    let shifted = VaultSource::new(ShiftedTime(MockRpc::default()))
         .fetch(cursor())
-        .is_err());
+        .unwrap();
+    assert_eq!(shifted.end, honest.end);
+    assert_eq!(shifted.events, honest.events);
+    assert_eq!(shifted.end.timestamp, None);
+    let minimal = VaultSource::new(Minimal(MockRpc::default()))
+        .fetch(cursor())
+        .unwrap();
+    assert_eq!(
+        (minimal.end.clone(), minimal.end.timestamp),
+        (honest.end.clone(), None)
+    );
+    let unknown = block_identity(
+        &UnknownField(MockRpc::default())
+            .call("eth_getBlockByNumber", vec![json!("0x2"), json!(false)])
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (unknown.number, unknown.hash, unknown.timestamp),
+        (2, [0x43; 32], None)
+    );
+    // The identity itself is still parsed strictly.
+    for bad in [
+        json!({"number": "0x2"}),
+        json!({"number": "2", "hash": hex0x(&[1; 32])}),
+        json!({"number": "0x2", "hash": "0x12"}),
+    ] {
+        assert!(block_identity(&bad).is_err(), "{bad}");
+    }
 }
 
 #[test]

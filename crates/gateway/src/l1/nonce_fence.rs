@@ -109,10 +109,12 @@ impl NonceFence {
     }
 
     /// Record that a sequencer-key transaction with nonce `n` is about to be
-    /// broadcast. Durable before it returns; an error means the caller must not
-    /// broadcast. Once a send is recorded an unknown fence becomes known again,
-    /// but only for nonces from `n` on, so it stays `Unknown` for the journal that
-    /// was found without it until a later send covers every earlier nonce.
+    /// broadcast. With a known fence the new ceiling is durable before this
+    /// returns, and an error means the caller must not broadcast. An `Unknown`
+    /// fence records nothing: sends made while it is unknown (the boot journal's
+    /// own resume) are never fenced, and no later `cover` makes it known again.
+    /// Only [`NonceFence::start_fresh_if_unknown`], once that journal is resolved,
+    /// restarts the fence at `None`; recording resumes with the next send.
     pub(crate) fn cover(&self, n: u64) -> Result<(), String> {
         let mut ceiling = self
             .ceiling
@@ -187,9 +189,12 @@ mod tests {
         assert_eq!(fence.ceiling(), Ceiling::Unknown);
         assert!(!fence.ceiling().passed_by(u64::MAX));
         assert!(!path.exists(), "an unknown fence is not recreated");
-        fence.cover(9).unwrap();
-        assert_eq!(fence.ceiling(), Ceiling::Unknown);
-        assert!(!path.exists());
+        // No send made while the fence is unknown is recorded, however many.
+        for n in [9, 10, u64::MAX] {
+            fence.cover(n).unwrap();
+            assert_eq!(fence.ceiling(), Ceiling::Unknown);
+            assert!(!path.exists());
+        }
         // Once that journal is resolved, recording restarts from the next send.
         fence.start_fresh_if_unknown().unwrap();
         assert_eq!(fence.ceiling(), Ceiling::None);
