@@ -79,7 +79,12 @@ mod audit_remediation {
         let sig = parse_hex65(body["sig"].as_str().unwrap()).unwrap();
         assert_eq!(
             recover_eth_address(
-                &app.gateway_signer.digest(&[0x42; 20], &commit, 5_000_000),
+                &app.gateway_signer.digest(
+                    &[0x42; 20],
+                    &commit,
+                    5_000_000,
+                    body["validUntil"].as_u64().unwrap()
+                ),
                 &sig
             ),
             Some(app.gateway_signer.address())
@@ -261,7 +266,7 @@ mod audit_remediation {
         let err = gw
             .account_set_deposit_address(&key, new, &new_sig, Some(&current_sig))
             .unwrap_err();
-        assert!(err.contains("outstanding"));
+        assert!(err.contains("have not landed or expired"), "{err}");
         assert_eq!(gw.accounts[&key].deposit_address, Some(old));
         let id = gw.seq.state.consumed_deposit_count;
         gw.account_confirm_deposit(&key, old, commit, 1000, id, "pending-before-rebind", 0)
@@ -292,7 +297,7 @@ mod audit_remediation {
             batch_id_hint: signed.receipt.batch_id_hint,
             window_id: signed.receipt.window_id,
         };
-        let wire = gw.receipt_json(&original);
+        let wire = gw.receipt_json(&original, None);
         let mut expected = [0u8; 65];
         expected[..32].copy_from_slice(&signed.r);
         expected[32..64].copy_from_slice(&signed.s);
@@ -311,7 +316,7 @@ mod audit_remediation {
         );
         gw.seq.seal_batch(&[], 9999); // never refresh original receipt metadata at read time
         let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
-        assert_eq!(restored.receipt_json(&original), wire);
+        assert_eq!(restored.receipt_json(&original, None), wire);
     }
 
     #[tokio::test]
@@ -404,8 +409,8 @@ mod audit_remediation {
             window_id: 4,
         };
         let before = gw.snapshot_plain();
-        let wire = gw.receipt_json(&stored);
-        assert_eq!(gw.receipt_json(&stored), wire);
+        let wire = gw.receipt_json(&stored, None);
+        assert_eq!(gw.receipt_json(&stored, None), wire);
         assert_eq!(gw.receipt_cache.lock().unwrap().len(), 1);
         assert_eq!(
             gw.snapshot_plain(),
@@ -414,22 +419,22 @@ mod audit_remediation {
         );
         let mut other = stored.clone();
         other.window_id += 1;
-        let moved_window = gw.receipt_json(&other);
+        let moved_window = gw.receipt_json(&other, None);
         assert_eq!(moved_window["windowId"], 5);
         assert_eq!(
             moved_window["signature"], wire["signature"],
             "window hint stays unsigned"
         );
         other.recv_time_ms += 1;
-        assert_ne!(gw.receipt_json(&other)["signature"], wire["signature"]);
+        assert_ne!(gw.receipt_json(&other, None)["signature"], wire["signature"]);
         {
             let mut cache = gw.receipt_cache.lock().unwrap();
             cache.clear();
             for i in 0..MAX_RECEIPT_CACHE as u64 {
-                cache.insert(([0; 32], i, [0; 20]), serde_json::Value::Null);
+                cache.insert(([0; 32], i, [0; 20], None), serde_json::Value::Null);
             }
         }
-        assert_eq!(gw.receipt_json(&stored), wire);
+        assert_eq!(gw.receipt_json(&stored, None), wire);
         assert_eq!(
             gw.receipt_cache.lock().unwrap().len(),
             1,
@@ -437,7 +442,7 @@ mod audit_remediation {
         );
         let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
         assert!(restored.receipt_cache.lock().unwrap().is_empty());
-        assert_eq!(restored.receipt_json(&stored), wire);
+        assert_eq!(restored.receipt_json(&stored, None), wire);
     }
 
     /// User deposit permit issuance is bounded per account (outstanding count + rate)
@@ -488,6 +493,7 @@ mod audit_remediation {
                     amount: 1,
                     market: 0,
                     purpose: Collateral,
+                    valid_until: u64::MAX,
                 },
             );
         }

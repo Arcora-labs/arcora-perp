@@ -23,6 +23,7 @@ import {
   type OrderInput,
   type RecoveredNote,
   type Receipt,
+  type RefundableDeposit,
   type TrackedOrder,
   type WithdrawalEntry,
 } from "../domain/types";
@@ -541,6 +542,12 @@ export class MockDarkPerpClient implements DarkPerpClient {
   /// would surface a cast command that cannot work anywhere. The UI treats null
   /// as "no withdrawals surface" and hides the section.
   async listWithdrawals(): Promise<{ withdrawals: WithdrawalEntry[]; vault: string } | null> {
+    return null;
+  }
+
+  /// null for the same reason: no L1 vault holds a mock deposit, so a refund
+  /// entry would be a command that cannot work anywhere.
+  async listRefundableDeposits(): Promise<{ deposits: RefundableDeposit[]; vault: string } | null> {
     return null;
   }
 

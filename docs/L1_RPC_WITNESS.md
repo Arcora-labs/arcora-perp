@@ -18,10 +18,9 @@ witness can silently become optional and no unsupported pin falls back to `lates
 | Trading gate opening | Primary latest height minus `GATE_OPEN_CONFIRMATIONS` (currently 12). Each provider must have this depth and agree on the historical hash; batch count, root and `closeOnly` share it. |
 | Terminal CloseOnly check | Latest canonical hash, with witness agreement. Waiting for finality here would delay the terminal check. |
 | Next settlement batch count / current bond display | Latest canonical hash. |
-| Bond top-up decision | Latest canonical required bond and current bond together; no stale finalized value can repeatedly trigger a top-up. |
-| Challenge watcher initialization | Latest canonical head and challenge window together; no guessed window on error. |
-| Inclusion challenge state | Latest canonical six-word challenge tuple; strict address, batch hint, opened/deadline blocks and boolean. Only open entries at or before the deadline are answerable. |
-| Challenge event discovery | Up to 1,024 blocks per numeric range, capped at the observed latest height. Both providers must return identical events. End hash and each event block hash must agree and be canonical; the end is checked again before returning the cursor and its end hash. The next poll revalidates that saved hash both before and after discovery; a confirmed replacement rewinds the challenge window. Provider disagreement holds the cursor. |
+| Bond top-up decision | Latest canonical required bond, current bond and `slashCount` together; no stale finalized value can repeatedly trigger a top-up, and a new slash pauses top-ups until acknowledged. |
+| Liveness and keepalive | Latest canonical `lastProgressBlock` and `livenessTimeoutBlocks` with the head, with witness agreement. |
+| Open challenge set | Latest canonical hash, with witness agreement: `openChallengeCount()`, then `openChallenges(i, 512)` pages, then the six-word `challenges(h)` tuple for each hash, all at that one hash. Strict address, batch hint, opened block, open batch count, stake and boolean; `openedBlock` must not exceed the head and `openBatchCount` must not exceed `batchCount`. A failed read fails that tick's settle (nothing is sealed without a successful read); there is no log cursor. |
 | Deposit intake | Existing finalized whole-block prefix/log validation remains. The witness now corroborates each chain/header/hash-pinned word/code/log observation before the page validator can credit it. |
 
 Finalized observations allow a witness ahead in finalized height if it also serves
@@ -33,16 +32,19 @@ there is no automatic downgrade between them.
 ABI integers reject overflow, booleans accept only exact zero/one words, and
 malformed or trailing ABI bytes cannot become permissive answers. Deposit count
 and tip are no longer separate moving-head calls. A claim read never yields a
-partially pruned set. Challenge logs reject omissions visible as provider
-disagreement, removed logs, wrong contracts/topics, invalid metadata, duplicate
-positions and events not bound to the canonical range. Both providers returning
-the same omitted logs remains outside this two-provider threat model.
+partially pruned set. The open-challenge set is read as ABI words at one canonical
+hash and compared between providers like any other read; a count, page or tuple that
+disagrees, or that fails the sanity bounds, fails the tick.
 
-Unanswered challenge hashes stay in a bounded pending set independently of page
-advancement. A failed answer or not-yet-retained batch is retried while later pages
-and other pending hashes can still progress. Expired open challenges are skipped
-using the contract's inclusive deadline rule; they cannot indefinitely block live
-ones. Pending work is reconstructed from the on-chain challenge window at restart.
+The settlement keeps the open challenges as an enumerable on-chain set, so the
+watcher reconciles against the set each tick instead of scanning logs. Nothing is
+reconstructed from a log window at restart; the set itself is the pending work. Open
+hashes are grouped by the settled batch that answers them and answered with
+`answerChallenges`, a bounded number per transaction, from the separate answer key
+when one is configured. A failed answer or not-yet-retained batch is retried while
+other batches can still progress. Answers have no deadline: an open challenge stays
+answerable until a slash or release lands. A hash found in no settled batch and no
+in-flight window raises an alert; it does not hold settlement.
 
 Deposit pages require hash-pinned `eth_call`/`eth_getCode`, a `blockHash` filter
 for logs, and finalized or explicit-height block reads. Their existing prefix-fold
@@ -79,8 +81,9 @@ cargo test --locked -p gateway runtime_state_native_cast -- --ignored
 
 The ignored suites require real Foundry `cast`. They cross the real subprocess and
 loopback HTTP boundary, asserting EIP-1898 calldata, confirmation/latest policies,
-canonical rechecks, paired vault/claim observations, strict ABI failures, expiry
-boundaries and revalidation of the previous scan anchor across polls, challenge
-log omission/reorg handling and credential redaction. The gate tests invoke the
+canonical rechecks, paired vault/claim observations, strict ABI failures, the
+open-challenge set (short or malformed pages, duplicates, a listed hash that is not
+open, the head and batch-count bounds, provider disagreement), the boot posture and
+bond terms, and credential redaction. The gate tests invoke the
 production `observe_gate_once` classifier through an `L1` instance. Test servers
 receive no signing calls and submit no chain transactions.

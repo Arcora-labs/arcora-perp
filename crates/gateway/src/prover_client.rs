@@ -145,6 +145,88 @@ pub trait ProverClient: Send + Sync {
             "client does not support clock-bound proofs".into(),
         ))
     }
+    /// The prover's self-reported public identity. `None` for in-process clients.
+    fn public_identity(&self) -> Result<Option<ProverPublicIdentity>, String> {
+        Ok(None)
+    }
+    /// The registration checks that do not depend on the sealed window, read
+    /// before clock admission pauses. `None` for a client that registers nothing.
+    fn register_preconditions(&self) -> Result<Option<RegisterPreconditions>, PreflightRefusal> {
+        Ok(None)
+    }
+    /// Checks that must pass before a window of wind-down `phase` is registered,
+    /// with no chain mutation. `pre` is what [`ProverClient::register_preconditions`]
+    /// read before the seal; with it, nothing here waits on a remote read. The
+    /// default bounds the sealed request by the transport's own 512 MiB limit.
+    fn preflight(
+        &self,
+        w: &WindowWitness,
+        phase: u8,
+        _pre: Option<&RegisterPreconditions>,
+    ) -> Result<(), PreflightRefusal> {
+        check_sealed_body(
+            w,
+            phase,
+            crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES,
+        )
+        .map_err(PreflightRefusal::Refused)
+    }
+}
+
+/// The registration preconditions that do not depend on the sealed window, read
+/// before admission pauses. A timed window must register within `clockSkewMs` of
+/// its last operation, and admission stays open until the pause, so these reads
+/// (several L1 round trips, and the prover's identity) are not spent from that
+/// budget. Only the comparison with the sealed window runs after the seal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisterPreconditions {
+    /// The settlement's `batchCount()` at the latest block.
+    pub batch_count: u64,
+    /// The settlement's wind-down phase at the same block.
+    pub phase: u8,
+    /// The request-body limit the prover advertised, when its identity was read.
+    pub prover_body_bytes: Option<usize>,
+}
+impl RegisterPreconditions {
+    /// Whether window `batch`, sealed for wind-down `phase`, can register against
+    /// what was read. A phase mismatch is reported apart, since a phase-0 window
+    /// after close-only can never register.
+    pub fn admit(&self, batch: u64, phase: u8) -> Result<(), PreflightRefusal> {
+        if self.phase != phase {
+            return Err(PreflightRefusal::WrongPhase(if phase == 0 {
+                "the settlement is in close-only: an ordinary window cannot register or settle; start the wind-down".into()
+            } else {
+                format!(
+                    "the settlement is in wind-down phase {}, not {phase}",
+                    self.phase
+                )
+            }));
+        }
+        if self.batch_count != batch {
+            return Err(PreflightRefusal::Refused(format!(
+                "window {batch} is not the settlement's next batch {}",
+                self.batch_count
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// Why a sealed window was not registered. Nothing was sent to L1 in either case.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PreflightRefusal {
+    /// The settlement is no longer in the wind-down phase the window was sealed
+    /// for: a phase-0 window after close-only began. It can never register.
+    WrongPhase(String),
+    /// The window cannot be proven or registered as it is.
+    Refused(String),
+}
+impl std::fmt::Display for PreflightRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WrongPhase(e) | Self::Refused(e) => f.write_str(e),
+        }
+    }
 }
 
 /// In-process client: derive the roots locally and use the commitment as the proof
@@ -171,6 +253,109 @@ impl ProverClient for MockProverClient {
             commitment,
             proof: commitment.to_vec(),
         })
+    }
+    /// The clock-bound mock proof: the 32-byte bound commitment, which the
+    /// ClockBoundVerifier hands to a MockZkVerifier inner verifier as both the
+    /// public input and the proof. `PROVER_URL=mock` stays refused under
+    /// `DARKPERP_PROD=1`, so this never reaches a production settlement.
+    fn prove_clocked(
+        &self,
+        w: &WindowWitness,
+        clock: &perp_core::clock::ClockContext,
+    ) -> Result<RemoteProveResp, ProverClientError> {
+        let mut raw = self.prove(w)?;
+        raw.commitment = clock.commitment();
+        raw.proof = raw.commitment.to_vec();
+        Ok(raw)
+    }
+}
+
+/// What a prover publishes about itself at `GET /identity`. Self-reported, never
+/// attestation: it only lets the gateway refuse, before any registration, a
+/// window that this prover could not accept or whose program differs from the
+/// on-chain verifier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProverPublicIdentity {
+    /// `public_config.admission.body_bytes`: the largest request body it reads.
+    pub body_bytes: usize,
+    /// `program.program_vkey`.
+    pub program_vkey: Digest,
+    /// `program.elf_sha256`.
+    pub elf_sha256: [u8; 32],
+}
+
+/// Parse the prover's public identity envelope. Every field is required.
+pub fn parse_public_identity(v: &serde_json::Value) -> Result<ProverPublicIdentity, String> {
+    if v["service"].as_str() != Some("prover") {
+        return Err("identity response is not a prover identity".into());
+    }
+    let body_bytes = v["public_config"]["admission"]["body_bytes"]
+        .as_u64()
+        .filter(|n| *n > 0)
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or("prover identity has no positive admission.body_bytes")?;
+    let program_vkey = v["program"]["program_vkey"]
+        .as_str()
+        .and_then(crate::parse_hex32)
+        .ok_or("prover identity has no 32-byte program_vkey")?;
+    let elf_sha256 = v["program"]["elf_sha256"]
+        .as_str()
+        .filter(|s| !s.starts_with("0x") && s.len() == 64)
+        .and_then(|s| crate::parse_hex32(&format!("0x{s}")))
+        .ok_or("prover identity has no elf_sha256")?;
+    Ok(ProverPublicIdentity {
+        body_bytes,
+        program_vkey,
+        elf_sha256,
+    })
+}
+
+/// The widest clock context the prover could receive with this window: every
+/// variable-length field at its maximum, so the count below is an upper bound.
+fn widest_clock_context(w: &WindowWitness, phase: u8) -> perp_core::clock::ClockContext {
+    perp_core::clock::ClockContext {
+        chain_id: u64::MAX,
+        verifier: [0xff; 20],
+        settlement: [0xff; 20],
+        batch_id: w.batch_id,
+        previous_root: [0xff; 32],
+        base_commitment: [0xff; 32],
+        phase,
+        first_ms: u64::MAX,
+        last_ms: u64::MAX,
+        timed_ops: u64::MAX,
+        anchored_at_ms: u64::MAX,
+        max_window_ms: u64::MAX,
+        clock_skew_ms: u64::MAX,
+    }
+}
+
+/// Refuse a window whose clock-bound sealed `/prove` request would exceed
+/// `body_limit` bytes. Counted without allocating the encoding. Run before the
+/// window is registered: a registered window that no prover accepts leaves an
+/// anchor that only `cancel` can clear.
+pub fn check_sealed_body(w: &WindowWitness, phase: u8, body_limit: usize) -> Result<(), String> {
+    let limit = plaintext_byte_limit(body_limit).map_err(|e| e.to_string())?;
+    let magic = perp_core::clock::WIRE_MAGIC;
+    let mut counter = PlaintextCount {
+        used: magic.len(),
+        limit,
+        exceeded: magic.len() > limit,
+    };
+    let clock = widest_clock_context(w, phase);
+    let counted = if counter.exceeded {
+        Err(postcard::Error::SerializeBufferFull)
+    } else {
+        postcard::serialize_with_flavor(&(&w.pre_state, &w.ops, &w.manifest, &clock), &mut counter)
+    };
+    match counted {
+        Ok(_) => Ok(()),
+        Err(_) if counter.exceeded => Err(format!(
+            "the sealed witness of window {} exceeds the {body_limit}-byte prover request limit; \
+             it is not registered",
+            w.batch_id
+        )),
+        Err(e) => Err(format!("witness encode: {e}")),
     }
 }
 
@@ -850,6 +1035,20 @@ pub struct HttpProverClient {
     /// re-handshake wired (mock/dev construction) — a 401 is then terminal (still
     /// fail-closed).
     rehandshake: Option<ReHandshake>,
+    /// The last public identity fetched, and when.
+    identity: std::sync::Mutex<Option<(std::time::Instant, ProverPublicIdentity)>>,
+}
+
+/// How long a fetched prover identity is reused by the registration preflight.
+const IDENTITY_CACHE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// `PROVER_TIMEOUT_SECS`, default 900 s. The L1 boot handshake sizes the clock
+/// anchor timeout against the same value.
+pub(crate) fn prover_timeout_secs() -> u64 {
+    std::env::var("PROVER_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(900)
 }
 
 impl HttpProverClient {
@@ -869,10 +1068,7 @@ impl HttpProverClient {
             // DEV_INSECURE non-prod path — make that loud.
             eprintln!("WARN gateway: DEV_INSECURE seal root in use — NEVER production");
         }
-        let timeout_secs = std::env::var("PROVER_TIMEOUT_SECS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(900);
+        let timeout_secs = prover_timeout_secs();
         Ok(Self {
             url: url.to_string(),
             seal_root,
@@ -884,6 +1080,7 @@ impl HttpProverClient {
                 not_after: 0,
             }),
             rehandshake: None,
+            identity: std::sync::Mutex::new(None),
         })
     }
 
@@ -953,6 +1150,44 @@ impl ProverClient for HttpProverClient {
         c: &perp_core::clock::ClockContext,
     ) -> Result<RemoteProveResp, ProverClientError> {
         self.prove_http(w, Some(c))
+    }
+    /// Fetched with short bounds and cached for `IDENTITY_CACHE`. The clock
+    /// client reads it before admission pauses, so the fetch is not spent from
+    /// the `clockSkewMs` budget a timed window has to register in.
+    fn public_identity(&self) -> Result<Option<ProverPublicIdentity>, String> {
+        if let Some((at, identity)) = self.identity.lock().unwrap().as_ref() {
+            if at.elapsed() < IDENTITY_CACHE {
+                return Ok(Some(identity.clone()));
+            }
+        }
+        let url = crate::curl_transport::service_endpoint(&self.url, "/identity")
+            .map_err(|e| e.to_string())?;
+        let v = crate::http_get_json_bounded(&url, std::process::Command::new("curl"), 2, 4)
+            .map_err(|e| format!("prover identity: {e}"))?;
+        let identity = parse_public_identity(&v)?;
+        *self.identity.lock().unwrap() = Some((std::time::Instant::now(), identity.clone()));
+        Ok(Some(identity))
+    }
+    /// The sealed request must fit both the transport limit and the limit this
+    /// prover advertises. A timed window registers only within `clockSkewMs` of
+    /// its last operation, so a transient identity failure must not stop the
+    /// registration: the anchor fixes the window's times and proving can resume.
+    /// Without the identity only the transport limit is checked. Given `pre`, the
+    /// limit read before the seal is used and nothing is fetched.
+    fn preflight(
+        &self,
+        w: &WindowWitness,
+        phase: u8,
+        pre: Option<&RegisterPreconditions>,
+    ) -> Result<(), PreflightRefusal> {
+        let advertised = match pre {
+            Some(pre) => pre.prover_body_bytes,
+            None => self.public_identity().ok().flatten().map(|i| i.body_bytes),
+        };
+        let limit = advertised.map_or(crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES, |b| {
+            b.min(crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES)
+        });
+        check_sealed_body(w, phase, limit).map_err(PreflightRefusal::Refused)
     }
 }
 impl HttpProverClient {
@@ -1948,11 +2183,55 @@ mod clock_pipeline_tests {
             RecoveryAction::Hold
         );
     }
+    /// The in-process mock answers a clock-bound request with the bound commitment
+    /// (what MockZkVerifier accepts behind the ClockBoundVerifier), equal to the
+    /// native guest derivation; a client without clock support is still refused.
     #[test]
-    fn clock_pipeline_refuses_unsupported_legacy_client() {
-        let (w, _) = tests_support::sample_window();
+    fn clock_pipeline_mock_proof_is_the_bound_commitment() {
+        struct MockClock(ClockContext);
+        impl ProverClient for MockClock {
+            fn prove(&self, _: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+                panic!("legacy downgrade");
+            }
+            fn clock_enabled(&self) -> bool {
+                true
+            }
+            fn clock_context(
+                &self,
+                _: &WindowWitness,
+            ) -> Result<Option<ClockContext>, ProverClientError> {
+                Ok(Some(self.0))
+            }
+            fn prove_clocked(
+                &self,
+                w: &WindowWitness,
+                c: &ClockContext,
+            ) -> Result<RemoteProveResp, ProverClientError> {
+                MockProverClient.prove_clocked(w, c)
+            }
+        }
+        struct LegacyOnly;
+        impl ProverClient for LegacyOnly {
+            fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+                MockProverClient.prove(w)
+            }
+        }
+        let (w, ww) = tests_support::sample_window();
         let c = client(&w);
-        assert!(MockProverClient.prove_clocked(&w, &c.c).is_err());
+        let mock = MockProverClient.prove_clocked(&w, &c.c).unwrap();
+        let native = c.prove_clocked(&w, &c.c).unwrap();
+        assert_eq!(mock.commitment, native.commitment);
+        assert_eq!(mock.commitment, c.c.commitment());
+        assert_eq!(mock.proof, c.c.commitment().to_vec());
+        let prepared = prove_and_prepare(&MockClock(c.c), &w, &ww).unwrap();
+        let body = prepared
+            .outcome
+            .proof
+            .strip_prefix(perp_core::clock::PROOF_MAGIC)
+            .unwrap();
+        assert_eq!(&body[..32], c.c.receipt());
+        assert_eq!(&body[32..], c.c.commitment());
+        assert!(LegacyOnly.prove_clocked(&w, &c.c).is_err());
     }
 }
 
@@ -2462,5 +2741,164 @@ mod request_body_tests {
                     if message == "HTTP request exceeds byte limit"));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod preflight_tests {
+    use super::*;
+
+    fn real_clock(w: &WindowWitness) -> perp_core::clock::ClockContext {
+        let mut post = w.pre_state.clone();
+        let d = derive_roots(&mut post, &w.ops, &w.manifest).unwrap();
+        let b = perp_core::clock::TimeBounds::derive(&w.ops).unwrap();
+        perp_core::clock::ClockContext {
+            chain_id: 84532,
+            verifier: [1; 20],
+            settlement: [2; 20],
+            batch_id: w.batch_id,
+            previous_root: d.prev_state_root,
+            base_commitment: d.commitment::<Keccak256>(),
+            phase: d.wind_down_phase,
+            first_ms: b.first_ms,
+            last_ms: b.last_ms,
+            timed_ops: b.count,
+            anchored_at_ms: 1_760_000_000_000,
+            max_window_ms: 30_000,
+            clock_skew_ms: 30_000,
+        }
+    }
+
+    /// The count is an upper bound of the real clock-bound `/prove` body, and a
+    /// tight one: the smallest limit it accepts is at least the real body.
+    #[test]
+    fn sealed_body_check_is_a_tight_upper_bound_of_the_real_request() {
+        let (w, _) = tests_support::sample_window();
+        let sealed =
+            seal_witness_with_clock(&w, &[1; 32], &[2; 32], None, Some(&real_clock(&w))).unwrap();
+        let real = serde_json::json!({ "sealed": sealed }).to_string().len();
+        assert!(
+            check_sealed_body(&w, 0, crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES).is_ok()
+        );
+        let (mut lo, mut hi) = (0usize, real * 2);
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if check_sealed_body(&w, 0, mid).is_ok() {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        assert!(lo >= real, "accepted limit {lo} below the real body {real}");
+        assert!(lo <= real + 256, "bound {lo} is loose against {real}");
+        let refused = check_sealed_body(&w, 0, real / 2).unwrap_err();
+        assert!(refused.contains("not registered"), "{refused}");
+    }
+
+    #[test]
+    fn the_default_preflight_bounds_every_client_by_the_transport_limit() {
+        let (w, _) = tests_support::sample_window();
+        assert_eq!(MockProverClient.preflight(&w, 0, None), Ok(()));
+        assert_eq!(MockProverClient.register_preconditions(), Ok(None));
+        assert_eq!(MockProverClient.public_identity(), Ok(None));
+    }
+
+    /// After the seal the remote prover's size check uses the limit read before
+    /// the seal and fetches nothing. The client points at a closed port, so a
+    /// fetch would fall back to the transport limit and accept the window.
+    #[test]
+    fn the_remote_size_check_uses_the_limit_read_before_the_seal() {
+        let client = HttpProverClient {
+            url: "http://127.0.0.1:9".into(),
+            seal_root: [0; 32],
+            measurement: [0; 32],
+            timeout_secs: 1,
+            session: std::sync::Mutex::new(SessionState {
+                token: None,
+                secret: None,
+                not_after: 0,
+            }),
+            rehandshake: None,
+            identity: std::sync::Mutex::new(None),
+        };
+        let (w, _) = tests_support::sample_window();
+        let real = serde_json::json!({
+            "sealed": seal_witness_with_clock(&w, &[1; 32], &[2; 32], None, Some(&real_clock(&w)))
+                .unwrap()
+        })
+        .to_string()
+        .len();
+        let pre = |prover_body_bytes| RegisterPreconditions {
+            batch_count: w.batch_id,
+            phase: 0,
+            prover_body_bytes,
+        };
+        assert!(matches!(
+            client.preflight(&w, 0, Some(&pre(Some(real / 2)))),
+            Err(PreflightRefusal::Refused(e)) if e.contains("not registered")
+        ));
+        // No advertised limit was read: only the transport limit applies.
+        client.preflight(&w, 0, Some(&pre(None))).unwrap();
+        assert!(
+            client.identity.lock().unwrap().is_none(),
+            "nothing was fetched"
+        );
+    }
+
+    #[test]
+    fn public_identity_needs_every_field() {
+        let vkey = format!("0x{}", "ab".repeat(32));
+        let elf = "cd".repeat(32);
+        let good = serde_json::json!({
+            "service": "prover",
+            "program": {"program_vkey": vkey, "elf_sha256": elf},
+            "public_config": {"admission": {"body_bytes": 8192}}
+        });
+        assert_eq!(
+            parse_public_identity(&good).unwrap(),
+            ProverPublicIdentity {
+                body_bytes: 8192,
+                program_vkey: [0xab; 32],
+                elf_sha256: [0xcd; 32],
+            }
+        );
+        let mut variants = Vec::new();
+        let mut v = good.clone();
+        v["service"] = "gateway".into();
+        variants.push(v);
+        let mut v = good.clone();
+        v["public_config"]["admission"]["body_bytes"] = 0.into();
+        variants.push(v);
+        let mut v = good.clone();
+        v["program"]["program_vkey"] = "0x12".into();
+        variants.push(v);
+        let mut v = good.clone();
+        v["program"]["elf_sha256"] = format!("0x{elf}").into();
+        variants.push(v);
+        let mut v = good;
+        v["program"].as_object_mut().unwrap().remove("elf_sha256");
+        variants.push(v);
+        for v in variants {
+            assert!(parse_public_identity(&v).is_err(), "{v}");
+        }
+    }
+
+    #[test]
+    fn program_identity_must_match_the_onchain_adapter() {
+        let identity = ProverPublicIdentity {
+            body_bytes: 1,
+            program_vkey: [7; 32],
+            elf_sha256: [8; 32],
+        };
+        use crate::clock_client::check_program_identity as check;
+        check(&identity, Ok([7; 32]), None).unwrap();
+        check(&identity, Ok([7; 32]), Some([8; 32])).unwrap();
+        assert!(check(&identity, Ok([6; 32]), None)
+            .unwrap_err()
+            .contains("vkey"));
+        assert!(check(&identity, Ok([7; 32]), Some([9; 32]))
+            .unwrap_err()
+            .contains("ELF"));
+        assert!(check(&identity, Err("reverted".into()), None).is_err());
     }
 }

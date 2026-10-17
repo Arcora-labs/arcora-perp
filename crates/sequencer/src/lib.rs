@@ -1415,6 +1415,21 @@ impl Sequencer {
         true
     }
 
+    /// Seal the open window only when it is empty: no operation, no manifest entry
+    /// and a state equal to the window baseline. This is the gateway's liveness
+    /// keepalive. An empty window has batch time 0 and no timed operation, so it
+    /// registers untimed, and replaying it only advances the batch counter.
+    /// Returns `None` and changes nothing when the window holds anything.
+    pub fn seal_empty_window(&mut self) -> Option<WindowWitness> {
+        if !self.window_ops.is_empty()
+            || self.window_has_pending_manifest()
+            || self.state.state_root() != self.window_start_state.state_root()
+        {
+            return None;
+        }
+        Some(self.seal_window())
+    }
+
     pub fn window_op_count(&self) -> usize {
         self.window_ops.len()
     }
@@ -1503,6 +1518,77 @@ impl Sequencer {
         }
         // restore the window baseline (seal_window re-captured it to the post-bump state).
         self.window_start_state = w.pre_state.clone();
+    }
+
+    /// The state the open window started from: the witness pre-state of the next
+    /// `seal_window`. After a window settles it is the settled state.
+    pub fn window_baseline(&self) -> &DefaultState {
+        &self.window_start_state
+    }
+
+    /// Discard a sealed window that can never settle, and everything the open
+    /// window gathered since it was sealed. Unlike [`Self::rollback_window`] no op is
+    /// kept: the state, the window baseline and the window counter return to
+    /// `w.pre_state`, and the window's ordered and rejected order hashes are
+    /// returned (sealed window first, then the open window) so the caller can
+    /// publish them as rejected in a later manifest. The matcher's per-tick
+    /// bookkeeping is left as it is.
+    pub fn void_window(&mut self, w: &WindowWitness) -> Vec<Digest> {
+        debug_assert_eq!(
+            self.state.next_batch_id,
+            w.batch_id + 1,
+            "void_window expects exactly one unsettled seal (Counter B == batch_id + 1)"
+        );
+        let mut voided: Vec<Digest> = w.manifest.ordered.clone();
+        voided.extend(w.manifest.rejected.iter().map(|(h, _)| *h));
+        voided.extend(self.discard_open_window_manifest());
+        self.window_ops.clear();
+        self.state = w.pre_state.clone();
+        self.window_start_state = w.pre_state.clone();
+        self.forget_windows_from(w.batch_id);
+        dedup_in_order(voided)
+    }
+
+    /// Discard the open window: the state returns to the window baseline (the
+    /// last sealed, and after a settle the settled, state) and the window's ops
+    /// and manifest are dropped. Returns the window's ordered and rejected order
+    /// hashes. The window counter does not move.
+    pub fn void_open_window(&mut self) -> Vec<Digest> {
+        let voided = self.discard_open_window_manifest();
+        self.window_ops.clear();
+        self.state = self.window_start_state.clone();
+        self.forget_windows_from(self.state.next_batch_id);
+        dedup_in_order(voided)
+    }
+
+    /// Record order hashes as rejected in the open window's manifest, after any
+    /// rejection already there. Hashes the window already orders or rejects are
+    /// skipped, so each hash appears at most once in the manifest.
+    pub fn reject_in_window(&mut self, hashes: &[Digest], reason: RejectReason) {
+        for hash in hashes {
+            if self.window_ordered.contains(hash)
+                || self.window_rejected.iter().any(|(h, _)| h == hash)
+            {
+                continue;
+            }
+            self.window_rejected.push((*hash, reason));
+        }
+    }
+
+    fn discard_open_window_manifest(&mut self) -> Vec<Digest> {
+        let mut hashes = core::mem::take(&mut self.window_ordered);
+        hashes.extend(
+            core::mem::take(&mut self.window_rejected)
+                .into_iter()
+                .map(|(h, _)| h),
+        );
+        hashes
+    }
+
+    /// Drop tick-to-window entries that point at `window` or later: those windows
+    /// were discarded, so their ticks no longer settle anywhere.
+    fn forget_windows_from(&mut self, window: u64) {
+        self.tick_window.retain(|_, w| *w < window);
     }
 
     /// Mark a sealed batch — and every still-pending batch before it — as SETTLED
@@ -1609,6 +1695,12 @@ impl Sequencer {
             .map(|(oh, _)| *oh)
             .collect()
     }
+}
+
+/// Keep the first occurrence of each hash, in order.
+fn dedup_in_order(hashes: Vec<Digest>) -> Vec<Digest> {
+    let mut seen = BTreeSet::new();
+    hashes.into_iter().filter(|h| seen.insert(*h)).collect()
 }
 
 /// Overflow-safe book midpoint used as the funding mark. Halving each side before

@@ -40,7 +40,13 @@ ENV_ADDRESSES = {
     "CLOCK_BOUND_VERIFIER": "clock_verifier",
 }
 ADDRESS_ROLES = set(CONTRACTS) | {"token"}
-GATEWAY_KEYS = set(ENV_ADDRESSES) | {"L1_CHAIN_ID", "L1_ALLOW_MOCK_PROOF"}
+# Public gateway settings bound into the release config (never keys or URLs).
+GATEWAY_KEYS = set(ENV_ADDRESSES) | {"L1_CHAIN_ID", "L1_ALLOW_MOCK_PROOF", "DEPOSIT_PERMIT_TTL_SECS"}
+# The settlement ABI generation this kit deploys and observes (`ABI_VERSION()`).
+SETTLEMENT_ABI_VERSION = 3
+# ClockBoundVerifier refuses an anchor timeout below one second.
+MIN_ANCHOR_TIMEOUT_MS = 1000
+CLOCK_POLICY = ("max_window_ms", "clock_skew_ms", "anchor_timeout_ms")
 # Public, independently reviewed expected values. Reading a getter must never
 # silently approve the identity or economic policy it happens to return.
 OPERATOR_ADDRESSES = {
@@ -50,12 +56,16 @@ OPERATOR_ADDRESSES = {
     "clock_verifier": {"configurator": "configurator()"},
     "sp1_gateway": {"owner": "owner()"},
 }
+# Settlement constructor values, in `DarkPerpSettlement.Config` order. The payout
+# cap is in USDC base units (6 decimals).
 SETTLEMENT_POLICY = {
     "liveness_timeout_blocks": "livenessTimeoutBlocks()",
-    "challenge_window_blocks": "challengeWindowBlocks()",
+    "challenge_grace_blocks": "challengeGraceBlocks()",
     "challenge_bond_wei": "challengeBond()",
     "inclusion_deadline_seconds": "inclusionDeadlineSecs()",
     "final_settle_grace_blocks": "finalSettleGraceBlocks()",
+    "progress_batches": "progressBatches()",
+    "slash_payout_cap_usdc": "slashPayoutCap()",
 }
 SCOPE = {
     "local_identity_checked": True,
@@ -159,13 +169,18 @@ def public_config(value):
     require(len(set(addresses.values())) == len(addresses), "contract roles must use distinct addresses")
     key = normalized_hex(value["program_vkey"], 32, "program_vkey")
     require(key == clock.EXPECTED_VKEY, "program_vkey does not match reviewed clock guest")
-    exact_keys(value["clock"], {"max_window_ms", "clock_skew_ms"}, "clock policy")
+    exact_keys(value["clock"], CLOCK_POLICY, "clock policy")
     for number in value["clock"].values():
         require(type(number) is int and 400 <= number < 2**64, "clock policy cannot satisfy gateway cadence")
+    require(value["clock"]["anchor_timeout_ms"] >= MIN_ANCHOR_TIMEOUT_MS,
+            "clock anchor timeout is below the verifier minimum")
     exact_keys(value["gateway"], GATEWAY_KEYS, "public gateway config")
     gateway = dict(value["gateway"])
     require(gateway["L1_CHAIN_ID"] == str(value["chain_id"]), "gateway chain_id mismatch")
     require(gateway["L1_ALLOW_MOCK_PROOF"] == "0", "mock proof mode must be disabled explicitly")
+    ttl = gateway["DEPOSIT_PERMIT_TTL_SECS"]
+    require(isinstance(ttl, str) and re.fullmatch(r"[1-9][0-9]{0,18}", ttl) and int(ttl) < 2**64,
+            "DEPOSIT_PERMIT_TTL_SECS must be a positive decimal number of seconds")
     for env, role in ENV_ADDRESSES.items():
         gateway[env] = normalized_hex(gateway[env], 20, env)
         require(gateway[env] == addresses[role], "gateway address mismatch: " + env)
@@ -471,7 +486,9 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
         getter("sp1_adapter", "programVKey()", "bytes32", public["program_vkey"])
         getter("clock_verifier", "maxWindowMs()", "uint", public["clock"]["max_window_ms"])
         getter("clock_verifier", "clockSkewMs()", "uint", public["clock"]["clock_skew_ms"])
+        getter("clock_verifier", "anchorTimeoutMs()", "uint", public["clock"]["anchor_timeout_ms"])
         getter("clock_verifier", "proofVersion()", "uint", 2)
+        getter("settlement", "ABI_VERSION()", "uint", SETTLEMENT_ABI_VERSION)
         verifier_hash = "0x" + clock.target.VERIFIER_HASH
         getter("sp1_verifier", "VERIFIER_HASH()", "bytes32", verifier_hash)
         # bytes4 is left-aligned in a 32-byte ABI word. The gateway returns

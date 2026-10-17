@@ -23,6 +23,16 @@ import urllib.request
 from pathlib import Path
 
 SCHEMA = "arcora.ops-monitor.v1"
+# Alerts the gateway raises itself and lists in its `opsAlerts` health field,
+# relayed by the monitor (same snake_case names as the gateway's AlertKind).
+GATEWAY_ALERTS = (
+    "bond_shortfall",
+    "unanswerable_challenge",
+    "challenge_discovery_failed",
+    "stale_anchor",
+    "liveness_low",
+    "permit_gc_stalled",
+)
 # Monitor conditions (episodic) and one-shot unit failures.
 EVENTS = (
     "gateway_unreachable",
@@ -32,7 +42,7 @@ EVENTS = (
     "gateway_service_failed",
     "backup_failed",
     "monitor_failed",
-)
+) + GATEWAY_ALERTS
 ONE_SHOT_EVENTS = ("gateway_service_failed", "backup_failed", "monitor_failed")
 TRANSITIONS = ("active", "recovered")
 ATTEMPTS = 3

@@ -22,8 +22,14 @@ contract ClockBoundVerifier is IZkVerifier {
     IZkVerifier public immutable innerVerifier;
     uint64 public immutable maxWindowMs;
     uint64 public immutable clockSkewMs;
+    /// Minimum anchor age (ms of block time) before its registrant may cancel it. Not
+    /// part of the receipt.
+    uint64 public immutable anchorTimeoutMs;
     IClockSettlement public settlement;
     uint64 public lastTimedMs;
+    /// Receipts of cancelled anchors. A cancelled receipt never verifies again: the
+    /// anchor is gone and any re-registration is stamped later, so its receipt differs.
+    mapping(bytes32 => bool) public cancelledReceipt;
 
     struct Anchor {
         bytes32 previousRoot;
@@ -43,12 +49,16 @@ contract ClockBoundVerifier is IZkVerifier {
     error ReplacementForbidden();
     error MissingAnchor();
     event ClockRegistered(uint64 indexed batchId, uint8 indexed phase, bytes32 receipt);
+    event ClockCancelled(uint64 indexed batchId, uint8 indexed phase, bytes32 receipt);
 
-    constructor(IZkVerifier inner_, uint64 maxWindowMs_, uint64 clockSkewMs_) {
-        if (address(inner_).code.length == 0 || maxWindowMs_ == 0) revert InvalidConfiguration();
+    constructor(IZkVerifier inner_, uint64 maxWindowMs_, uint64 clockSkewMs_, uint64 anchorTimeoutMs_) {
+        if (address(inner_).code.length == 0 || maxWindowMs_ == 0 || anchorTimeoutMs_ < 1000) {
+            revert InvalidConfiguration();
+        }
         innerVerifier = inner_;
         maxWindowMs = maxWindowMs_;
         clockSkewMs = clockSkewMs_;
+        anchorTimeoutMs = anchorTimeoutMs_;
         configurator = msg.sender;
     }
 
@@ -126,6 +136,22 @@ contract ClockBoundVerifier is IZkVerifier {
         anchors[batchId][phase_] = Anchor(previousRoot, baseCommitment, receipt, firstMs, lastMs, timedOps, at, true);
         emit ClockRegistered(batchId, phase_, receipt);
         return receipt;
+    }
+
+    /// Remove the current batch's anchor once it is at least `anchorTimeoutMs` old, so a
+    /// registration that can never be proven does not hold the batch forever. Only the
+    /// role that may register the phase may cancel it. Before the timeout an anchor
+    /// stays immutable (`ReplacementForbidden`). `lastTimedMs` is not rolled back.
+    function cancel(uint64 batchId, uint8 phase_, bytes32 expectedReceipt) external {
+        if (address(settlement) == address(0)) revert InvalidConfiguration();
+        if (msg.sender != (phase_ == 0 ? settlement.sequencer() : settlement.governance())) revert Unauthorized();
+        if (phase_ != phase() || settlement.batchCount() != batchId) revert BadContext();
+        Anchor storage a = anchors[batchId][phase_];
+        if (!a.exists || a.receipt != expectedReceipt) revert MissingAnchor();
+        if (block.timestamp * 1000 < uint256(a.anchoredAtMs) + anchorTimeoutMs) revert InvalidTime();
+        cancelledReceipt[expectedReceipt] = true;
+        delete anchors[batchId][phase_];
+        emit ClockCancelled(batchId, phase_, expectedReceipt);
     }
 
     /// Recompute against the current chain/domain, not only the stored hash.

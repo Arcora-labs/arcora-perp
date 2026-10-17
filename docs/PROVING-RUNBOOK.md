@@ -66,18 +66,28 @@ Record `vkey` (bytes32) and `proof_bytes`.
 - Deploy `SP1ZkVerifier(gateway, vkey)` (from this repo's `contracts/src/SP1ZkVerifier.sol`).
 
 ## 6. Redeploy the settlement pointing at it
-`DarkPerpSettlement.verifier` is immutable, so swapping MockZkVerifier is a redeploy:
+`DarkPerpSettlement.verifier` is immutable, so swapping the verifier is a redeploy. The
+settlement no longer accepts `SP1ZkVerifier` directly: its constructor refuses any
+verifier that is not a fresh, unbound clock verifier (`proofVersion() == 2`,
+`settlement() == 0`). The chain is:
 ```
-new DarkPerpSettlement(sequencer, enclaveSigner, SP1ZkVerifier_addr, genesisRoot,
-                       livenessTimeoutBlocks, challengeWindowBlocks, challengeBond)
+SP1ZkVerifier(gateway, vkey)
+  → ClockBoundVerifier(SP1ZkVerifier, maxWindowMs, clockSkewMs, anchorTimeoutMs)
+  → DarkPerpSettlement(Config{ sequencer, enclaveSigner, verifier = clock, genesisRoot,
+        livenessTimeoutBlocks, challengeGraceBlocks, challengeBond, inclusionDeadlineSecs,
+        governance, finalSettleGraceBlocks, progressBatches, slashPayoutCap })
+  → CollateralVault(settlement, token, gatewaySigner) → setVault → bindSettlement
 ```
-Then rewire the CollateralVault + repost the sequencer bond per the existing redeploy
-flow. MockZkVerifier is retired for this deployment.
+Deploy it with `scripts/local-verification/deploy_clock_stack.py` (see
+`docs/REDEPLOY-CC-RUNBOOK.md`), never with `Deploy.s.sol`, which wires only the mock.
+The gateway posts the sequencer bond before deposits open.
 
 ## 7. End-to-end
 Submit a real settlement (SEC-025-B: `settleBatch` takes NINE parameters — seven
 roots including the SEC-019 `depositsRoot`, the cumulative `uint64 newDepositCount`,
-and the proof):
+and the proof). The window must have been registered with the clock first; the
+settlement records `newDepositCount` as `consumedDepositCount()`, and it must lie
+between the previous value and the vault's `depositCount()`:
 ```
 settleBatch(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot,
             depositsRoot, newDepositCount, proof_bytes)
@@ -158,6 +168,9 @@ commitment over YOUR seven derived roots, then pair your roots with its `proof`.
 Submit your seven locally derived roots, the cumulative `newDepositCount`, and the
 service's proof to a fresh `DarkPerpSettlement` wired to the Slice-1 `SP1ZkVerifier`
 (`0xCbdD7381766f3021C5fae2a5bBeAe5CF0Fc20bcF` on Base Sepolia), genesis = `prev_root`.
+(Historical: this direct wiring predates the clock verifier. A settlement built from
+current source refuses a direct `SP1ZkVerifier`; wrap it in a `ClockBoundVerifier`
+and register the window before settling.)
 `newDepositCount` is the **cumulative** post-state `consumed_deposit_count`, not a
 per-window count (a zero-deposit window over a pre-state that already consumed five
 deposits submits **5**); `_requireDepositPrefix` pins `depositsRoot` to the vault's
@@ -174,3 +187,79 @@ Status 1 = the service's real proof was verified on-chain by `SP1ZkVerifier`. (P
 for real batches the service must run on a self-hosted **ATTESTED** x86_64 prover — the
 gnark image is amd64-only, so the arm64 GB10 is a dev/test prover, not a production
 attested one; P3 adds real TDX/Nitro key-release.)
+
+## Clock registration preflight
+
+Before the gateway registers a window with the clock it checks:
+
+- the sealed body fits within 512 MiB and the prover's advertised limit;
+- no phase-0 window is registered while the settlement is in close-only;
+- under `DARKPERP_PROD=1` with the HTTP prover, the clock's inner verifier chain
+  leads to an SP1 adapter whose `programVKey()`, and the route's ELF hash, match the
+  release or candidate manifest in use. Mock and Chainlink-candidate stacks, whose
+  inner verifier has no `programVKey`, skip only this identity check.
+
+A timed window must register within `clockSkewMs` of its last operation, and
+operations are admitted until the settle tick pauses admission. So everything that
+does not depend on the window is read before the pause: the bond top-up, the
+stake-refund sweep, the batch count, the clock binding, the settlement's batch
+count and phase, the prover's identity and, in production, the adapter's
+`programVKey()` (read once; the route is immutable). Between the seal and the
+register only local work remains: the body-size check against the limit read
+before the pause, and the sealed window's batch and phase against the settlement's.
+The register's own read and send are the only L1 round trips left in that budget.
+
+## Stale clock anchor: cancel
+
+Every settle path needs a clock anchor for the current batch and phase before its
+proof can verify. Before `anchorTimeoutMs` an anchor cannot be replaced
+(`ReplacementForbidden`). An anchor whose proof can never land would therefore hold
+the batch, so the clock lets the registrant role remove it once it is old enough:
+
+| Phase | Who may cancel | When |
+|---|---|---|
+| 0 (ordinary) | `sequencer` | while the settlement is live, after `anchorTimeoutMs` |
+| 1 (SettleAll) / 2 (exits) | `governance` | in close-only, after `anchorTimeoutMs` |
+
+`anchorTimeoutMs` is 1 h at launch. The gateway refuses to boot unless it covers two
+finality budgets plus the prover timeout plus a margin, so an anchor whose honest
+proof is still on its way is never old enough to cancel. The gateway raises a
+stale-anchor alert once an anchor is older than `anchorTimeoutMs`.
+
+**Procedure.**
+
+1. Make sure the anchor is dead, not slow. No local settle for that receipt may be
+   in flight, and the prover must not still be working on it.
+2. Read the anchor from one deployment. `clock.phase()` gives the phase,
+   `settlement.batchCount()` the batch id, and `clock.anchor(batchId, phase)` the
+   `receipt` and `anchoredAtMs`.
+3. Cancel through the gateway with
+   `POST /v1/admin/settlement/cancel-anchor { "batchId", "phase", "receipt" }`
+   (`FIN_ADMIN_KEY`; see `docs/API.md`). Without the gateway, the registrant key can
+   send it directly:
+
+   ```bash
+   cast send $CLOCK "cancel(uint64,uint8,bytes32)" <batchId> <phase> <receipt> \
+     --rpc-url $RPC <registrant signer flags>
+   ```
+
+   The call reverts `Unauthorized` (wrong role), `BadContext` (not the current batch
+   or phase), `MissingAnchor` (no anchor, or another receipt) or `InvalidTime` (not
+   old enough).
+4. Check that `cancelledReceipt(receipt)` is true and `ClockCancelled` was emitted.
+
+**Effects.** The anchor is deleted and `lastTimedMs` is not rolled back. A proof
+bound to the cancelled receipt can never verify again. A re-registration is stamped
+later, so it gets a new receipt. The gateway treats a cancelled receipt as the end
+of that window's settle wait. Reconcile through the rollback journal, restarting the
+gateway if it holds, before repeating a wind-down step. Never edit the state by
+hand.
+
+**A dead phase-0 window.** In this release it is recovered through close-only:
+
+1. Governance calls `enterCloseOnly()`.
+2. Once close-only begins, the phase-0 anchor is inert: `settleBatch` refuses, and
+   the clock's phase moves to 1. So no cancel is needed for it.
+3. The gateway's close-only rebase drops the window. Its deposits are refundable on
+   L1, and its order hashes are rejected in the `SettleAll` manifest
+   (`docs/FINAL_SETTLE_RUNBOOK.md`).

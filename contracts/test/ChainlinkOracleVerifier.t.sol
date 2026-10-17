@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 import {MiniTest} from "./utils/MiniTest.sol";
+import {SettlementTestConfig} from "./utils/SettlementTestConfig.sol";
 import {MockSequencerUptime} from "./utils/MockSequencerUptime.sol";
 import {ChainlinkOracleVerifier, IChainlinkStreamsVerifier} from "../src/ChainlinkOracleVerifier.sol";
 import {ClockBoundVerifier, IClockSettlement} from "../src/ClockBoundVerifier.sol";
@@ -35,6 +36,7 @@ abstract contract ChainlinkCandidateFixture is MiniTest {
     bytes32 constant M = bytes32(uint256(3));
     bytes32 constant Z = bytes32(0);
     bytes32 constant PH = 0x316e98693d753c35a99d0a50fdfe9aa60508c59ddd2247b8182281fd3e809365;
+    uint64 constant ANCHOR_TIMEOUT_MS = 3_600_000;
 
     function setUp() public {
         vm.chainId(84532);
@@ -43,11 +45,19 @@ abstract contract ChainlinkCandidateFixture is MiniTest {
         inner = new MockZkVerifier();
         don = new MockStreamsForCandidate();
         uptime = new MockSequencerUptime();
-        o = new ChainlinkOracleVerifier(inner, don, PH, address(uptime), 10);
-        c = new ClockBoundVerifier(o, 10_000, 2_000);
-        s = new DarkPerpSettlement(address(this), address(0x123), c, R, 100, 50, 1 ether, 600, address(this), 10);
+        deployStack(new ChainlinkOracleVerifier(inner, don, PH, address(uptime), 10));
+    }
+
+    /// Clock (10 s window, 2 s skew, 1 h anchor timeout) and settlement over oracle `o_`,
+    /// bound in the deployment order. This contract is sequencer and governance.
+    function deployStack(ChainlinkOracleVerifier o_) internal {
+        o = o_;
+        c = new ClockBoundVerifier(o_, 10_000, 2_000, ANCHOR_TIMEOUT_MS);
+        s = new DarkPerpSettlement(
+            SettlementTestConfig.legacy(address(this), address(0x123), c, R, 100, 50, 1 ether, 600, address(this), 10)
+        );
         c.bindSettlement(IClockSettlement(address(s)));
-        o.bindClock(c);
+        o_.bindClock(c);
     }
 
     function feed(uint8 n) internal pure returns (bytes32) {
@@ -79,12 +89,18 @@ abstract contract ChainlinkCandidateFixture is MiniTest {
     }
 
     function entries() internal returns (ChainlinkOracleVerifier.Entry[] memory e) {
+        return entriesAt(100);
+    }
+
+    /// One market's base and quote reports observed at `observed` seconds (valid 60 s),
+    /// for an operation at exactly that time.
+    function entriesAt(uint32 observed) internal returns (ChainlinkOracleVerifier.Entry[] memory e) {
         e = new ChainlinkOracleVerifier.Entry[](1);
-        bytes memory b = body(false, 100, 160);
-        bytes memory q = body(true, 100, 160);
+        bytes memory b = body(false, observed, observed + 60);
+        bytes memory q = body(true, observed, observed + 60);
         don.allow(full(b), b);
         don.allow(full(q), q);
-        e[0] = ChainlinkOracleVerifier.Entry(0, 100_000, full(b), full(q));
+        e[0] = ChainlinkOracleVerifier.Entry(0, uint64(observed) * 1000, full(b), full(q));
     }
 
     function base() internal view returns (bytes32) {

@@ -17,6 +17,39 @@ pub enum AlertKind {
     PersistenceFailed,
     DepositHalted,
     ArchivePressure,
+    /// The bond is below its target and could not be topped up, or top-ups are
+    /// paused after a slash an operator has not acknowledged yet.
+    BondShortfall,
+    /// An open inclusion challenge names an order no settled batch can prove.
+    UnanswerableChallenge,
+    /// The open-challenge set could not be read for several ticks in a row.
+    ChallengeDiscoveryFailed,
+    /// The clock anchor of the current batch is older than `anchorTimeoutMs`: its
+    /// proof has not settled, and the window needs operator recovery.
+    StaleAnchor,
+    /// Half of the settlement's liveness window has passed without progress.
+    LivenessLow,
+    /// Finalized block headers have not re-hashed for a long stretch, so expired
+    /// deposit permits are not being removed. Intake and settlement continue; the
+    /// header format probably gained a field this gateway does not know.
+    PermitGcStalled,
+}
+
+#[cfg(test)]
+impl AlertKind {
+    /// Every kind, in declaration order.
+    pub const ALL: [AlertKind; 10] = [
+        AlertKind::SettlementHeld,
+        AlertKind::PersistenceFailed,
+        AlertKind::DepositHalted,
+        AlertKind::ArchivePressure,
+        AlertKind::BondShortfall,
+        AlertKind::UnanswerableChallenge,
+        AlertKind::ChallengeDiscoveryFailed,
+        AlertKind::StaleAnchor,
+        AlertKind::LivenessLow,
+        AlertKind::PermitGcStalled,
+    ];
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -163,8 +196,8 @@ enum Work {
 }
 #[derive(Default)]
 struct Episodes {
-    // (last episode number, currently active). Only the four closed enum values
-    // can enter this map; untrusted errors cannot grow this state.
+    // (last episode number, currently active). Only the closed enum values can
+    // enter this map; untrusted errors cannot grow this state.
     state: BTreeMap<AlertKind, (u64, bool)>,
     delivery: Option<mpsc::SyncSender<Work>>,
 }
@@ -227,6 +260,17 @@ impl OpsAlerts {
             state: BTreeMap::new(),
             delivery: Some(tx),
         }))))
+    }
+
+    /// The kinds currently active, for the health surface.
+    pub fn active(&self) -> Vec<AlertKind> {
+        let episodes = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        episodes
+            .state
+            .iter()
+            .filter(|(_, (_, active))| *active)
+            .map(|(kind, _)| *kind)
+            .collect()
     }
 
     pub fn activate(&self, kind: AlertKind) {

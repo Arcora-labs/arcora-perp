@@ -304,8 +304,160 @@ pub enum RecoveryAction {
     /// The tx landed but the commit was lost — re-commit from the journal's
     /// `prepared`, then delete.
     RollForward,
+    /// A clock intent whose window can never settle on L1 (see [`DeadIntent`]).
+    /// What to do about it is [`dead_intent_action`]'s decision.
+    VoidDeadIntent(DeadIntent),
     /// Anything else: retain the journal and refuse startup until reconciled.
     Hold,
+}
+
+/// The anchor slot of the journaled (batch, phase) at the finalized block the
+/// dead-intent evidence was read at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnchorSlot {
+    /// An anchor for this window is registered: the same receipt, or with no
+    /// local receipt the same previous root and base commitment.
+    Matching,
+    /// `cancelledReceipt(receipt)` is set for the journal's receipt.
+    Cancelled,
+    /// No anchor is registered for this batch and phase.
+    Empty,
+    /// An anchor with another receipt or another base is registered.
+    Different,
+}
+
+/// What identifies a journaled clock intent on L1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClockIntent {
+    pub batch: u64,
+    pub phase: u8,
+    pub prev_root: perp_core::Digest,
+    /// The base commitment the anchor binds.
+    pub base: perp_core::Digest,
+    /// The anchor's receipt, known once a bound proof was journaled.
+    pub receipt: Option<perp_core::Digest>,
+    /// Whether the window holds timed operations. A window whose bounds cannot be
+    /// derived counts as timed.
+    pub timed: bool,
+}
+impl ClockIntent {
+    /// The intent of a journal with a prepared outcome; `None` at stage 1.
+    pub fn of(j: &RollbackJournal) -> Option<Self> {
+        let p = j.prepared.as_ref()?;
+        Some(Self {
+            batch: j.batch_id,
+            phase: p.outcome.wind_down_phase,
+            prev_root: p.outcome.prev_root,
+            base: p.outcome.commitment,
+            receipt: p
+                .outcome
+                .proof
+                .strip_prefix(perp_core::clock::PROOF_MAGIC)
+                .and_then(|body| body.get(..32))
+                .and_then(|r| r.try_into().ok()),
+            timed: perp_core::clock::TimeBounds::derive(&j.witness.ops)
+                .map_or(true, |b| b.count > 0),
+        })
+    }
+}
+
+/// Everything the dead-intent row needs, read at one finalized block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeadIntentEvidence {
+    pub block: u64,
+    pub batch_count: u64,
+    pub close_only: bool,
+    pub slot: AnchorSlot,
+    /// The sequencer's account nonce at the block is past every nonce this
+    /// gateway has handed to a sequencer-key transaction, so no register or
+    /// settle of the journaled window can still be mined.
+    pub fenced: bool,
+}
+
+/// Why a journaled clock intent can never settle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadIntent {
+    /// (a) its anchor was cancelled.
+    Cancelled,
+    /// (b) a phase-0 window while the settlement is in close-only: `settleBatch`
+    /// and phase-0 registration both revert there, for good.
+    CloseOnlyPhaseZero,
+    /// (c) no anchor exists and no pending transaction can create one.
+    EmptyAfterFence,
+    /// (d) another anchor holds this batch and phase.
+    Replaced,
+}
+
+/// Classify a journaled clock intent at one finalized block. `None` when the
+/// window may still settle: the batch moved on, a transaction of ours could still
+/// be mined, or its own anchor is registered (outside close-only).
+///
+/// A phase-0 window in close-only needs no nonce fence: close-only never ends, and
+/// from then on every phase-0 `register` reverts (`BadContext`) and every
+/// `settleBatch` reverts (`InCloseOnly`), so a transaction of ours that is still
+/// pending can never land. It also takes precedence over a cancelled receipt, since
+/// its recovery (the close-only rebase) is the one a cancelled timed phase-0
+/// window is directed to.
+pub fn classify_dead_intent(
+    j_batch: u64,
+    j_phase: u8,
+    e: &DeadIntentEvidence,
+) -> Option<DeadIntent> {
+    if e.batch_count != j_batch {
+        return None;
+    }
+    if j_phase == 0 && e.close_only {
+        return Some(DeadIntent::CloseOnlyPhaseZero);
+    }
+    if !e.fenced {
+        return None;
+    }
+    if e.slot == AnchorSlot::Cancelled {
+        Some(DeadIntent::Cancelled)
+    } else if e.slot == AnchorSlot::Empty {
+        Some(DeadIntent::EmptyAfterFence)
+    } else if e.slot == AnchorSlot::Different {
+        Some(DeadIntent::Replaced)
+    } else {
+        None
+    }
+}
+
+/// What recovery does with a dead intent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadIntentAction {
+    /// Return the window's ops to the open window, exactly as a rollback does.
+    /// Nothing exists on L1 to undo. An untimed window re-registers unchanged
+    /// under a fresh anchor; a phase-0 window in close-only never settles and the
+    /// close-only rebase of the wind-down discards it.
+    ReturnToOpenWindow,
+    /// Keep the journal and refuse to resolve it automatically.
+    Hold(&'static str),
+}
+
+/// Automatic only where nothing on L1 has to be undone and no operation time has
+/// to be re-registered; every other dead intent holds for the operator, with the
+/// recovery path in the reason.
+pub fn dead_intent_action(dead: DeadIntent, phase: u8, timed: bool) -> DeadIntentAction {
+    match dead {
+        DeadIntent::CloseOnlyPhaseZero => DeadIntentAction::ReturnToOpenWindow,
+        DeadIntent::Cancelled | DeadIntent::EmptyAfterFence if !timed => {
+            DeadIntentAction::ReturnToOpenWindow
+        }
+        DeadIntent::Cancelled | DeadIntent::EmptyAfterFence if phase == 0 => DeadIntentAction::Hold(
+            "a timed phase-0 window cannot be re-registered with its original operation times; \
+             have governance call enterCloseOnly(), then restart: the window is then discarded \
+             by the close-only rebase, uncredited deposits are refunded by the vault and the \
+             wind-down settles the rest",
+        ),
+        DeadIntent::Cancelled | DeadIntent::EmptyAfterFence => DeadIntentAction::Hold(
+            "a timed wind-down window cannot be re-registered with its original operation times",
+        ),
+        DeadIntent::Replaced => DeadIntentAction::Hold(
+            "another anchor holds this batch and phase; once it is older than anchorTimeoutMs, \
+             cancel it with POST /v1/admin/settlement/cancel-anchor and restart",
+        ),
+    }
 }
 
 /// Pure decision over the spec's recovery table (unit-testable as a full matrix,
@@ -315,6 +467,7 @@ pub enum RecoveryAction {
 /// `root_matches_prepared` = chain `currentStateRoot == prepared.new_root` (false
 /// when `prepared` is None), `root_matches_settled` = chain `currentStateRoot ==`
 /// restored `l1_status.settled_root`.
+#[cfg(test)]
 pub fn recovery_action(
     j_batch: u64,
     has_prepared: bool,
@@ -322,6 +475,32 @@ pub fn recovery_action(
     chain_bc: u64,
     root_matches_prepared: bool,
     root_matches_settled: bool,
+) -> RecoveryAction {
+    recovery_action_classified(
+        j_batch,
+        has_prepared,
+        b_snap,
+        chain_bc,
+        root_matches_prepared,
+        root_matches_settled,
+        None,
+    )
+}
+
+/// [`recovery_action`] plus the dead-intent row. `dead` is the classification of
+/// a prepared clock intent at one finalized block ([`classify_dead_intent`]),
+/// `None` when it was not read or the intent may still settle. The row needs a
+/// prepared journal whose batch is still the chain's batch, with the seal still
+/// persisted (`b_snap == j + 1`) or already rolled back (`b_snap == j`). It is
+/// disjoint from every other row: those need stage 1 or a landed transaction.
+pub fn recovery_action_classified(
+    j_batch: u64,
+    has_prepared: bool,
+    b_snap: u64,
+    chain_bc: u64,
+    root_matches_prepared: bool,
+    root_matches_settled: bool,
+    dead: Option<DeadIntent>,
 ) -> RecoveryAction {
     // `checked_add` so a (theoretical) u64::MAX journal can never panic a boot;
     // an overflowed "next" simply matches nothing sealed/landed → HOLD.
@@ -353,6 +532,10 @@ pub fn recovery_action(
         RecoveryAction::RollBack
     } else if sealed_persisted && tx_landed && has_prepared && root_matches_prepared {
         RecoveryAction::RollForward
+    } else if let Some(dead) = dead
+        .filter(|_| has_prepared && chain_bc == j_batch && (sealed_persisted || b_snap == j_batch))
+    {
+        RecoveryAction::VoidDeadIntent(dead)
     } else {
         RecoveryAction::Hold
     }
@@ -1154,5 +1337,167 @@ mod tests {
                 }
             }
         }
+    }
+    fn evidence(
+        slot: AnchorSlot,
+        close_only: bool,
+        fenced: bool,
+        batch_count: u64,
+    ) -> DeadIntentEvidence {
+        DeadIntentEvidence {
+            block: 100,
+            batch_count,
+            close_only,
+            slot,
+            fenced,
+        }
+    }
+
+    #[test]
+    fn dead_intent_classification_matrix() {
+        use AnchorSlot::{Different, Empty, Matching};
+        use DeadIntent::{CloseOnlyPhaseZero, EmptyAfterFence, Replaced};
+        // (a) a cancelled receipt is dead in every phase, inside or outside
+        // close-only, except a phase-0 window in close-only, which is (b).
+        for (phase, close_only) in [(0, false), (1, false), (1, true), (2, false), (2, true)] {
+            assert_eq!(
+                classify_dead_intent(
+                    5,
+                    phase,
+                    &evidence(AnchorSlot::Cancelled, close_only, true, 5)
+                ),
+                Some(DeadIntent::Cancelled)
+            );
+        }
+        // (b) phase 0 in close-only is dead whatever the slot holds, with or without
+        // the nonce fence: no pending register or settle of it can land there.
+        for slot in [Matching, AnchorSlot::Cancelled, Empty, Different] {
+            for fenced in [false, true] {
+                assert_eq!(
+                    classify_dead_intent(5, 0, &evidence(slot, true, fenced, 5)),
+                    Some(CloseOnlyPhaseZero)
+                );
+            }
+        }
+        // (c) an empty slot after the fence, and (d) another anchor.
+        for (phase, close_only) in [(0, false), (1, true), (2, true)] {
+            assert_eq!(
+                classify_dead_intent(5, phase, &evidence(Empty, close_only, true, 5)),
+                Some(EmptyAfterFence)
+            );
+            assert_eq!(
+                classify_dead_intent(5, phase, &evidence(Different, close_only, true, 5)),
+                Some(Replaced)
+            );
+            // Our own registered anchor may still settle.
+            assert_eq!(
+                classify_dead_intent(5, phase, &evidence(Matching, close_only, true, 5)),
+                None
+            );
+        }
+        // Nothing else is dead before the fence, and nothing once the batch moved on.
+        for slot in [Matching, AnchorSlot::Cancelled, Empty, Different] {
+            for close_only in [false, true] {
+                for phase in 0..=2 {
+                    if !(phase == 0 && close_only) {
+                        assert_eq!(
+                            classify_dead_intent(5, phase, &evidence(slot, close_only, false, 5)),
+                            None
+                        );
+                    }
+                    for bc in [4, 6] {
+                        assert_eq!(
+                            classify_dead_intent(5, phase, &evidence(slot, close_only, true, bc)),
+                            None
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dead_intent_row_needs_a_prepared_intent_on_the_unsettled_batch() {
+        use RecoveryAction::*;
+        let bools = [false, true];
+        for dead in [
+            DeadIntent::Cancelled,
+            DeadIntent::CloseOnlyPhaseZero,
+            DeadIntent::EmptyAfterFence,
+            DeadIntent::Replaced,
+        ] {
+            // Seal persisted, or already returned to the open window.
+            for b_snap in [5, 6] {
+                for rmp in bools {
+                    for rms in bools {
+                        assert_eq!(
+                            recovery_action_classified(5, true, b_snap, 5, rmp, rms, Some(dead)),
+                            VoidDeadIntent(dead)
+                        );
+                    }
+                }
+            }
+            // Stage 1 keeps its rows; a landed batch keeps Stale/RollForward/Hold.
+            assert_eq!(
+                recovery_action_classified(5, false, 6, 5, false, false, Some(dead)),
+                RollBack
+            );
+            assert_eq!(
+                recovery_action_classified(5, false, 5, 5, false, false, Some(dead)),
+                SealNeverPersisted
+            );
+            assert_eq!(
+                recovery_action_classified(5, true, 6, 6, true, false, Some(dead)),
+                RollForward
+            );
+            assert_eq!(
+                recovery_action_classified(5, true, 6, 6, false, true, Some(dead)),
+                Stale
+            );
+            for (b_snap, bc) in [(6, 6), (6, 7), (7, 5), (5, 6), (4, 5)] {
+                assert_eq!(
+                    recovery_action_classified(5, true, b_snap, bc, false, false, Some(dead)),
+                    Hold,
+                    "b_snap {b_snap} bc {bc}"
+                );
+            }
+        }
+        // Without a classification the table is unchanged.
+        for b_snap in [5, 6] {
+            assert_eq!(
+                recovery_action_classified(5, true, b_snap, 5, false, false, None),
+                Hold
+            );
+            assert_eq!(recovery_action(5, true, b_snap, 5, false, false), Hold);
+        }
+    }
+
+    #[test]
+    fn dead_intent_policy_is_automatic_only_without_a_time_to_reregister() {
+        use DeadIntentAction::*;
+        for phase in 0..=2 {
+            for timed in [false, true] {
+                assert_eq!(
+                    dead_intent_action(DeadIntent::CloseOnlyPhaseZero, phase, timed),
+                    ReturnToOpenWindow
+                );
+                assert!(matches!(
+                    dead_intent_action(DeadIntent::Replaced, phase, timed),
+                    Hold(m) if m.contains("cancel-anchor")
+                ));
+                for dead in [DeadIntent::Cancelled, DeadIntent::EmptyAfterFence] {
+                    let action = dead_intent_action(dead, phase, timed);
+                    if timed {
+                        assert!(matches!(action, Hold(_)), "{dead:?} phase {phase}");
+                    } else {
+                        assert_eq!(action, ReturnToOpenWindow);
+                    }
+                }
+            }
+        }
+        assert!(matches!(
+            dead_intent_action(DeadIntent::EmptyAfterFence, 0, true),
+            Hold(m) if m.contains("enterCloseOnly")
+        ));
     }
 }

@@ -202,29 +202,31 @@
   <p style="margin:.4em 0 0">ZK proof Ethereum'da verify oldu (hard). <strong>Bağlayıcı ve çekilebilir.</strong></p>
 </div>
 <pre><span class="c">order_hash</span> = H(encrypted_order, user_ephemeral_key, nonce, expiry, market_id)
-<span class="c">receipt</span>   = Sign_enclave(order_hash, seq_no, recv_time, batch_id_hint)</pre>
+<span class="c">receipt</span>   = Sign_enclave(order_hash, seq_no, recv_time, batch_id_hint)
+<span class="c">l1_auth</span>   = Sign_enclave(keccak(CHALLENGE_AUTH_TAG, chain_id, settlement,
+                    order_hash, seq_no, recv_time, batch_id_hint, beneficiary))</pre>
 <h3>Failure matrisi (§3)</h3>
 <table>
   <thead><tr><th>Durum</th><th>Sonuç</th></tr></thead>
   <tbody>
     <tr><td>MATCHED + batch prove edildi</td><td>Normal → <span class="badge b-buy">SETTLED</span></td></tr>
     <tr><td>MATCHED + batch prove <em>edilemedi</em></td><td>Batch reddedilir; fill'ler <strong>rollback</strong>; insurance yalnızca kanıtlı protokol hatasında</td></tr>
-    <tr><td>MATCHED + enclave crash</td><td>Kullanıcı receipt + son hard root ile <strong>forced-exit</strong> (§6); SETTLED olmayan fill bağlayıcı değil</td></tr>
+    <tr><td>MATCHED + enclave crash</td><td>Önceden yayımlanmış çekim kökü ve Merkle verisiyle claim yapılabilir; tüketilmemiş deposit'ler close-only'de vault'tan iade edilir (§6); SETTLED olmayan fill bağlayıcı değil</td></tr>
     <tr><td>MATCHED var, L1 hard root yok</td><td>Withdraw <strong>mümkün değil</strong></td></tr>
-    <tr><td>Receipt var, MATCHED yok, timeout aşıldı</td><td>Inclusion ihlali → <strong>slashing</strong> + forced-exit</td></tr>
+    <tr><td>Receipt var, MATCHED yok, timeout aşıldı</td><td>Inclusion ihlali → L1 challenge; cevapsız kalırsa bond'dan <strong>sınırlı ceza</strong>, settlement devam eder</td></tr>
   </tbody>
 </table>
 
 <!-- 3 -->
 <h2 id="inclusion"><span class="n">§2 ·</span> Sequencing accountability</h2>
-<p>ZK "bu batch içindeki state transition geçerli" der; "hangi emir hangi sırayla girdi, kim sansürlendi" demez. O boşluğu <strong>receipt + inclusion timeout + slashing</strong> kapatır. Her batch bir manifest yayınlar:</p>
+<p>ZK "bu batch içindeki state transition geçerli" der; "hangi emir hangi sırayla girdi, kim sansürlendi" demez. O boşluğu <strong>receipt + enclave imzalı L1 challenge yetkisi + progress gate + sınırlı ceza</strong> kapatır. Her batch bir manifest yayınlar:</p>
 <pre><span class="c">batch_manifest</span> = {
   previous_state_root, batch_id,
   ordered_order_hashes[], rejected_order_hashes[] + reason_codes[],
   oracle_update_hashes[], matching_rule_version,
   enclave_measurement, sequencer_pubkey_epoch
 }</pre>
-<p>Boşluk paylaşımı: <strong>ZK</strong> → manifest'teki sıralı emirler altında fill doğruluğu (Proof-v2). <strong>Receipt + timeout + slashing</strong> → "receipt aldım ama T blok içinde manifest'e girmedim" cezası. İkisi <em>birlikte</em> censorship/withholding'i kapatır.</p>
+<p>Boşluk paylaşımı: <strong>ZK</strong> → manifest'teki sıralı emirler altında fill doğruluğu (Proof-v2). <strong>Receipt + challenge</strong> → "receipt aldım ama emrim hiçbir settled batch'te yok" iddiası. Cevap izinsizdir ve batch'lerle verilebilir; cevap gelmezse, challenge'dan sonra <code>progressBatches</code> batch settle olup <code>challengeGraceBlocks</code> geçince bond'dan en fazla <code>slashPayoutCap</code> USDC hesabın beneficiary'sine ödenir. Settlement durmaz; close-only hiçbir zaman ceza doğurmaz.</p>
 
 <!-- 4 -->
 <h2 id="proof"><span class="n">§4 ·</span> Proof obligations — staged</h2>
@@ -255,7 +257,7 @@
 <h2 id="riskcore"><span class="n">§5–9 ·</span> Risk · likidasyon · forced-exit · recovery · oracle</h2>
 <div class="grid2">
   <div class="card"><h3>Likidasyon (§5)</h3><p>Enclave plaintext pozisyonları public oracle'a karşı sürekli değerlendirir → <strong>anında</strong> tetikler. Liveness varsayımı yok: kullanıcı offline olsa da likide edilir. Public'e per-position açıklama yok; yalnızca aggregate + ZK proof.</p></div>
-  <div class="card"><h3>Forced-exit (§6)</h3><p>Sequencer T blok yanıt vermezse kullanıcı son hard root'a karşı forced action başlatır → sistem <strong>CLOSE-ONLY</strong> moduna girer → açık perp'ler conservative oracle TWAP'a karşı kapanır. Açık pozisyon collateral'ı kapatılmadan çekilemez.</p></div>
+  <div class="card"><h3>Forced-exit (§6)</h3><p>Root <code>livenessTimeoutBlocks</code> boyunca ilerlemezse, en eski tüketilmemiş deposit o süreden eskiyse ya da governance isterse sistem geri dönüşsüz <strong>CLOSE-ONLY</strong> moduna girer. Tüketilmemiş deposit'ler vault'tan anapara olarak iade edilir; settle edilmiş bakiyeler yayımlanmış köklerden claim edilir; açık pozisyonlar governance wind-down'ı ile kapanır. Açık pozisyon collateral'ı kapatılmadan çekilemez.</p></div>
   <div class="card"><h3>Note recovery (§7)</h3><p>4844 blob'ları geçici. <strong>Encrypted Note Archive</strong> zorunlu: public ciphertext arşivi, view-key ile taranır (<code>batch_id → note_commitment → ciphertext</code>). Cihaz kaybında: seed → view-key → arşivi tara → pozisyonu yeniden kur.</p></div>
   <div class="card"><h3>Oracle (§8)</h3><p>Transcript: <code>signed_price, publish_time, confidence, max_staleness, max_deviation_vs_backup</code>. ZK doğrular: zamanda; confidence ≤ threshold; |primary − backup_twap| ≤ sanity. Pyth-primary + TWAP backup + anomalide close-only breaker.</p></div>
 </div>

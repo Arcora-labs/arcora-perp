@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 import {ChainlinkCandidateFixture} from "./ChainlinkOracleVerifier.t.sol";
 import {MockSequencerUptime} from "./utils/MockSequencerUptime.sol";
 import {ChainlinkOracleVerifier, IChainlinkStreamsVerifier} from "../src/ChainlinkOracleVerifier.sol";
-import {ClockBoundVerifier, IClockSettlement} from "../src/ClockBoundVerifier.sol";
+import {ClockBoundVerifier} from "../src/ClockBoundVerifier.sol";
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
 
 /// Test-only side effect during external verification, not a Chainlink DON.
@@ -171,6 +171,60 @@ contract ChainlinkSequencerUptimeTest is ChainlinkCandidateFixture {
         assertEq(s.currentStateRoot(), R, "old proof not repurposed");
     }
 
+    function test_uptime_epoch_change_recovers_by_anchor_cancel_and_fresh_reports() public {
+        // The registered record is bound to uptime epoch (1, 1). A new epoch strands it:
+        // the proof no longer verifies, and the anchored pre-recovery operation can never
+        // be registered again.
+        (bytes32 oldCb, bytes memory oldProof) = registeredProof();
+        bytes32 oldReceipt = c.anchor(0, 0).receipt;
+        ChainlinkOracleVerifier.Entry[] memory oldEntries = entries();
+        uptime.set(3, 0, 110);
+        vm.warp(140);
+        vm.expectRevert(DarkPerpSettlement.BadProof.selector);
+        settle(oldProof);
+        vm.expectRevert(ChainlinkOracleVerifier.SequencerUnavailable.selector);
+        o.register(0, 0, oldEntries);
+
+        // The anchor stays immutable until its timeout ...
+        vm.expectRevert(ClockBoundVerifier.InvalidTime.selector);
+        c.cancel(0, 0, oldReceipt);
+        vm.warp(100 + ANCHOR_TIMEOUT_MS / 1000 - 1);
+        vm.expectRevert(ClockBoundVerifier.InvalidTime.selector);
+        c.cancel(0, 0, oldReceipt);
+        // ... and only its registrant may cancel it, naming its exact receipt.
+        vm.warp(100 + ANCHOR_TIMEOUT_MS / 1000);
+        vm.prank(address(0xBAD));
+        vm.expectRevert(ClockBoundVerifier.Unauthorized.selector);
+        c.cancel(0, 0, oldReceipt);
+        vm.expectRevert(ClockBoundVerifier.MissingAnchor.selector);
+        c.cancel(0, 0, bytes32(uint256(oldReceipt) ^ 1));
+        c.cancel(0, 0, oldReceipt);
+        assertTrue(c.cancelledReceipt(oldReceipt), "receipt marked cancelled");
+        assertFalse(c.anchor(0, 0).exists, "anchor removed");
+        assertEq(uint256(c.lastTimedMs()), 100_000, "timed-op floor is not rolled back");
+        vm.expectRevert(DarkPerpSettlement.BadProof.selector);
+        settle(oldProof);
+
+        // A fresh operation after the new epoch's grace gets a new anchor and new reports.
+        uint32 t = uint32(block.timestamp);
+        bytes32 receipt = c.register(0, R, base(), uint64(t) * 1000, uint64(t) * 1000, 1, 0);
+        assertTrue(receipt != oldReceipt, "re-registration is stamped later");
+        bytes32 cb = keccak256(abi.encode(c.DOMAIN(), base(), receipt));
+        bytes32 h = o.register(0, 0, entriesAt(t));
+        (uint80 roundId, uint64 startedAt) = o.uptimeEpochs(cb);
+        assertEq(uint256(roundId), 3, "new record pinned to the new epoch round");
+        assertEq(uint256(startedAt), 110, "new record pinned to the new epoch start");
+
+        // The stranded record cannot be revived through the new anchor.
+        (,, bool oldExists) = o.records(oldCb);
+        assertTrue(oldExists, "old record still stored");
+        vm.expectRevert(DarkPerpSettlement.BadProof.selector);
+        settle(oldProof);
+        settle(abi.encodePacked(o.boundCommitment(cb, h)));
+        assertEq(s.batchCount(), 1, "recovered batch settles");
+        assertEq(s.currentStateRoot(), N, "root advanced by the fresh proof");
+    }
+
     function test_uptime_round_change_even_with_equal_timestamp_cannot_reuse_record() public {
         (, bytes memory proof) = registeredProof();
         uptime.set(2, 0, 1);
@@ -248,7 +302,7 @@ contract ChainlinkSequencerUptimeTest is ChainlinkCandidateFixture {
     function test_uptime_price_free_wind_down_and_final_exit_keep_actual_contract_routes() public {
         uptime.setRaw(new bytes(0), true);
         vm.roll(102);
-        s.triggerCloseOnly();
+        s.enterCloseOnly();
         vm.roll(112);
         bytes32 b = s.windDownCommitment(R, M, N, Z, Z, Z, Z, 1);
         bytes32 receipt = c.register(0, R, b, 0, 0, 0, 1);
@@ -267,11 +321,7 @@ contract ChainlinkSequencerUptimeTest is ChainlinkCandidateFixture {
 
     function test_uptime_external_verifier_status_change_reverts_entire_registration() public {
         InterruptingStreams changing = new InterruptingStreams(uptime);
-        o = new ChainlinkOracleVerifier(inner, changing, PH, address(uptime), 10);
-        c = new ClockBoundVerifier(o, 10_000, 2_000);
-        s = new DarkPerpSettlement(address(this), address(0x123), c, R, 100, 50, 1 ether, 600, address(this), 10);
-        c.bindSettlement(IClockSettlement(address(s)));
-        o.bindClock(c);
+        deployStack(new ChainlinkOracleVerifier(inner, changing, PH, address(uptime), 10));
         bytes32 cb = anchor(1);
         ChainlinkOracleVerifier.Entry[] memory e = entries();
         vm.expectRevert(ChainlinkOracleVerifier.SequencerUnavailable.selector);

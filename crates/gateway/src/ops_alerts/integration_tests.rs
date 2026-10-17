@@ -280,13 +280,14 @@ impl deposit_rpc::Rpc for ReorgRpc {
         match method {
             "eth_chainId" => Ok(serde_json::json!(format!("0x{:x}", self.chain))),
             "eth_getBlockByNumber" if params[0] == "finalized" => {
-                Ok(serde_json::json!({"number": "0x2", "hash": hex0x(&[8; 32])}))
+                Ok(deposit_rpc::test_header(2, 0))
             }
             "eth_getBlockByNumber" if params[0] == "0x1" => {
                 // The previously persisted finalized block had hash 7, whereas
-                // this canonical-height lookup now yields hash 9. VaultSource's
-                // real anchor validator, not this fixture, constructs Error::Halt.
-                Ok(serde_json::json!({"number": "0x1", "hash": hex0x(&[9; 32])}))
+                // this canonical-height lookup now yields another (valid) header.
+                // VaultSource's real anchor validator, not this fixture, constructs
+                // Error::Halt.
+                Ok(deposit_rpc::test_header(1, 9))
             }
             _ => panic!("unexpected reader request: {method}"),
         }
@@ -307,6 +308,7 @@ async fn deposit_halt_production_ingestion_delivers_once_and_stays_halted_after_
     gw.deposits.anchor = Some(deposit_rpc::Block {
         number: 1,
         hash: [7; 32],
+        timestamp: None,
     });
     inner.deposit_source = Some(Arc::new(deposit_rpc::VaultSource::new(ReorgRpc {
         calls: calls.clone(),
@@ -489,4 +491,41 @@ fn transport_has_bounded_timeout_and_rejects_redirects() {
         .deliver("{}"));
     peer.join().unwrap();
     assert!(matches!(destination.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock));
+}
+
+#[test]
+fn alert_kinds_have_stable_names_and_active_lists_open_episodes() {
+    let names: Vec<String> = AlertKind::ALL
+        .iter()
+        .map(|k| {
+            serde_json::to_value(k)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "settlement_held",
+            "persistence_failed",
+            "deposit_halted",
+            "archive_pressure",
+            "bond_shortfall",
+            "unanswerable_challenge",
+            "challenge_discovery_failed",
+            "stale_anchor",
+            "liveness_low",
+            "permit_gc_stalled",
+        ]
+    );
+    let alerts = OpsAlerts::default();
+    assert!(alerts.active().is_empty());
+    alerts.activate(AlertKind::StaleAnchor);
+    alerts.activate(AlertKind::LivenessLow);
+    alerts.recover(AlertKind::StaleAnchor);
+    assert_eq!(alerts.active(), vec![AlertKind::LivenessLow]);
+    alerts.clone().recover(AlertKind::LivenessLow);
+    assert!(alerts.active().is_empty(), "clones share episode state");
 }

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
-import type { WithdrawalEntry } from "../domain/types";
+import type { RefundableDeposit, WithdrawalEntry } from "../domain/types";
 import { validateWithdrawal } from "../domain/withdrawal";
+import { validateRefund } from "../domain/refund";
 import {
   buildClaimBundle,
   claimBundleFileName,
@@ -16,8 +17,11 @@ import type { DarkPerpClient } from "../api/client";
 import {
   BASE_SEPOLIA_CHAIN_ID,
   EXPLORER_TX,
+  VAULT_ERROR_TEXT,
   connect,
+  dryRunCall,
   encodeClaim,
+  encodeRefundDeposit,
   ensureBaseSepolia,
   hasInjected,
   sendTx,
@@ -226,6 +230,7 @@ export function AccountPanel() {
       </p>
 
       <WithdrawalsSection client={client} />
+      <RefundsSection client={client} closeOnly={state.mode === "CloseOnly"} />
     </div>
   );
 }
@@ -604,6 +609,160 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
           Export all claim files ({savedBundles.length})
         </button>
       )}
+    </div>
+  );
+}
+
+// ── close-only deposit refunds ────────────────────────────────────────────────
+
+/// The full on-chain refund call for one uncredited deposit — pure so the exact
+/// command shape is unit-testable. Refunds pay the deposit's own address, so
+/// ANY funded wallet may send it; the private key stays a placeholder.
+export function buildRefundCommand(r: RefundableDeposit, vault: string): string {
+  validateRefund(r, vault);
+  return [
+    "cast send",
+    vault,
+    '"refundDeposit(uint64,address,bytes32,uint256,address)"',
+    String(r.id),
+    r.from,
+    r.ownerCommit,
+    r.amount.toString(),
+    r.from,
+    "--rpc-url https://sepolia.base.org",
+    "--private-key <YOUR_KEY>",
+  ].join(" ");
+}
+
+/// One refund tx's lifecycle, keyed by the deposit id.
+interface RefundTxState {
+  status: "pending" | "done" | "error";
+  hash?: string;
+  err?: string;
+}
+
+/// Deposits that reached the vault but that settled state never credited. In
+/// close-only mode the vault returns each one in full to its depositing address
+/// (`refundDeposit`). Shown only in close-only mode and only when the client
+/// reports entries (the mock and older gateways report none). Exported for tests.
+export function RefundsSection({ client, closeOnly }: { client: DarkPerpClient; closeOnly: boolean }) {
+  const [data, setData] = useState<{ deposits: RefundableDeposit[]; vault: string } | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [refunds, setRefunds] = useState<Record<number, RefundTxState>>({});
+  const wallet = useWalletAddress();
+
+  useEffect(() => {
+    const list = client.listRefundableDeposits?.bind(client);
+    if (!closeOnly || !list) { setData(null); return; }
+    let alive = true;
+    const load = () => {
+      list()
+        .then((d) => { if (alive) setData(d); })
+        .catch(() => { /* transient — keep the last good list, the poll retries */ });
+    };
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [client, closeOnly]);
+
+  if (!closeOnly || !data || data.deposits.length === 0) return null;
+  const entries = [...data.deposits].sort((a, b) => a.id - b.id);
+
+  async function copy(r: RefundableDeposit) {
+    try {
+      await navigator.clipboard.writeText(buildRefundCommand(r, data!.vault));
+      setCopiedId(r.id);
+      setTimeout(() => setCopiedId((id) => (id === r.id ? null : id)), 2000);
+    } catch { /* clipboard unavailable — the button simply stays */ }
+  }
+
+  /// Send `refundDeposit` from the connected wallet, paying the deposit's own
+  /// address. A dry run first, so a refusal is explained without a failed tx.
+  async function refundWithWallet(r: RefundableDeposit) {
+    if (!wallet || !data) return;
+    const set = (s: RefundTxState) => setRefunds((c) => ({ ...c, [r.id]: s }));
+    set({ status: "pending" });
+    try {
+      validateRefund(r, data.vault);
+      const calldata = encodeRefundDeposit({ ...r, to: r.from });
+      await ensureBaseSepolia();
+      const simulated = await dryRunCall({ from: wallet, to: data.vault, data: calldata });
+      if (simulated.status === "reverted") {
+        if (simulated.error === "AlreadyRefunded") return set({ status: "done" });
+        throw new Error(simulated.error ? VAULT_ERROR_TEXT[simulated.error]
+          : `The vault refused this refund in a dry run (revert data ${simulated.data.slice(0, 10)}).`);
+      }
+      const hash = await sendTx({ from: wallet, to: data.vault, data: calldata });
+      set({ status: "pending", hash });
+      await waitForTx(hash);
+      set({ status: "done", hash });
+    } catch (e) {
+      setRefunds((c) => ({
+        ...c,
+        [r.id]: { ...c[r.id], status: "error", err: e instanceof Error ? e.message : String(e) },
+      }));
+    }
+  }
+
+  return (
+    <div className="withdrawals" aria-label="Refundable deposits">
+      <h3 className="card__title">Refundable deposits</h3>
+      <p className="muted small">
+        The exchange is in close-only mode. These deposits reached the vault, but
+        settled state never credited them, so the vault returns each one in full to
+        the address it came from.
+      </p>
+      <ul className="withdrawals__list">
+        {entries.map((r) => {
+          const refund = refunds[r.id];
+          return (
+            <li key={r.id} className="withdrawals__item">
+              <div className="withdrawals__row">
+                <span className="stat__value">{formatUsd(r.amount)}</span>
+                <span className="badge badge--settled">{refund?.status === "done" ? "Refunded" : "Refundable"}</span>
+              </div>
+              <div className="withdrawals__row muted small mono">
+                <span>to {shortHash(r.from)}</span>
+                <span>deposit #{r.id}</span>
+              </div>
+              {refund?.status !== "done" && (
+                <div className="row">
+                  {wallet && hasInjected() && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => refundWithWallet(r)}
+                      disabled={refund?.status === "pending"}
+                    >
+                      {refund?.status === "pending" ? "Refunding…" : "Refund with wallet"}
+                    </button>
+                  )}
+                  <button type="button" className="btn btn--ghost" onClick={() => copy(r)}>
+                    {copiedId === r.id ? "Copied" : "Copy refund command"}
+                  </button>
+                </div>
+              )}
+              {refund?.hash && (
+                <p className="muted small mono">
+                  {refund.status === "done" ? "Refunded ✓" : refund.status === "error" ? "Refund tx" : "Refunding…"}{" "}
+                  <a href={`${EXPLORER_TX}${refund.hash}`} target="_blank" rel="noreferrer">
+                    {shortHash(refund.hash)}
+                  </a>
+                </p>
+              )}
+              {refund?.status === "error" && refund.err && (
+                <p className="notice notice--error">{refund.err}</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="muted small">
+        Send the refund from the connected wallet, or run the copied{" "}
+        <code>cast send</code> command from any funded wallet (replace{" "}
+        <code>&lt;YOUR_KEY&gt;</code>). Anyone can send it; the funds always go to the
+        deposit's address.
+      </p>
     </div>
   );
 }

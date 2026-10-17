@@ -75,6 +75,129 @@ impl Observation {
     }
 }
 
+/// The settled L1 state, read at one finalized block, that the close-only rebase
+/// returns the gateway to.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SettledL1 {
+    pub block: u64,
+    pub close_only: bool,
+    pub settled: bool,
+    pub batch_count: u64,
+    pub root: Digest,
+    pub consumed_deposit_count: u64,
+}
+
+impl Gw {
+    /// Whether starting the wind-down needs the close-only rebase first: L1 is in
+    /// close-only before phase 1 settled, this gateway has not started the
+    /// wind-down, and it holds state beyond the settled state.
+    pub(super) fn close_only_rebase_applies(&self, close_only: bool, settled: bool) -> bool {
+        close_only
+            && !settled
+            && !self.wind_down_started
+            && (self.seq.open_window_has_ops()
+                || self.seq.window_has_pending_manifest()
+                || !self.window_withdrawals.is_empty()
+                || self.seq.state.state_root() != self.last_settled_root)
+    }
+
+    /// The close-only rebase. After close-only no ordinary window can settle, so
+    /// the open window is discarded and the gateway returns to the L1-settled
+    /// state: the engine state, the deposit ledger (credits with an id at or above
+    /// `consumedDepositCount` become refund records; the vault refunds them) and
+    /// the withdrawals requested in the discarded window. Permits that have not
+    /// landed are dropped with their blinds, since the vault refuses every deposit
+    /// in close-only. Every precondition is checked before anything changes; the
+    /// result must equal L1's root and counts. Returns the discarded window's order
+    /// hashes, which the wind-down publishes as rejected (`MarketCloseOnly`).
+    ///
+    /// A window sealed but not settled must be resolved first (boot recovery
+    /// returns a dead phase-0 window to the open window).
+    pub(super) fn rebase_to_settled(&mut self, l1: &SettledL1) -> Result<Vec<Digest>, String> {
+        if !l1.close_only || l1.settled {
+            return Err(
+                "the close-only rebase needs L1 in close-only before wind-down phase 1 settled"
+                    .into(),
+            );
+        }
+        if self.wind_down_started {
+            return Err("the wind-down has already started".into());
+        }
+        if self.seq.current_window_id() != l1.batch_count {
+            return Err(format!(
+                "window {} is sealed but not settled on L1 (batchCount {}); restart so recovery can resolve it",
+                self.seq.current_window_id().saturating_sub(1),
+                l1.batch_count
+            ));
+        }
+        let baseline = self.seq.window_baseline();
+        let consumed = l1.consumed_deposit_count;
+        if self.last_settled_root != l1.root
+            || baseline.state_root() != l1.root
+            || baseline.consumed_deposit_count != consumed
+        {
+            return Err("the local settled state is not the finalized L1 settled state".into());
+        }
+        if self.deposits.domain.is_some() {
+            let (prefix, prefix_tip) = self.deposits.legacy_prefix.unwrap_or((0, [0; 32]));
+            let tip = if consumed == prefix {
+                Some(prefix_tip)
+            } else {
+                consumed
+                    .checked_sub(1)
+                    .and_then(|id| self.deposits.credits.get(&id))
+                    .map(|c| c.event.tip)
+            };
+            if consumed < prefix || tip != Some(baseline.consumed_deposit_tip) {
+                return Err("the deposit ledger does not reach the settled deposit prefix".into());
+            }
+        }
+        let window = self.seq.current_window_id();
+        let voided = self.seq.void_open_window();
+        let dropped = self.deposits.credits.split_off(&consumed);
+        if !dropped.is_empty() {
+            // The ingestion anchor may point past the consumed prefix; refetch from
+            // the start of the chain, which close-only stops at its first page.
+            self.deposits.anchor = None;
+        }
+        self.deposits.refunds.extend(dropped);
+        for (commit, route) in core::mem::take(&mut self.deposits.routes) {
+            if let Some(account) = self.accounts.get_mut(&route.key) {
+                account.deposit_authorizations.remove(&commit);
+            }
+        }
+        let voided_withdrawals: std::collections::BTreeSet<[u8; 32]> =
+            core::mem::take(&mut self.window_withdrawals)
+                .iter()
+                .map(Withdrawal::leaf)
+                .collect();
+        self.pending_withdrawals
+            .retain(|w| !voided_withdrawals.contains(&w.leaf()));
+        self.bootstrap =
+            match core::mem::replace(&mut self.bootstrap, bootstrap::Bootstrap::NotStarted) {
+                bootstrap::Bootstrap::InsuranceApplied { window_id } if window_id >= window => {
+                    bootstrap::Bootstrap::NotStarted
+                }
+                bootstrap::Bootstrap::DepositApplied { deposit_id, .. }
+                    if deposit_id >= consumed =>
+                {
+                    bootstrap::Bootstrap::NotStarted
+                }
+                other => other,
+            };
+        self.deposits.l1_close_only = true;
+        self.note_settled_deposit_count(consumed);
+        if self.seq.state.state_root() != l1.root
+            || self.seq.state.consumed_deposit_count != consumed
+            || self.seq.current_window_id() != l1.batch_count
+        {
+            return Err("the close-only rebase did not reach the L1 settled state".into());
+        }
+        self.validate_deposit_state()?;
+        Ok(voided)
+    }
+}
+
 #[cfg(test)]
 pub(crate) static ADMIN_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -348,6 +471,147 @@ mod tests {
             prover_client::prove_and_prepare(&prover_client::MockProverClient, &exit, &ww).unwrap();
         assert_eq!(phase2.outcome.wind_down_phase, 2);
         assert_eq!(ww.len(), 1);
+        writer.abort();
+        server.abort();
+        match previous {
+            Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),
+            None => std::env::remove_var("FIN_ADMIN_KEY"),
+        }
+    }
+
+    /// L1 state for the rebase test: the wind-down observation plus the
+    /// consumed deposit count the finalized rebase read needs.
+    type RebaseRpcState = Arc<std::sync::Mutex<(Observation, u64, Vec<String>)>>;
+
+    async fn rebase_rpc(
+        State(state): State<RebaseRpcState>,
+        Json(req): Json<serde_json::Value>,
+    ) -> Json<serde_json::Value> {
+        let (o, consumed) = {
+            let mut s = state.lock().unwrap();
+            if req["method"] == "eth_getBlockByNumber" {
+                let tag = req["params"][0].as_str().unwrap_or_default().to_string();
+                s.2.push(tag);
+            }
+            (s.0, s.1)
+        };
+        let result = match req["method"].as_str().unwrap() {
+            "eth_getBlockByNumber" => {
+                return Json(
+                    serde_json::json!({"jsonrpc":"2.0","id":req["id"],"result":{"number":format!("0x{:x}",o.block),"hash":hex32(&[0x42;32])}}),
+                )
+            }
+            "eth_chainId" => "0x14a34".into(),
+            "eth_call" => {
+                let data = req["params"][0]["input"]
+                    .as_str()
+                    .or_else(|| req["params"][0]["data"].as_str())
+                    .unwrap();
+                if data == selector("closeOnly()") {
+                    format!("0x{:064x}", u8::from(o.close_only))
+                } else if data == selector("windDownSettled()") {
+                    format!("0x{:064x}", u8::from(o.settled))
+                } else if data == selector("batchCount()") {
+                    format!("0x{:064x}", o.batch_count)
+                } else if data == selector("currentStateRoot()") {
+                    hex32(&o.root)
+                } else if data == selector("consumedDepositCount()") {
+                    format!("0x{consumed:064x}")
+                } else {
+                    panic!("unexpected read {data}")
+                }
+            }
+            method => panic!("unexpected RPC method {method}"),
+        };
+        Json(serde_json::json!({"jsonrpc":"2.0","id":req["id"],"result":result}))
+    }
+
+    /// After close-only, a gateway holding an unsettled open window starts the
+    /// wind-down only through the close-only rebase: the window is discarded back
+    /// to the finalized settled state, SettleAll is queued, and the discarded
+    /// orders are published as rejected (`MarketCloseOnly`) in the phase-1 window.
+    #[tokio::test]
+    async fn wind_down_after_close_only_rebases_an_unsettled_window() {
+        let _env = ADMIN_ENV_LOCK.lock().await;
+        let previous = std::env::var_os("FIN_ADMIN_KEY");
+        std::env::set_var("FIN_ADMIN_KEY", "local-wind-down-test");
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let (key, _) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 100 * QUOTE_SCALE).unwrap();
+        gw.seq.seal_genesis_baseline();
+        gw.last_settled_root = gw.seq.state.state_root();
+        let settled_root = gw.last_settled_root;
+        let consumed = gw.seq.state.consumed_deposit_count;
+        // Unsettled work after the last settle: a credit and a rejected order.
+        gw.account_deposit(&key, 0, 5 * QUOTE_SCALE).unwrap();
+        let stray = [0x5c; 32];
+        gw.seq
+            .reject_in_window(&[stray], perp_core::order::RejectReason::Expired);
+        let window = gw.seq.current_window_id();
+        let initial = Observation {
+            block: 100,
+            close_only: true,
+            settled: false,
+            batch_count: window,
+            root: settled_root,
+        };
+        assert!(initial.check_start(&gw).is_err());
+        let rpc_state: RebaseRpcState =
+            Arc::new(std::sync::Mutex::new((initial, consumed, Vec::new())));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let rpc_app = Router::new()
+            .route("/", post(rebase_rpc))
+            .with_state(rpc_state.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, rpc_app).await.unwrap();
+        });
+        let mut app = crate::tests::test_app();
+        let inner = Arc::get_mut(&mut app).unwrap();
+        inner.gw = Mutex::new(gw);
+        inner.prover = Some(Arc::new(prover_client::MockProverClient));
+        let mut l1 = L1::test_reader(format!("http://{addr}"));
+        l1.settlement = format!("0x{}", "11".repeat(20));
+        inner.l1 = Some(l1);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        inner.snapshot_req = Some(tx);
+        let writer_app = app.clone();
+        let persisted = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let capture = persisted.clone();
+        let writer = tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                *capture.lock().unwrap() = writer_app.gw.lock().await.snapshot_plain();
+                ack.send(true).unwrap();
+            }
+        });
+        // A finalized state that differs from the local settled state refuses.
+        rpc_state.lock().unwrap().1 = consumed + 1;
+        request(&app, StatusCode::CONFLICT).await;
+        assert!(!app.gw.lock().await.wind_down_started);
+        rpc_state.lock().unwrap().1 = consumed;
+        request(&app, StatusCode::ACCEPTED).await;
+        assert!(
+            rpc_state.lock().unwrap().2.iter().any(|t| t == "finalized"),
+            "the rebase reads the finalized settled state"
+        );
+        let restored = Gw::boot_restored(&persisted.lock().unwrap()).unwrap();
+        let mut gw = app.gw.lock().await;
+        assert!(gw.wind_down_started && restored.wind_down_started);
+        assert!(gw.deposits.l1_close_only);
+        assert_eq!(gw.seq.state.consumed_deposit_count, consumed);
+        let (witness, ww) = gw.begin_window_settle(window).unwrap().unwrap();
+        assert_eq!(witness.pre_state.state_root(), settled_root);
+        assert!(matches!(witness.ops.as_slice(), [BatchOp::SettleAll]));
+        assert_eq!(
+            witness.manifest.rejected,
+            vec![(stray, perp_core::order::RejectReason::MarketCloseOnly)]
+        );
+        let phase1 =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &witness, &ww)
+                .unwrap();
+        assert_eq!(phase1.outcome.wind_down_phase, 1);
+        assert_eq!(phase1.outcome.new_deposit_count, consumed);
+        drop(gw);
         writer.abort();
         server.abort();
         match previous {

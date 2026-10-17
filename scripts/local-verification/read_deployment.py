@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Read public deployment bindings at one finalized block; never submit transactions."""
+"""Read public deployment bindings at one finalized block; never submit transactions.
+
+Two record shapes are understood. A legacy record (no `ClockBoundVerifier`) binds
+the settlement's verifier to `SP1ZkVerifier` directly. A clock-stack record binds
+settlement -> ClockBoundVerifier -> SP1ZkVerifier, and also checks the settlement
+`ABI_VERSION()` and the clock `proofVersion()`, and records the liveness,
+deposit and challenge counters. `--deployment` selects another record file.
+"""
 import argparse
 import datetime
 import hashlib
@@ -17,6 +24,29 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "contracts/deployments/base-sepolia.json"
 READ_METHODS = {"eth_chainId", "eth_getBlockByNumber", "eth_getCode", "eth_call"}
 MAX_RPC_RESPONSE_BYTES = 1024 * 1024
+SETTLEMENT_ABI_VERSION = 3
+CLOCK_PROOF_VERSION = 2
+LEGACY_QUERIES = {
+    "DarkPerpSettlement": ["sequencer()", "enclaveSigner()", "verifier()", "vault()", "governance()", "currentStateRoot()", "batchCount()", "closeOnly()", "windDownSettled()"],
+    "CollateralVault": ["settlement()", "gatewaySigner()", "token()", "depositCount()"],
+    "SP1ZkVerifier": ["programVKey()", "gateway()"],
+    "MockUSDC": [],
+}
+CLOCK_STACK_QUERIES = {
+    "DarkPerpSettlement": LEGACY_QUERIES["DarkPerpSettlement"] + [
+        "ABI_VERSION()", "lastProgressBlock()", "livenessTimeoutBlocks()", "consumedDepositCount()",
+        "openChallengeCount()", "slashCount()", "sequencerBond()", "requiredBond()", "depositCapacity()",
+        "acceptingDeposits()"],
+    "CollateralVault": LEGACY_QUERIES["CollateralVault"] + ["tvl()", "refundableOutstanding()"],
+    "ClockBoundVerifier": ["settlement()", "innerVerifier()", "proofVersion()", "anchorTimeoutMs()",
+                           "maxWindowMs()", "clockSkewMs()"],
+    "SP1ZkVerifier": LEGACY_QUERIES["SP1ZkVerifier"],
+    "MockUSDC": [],
+}
+
+
+def is_clock_stack(config):
+    return "ClockBoundVerifier" in config["contracts"]
 
 
 class ObservationError(ValueError):
@@ -77,8 +107,9 @@ def selector(signature):
     return subprocess.check_output(["cast", "sig", signature], text=True, timeout=10).strip()
 
 
-def observe(config, witness_url=None):
+def observe(config, witness_url=None, config_path=None):
     records = []
+    clock_stack = is_clock_stack(config)
     endpoints = {"primary": config["rpc"]}
     has_witness = witness_url is not None
     if has_witness:
@@ -86,7 +117,8 @@ def observe(config, witness_url=None):
     result = {
         "observed_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "scope": "Public read-only RPC. No private key, live mutation, account query or load test.",
-        "config_sha256": hashlib.sha256(CONFIG.read_bytes()).hexdigest(),
+        "config_sha256": hashlib.sha256((config_path or CONFIG).read_bytes()).hexdigest(),
+        "record_kind": "clock-stack" if clock_stack else "legacy",
         "status": "BLOCKED", "contracts": {}, "rpc_records": records,
         "rpc_agreement": {
             "status": "PENDING" if has_witness else "NOT_REQUESTED",
@@ -159,12 +191,7 @@ def observe(config, witness_url=None):
             if witness_head[0] == number:
                 require(witness_head == anchor, "witness: inconsistent finalized header")
 
-        queries = {
-            "DarkPerpSettlement": ["sequencer()", "enclaveSigner()", "verifier()", "vault()", "governance()", "currentStateRoot()", "batchCount()", "closeOnly()", "windDownSettled()"],
-            "CollateralVault": ["settlement()", "gatewaySigner()", "token()", "depositCount()"],
-            "SP1ZkVerifier": ["programVKey()", "gateway()"],
-            "MockUSDC": [],
-        }
+        queries = CLOCK_STACK_QUERIES if clock_stack else LEGACY_QUERIES
         for name, signatures in queries.items():
             address = config["contracts"][name]["address"]
             item = result["contracts"][name] = {"address": address, "calls": {}}
@@ -205,19 +232,38 @@ def observe(config, witness_url=None):
                 return None
             return "0x" + value[-40:]
 
+        def uint_result(name, signature):
+            value = result["contracts"][name]["calls"][signature].get("result")
+            return None if value is None else int(value, 16)
+
+        contracts = config["contracts"]
+        verifier = contracts["ClockBoundVerifier" if clock_stack else "SP1ZkVerifier"]["address"]
         expected = [
-            ("DarkPerpSettlement", "vault()", config["contracts"]["CollateralVault"]["address"]),
-            ("DarkPerpSettlement", "verifier()", config["contracts"]["SP1ZkVerifier"]["address"]),
+            ("DarkPerpSettlement", "vault()", contracts["CollateralVault"]["address"]),
+            ("DarkPerpSettlement", "verifier()", verifier),
             ("DarkPerpSettlement", "sequencer()", config["params"]["sequencer"]),
             ("DarkPerpSettlement", "enclaveSigner()", config["params"]["enclaveSigner"]),
-            ("CollateralVault", "settlement()", config["contracts"]["DarkPerpSettlement"]["address"]),
-            ("CollateralVault", "token()", config["contracts"]["MockUSDC"]["address"]),
-            ("SP1ZkVerifier", "gateway()", config["contracts"]["SP1ZkVerifier"]["sp1VerifierGateway"]),
+            ("CollateralVault", "settlement()", contracts["DarkPerpSettlement"]["address"]),
+            ("CollateralVault", "token()", contracts["MockUSDC"]["address"]),
+            ("SP1ZkVerifier", "gateway()", contracts["SP1ZkVerifier"]["sp1VerifierGateway"]),
         ]
+        if clock_stack:
+            expected += [
+                ("ClockBoundVerifier", "settlement()", contracts["DarkPerpSettlement"]["address"]),
+                ("ClockBoundVerifier", "innerVerifier()", contracts["SP1ZkVerifier"]["address"]),
+            ]
+            if "governance" in config["params"]:
+                expected.append(("DarkPerpSettlement", "governance()", config["params"]["governance"]))
         bindings = [{"contract": name, "getter": signature, "expected": value.lower(),
                      "observed": address_result(name, signature),
                      "matches": address_result(name, signature) == value.lower()}
                     for name, signature, value in expected]
+        if clock_stack:
+            for name, signature, value in (("DarkPerpSettlement", "ABI_VERSION()", SETTLEMENT_ABI_VERSION),
+                                           ("ClockBoundVerifier", "proofVersion()", CLOCK_PROOF_VERSION)):
+                observed = uint_result(name, signature)
+                bindings.append({"contract": name, "getter": signature, "expected": value,
+                                 "observed": observed, "matches": observed == value})
         call_errors = [{"contract": name, "getter": signature, "error": call["error"]}
                        for name, item in result["contracts"].items()
                        for signature, call in item["calls"].items() if "error" in call]
@@ -240,8 +286,10 @@ def main():
     parser.add_argument("--output", type=pathlib.Path,
                         default=ROOT / "docs/audits/2026-09-28-continuation/deployment-observation.json")
     parser.add_argument("--witness-rpc", help="Optional second anonymous public RPC URL; disagreement or unavailable data blocks the observation.")
+    parser.add_argument("--deployment", type=pathlib.Path, default=CONFIG,
+                        help="deployment record to observe (default: contracts/deployments/base-sepolia.json)")
     args = parser.parse_args()
-    result = observe(json.loads(CONFIG.read_text()), args.witness_rpc)
+    result = observe(json.loads(args.deployment.read_text()), args.witness_rpc, args.deployment)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({k: v for k, v in result.items() if k not in {"contracts", "rpc_records"}}, indent=2))

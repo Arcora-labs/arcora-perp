@@ -79,7 +79,7 @@ flowchart LR
 
     subgraph PROTO["Protocol · trust root 2"]
         LOG[("Append-only<br/>ordered-root log")]
-        SLASH["Slashing<br/>+ forced exit"]
+        SLASH["Inclusion challenge<br/>+ liveness close-only"]
     end
 
     subgraph ZK["ZK · trust root 3"]
@@ -101,7 +101,7 @@ flowchart LR
 
     ORC["Oracle · Crypto.com<br/>index / funding"] -.->|"signed price"| MAT
     LOG -.->|"inclusion challenge"| SLASH
-    SLASH -.->|"censorship → exit"| VAULT
+    SLASH -.->|"capped fine · stall → refunds + exit"| VAULT
     ARC[("Encrypted<br/>note archive")] -.->|"view-key recovery"| U
     MAT -.->|"shielded notes"| ARC
 
@@ -156,7 +156,7 @@ below describes code responsibilities, not a certification of a live environment
 | Sequencer spine: receipts, manifests, finality, inclusion slashing, funding/liquidation loop, pre-trade risk, batch rollback | [`crates/sequencer`](crates/sequencer) | 1–3 | §2,§3,§5,§6 |
 | ZK proving harness + §10b confidential-proving boundary | [`crates/prover`](crates/prover) | 2 | §4,§10b |
 | Encrypted note archive + view-key recovery | [`crates/note-archive`](crates/note-archive) | 2 | §7 |
-| L1 settlement: root anchoring, liveness/close-only, bonded inclusion slashing, vault, deploy script | [`contracts/`](contracts) | 2 | §2,§3,§6 |
+| L1 settlement: root anchoring, liveness and forced-inclusion close-only, inclusion challenges with a capped fine from the bond, bond-capacity deposit gate and refunds, vault, deploy script | [`contracts/`](contracts) | 2 | §2,§3,§6 |
 | Committee-of-enclaves: Shamir t-of-n order keys + quorum preconf | [`crates/committee`](crates/committee) | 5 | §11 |
 | Privacy bridge: amount-bucketing + batching/mixing | [`crates/bridge`](crates/bridge) | 4 | §13,§9 |
 | End-to-end integration + narrated demo | [`crates/e2e`](crates/e2e), [`crates/demo`](crates/demo) | — | all |

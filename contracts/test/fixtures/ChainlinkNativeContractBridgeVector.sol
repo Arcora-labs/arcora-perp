@@ -6,7 +6,7 @@ import {ChainlinkNativeContractBridgeTypes as T} from "./ChainlinkNativeContract
 /// NEW target-bound PUBLIC synthetic native witness. Mock proof is opaque,
 /// not SP1 proof evidence. Runtime identity is checked by the EVM harness.
 library ChainlinkNativeContractBridgeVector {
-    // Exact bridge.json SHA256: 5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7
+    // Exact bridge.json SHA256: b9349a3a9aba7f71e6f87c5ac88e1134e443fc3c56c00e06e1a3dd03740b922b
     function normal() internal pure returns (T.VectorData memory d) {
         d.witnessSha256 = 0x24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b;
         d.nativeCommitment = 0x0a3467646ab9a432388e8636bcdd3e33123960d1a36e9711723c71ee2cc0607e;
@@ -20,14 +20,14 @@ library ChainlinkNativeContractBridgeVector {
         d.context.sp1Gateway = address(bytes20(hex"5615deb798bb3e4dfa0139dfa1b3d433cc23b72f"));
         d.context.uptimeFeed = address(bytes20(hex"5991a2df15a8f6a256d3ec51e99254cd3fb576a9"));
         d.context.prefixVault = address(bytes20(hex"a4ad4f68d0b91cfd19687c881e50f3a00242828c"));
-        d.context.clockVerifierCodeHash = 0x7a696950b4f5e582f1e4f52e5405b7ad93328b8951e21cab91d01f92d0bc6238;
-        d.context.settlementCodeHash = 0x3bd09793165b758cb494db98ca920ef701d383ec37e6ec2a4052276aa2f88ceb;
-        d.context.oracleWrapperCodeHash = 0x62787106ade36c8a38e82be6df1eef4d83451b6f65fe0ef8d78ee57f4266c829;
-        d.context.verifierProxyCodeHash = 0xa76343fc004628673c47e0e66d10dd6d6f305a418256a268f6646a228cc7e0da;
+        d.context.clockVerifierCodeHash = 0xa924816dfe21cd5a9ce2b33f1a371416db138a23a49f16e89ace18d745db2884;
+        d.context.settlementCodeHash = 0x23541913601cec70f1413a33e8e3e6c318c8aa9d99d9ee94bbd985cbbc276b96;
+        d.context.oracleWrapperCodeHash = 0x3717502c4a11c244aa51c4b7ae204552cb49812a2f7e62dd656279baabb71496;
+        d.context.verifierProxyCodeHash = 0x5a47fb9cac2982bdd2a985378e6441745c462fbffc033e146c41dd6331da02a6;
         d.context.sp1AdapterCodeHash = 0xd56f4ddc2f56975a65f76bea2d73ef9ef919367b2971ebeb7ee72da271f8b20b;
         d.context.sp1GatewayCodeHash = 0x06a648dd559448677178eb5d73ddd2384a1edf2be24cfb3d2cc641c98d69d5b1;
         d.context.uptimeFeedCodeHash = 0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162;
-        d.context.prefixVaultCodeHash = 0xfedee7125688e05520a475f6d479a6749a215cab4135a4859fc3cb074457b578;
+        d.context.prefixVaultCodeHash = 0xfc7dd7c9bd033c03d382e7cd40c65c2a93f4bab2db6a362a45948144106a6cc8;
         d.context.anchoredAtMs = 2001000;
         d.context.maxWindowMs = 10000;
         d.context.clockSkewMs = 2000;
@@ -57,14 +57,14 @@ library ChainlinkNativeContractBridgeVector {
         d.context.sp1Gateway = address(bytes20(hex"5615deb798bb3e4dfa0139dfa1b3d433cc23b72f"));
         d.context.uptimeFeed = address(bytes20(hex"5991a2df15a8f6a256d3ec51e99254cd3fb576a9"));
         d.context.prefixVault = address(bytes20(hex"a4ad4f68d0b91cfd19687c881e50f3a00242828c"));
-        d.context.clockVerifierCodeHash = 0x7a696950b4f5e582f1e4f52e5405b7ad93328b8951e21cab91d01f92d0bc6238;
-        d.context.settlementCodeHash = 0x3bd09793165b758cb494db98ca920ef701d383ec37e6ec2a4052276aa2f88ceb;
-        d.context.oracleWrapperCodeHash = 0x62787106ade36c8a38e82be6df1eef4d83451b6f65fe0ef8d78ee57f4266c829;
-        d.context.verifierProxyCodeHash = 0xa76343fc004628673c47e0e66d10dd6d6f305a418256a268f6646a228cc7e0da;
+        d.context.clockVerifierCodeHash = 0xa924816dfe21cd5a9ce2b33f1a371416db138a23a49f16e89ace18d745db2884;
+        d.context.settlementCodeHash = 0x23541913601cec70f1413a33e8e3e6c318c8aa9d99d9ee94bbd985cbbc276b96;
+        d.context.oracleWrapperCodeHash = 0x3717502c4a11c244aa51c4b7ae204552cb49812a2f7e62dd656279baabb71496;
+        d.context.verifierProxyCodeHash = 0x5a47fb9cac2982bdd2a985378e6441745c462fbffc033e146c41dd6331da02a6;
         d.context.sp1AdapterCodeHash = 0xd56f4ddc2f56975a65f76bea2d73ef9ef919367b2971ebeb7ee72da271f8b20b;
         d.context.sp1GatewayCodeHash = 0x06a648dd559448677178eb5d73ddd2384a1edf2be24cfb3d2cc641c98d69d5b1;
         d.context.uptimeFeedCodeHash = 0x82d11ffaf65eeef4186281bda26b1ed1bd2530f275f4f8d92b41602329fba162;
-        d.context.prefixVaultCodeHash = 0xe01e20b2fbea3d4f38df5a4e7b89c3f2e3a22f6e4baeb650964e86d185220164;
+        d.context.prefixVaultCodeHash = 0x03a910435e6fe21599fe38b99c7bd4129d004312e6e3fb4060a2873b1d30ccfc;
         d.context.anchoredAtMs = 2001000;
         d.context.maxWindowMs = 10000;
         d.context.clockSkewMs = 2000;

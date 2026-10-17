@@ -1,19 +1,28 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pendingDeposits, prepareRevertedDepositRetry, reconcileDeposit, runWalletDeposit } from "./depositFlow";
-import { BASE_SEPOLIA_CHAIN_ID, COLLATERAL_VAULT, connect, disconnectWallet, type DepositContext, type WalletDepositClient } from "./wallet";
+import { PERMIT_SEND_MARGIN_SECS, pendingDeposits, prepareRevertedDepositRetry, reconcileDeposit, runWalletDeposit } from "./depositFlow";
+import { BASE_SEPOLIA_CHAIN_ID, COLLATERAL_VAULT, DEPOSIT_AMOUNT_MAX, connect, disconnectWallet, selectorHex, type DepositContext, type DepositPermit, type WalletDepositClient } from "./wallet";
 import { installTestLocks } from "../testSupport/locks";
 
 const ADDRESS = "0x" + "ab".repeat(20), OWNER = "0x" + "22".repeat(32), SIG = "0x" + "ab".repeat(65);
 const hash = (n: number) => "0x" + n.toString(16).padStart(64, "0");
 const barrier = () => { let release!: () => void; const promise = new Promise<void>(r => { release = r; }); return { promise, release }; };
+const nowSecs = () => Math.floor(Date.now() / 1000);
+/** A vault custom-error revert as a wallet reports it for eth_call. */
+const revert = (name: string) => () => { throw { code: 3, message: "execution reverted", data: selectorHex(`${name}()`) }; };
+/** The validUntil word of deposit(uint256,bytes32,uint64,bytes) calldata. */
+const depositExpiry = (params: unknown) => Number(BigInt("0x" + (params as { data: string }[])[0].data.slice(138, 202)));
 
 async function setup() {
-  const calls: string[] = [], sendData: unknown[] = [], creditHashes: string[] = [];
+  const calls: string[] = [], sendData: unknown[] = [], creditHashes: string[] = [], permits: DepositPermit[] = [];
   let version = 0, sendCount = 0;
   const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
   const control = { hook: async (_stage: string) => {}, account: ADDRESS, chain: BASE_SEPOLIA_CHAIN_ID, receiptStatus: "0x1" as string | null,
-    finalizedNumber: "0x20", canonicalHash: hash(100) };
+    finalizedNumber: "0x20", canonicalHash: hash(100),
+    /** Seconds of life each newly issued permit has. */
+    ttl: 1800,
+    /** eth_call answer for the deposit dry run (throw to simulate a revert). */
+    dryRun: (() => "0x") as (params: unknown) => unknown };
   window.ethereum = {
     on(event, fn) { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event)!.add(fn); },
     removeListener(event, fn) { listeners.get(event)?.delete(fn); },
@@ -33,6 +42,10 @@ async function setup() {
         const stage = `receipt:${params![0]}`;
         calls.push(stage); await control.hook(stage); return control.receiptStatus === null ? null : { status: control.receiptStatus, transactionHash: params![0], blockHash: hash(100), blockNumber: "0x10" };
       }
+      if (method === "eth_call") {
+        calls.push("dryrun"); await control.hook("dryrun");
+        return control.dryRun(params);
+      }
       if (method === "eth_getBlockByNumber") {
         const stage = `block:${params![0]}`; calls.push(stage); await control.hook(stage);
         return params![0] === "finalized" ? { number: control.finalizedNumber, hash: hash(200) } : { number: params![0], hash: control.canonicalHash };
@@ -51,12 +64,19 @@ async function setup() {
     },
     async depositAccount() { return { apiKey: "synthetic", owner: new Uint8Array(32).fill(0x22) }; },
     async bindDepositAddress(_address, _signature, ctx) { ctx!.assertCurrent(); calls.push("bind"); await control.hook("bind"); },
-    async authorizeDeposit(_address, _amount, ctx, reuse) { ctx!.assertCurrent(); calls.push(reuse ? `authorize:${reuse}` : "authorize"); await control.hook("authorize"); return { ownerCommit: OWNER, sig: SIG }; },
+    async authorizeDeposit(_address, _amount, ctx, reuse) {
+      ctx!.assertCurrent(); calls.push(reuse ? `authorize:${reuse}` : "authorize"); await control.hook("authorize");
+      // The gateway re-signs a held permit deterministically (same expiry).
+      const held = reuse ? [...permits].reverse().find(p => p.ownerCommit === reuse) : undefined;
+      const permit = held ?? { ownerCommit: OWNER, sig: SIG, validUntil: nowSecs() + control.ttl };
+      permits.push(permit);
+      return permit;
+    },
     async creditOnchainDeposit(_hash, ctx) { ctx!.assertCurrent(); calls.push("credit"); creditHashes.push(_hash); await control.hook("credit"); return 1_000_000n; },
   };
   await connect();
   const run = () => runWalletDeposit({ client, address: ADDRESS, amount: 1_000_000n, assertView() {}, progress() {} });
-  return { calls, sendData, creditHashes, control, client, run, rotate() { version++; }, emit(event: string) { for (const fn of listeners.get(event) ?? []) fn(); } };
+  return { calls, sendData, creditHashes, permits, control, client, run, rotate() { version++; }, emit(event: string) { for (const fn of listeners.get(event) ?? []) fn(); } };
 }
 beforeEach(() => { vi.stubGlobal("localStorage", new Storage()); installTestLocks(); });
 afterEach(() => { disconnectWallet(); delete window.ethereum; localStorage.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -91,8 +111,125 @@ describe("deposit permit reuse", () => {
   });
 });
 
+/** The vault deposit sends (after mint and approve). */
+const deposits = (f: { sendData: unknown[] }) => f.sendData.slice(2);
+
+describe("deposit permit expiry", () => {
+  const authorizations = (calls: string[]) => calls.filter(call => call.startsWith("authorize"));
+
+  it("sends the permit's expiry in the deposit call and saves it with the send intent, never the signature", async () => {
+    const f = await setup();
+    f.control.hook = async stage => { if (stage === "deposit") throw new Error("response lost"); };
+    await expect(f.run()).rejects.toThrow(/unknown/);
+    expect(depositExpiry(f.sendData[2])).toBe(f.permits[0].validUntil);
+    const raw = localStorage.getItem(Object.keys(localStorage)[0])!;
+    expect(JSON.parse(raw)).toMatchObject({ sending: "deposit", validUntil: f.permits[0].validUntil });
+    expect(raw).not.toContain(SIG.slice(2));
+    expect(pendingDeposits()[0]).toMatchObject({ step: "deposit", unknownSend: true, permitValidUntil: f.permits[0].validUntil });
+  });
+
+  it("does not re-sign a held permit that is about to expire; it asks for a fresh one", async () => {
+    const f = await setup();
+    f.control.hook = async stage => { if (stage === "deposit") throw { code: 4001 }; };
+    await expect(f.run()).rejects.toThrow(/rejected/);
+    f.control.hook = async () => {};
+    // The held permit now has exactly the send margin left, which is not enough.
+    vi.spyOn(Date, "now").mockReturnValue((f.permits[0].validUntil - PERMIT_SEND_MARGIN_SECS) * 1000);
+    await f.run();
+    expect(authorizations(f.calls)).toEqual(["authorize", "authorize"]);
+    expect(depositExpiry(deposits(f).at(-1))).toBe(f.permits[1].validUntil);
+  });
+
+  it("re-authorizes instead of sending a permit that expired before the deposit step", async () => {
+    const f = await setup();
+    const start = Date.now(); let clock = start;
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const authorize = f.client.authorizeDeposit;
+    f.client.authorizeDeposit = async (...args) => {
+      const permit = await authorize(...args);
+      // Time passes between the authorize step and the deposit step.
+      if (f.permits.length === 1) clock = start + (f.control.ttl - PERMIT_SEND_MARGIN_SECS) * 1000;
+      return permit;
+    };
+    await expect(f.run()).resolves.toBe(1_000_000n);
+    expect(authorizations(f.calls)).toEqual(["authorize", "authorize"]);
+    expect(deposits(f)).toHaveLength(1);
+    expect(depositExpiry(deposits(f)[0])).toBe(f.permits[1].validUntil);
+    expect(f.permits[1].validUntil).toBeGreaterThan(f.permits[0].validUntil);
+  });
+
+  it("re-authorizes once when the vault's dry run reports an expired permit", async () => {
+    const f = await setup();
+    let first = true;
+    f.control.dryRun = () => { if (first) { first = false; revert("PermitExpired")(); } return "0x"; };
+    await expect(f.run()).resolves.toBe(1_000_000n);
+    expect(authorizations(f.calls)).toEqual(["authorize", "authorize"]);
+    expect(f.calls.filter(call => call === "dryrun")).toHaveLength(2);
+    expect(deposits(f)).toHaveLength(1);
+  });
+
+  it("stops without a deposit transaction when the replacement permit is also refused as expired", async () => {
+    const f = await setup();
+    f.control.dryRun = revert("PermitExpired");
+    await expect(f.run()).rejects.toThrow(/also expired.*no deposit transaction was sent/);
+    expect(authorizations(f.calls)).toEqual(["authorize", "authorize"]);
+    expect(deposits(f)).toHaveLength(0);
+    expect(JSON.parse(localStorage.getItem(Object.keys(localStorage)[0])!).sending).toBeNull();
+  });
+
+  it("refuses a fresh permit that is already too close to expiry", async () => {
+    const f = await setup();
+    f.control.ttl = PERMIT_SEND_MARGIN_SECS;
+    await expect(f.run()).rejects.toThrow(/expires too soon.*no deposit transaction was sent/);
+    expect(authorizations(f.calls)).toEqual(["authorize", "authorize"]);
+    expect(f.calls).not.toContain("dryrun");
+    expect(deposits(f)).toHaveLength(0);
+  });
+});
+
+describe("deposit dry run refusals", () => {
+  for (const [name, text] of [
+    ["BondCapacityExceeded", /deposit capacity/],
+    ["DepositsPaused", /not accepting deposits/],
+    ["BadAmount", /does not accept this amount/],
+    ["InCloseOnly", /close-only/],
+    ["TransferFailed", /could not pull the USDC/],
+  ] as const) {
+    it(`reports ${name} before any deposit prompt, and a later run can still deposit`, async () => {
+      const f = await setup();
+      f.control.dryRun = revert(name);
+      await expect(f.run()).rejects.toThrow(text);
+      await expect(f.run()).rejects.toThrow(/No deposit transaction was sent/);
+      expect(deposits(f)).toEqual([]);
+      const journal = JSON.parse(localStorage.getItem(Object.keys(localStorage)[0])!);
+      expect(journal.sending).toBeNull(); expect(journal.txs.deposit).toBeUndefined();
+      f.control.dryRun = () => "0x";
+      await expect(f.run()).resolves.toBe(1_000_000n);
+      expect(deposits(f)).toHaveLength(1);
+      expect(f.calls.filter(call => call === "mint")).toHaveLength(1);
+    });
+  }
+  it("refuses an unknown vault revert without sending, naming its selector", async () => {
+    const f = await setup();
+    f.control.dryRun = () => { throw { code: 3, data: "0xdeadbeef" }; };
+    await expect(f.run()).rejects.toThrow(/dry run \(revert data 0xdeadbeef\)\. No deposit transaction was sent/);
+    expect(deposits(f)).toEqual([]);
+  });
+  it("proceeds as before when the wallet cannot simulate", async () => {
+    const f = await setup();
+    f.control.dryRun = () => { throw new Error("eth_call unsupported"); };
+    await expect(f.run()).resolves.toBe(1_000_000n);
+    expect(deposits(f)).toHaveLength(1);
+  });
+  it("refuses an amount above the vault's per-deposit limit before any wallet or gateway call", async () => {
+    const f = await setup();
+    await expect(runWalletDeposit({ client: f.client, address: ADDRESS, amount: DEPOSIT_AMOUNT_MAX + 1n, assertView() {}, progress() {} })).rejects.toThrow(/valid amount/);
+    expect(f.calls).toEqual([]);
+  });
+});
+
 describe("deposit immutable context barriers", () => {
-  for (const stage of ["capture", "chain", "mint", `receipt:${hash(1)}`, "approve", `receipt:${hash(2)}`, "signature", "bind", "authorize", "deposit", `receipt:${hash(3)}`, "credit"]) {
+  for (const stage of ["capture", "chain", "mint", `receipt:${hash(1)}`, "approve", `receipt:${hash(2)}`, "signature", "bind", "authorize", "dryrun", "deposit", `receipt:${hash(3)}`, "credit"]) {
     it(`stops credential-generation change while ${stage} awaits`, async () => {
       const f = await setup(), gate = barrier(); let parked = false;
       f.control.hook = async s => { if (s === stage) { parked = true; await gate.promise; } };

@@ -166,6 +166,7 @@ let onchainPending = false;
 let onchainBody: unknown = undefined;
 let authorizeStatus = 200; // per-test override: gateway rejection (bind-first etc.)
 let authorizeBody: unknown = null; // per-test override of the response body (null ⇒ well-formed default)
+const PERMIT_VALID_UNTIL = 1_760_001_800; // unix seconds; the gateway's permit expiry
 let stateResponse: unknown = wireState; // per-test override of the /api/state snapshot
 let v1OrdersResponse: unknown = { orders: [] }; // GET /v1/orders (own-account read)
 let v1PositionsResponse: unknown = { positions: [] }; // GET /v1/positions (own-account read)
@@ -328,7 +329,7 @@ function installFetch() {
             authorizeStatus,
           );
         }
-        return json(authorizeBody ?? { ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65) });
+        return json(authorizeBody ?? { ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65), validUntil: PERMIT_VALID_UNTIL });
       }
       if (path === "/v1/markets/0/orderbook") return json({ marketId: 0, bids: [], asks: [] });
       if (path === "/v1/markets/0/oracle") return json({ marketId: 0, price: "6450000000000", confidence: "1", publishTimeMs: 0 });
@@ -759,10 +760,10 @@ describe("RealDarkPerpClient.requestWithdrawal", () => {
 describe("authorizeDeposit (SEC-019)", () => {
   const FROM = "0x" + "22".repeat(20);
 
-  it("POSTs from+amount under the account key and returns ownerCommit+sig", async () => {
+  it("POSTs from+amount under the account key and returns ownerCommit+sig+validUntil", async () => {
     const client = await bootstrapClient();
     const r = await client.authorizeDeposit(FROM, 1_000_000_000n);
-    expect(r).toEqual({ ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65) });
+    expect(r).toEqual({ ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65), validUntil: PERMIT_VALID_UNTIL });
     const call = calls.find((c) => c.path === "/v1/accounts/deposit/authorize");
     expect(call).toBeTruthy();
     expect(call!.method).toBe("POST");
@@ -791,10 +792,73 @@ describe("authorizeDeposit (SEC-019)", () => {
   });
 
   it("rejects a malformed signature from the gateway", async () => {
-    authorizeBody = { ownerCommit: "0x" + "ab".repeat(32), sig: "0x1234" };
+    authorizeBody = { ownerCommit: "0x" + "ab".repeat(32), sig: "0x1234", validUntil: PERMIT_VALID_UNTIL };
     const client = await bootstrapClient();
     await expect(client.authorizeDeposit(FROM, 1n)).rejects.toThrow(/65-byte/);
   });
+
+  it("accepts the permit expiry as a JSON number or a decimal string", async () => {
+    authorizeBody = { ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65), validUntil: String(PERMIT_VALID_UNTIL) };
+    const client = await bootstrapClient();
+    await expect(client.authorizeDeposit(FROM, 1n)).resolves.toMatchObject({ validUntil: PERMIT_VALID_UNTIL });
+  });
+
+  for (const validUntil of [undefined, null, 0, -1, 1.5, "0", "01", "1e9", "", Number.MAX_SAFE_INTEGER + 1, "18446744073709551615"]) {
+    it(`refuses a permit without a usable expiry (${JSON.stringify(validUntil)}) — the vault needs it`, async () => {
+      authorizeBody = { ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65), validUntil };
+      const client = await bootstrapClient();
+      await expect(client.authorizeDeposit(FROM, 1n)).rejects.toThrow(/validUntil/);
+    });
+  }
+});
+
+describe("close-only deposit refund status", () => {
+  const VAULT_LOWER = VAULT.toLowerCase();
+  const row = { id: 4, from: "0x" + "AB".repeat(20), ownerCommit: "0x" + "CD".repeat(32), amount: "2500000" };
+  const me = (extra: Record<string, unknown>) => vi.fn(async () => new Response(JSON.stringify({ owner: OWNER_HEX, ...defaultMeFields(), ...extra })));
+
+  it("lists refundable deposits from the account view, normalized, dropping malformed and duplicate rows", async () => {
+    const client = await bootstrapClient();
+    vi.stubGlobal("fetch", me({ refundableDeposits: [
+      row, { ...row }, { ...row, id: 5, amount: "0" }, { ...row, id: 6, ownerCommit: "0x1234" }, { ...row, id: 7, from: "$(echo unsafe)" },
+      { ...row, id: -1 }, { ...row, id: 1.5 }, { ...row, id: 8, amount: 3 }, null, { ...row, id: 9, amount: "7" },
+    ] }));
+    await expect(client.listRefundableDeposits()).resolves.toEqual({ vault: VAULT_LOWER, deposits: [
+      { id: 4, from: "0x" + "ab".repeat(20), ownerCommit: "0x" + "cd".repeat(32), amount: 2_500_000n },
+      { id: 9, from: "0x" + "ab".repeat(20), ownerCommit: "0x" + "cd".repeat(32), amount: 7n },
+    ] });
+    const [, init] = (fetch as unknown as { mock: { calls: [unknown, { headers: Record<string, string> }][] } }).mock.calls[0];
+    expect(init.headers["X-Api-Key"]).toBe(ACCT_KEY);
+  });
+
+  it("reads an absent field as no refundable deposits and an unreadable view as unknown", async () => {
+    const client = await bootstrapClient();
+    vi.stubGlobal("fetch", me({}));
+    await expect(client.listRefundableDeposits()).resolves.toEqual({ vault: VAULT_LOWER, deposits: [] });
+    vi.stubGlobal("fetch", me({ refundableDeposits: "nope" }));
+    await expect(client.listRefundableDeposits()).resolves.toBeNull();
+    vi.stubGlobal("fetch", me({ vault: "0x1234", refundableDeposits: [row] }));
+    await expect(client.listRefundableDeposits()).resolves.toBeNull();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+    await expect(client.listRefundableDeposits()).resolves.toBeNull();
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("network down"); }));
+    await expect(client.listRefundableDeposits()).resolves.toBeNull();
+  });
+
+  it("explains a refundable credit receipt instead of reporting a credit or a malformed receipt", async () => {
+    const client = await bootstrapClient();
+    onchainBody = { status: "refundable", credited: "0", refundable: [row] };
+    await expect(client.creditOnchainDeposit("0x" + "ab".repeat(32))).rejects.toThrow(/refundable from the vault.*Do not send another deposit/);
+  });
+
+  for (const status of ["credited_unsettled", "creditedUnsettled"]) {
+    it(`treats a ${status} receipt as a confirmed credit`, async () => {
+      const client = await bootstrapClient();
+      onchainBody = { status, credited: "1000000", durability: "confirmed", marketId: 0,
+        purpose: "collateral", depositIds: [0], account: { ...defaultMeFields(), owner: OWNER_HEX } };
+      await expect(client.creditOnchainDeposit("0x" + "ab".repeat(32))).resolves.toBe(1_000_000n);
+    });
+  }
 });
 
 // ── CONTRACT: client-side market selection ───────────────────────────────────

@@ -12,20 +12,28 @@ import {
   BASE_SEPOLIA_CHAIN_ID,
   BASE_SEPOLIA_PARAMS,
   COLLATERAL_VAULT,
+  DEPOSIT_AMOUNT_MAX,
+  VAULT_ERRORS,
+  VAULT_ERROR_TEXT,
   bindDepositDigest,
   connect,
   connectedAddress,
+  decodeVaultError,
   disconnectWallet,
+  dryRunCall,
   encodeAddress,
   encodeApprove,
   encodeBytes32,
   encodeClaim,
   encodeDeposit,
   encodeMint,
+  encodeRefundDeposit,
   encodeUint256,
+  encodeUint64,
   ensureBaseSepolia,
   hasInjected,
   personalSign,
+  revertDataOf,
   selectorHex,
   sendTx,
   supportsWalletDeposit,
@@ -52,12 +60,15 @@ describe("function selectors", () => {
   it("computes the canonical 4-byte selectors", () => {
     expect(selectorHex("mint(address,uint256)")).toBe("0x40c10f19");
     expect(selectorHex("approve(address,uint256)")).toBe("0x095ea7b3");
-    expect(selectorHex("deposit(uint256,bytes32,bytes)")).toBe("0x2b681307");
+    // CollateralVault v2: the permit carries its expiry, and close-only refunds.
+    // Pinned to the vault's compiled method identifiers.
+    expect(selectorHex("deposit(uint256,bytes32,uint64,bytes)")).toBe("0xa1059e34");
+    expect(selectorHex("refundDeposit(uint64,address,bytes32,uint256,address)")).toBe("0xb07e8ad3");
     expect(selectorHex("claim(address,uint256,uint256,bytes32,bytes32[])")).toBe("0xe1b656ae");
   });
 
   it("selector really is keccak256(signature)[0..4] (recomputed independently)", () => {
-    for (const sig of ["mint(address,uint256)", "deposit(uint256,bytes32,bytes)"]) {
+    for (const sig of ["mint(address,uint256)", "deposit(uint256,bytes32,uint64,bytes)", "refundDeposit(uint64,address,bytes32,uint256,address)"]) {
       const expected = "0x" + bytesToHex(keccak_256(utf8ToBytes(sig)).subarray(0, 4));
       expect(selectorHex(sig)).toBe(expected);
     }
@@ -113,24 +124,66 @@ describe("calldata builders (pinned)", () => {
     );
   });
 
-  it("deposit(1000000000, commit, sig) — SEC-019, dynamic sig tail at offset 0x60", () => {
+  it("deposit(1000000000, commit, validUntil, sig) — permit expiry word, dynamic sig tail at offset 0x80", () => {
+    // Same bytes as `cast calldata "deposit(uint256,bytes32,uint64,bytes)" 1000000000 0xab…ab 1760000000 0xcd…cd`.
     expect(
-      encodeDeposit(1_000_000_000n, "0x" + "ab".repeat(32), "0x" + "cd".repeat(65)),
+      encodeDeposit(1_000_000_000n, "0x" + "ab".repeat(32), 1_760_000_000, "0x" + "cd".repeat(65)),
     ).toBe(
-      "0x2b681307" +
+      "0xa1059e34" +
         "000000000000000000000000000000000000000000000000000000003b9aca00" +
         "ab".repeat(32) +
-        "0000000000000000000000000000000000000000000000000000000000000060" +
+        "0000000000000000000000000000000000000000000000000000000068e77800" +
+        "0000000000000000000000000000000000000000000000000000000000000080" +
         "0000000000000000000000000000000000000000000000000000000000000041" +
         "cd".repeat(65) +
         "00".repeat(31),
     );
+    // bigint and number expiries encode identically
+    expect(encodeDeposit(1n, "0x" + "ab".repeat(32), 1_760_000_000n, "0x" + "cd".repeat(65)))
+      .toBe(encodeDeposit(1n, "0x" + "ab".repeat(32), 1_760_000_000, "0x" + "cd".repeat(65)));
   });
 
-  it("deposit rejects a malformed ownerCommit or a non-65-byte sig", () => {
-    expect(() => encodeDeposit(1n, "0x1234", "0x" + "cd".repeat(65))).toThrow(/32-byte/);
-    expect(() => encodeDeposit(1n, "0x" + "ab".repeat(32), "0x" + "cd".repeat(64))).toThrow(/65-byte/);
-    expect(() => encodeDeposit(1n, "0x" + "ab".repeat(32), "0xzz")).toThrow(/65-byte/);
+  it("deposit rejects a malformed ownerCommit, a non-65-byte sig, or an out-of-range expiry or amount", () => {
+    const commit = "0x" + "ab".repeat(32), sig = "0x" + "cd".repeat(65);
+    expect(() => encodeDeposit(1n, "0x1234", 1, sig)).toThrow(/32-byte/);
+    expect(() => encodeDeposit(1n, commit, 1, "0x" + "cd".repeat(64))).toThrow(/65-byte/);
+    expect(() => encodeDeposit(1n, commit, 1, "0xzz")).toThrow(/65-byte/);
+    expect(() => encodeDeposit(1n, commit, -1, sig)).toThrow(/uint64/);
+    expect(() => encodeDeposit(1n, commit, 1n << 64n, sig)).toThrow(/uint64/);
+    expect(() => encodeDeposit(1n, commit, 1.5, sig)).toThrow(/uint64/);
+    expect(() => encodeDeposit(0n, commit, 1, sig)).toThrow(/amount/);
+    expect(() => encodeDeposit(DEPOSIT_AMOUNT_MAX + 1n, commit, 1, sig)).toThrow(/amount/);
+    // the largest accepted amount and expiry still encode, word by word
+    const edge = encodeDeposit(DEPOSIT_AMOUNT_MAX, commit, (1n << 64n) - 1n, sig);
+    expect(edge.slice(10, 74)).toBe("0".repeat(32) + "7" + "f".repeat(31));
+    expect(edge.slice(138, 202)).toBe("0".repeat(48) + "f".repeat(16));
+  });
+
+  it("refundDeposit(id, from, commit, amount, to) — five static words", () => {
+    // Same bytes as `cast calldata "refundDeposit(uint64,address,bytes32,uint256,address)" 7 0x11…11 0xab…ab 250000000 0x22…22`.
+    expect(
+      encodeRefundDeposit({
+        id: 7, from: "0x" + "11".repeat(20), ownerCommit: "0x" + "ab".repeat(32),
+        amount: 250_000_000n, to: "0x" + "22".repeat(20),
+      }),
+    ).toBe(
+      "0xb07e8ad3" +
+        "0000000000000000000000000000000000000000000000000000000000000007" +
+        "0000000000000000000000001111111111111111111111111111111111111111" +
+        "ab".repeat(32) +
+        "000000000000000000000000000000000000000000000000000000000ee6b280" +
+        "0000000000000000000000002222222222222222222222222222222222222222",
+    );
+  });
+
+  it("refundDeposit rejects an out-of-range id and malformed fields", () => {
+    const base = { id: 0, from: "0x" + "11".repeat(20), ownerCommit: "0x" + "ab".repeat(32), amount: 1n, to: "0x" + "11".repeat(20) };
+    expect(() => encodeRefundDeposit({ ...base, id: -1 })).toThrow(/uint64/);
+    expect(() => encodeRefundDeposit({ ...base, id: 1n << 64n })).toThrow(/uint64/);
+    expect(() => encodeRefundDeposit({ ...base, from: "0x1234" })).toThrow(/20-byte/);
+    expect(() => encodeRefundDeposit({ ...base, ownerCommit: "0x1234" })).toThrow(/32-byte/);
+    expect(() => encodeRefundDeposit({ ...base, to: "0x1234" })).toThrow(/20-byte/);
+    expect(bytesToHex(encodeUint64((1n << 64n) - 1n))).toBe("0".repeat(48) + "f".repeat(16));
   });
 
   const claimArgs = {
@@ -166,6 +219,65 @@ describe("calldata builders (pinned)", () => {
         "00000000000000000000000000000000000000000000000000000000000000a0" +
         "0000000000000000000000000000000000000000000000000000000000000000",
     );
+  });
+});
+
+// ── vault revert decoding and dry runs ───────────────────────────────────────
+
+describe("vault custom errors", () => {
+  // Selectors computed out-of-band with `cast sig "<Name>()"`.
+  const PINNED: Record<string, string> = {
+    BadAmount: "0x749b5939", BondCapacityExceeded: "0x0b9737f5", DepositsPaused: "0xdeeb6943",
+    InCloseOnly: "0xe087cf65", PermitExpired: "0x1a15a3cc", BadGatewaySig: "0x7f9ff838",
+    OwnerCommitUsed: "0x4e54eb54", TransferFailed: "0x90b8ec18", NotPaired: "0xc53de1c0",
+    NotCloseOnly: "0x49379ab2", NotRefundable: "0x3742d1f6", AlreadyRefunded: "0xa85e6f1a",
+    BadRefundRecipient: "0x73ed428c", BadDepositPreimage: "0x2afa51f6",
+  };
+
+  it("decodes every vault error from its pinned 4-byte selector", () => {
+    expect([...VAULT_ERRORS].sort()).toEqual(Object.keys(PINNED).sort());
+    for (const [name, sel] of Object.entries(PINNED)) {
+      expect(selectorHex(`${name}()`)).toBe(sel);
+      expect(decodeVaultError(sel)).toBe(name);
+      expect(decodeVaultError(sel.toUpperCase().replace("0X", "0x"))).toBe(name);
+      expect(VAULT_ERROR_TEXT[name as keyof typeof VAULT_ERROR_TEXT]).toMatch(/\w/);
+    }
+  });
+
+  it("returns null for unknown or malformed revert data", () => {
+    expect(decodeVaultError("0x08c379a0" + "00".repeat(32))).toBeNull(); // Error(string)
+    expect(decodeVaultError("0x")).toBeNull();
+    expect(decodeVaultError("0x1a15")).toBeNull();
+    expect(decodeVaultError("PermitExpired")).toBeNull();
+  });
+
+  it("finds revert data in the error shapes wallets use", () => {
+    const data = "0x0b9737f5";
+    expect(revertDataOf({ code: 3, message: "execution reverted", data })).toBe(data);
+    expect(revertDataOf({ code: -32603, data: { code: 3, data } })).toBe(data);
+    expect(revertDataOf({ code: -32603, data: { originalError: { code: 3, data } } })).toBe(data);
+    expect(revertDataOf({ error: { data: { data } } })).toBe(data);
+    expect(revertDataOf(Object.assign(new Error("reverted"), { cause: { data: data.toUpperCase().replace("0X", "0x") } }))).toBe(data);
+    expect(revertDataOf({ code: -32000, message: "header not found" })).toBeNull();
+    expect(revertDataOf({ data: "0x" })).toBeNull();
+    expect(revertDataOf({ data: "0x123" })).toBeNull();
+    const cyclic: Record<string, unknown> = {}; cyclic.data = cyclic;
+    expect(revertDataOf(cyclic)).toBeNull();
+  });
+
+  it("dry-runs with eth_call at latest and reports ok, decoded reverts and unavailable simulation", async () => {
+    const seen: unknown[] = [];
+    let answer: () => unknown = () => "0x";
+    install({ async request({ method, params }) { expect(method).toBe("eth_call"); seen.push(params); return answer(); } });
+    const tx = { from: ADDR, to: COLLATERAL_VAULT, data: "0x1234" };
+    await expect(dryRunCall(tx)).resolves.toEqual({ status: "ok" });
+    expect(seen[0]).toEqual([{ from: ADDR, to: COLLATERAL_VAULT, data: "0x1234" }, "latest"]);
+    answer = () => { throw { code: 3, message: "execution reverted", data: "0x1a15a3cc" }; };
+    await expect(dryRunCall(tx)).resolves.toEqual({ status: "reverted", data: "0x1a15a3cc", error: "PermitExpired" });
+    answer = () => { throw { code: 3, data: "0xdeadbeef" }; };
+    await expect(dryRunCall(tx)).resolves.toEqual({ status: "reverted", data: "0xdeadbeef", error: null });
+    answer = () => { throw new Error("method not supported"); };
+    await expect(dryRunCall(tx)).resolves.toEqual({ status: "unavailable" });
   });
 });
 
@@ -304,6 +416,17 @@ describe("sendTx", () => {
     install({ request: async () => "not-a-hash" });
     await expect(sendTx({ from: ADDR, to: COLLATERAL_VAULT, data: "0x" })).rejects.toThrow(
       /invalid transaction hash/i,
+    );
+  });
+
+  it("names a vault error the wallet reports, while keeping the outcome unknown", async () => {
+    install({ request: async () => { throw { code: -32603, message: "execution reverted", data: { code: 3, data: "0x0b9737f5" } }; } });
+    await expect(sendTx({ from: ADDR, to: COLLATERAL_VAULT, data: "0x" })).rejects.toThrow(
+      /outcome is unknown: execution reverted\. The wallet reported the vault error BondCapacityExceeded: .*deposit capacity.*Check wallet activity/,
+    );
+    install({ request: async () => { throw { code: -32000, message: "nonce too low" }; } });
+    await expect(sendTx({ from: ADDR, to: COLLATERAL_VAULT, data: "0x" })).rejects.toThrow(
+      /^Transaction outcome is unknown: nonce too low\. Check wallet activity before any retry\.$/,
     );
   });
 });

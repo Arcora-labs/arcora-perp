@@ -120,7 +120,7 @@ no single failure is catastrophic.
 | Root | Secures | Does NOT secure |
 |---|---|---|
 | **TEE** (matcher + prover enclave) | order/position confidentiality, low-latency matching | liveness, fairness, recovery, fund validity |
-| **Protocol** (order log + slashing + forced exit) | sequencing accountability, liveness, fair access | confidentiality, fund validity |
+| **Protocol** (order log + capped fines + close-only with refunds) | sequencing accountability, liveness, fair access | confidentiality, fund validity |
 | **ZK** (validity proof on L1) | fund safety, valid state transitions | inclusion, ordering, censorship |
 
 ## Compromise → impact → containment
@@ -129,8 +129,9 @@ no single failure is catastrophic.
 |---|---|---|
 | **TEE confidentiality** (side-channel, §10) | order/position privacy leaks; MM gets a latency edge | committee-of-enclaves t-of-n (§11, `committee`) — needs t-1 enclaves to leak; funds still safe (ZK) |
 | **TEE integrity** (bad matching, preconf lies) | wrong fills, unreliable MATCHED preconfs, market-integrity abuse | quorum preconf (`committee`), Proof-v2 matching determinism (future); MATCHED is non-binding (§3) |
-| **Sequencer liveness** (halts) | no new batches | anyone can trigger close-only after the timeout; existing published withdrawal claims remain available with Merkle data; new exits still require operator/prover and final wind-down governance |
-| **Sequencer censors an order** | a user's order is withheld | unanswered challenges can slash the bond, but rejected-root membership does not prove a truthful rejection reason; fairness remains an explicit limitation |
+| **Sequencer liveness** (halts) | no new batches | anyone can trigger close-only after the timeout; deposits no settled batch consumed become refundable at principal from the vault; existing published withdrawal claims remain available with Merkle data; new exits still require operator/prover and final wind-down governance |
+| **Sequencer withholds a landed deposit** (keeps settling without consuming it) | the deposit is never credited | anyone can trigger close-only once the oldest unconsumed deposit is older than `livenessTimeoutBlocks`; that deposit and every later one then become refundable from the vault |
+| **Sequencer censors an order** | a user's order is withheld | each receipt carries an enclave-signed L1 challenge authorization; an unanswered challenge pays a capped fine from the bond to the account's beneficiary once later batches settle, and settlement continues. Rejected-root membership does not prove a truthful rejection reason; fairness remains an explicit limitation |
 | **Gateway custody-key compromise** | unauthorized guest-valid operations can affect funds | vault roots constrain direct payout; guest validity alone does not authenticate user intent independently of server-held keys |
 | **Prover sees the witness** (bare prover farm, §10b) | positions/fills/margins leak to the prover | the intended boundary is attestation-gated key release; the development prover is inside the current privacy trust boundary. Hardware deployment and full witness-copy cleanup remain unverified |
 | **Oracle manipulation** (§8) | bad liquidations / funding | signature, freshness, confidence and backup-deviation checks run in-guest, but one publisher signs both price and backup and can lie consistently; external price truth is still trusted |
@@ -153,6 +154,9 @@ proof alone does not independently establish user intent or external market trut
   the vault's ordered count/tip prefix; fabricated native deposits cannot be
   treated as confirmed L1 deposits. The full normal-wallet flow with a real clock
   proof remains a distinct release acceptance test.
+- The settlement records the consumed deposit count on every settle. Deposits
+  above it are refundable from the vault once close-only begins, and claims cannot
+  consume their principal (§ Settlement ABI version 3).
 - Rejection membership and order hashes are committed, but truthful rejection
   reasons and matching fairness are not proven. See
   [the current rejection review](audits/2026-10-09-rejection-boundary.md).
@@ -160,6 +164,85 @@ proof alone does not independently establish user intent or external market trut
 The older phase notes below describe historical design work, not fresh deployment
 or release acceptance. Current task state is in
 [the follow-up report](audits/2026-10-09-remaining-work/README.md).
+
+## Settlement ABI version 3 — deposit boundary, refunds, capacity and bounded challenges (2026-10)
+
+`DarkPerpSettlement.ABI_VERSION()` is `3` for the settlement, vault and clock
+verifier in this source. The July Base Sepolia stack predates these rules; they
+take effect only on a fresh deployment (`docs/REDEPLOY-CC-RUNBOOK.md`).
+
+**Deposits and close-only.**
+
+- Every settle path pins its proven deposit root to the vault's chain prefix and
+  records the count as `consumedDepositCount`. The count cannot exceed the vault's
+  head or decrease.
+- Close-only is irreversible and has three entries. Anyone may trigger it on a
+  stalled root (once the stack holds a batch, a deposit or an open challenge) or
+  on a deposit left unconsumed for `livenessTimeoutBlocks`. Governance may enter it
+  directly.
+- In close-only the count is frozen: wind-down settles must keep it. Anyone can
+  refund a deposit above it to its payer (`refundDeposit`); only the payer may
+  redirect the refund.
+- Vault claims cannot consume the principal of deposits the settled state has not
+  credited (`ReservedForUncredited`).
+- Deposit permits carry a deadline (`validUntil`), and each owner commitment enters
+  the deposit chain once. Amounts must be between 1 and `int128` max.
+- Deposits close at bond capacity: a deposit that would lift 5% of the vault's TVL
+  above the posted bond is refused. Settlement never checks the bond.
+
+**Inclusion challenges.**
+
+- A challenge needs an enclave-signed authorization bound to the chain id, the
+  settlement and a beneficiary: the account's bound deposit address. The perp-core
+  receipt signature alone does not open a challenge. Each order hash can be
+  challenged once.
+- Answers are permissionless, can be batched per settled batch, and stay valid until
+  a slash or release lands. Open challenges are enumerable on-chain.
+- A slash needs `progressBatches` ordinary batches settled after the challenge
+  opened, plus `challengeGraceBlocks`. It pays at most `slashPayoutCap` to the
+  beneficiary, returns the stake, and leaves settlement running. Close-only never
+  slashes; a challenge that cannot reach the gate is released with its stake.
+- Credits can be claimed to another address (`claimEthTo`, `claimUsdcTo`).
+
+**Clock and wiring.**
+
+- `ClockBoundVerifier.cancel` lets the role that registers a phase remove an anchor
+  that is at least `anchorTimeoutMs` old (1 h by default). A cancelled receipt never
+  verifies again.
+- The settlement constructor refuses a verifier that is not a fresh clock verifier
+  (proof version 2, unbound). `setVault` requires the vault to name this settlement.
+- `Deploy.s.sol` is a testnet harness over the mock verifier only. Release stacks
+  are deployed with `deploy_clock_stack.py` and checked with `release_manifest.py
+  observe-target`.
+
+**Gateway posture.**
+
+- At boot, in L1 mode, the gateway refuses to start unless all of these hold:
+  - `ABI_VERSION() == 3`;
+  - the verifier reports proof version 2 and `CLOCK_BOUND_VERIFIER` is set;
+  - the vault names the settlement;
+  - `anchorTimeoutMs()` covers its own finality and proving budgets;
+  - `DEPOSIT_PERMIT_TTL_SECS` is at most one eighth of the liveness window;
+  - where the local settled root equals `currentStateRoot()`, the local consumed
+    count equals `consumedDepositCount()`.
+- The settle tick refuses to seal when that tick's open-challenge read failed.
+- While idle, the gateway settles an empty keepalive batch every
+  `livenessTimeoutBlocks / 4`.
+- Automatic bond top-up pauses after a slash until the operator acknowledges it.
+- Never roll the gateway binary back across this change.
+
+### User-visible consequences
+
+1. **Opening a challenge is public.** The beneficiary is an indexed event topic, so
+   a challenge links that deposit address to the order hash.
+2. **Only settled state carries into close-only.** A deposit credited off-chain but
+   never consumed by a settled batch is refunded at principal. Trades and withdrawal
+   requests that were only in windows that never settled are discarded.
+3. **A permit is not a reservation.** When the bond's capacity is full, deposits are
+   refused until the operator posts more bond, first come first served.
+4. **Permits expire.** A permit cannot be used after `validUntil`; authorize again.
+5. **No bound address, no L1 challenge authorization.** Receipts for an account
+   without a bound deposit address carry `l1Challenge: null`.
 
 ## Residual / honestly-acknowledged leakage
 
@@ -181,12 +264,13 @@ or release acceptance. Current task state is in
 
 - **Rejection membership answers are implemented; rejection legitimacy remains
   open.** `DarkPerpSettlement` commits `rejectedRoot` and implements
-  `answerByRejection(orderHash, batchId, proof)`. A sequencer can answer an open,
-  unexpired challenge by proving declared rejection membership in a genuinely
-  settled batch. The gateway builds ordered or rejected membership proofs from
-  retained batch data and its challenge worker selects the corresponding answer
-  path. The refund gate compares the batch with the challenge's captured batch
-  count, including same-block publication order.
+  `answerByRejection(orderHash, batchId, proof)`. Anyone can answer an open
+  challenge, until a slash or release lands, by proving declared rejection
+  membership in a genuinely settled batch. The gateway builds ordered or rejected
+  membership proofs from retained batch data and its challenge worker selects the
+  corresponding answer path. Stake routing compares the answering batch with the
+  challenge's captured batch count (`openBatchCount`), including same-block
+  publication order.
   This proves membership in the committed list; it does not prove that the
   rejection reason was legitimate or that matching was fair. The guest lacks
   authenticated order bodies and a committed book/lifecycle needed to replay
@@ -288,10 +372,12 @@ workflow code review are fixed on `feat/real-tee`, and both deferred residuals a
 also closed:
 
 - **DP-004 off-chain answering — DONE.** The gateway publishes real ordered/rejected roots
-  per settle and a background loop watches `InclusionChallenged` and calls
-  `answerChallenge`/`answerByRejection` with a Merkle proof. The membership-answer
-  path is wired in source; rejection legitimacy and guest matching remain open
-  as described above. This does not establish live release acceptance.
+  per settle. Its challenge worker reads the settlement's on-chain open-challenge set
+  (`openChallengeCount`, `openChallenges`, `challenges`) each tick and answers with
+  Merkle proofs, batched per settled batch through `answerChallenges`. The settlement
+  ABI version 3 replaced the earlier `InclusionChallenged` log scan. The
+  membership-answer path is wired in source; rejection legitimacy and guest matching
+  remain open as described above. This does not establish live release acceptance.
 
 - **`state_root` unbounded cost — DONE.** The nullifier digest (the only set that grows without
   bound — it is append-only) is now an O(1) running hash-chain advanced on each insert, instead

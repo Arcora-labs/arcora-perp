@@ -23,14 +23,16 @@ import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
   OrderInput, Position, Receipt, Side, TimeInForce, TrackedOrder,
   WithdrawalEntry,
+  RefundableDeposit,
 } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
-import { accountRecoveryDigest, personalSign, type DepositContext } from "./wallet";
+import { accountRecoveryDigest, personalSign, type DepositContext, type DepositPermit } from "./wallet";
 import { boundedJson, canonicalBase, credentialKey, LEGACY_ACCOUNT_KEY, makeCredential, parseCredential, parseScope,
   persistCredential, sameScope, validGeneration, withRecoveryLock, type CredentialScope, type StoredCredential } from "./credentialStore";
 import { cancellationCapability } from "../domain/cancellation";
 import { parseExecution } from "../domain/execution";
 import { isWithdrawalAddress, parseWithdrawal } from "../domain/withdrawal";
+import { parseRefundableDeposit } from "../domain/refund";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
@@ -322,6 +324,19 @@ export function withdrawAuthDigest(
     strictHex(to, 20),
     u64be(nonce),
   ));
+}
+
+/** Credit-receipt statuses that mean the deposit is credited to the account.
+ * A credit whose deposit id settled state has not consumed yet is still a credit. */
+const CREDITED_STATUSES = new Set(["credited", "credited_unsettled", "creditedUnsettled"]);
+
+/** A deposit permit expiry: unix seconds, as a JSON number or decimal string,
+ * within uint64 and a safe integer. Null when absent or malformed. */
+function permitExpiry(value: unknown): number | null {
+  const n = typeof value === "number" ? value
+    : typeof value === "string" && /^[1-9][0-9]{0,15}$/.test(value) ? Number(value)
+    : NaN;
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
 /** Strict 0x-hex decode of EXACTLY `len` bytes (rejects odd/short/non-hex). */
@@ -1757,22 +1772,23 @@ export class RealDarkPerpClient implements DarkPerpClient {
 
   /**
    * `POST /v1/accounts/deposit/authorize` — SEC-019: the gateway pre-authorizes
-   * this exact (from, amount) for the vault, returning the blinded `ownerCommit`
-   * + the 65-byte gateway signature that `deposit(amount, ownerCommit, sig)`
-   * requires on-chain. The gateway refuses unless `from` is the account's bound
-   * deposit address — its error text ("Bind a deposit address first…") is
-   * surfaced verbatim so the pipeline shows the real reason.
+   * this exact (from, amount) for the vault, returning the blinded `ownerCommit`,
+   * the permit expiry `validUntil` (unix seconds) and the 65-byte gateway
+   * signature that `deposit(amount, ownerCommit, validUntil, sig)` requires
+   * on-chain. The gateway refuses unless `from` is the account's bound deposit
+   * address, and while deposits are halted, closed or over capacity — its
+   * error text is surfaced verbatim so the pipeline shows the real reason.
    */
   async authorizeDeposit(
     from: string,
     amount: bigint,
     context?: DepositContext,
     reuseOwnerCommit?: string,
-  ): Promise<{ ownerCommit: string; sig: string }> {
+  ): Promise<DepositPermit> {
     context ??= await this.captureDepositContext();
     const acct = this.depositContextAccount(context);
     const marketId = context.marketId;
-    const r = await this.post<{ ownerCommit?: unknown; sig?: unknown }>(
+    const r = await this.post<{ ownerCommit?: unknown; sig?: unknown; validUntil?: unknown }>(
       "/v1/accounts/deposit/authorize",
       { from, amount: s(amount), marketId, purpose: "collateral", ...(reuseOwnerCommit ? { reuseOwnerCommit } : {}) },
       { "X-Api-Key": acct.apiKey },
@@ -1784,7 +1800,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
     if (typeof r.sig !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(r.sig)) {
       throw new Error("authorize: gateway returned a malformed signature (expected 65-byte 0x hex r‖s‖v)");
     }
-    return { ownerCommit: r.ownerCommit, sig: r.sig };
+    const validUntil = permitExpiry(r.validUntil);
+    if (validUntil === null) {
+      throw new Error("authorize: gateway returned no valid permit expiry (validUntil, unix seconds); this gateway does not match the deployed vault");
+    }
+    return { ownerCommit: r.ownerCommit, sig: r.sig, validUntil };
   }
 
   /**
@@ -1804,7 +1824,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
     if (r?.status === "pendingFinalizedIngestion") {
       throw new Error("Deposit is not yet confirmed by the finalized ingester. Valid authorized deposits are credited automatically; do not send another deposit.");
     }
-    if (!r || r.status !== "credited" || r.durability !== "confirmed" ||
+    if (r?.status === "refundable") {
+      throw new Error("The exchange entered close-only mode before settled state included this deposit, so it carries no trading credit. Its full amount is refundable from the vault: see Refundable deposits in the account panel. Do not send another deposit.");
+    }
+    // A credit whose deposit id is not yet in settled state is still a credit.
+    if (!r || !CREDITED_STATUSES.has(r.status as string) || r.durability !== "confirmed" ||
         r.purpose !== "collateral" || r.marketId !== context.marketId ||
         typeof r.credited !== "string" || !/^[1-9][0-9]*$/.test(r.credited) ||
         !Array.isArray(r.depositIds) || r.depositIds.length === 0 ||
@@ -1820,6 +1844,44 @@ export class RealDarkPerpClient implements DarkPerpClient {
     // refresh or the balance stays stale until an unrelated fill.
     void this.refreshOwnState();
     return credited;
+  }
+
+  /**
+   * The account's refundable deposits, from `refundableDeposits` on
+   * `GET /v1/accounts/me` (the gateway lists them once the exchange is in
+   * close-only mode). An absent field is an empty list. Returns null (the UI
+   * hides the surface) without an account, when the gateway is unreachable or
+   * the response is unreadable. A malformed entry is dropped: the vault
+   * re-checks every field, so a bad entry could only revert.
+   */
+  async listRefundableDeposits(): Promise<{ deposits: RefundableDeposit[]; vault: string } | null> {
+    const epoch = this.credentialEpoch;
+    const acct = this.sealing ?? this.readStoredAccount();
+    if (!acct) return null;
+    let res: Response;
+    try {
+      res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": acct.apiKey } });
+    } catch {
+      return null;
+    }
+    if (!res.ok) return null;
+    let j: { vault?: unknown; refundableDeposits?: unknown };
+    try {
+      j = (await res.json()) as { vault?: unknown; refundableDeposits?: unknown };
+    } catch {
+      return null;
+    }
+    if (this.disposed || epoch !== this.credentialEpoch) return null;
+    if (typeof j !== "object" || j === null || !isWithdrawalAddress(j.vault)) return null;
+    const vault = j.vault.toLowerCase();
+    if (j.refundableDeposits === undefined || j.refundableDeposits === null) return { deposits: [], vault };
+    if (!Array.isArray(j.refundableDeposits)) return null;
+    const deposits: RefundableDeposit[] = [];
+    for (const raw of j.refundableDeposits) {
+      const deposit = parseRefundableDeposit(raw, vault);
+      if (deposit && !deposits.some(d => d.id === deposit.id)) deposits.push(deposit);
+    }
+    return { deposits, vault };
   }
 
   /**

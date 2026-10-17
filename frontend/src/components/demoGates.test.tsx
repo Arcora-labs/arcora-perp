@@ -453,3 +453,30 @@ it("Portfolio summary never presents unreadable placeholders as zero balances", 
   const { container } = render(<AccountSummary />);
   expect(Array.from(container.querySelectorAll(".statcard__value")).map(el => el.textContent)).toEqual(["—", "—", "—", "—", "—"]);
 });
+
+describe("AccountPanel close-only refunds are mode- and capability-gated", () => {
+  const deposits = [{ id: 3, from: "0x" + "11".repeat(20), ownerCommit: "0x" + "ab".repeat(32), amount: 2_000_000n }];
+  const vault = "0x" + "3b".repeat(20);
+  it("lists refundable deposits only while the exchange is in close-only mode", async () => {
+    const listRefundableDeposits = vi.fn(async () => ({ deposits, vault }));
+    injected.client = realShaped({ listRefundableDeposits });
+    injected.state = baseState({ mode: "Normal" });
+    const { unmount } = render(<AccountPanel />);
+    await screen.findByText(/settled balance/i);
+    expect(listRefundableDeposits).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Refundable deposits/)).toBeNull();
+    unmount();
+    injected.state = baseState({ mode: "CloseOnly" });
+    render(<AccountPanel />);
+    expect(await screen.findByText(/Refundable deposits/)).toBeTruthy();
+    expect(screen.getByText(/deposit #3/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /copy refund command/i })).toBeTruthy();
+  });
+  it("shows no refund surface for a client without refund support, even in close-only mode", async () => {
+    injected.client = realShaped();
+    injected.state = baseState({ mode: "CloseOnly" });
+    render(<AccountPanel />);
+    await screen.findByText(/settled balance/i);
+    expect(screen.queryByText(/Refundable deposits/)).toBeNull();
+  });
+});

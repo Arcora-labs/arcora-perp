@@ -27,7 +27,7 @@ fn signature(gw: &Gw, sk: &SigningKey, owner: &PubKey, nonce: u64) -> [u8; 65] {
 fn a07_rotation_preserves_pending_routes_and_other_accounts() {
     let (mut gw, old, owner, sk, payer) = prepared();
     let collateral = gw
-        .authorize_routed_deposit(&old, payer, 7_000_000, 1, Purpose::Collateral)
+        .authorize_routed_deposit(&old, payer, 7_000_000, 1, Purpose::Collateral, u64::MAX)
         .unwrap();
     let insurance = gw
         .authorize_routed_deposit(
@@ -36,12 +36,20 @@ fn a07_rotation_preserves_pending_routes_and_other_accounts() {
             bootstrap::MIN_BOOTSTRAP_INSURANCE as u128,
             0,
             Purpose::InsuranceBootstrap,
+            u64::MAX,
         )
         .unwrap();
     let (other, _) = gw.register_account(None);
     gw.accounts.get_mut(&other).unwrap().deposit_address = Some([0x42; 20]);
     let foreign = gw
-        .authorize_routed_deposit(&other, [0x42; 20], 3_000_000, 0, Purpose::Collateral)
+        .authorize_routed_deposit(
+            &other,
+            [0x42; 20],
+            3_000_000,
+            0,
+            Purpose::Collateral,
+            u64::MAX,
+        )
         .unwrap();
     let foreign_route = gw.deposits.routes[&foreign].clone();
     let before_account = postcard::to_allocvec(&gw.accounts[&old]).unwrap();
@@ -101,10 +109,10 @@ impl DepositSource for OnePage {
 async fn a07_rotation_preserves_ingested_receipts_prefix_and_proof_replay() {
     let (mut gw, old, owner, sk, payer) = prepared();
     let commit = gw
-        .authorize_routed_deposit(&old, payer, 5_000_000, 0, Purpose::Collateral)
+        .authorize_routed_deposit(&old, payer, 5_000_000, 0, Purpose::Collateral, u64::MAX)
         .unwrap();
     let pending = gw
-        .authorize_routed_deposit(&old, payer, 7_000_000, 1, Purpose::Collateral)
+        .authorize_routed_deposit(&old, payer, 7_000_000, 1, Purpose::Collateral, u64::MAX)
         .unwrap();
     let start = Cursor {
         domain: DepositDomain {
@@ -118,6 +126,7 @@ async fn a07_rotation_preserves_ingested_receipts_prefix_and_proof_replay() {
     let block = Block {
         number: 1,
         hash: [7; 32],
+        timestamp: None,
     };
     let event = Event {
         id: start.count,

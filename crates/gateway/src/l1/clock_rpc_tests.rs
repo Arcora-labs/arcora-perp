@@ -70,6 +70,12 @@ async fn handle(State(s): State<Arc<Script>>, Json(req): Json<Value>) -> Json<Va
                 vec![c.previous_root]
             } else if sig == selector("closeOnly()") || sig == selector("windDownSettled()") {
                 vec![[0; 32]]
+            } else if sig == selector("sequencerBond()") {
+                vec![perp_core::clock::abi_u64(0)]
+            } else if sig == selector("anchorTimeoutMs()") {
+                vec![perp_core::clock::abi_u64(3_600_000)]
+            } else if sig == selector("cancelledReceipt(bytes32)") {
+                vec![perp_core::clock::abi_u64(u64::from(mode == 5))]
             } else if sig == selector("maxWindowMs()") {
                 vec![perp_core::clock::abi_u64(c.max_window_ms)]
             } else if sig == selector("clockSkewMs()") {
@@ -148,6 +154,7 @@ impl Server {
             verifier: c.verifier,
             chain_id: c.chain_id,
             stop: None,
+            program_vkey: Default::default(),
         });
         l1
     }
@@ -240,4 +247,40 @@ fn runtime_clock_native_cast_rechecks_receipt_before_broadcast() {
     );
     server.script.context.lock().unwrap().anchored_at_ms += 1;
     assert!(l1.clock_proof_for_send(&prepared.outcome).is_err());
+}
+#[test]
+#[ignore = "requires real cast and owned loopback; run explicitly in CI"]
+fn runtime_clock_native_cast_settle_wait_is_terminal_on_cancel_or_replacement() {
+    // Mode 5: the receipt was cancelled. Mode 2: another receipt is anchored.
+    for (mode, expected) in [(5, ANCHOR_CANCELLED), (2, ANCHOR_REPLACED)] {
+        let (w, ww, c) = fixture();
+        let server = Server::new(c, mode);
+        let l1 = server.l1();
+        assert_eq!(l1.anchor_timeout_ms().unwrap(), 3_600_000);
+        let mut prepared = crate::prover_client::prepare_unproved(&w, &ww).unwrap();
+        prepared.outcome.proof = perp_core::clock::PROOF_MAGIC.to_vec();
+        prepared.outcome.proof.extend(c.receipt());
+        prepared.outcome.proof.extend([7; 32]);
+        let started = std::time::Instant::now();
+        let error = l1
+            .wait_clock_settled(c.batch_id, &prepared.outcome)
+            .unwrap_err();
+        assert_eq!(error, expected, "mode {mode}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(60));
+        assert_eq!(
+            l1.cancelled_receipt(&c.receipt()).unwrap(),
+            mode == 5,
+            "mode {mode}"
+        );
+    }
+}
+#[test]
+fn clock_cancel_signature_and_getters_match_the_verifier_selectors() {
+    for (sig, expected) in [
+        (CANCEL_ANCHOR_SIG, "0x422e31bd"),
+        ("anchorTimeoutMs()", "0x79902111"),
+        ("cancelledReceipt(bytes32)", "0x56a21054"),
+    ] {
+        assert_eq!(selector(sig), expected, "{sig}");
+    }
 }

@@ -5,9 +5,37 @@ chain. Three fixed public fixture wallets deposit 50,000 test USDC, place four
 signed sealed orders to open and close positions, settle four consecutive windows,
 then claim 20,000 test USDC. Anvil allocates its port with `--port 0`; the test
 reads that port only from its owned child's startup output and drains subsequent
-output without printing the fixture-key banner. It uses real contract constructors, ERC20 allowances,
-deposit authorization and ingestion, clock registration, the `ClockBoundVerifier`,
-settlement and vault. The inner verifier is explicitly `MockZkVerifier`.
+output without printing the fixture-key banner. It uses the real contract
+constructors (the settlement's twelve-word `Config`, the four-word clock
+constructor), ERC20 allowances, deposit permits and ingestion, clock registration,
+the `ClockBoundVerifier`, settlement and vault. The inner verifier is explicitly
+`MockZkVerifier`. The gateway reads the settlement's deposit terms through a
+read-only L1 bridge; the test sends every transaction itself.
+
+Beyond the wallet windows, the run checks:
+
+- **Bond before deposits.** Without a bond the capacity is 19 base units: the
+  gateway refuses the permit (`409` with the capacity) and the vault reverts
+  `BondCapacityExceeded`. The bond is then posted before the first deposit.
+- **Permits.** Each permit carries `validUntil`; a held permit is re-signed with the
+  same deadline and signature; an expired, altered or replayed permit is refused.
+- **Capacity, first come first served.** A request above the remaining capacity is
+  refused with `409`. Two permits that each fit are issued; the first deposit lands
+  and the second reverts `BondCapacityExceeded`.
+- **Inclusion challenge.** An order's `l1Challenge` matches the settlement's
+  `challengeAuthDigest` and recovers to `enclaveSigner()`. A challenge is opened,
+  the gateway's open-set read plans the answer once the batch settles, a third
+  party sends it, and the stake returns to the submitter.
+- **Keepalive.** After a quarter of `livenessTimeoutBlocks` without progress, an
+  idle gateway settles an empty, untimed window.
+- **Close-only and refund.** A credited deposit no settled batch consumed is
+  `credited_unsettled`. With no further progress, `LivenessLow` fires at half the
+  window and a non-operator calls `triggerCloseOnly()` after it. The gateway latches
+  close-only at a finalized block: `mode` reads `CloseOnly`, permits are refused,
+  and the deposit is `refundable` in the confirm and account views. With the
+  gateway stopped, both settled withdrawals are claimed, and a non-depositor
+  refunds the deposit to its depositor; consumed, redirected, altered and repeated
+  refunds are refused.
 
 Each window writes its unproved encrypted journal before clock registration.
 The adapter rejects both malformed proof bytes and a legacy unbound commitment.
@@ -29,8 +57,9 @@ ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-funds-witness-NEW \
 ```
 
 The export directory must not already exist. It contains only generated test data:
-four exact v2 witness byte streams and a final `lifecycle.json` linking their hashes
-to each local transaction, commitment and root. This export is available only in
+four exact v2 witness byte streams, the keepalive's empty window
+(`keepalive-batch-4.witness.bin`, listed under `keepalive`) and a final
+`lifecycle.json` linking their hashes to each local transaction, commitment and root. This export is available only in
 the test harness; it does not add witness export to the production gateway.
 The 60-second window/skew is a test policy, not a production recommendation.
 
@@ -150,5 +179,73 @@ Python tests come from `cast`.
   download, has nothing to recover.
 - Balances and positions that were never withdrawn into a published root still
   need the operator or prover path (`finalSettle` / `finalExit`, see
-  FINAL_SETTLE_RUNBOOK.md).
+  FINAL_SETTLE_RUNBOOK.md). Deposits that no settled batch consumed do not: in
+  close-only they are refunded from the vault (next section).
 - This is not a data-availability archive.
+
+## Refund of a deposit the settled state never consumed
+
+A deposit enters the vault's deposit chain when it lands on L1, but it becomes part
+of the settled state only when a settled batch consumes it. The settlement records
+that boundary as `consumedDepositCount()` on every settle. Deposits with an id at or
+above it have not been credited by any settled batch.
+
+Once the settlement is in close-only, that boundary is frozen: ordinary settlement
+stops, and both wind-down entrypoints require the same count. From then on every
+deposit above the boundary is refundable at principal, straight from the vault:
+
+- **Who:** anyone may send `refundDeposit(id, from, ownerCommit, amount, to)`. The
+  funds go to the deposit's payer `from`. Only `from` itself may name a different `to`,
+  for example when the token refuses to pay `from`.
+- **What it needs:** only public L1 data. The arguments are the fields of the
+  deposit's `Deposit` event, and the vault checks them against its own chain link at
+  `id`. No gateway, prover, governance or saved bundle is involved.
+- **When:** as soon as `closeOnly()` is true. Refunds do not wait for the wind-down
+  grace or for `finalSettle`.
+
+Close-only can start in three ways, and every one makes refunds available:
+
+1. **Liveness.** The state root has not progressed for `livenessTimeoutBlocks`, and
+   the stack holds a settled batch, a deposit or an open challenge. Anyone may then
+   call `triggerCloseOnly()`. The gateway settles an empty keepalive batch while the
+   exchange is idle, so an idle but healthy operator does not reach this timeout.
+2. **Deposit inclusion.** The oldest unconsumed deposit landed more than
+   `livenessTimeoutBlocks` ago. Anyone may then call `triggerCloseOnly()`, even while
+   other batches keep settling. A settling sequencer therefore cannot hold a landed
+   deposit indefinitely.
+3. **Governance.** `enterCloseOnly()`, as an emergency brake or to move users to a
+   new stack.
+
+A deposit the gateway had already credited off-chain, but that no settled batch
+consumed, is also refunded at principal. Trades in windows that never settled are
+discarded with it; only settled state is withdrawable.
+
+**Claims cannot consume refundable principal.** `claim` reverts
+`ReservedForUncredited` if paying it would leave the vault holding less than
+`refundableOutstanding()`, the principal of unconsumed deposits that were not
+refunded yet. This holds in live mode and in close-only.
+
+`scripts/claim/refund_deposit.py` performs the same checks without the gateway,
+through a read-only RPC. It finds the `Deposit` log by transaction (`--tx`), by
+deposit id (`--id`) or for every unconsumed deposit of one payer (`--from`), and
+checks it against the vault's deposit chain. It then reports whether the deposit
+was credited, refunded or is refundable, whether close-only is set, and whether
+(or from which block) anyone may call `triggerCloseOnly()`. Like
+`claim_withdrawal.py`, it never signs or sends; it prints the exact calls:
+
+```sh
+python3 scripts/claim/refund_deposit.py --rpc https://sepolia.base.org \
+  --vault <VAULT> --from <YOUR_DEPOSIT_ADDRESS>
+```
+
+`--to` sets another recipient, which only works when the payer itself sends the
+refund. The calls the tool prints are:
+
+```sh
+cast send <SETTLEMENT> "triggerCloseOnly()" --rpc-url https://sepolia.base.org <signer flags>
+cast send <VAULT> "refundDeposit(uint64,address,bytes32,uint256,address)" \
+  <id> <from> <ownerCommit> <amount> <from> --rpc-url https://sepolia.base.org <signer flags>
+```
+
+`triggerCloseOnly` reverts `LivenessNotExpired` while neither timeout has passed.
+The refund errors are listed in `docs/API.md` (§ Refunds after close-only).

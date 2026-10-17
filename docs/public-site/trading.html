@@ -86,7 +86,7 @@
     <tr>
       <td><span class="pill accepted">ACCEPTED</span></td>
       <td>milliseconds</td>
-      <td>The enclave took your order and returned a <strong>signed receipt</strong> (secp256k1, recovering to the enclave signer). The receipt is your inclusion proof: if the operator later settles a window that omits your order, you can open an on-chain challenge with it and slash the operator's bond.</td>
+      <td>The enclave took your order and returned a <strong>signed receipt</strong> (secp256k1, recovering to the enclave signer). With a bound deposit address, the receipt also carries an L1 challenge authorization: if no settled window ever includes or rejects your order, you can open an on-chain challenge with it, and an unanswered challenge pays a capped fine from the operator's bond to your deposit address.</td>
     </tr>
     <tr>
       <td><span class="pill matched">MATCHED</span></td>

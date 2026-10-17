@@ -12,8 +12,10 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { StoreProvider } from "../store";
 import {
   AccountPanel,
+  RefundsSection,
   WalletDepositCard,
   WithdrawalsSection,
+  buildRefundCommand,
 } from "./AccountPanel";
 import {
   BASE_SEPOLIA_CHAIN_ID,
@@ -23,10 +25,13 @@ import {
   connect,
   disconnectWallet,
   encodeClaim,
+  encodeDeposit,
+  encodeRefundDeposit,
+  selectorHex,
   type Eip1193Provider,
 } from "../api/wallet";
 import type { DarkPerpClient } from "../api/client";
-import type { WithdrawalEntry } from "../domain/types";
+import type { RefundableDeposit, WithdrawalEntry } from "../domain/types";
 import { installTestLocks } from "../testSupport/locks";
 beforeEach(installTestLocks);
 
@@ -36,6 +41,9 @@ const OWNER = new Uint8Array(32).fill(0x11);
 const SIG = "0x" + "ab".repeat(65);
 const COMMIT = "0x" + "ab".repeat(32); // gateway-issued blinded ownerCommit (fake)
 const GWSIG = "0x" + "cd".repeat(65); // gateway 65-byte authorization sig (fake)
+const VALID_UNTIL = Math.floor(Date.now() / 1000) + 1800; // gateway permit expiry (fake)
+/** An eth_call revert carrying a vault custom error, as wallets report it. */
+const vaultRevert = (name: string) => () => { throw { code: 3, message: "execution reverted", data: selectorHex(`${name}()`) }; };
 
 interface Call {
   method: string;
@@ -69,15 +77,18 @@ function makeProvider(
           return { status: "0x1", transactionHash: params?.[0] };
         case "personal_sign":
           return SIG;
+        case "eth_call": // dry run: the vault would accept
+          return "0x";
         default:
           throw new Error(`unexpected provider method ${method}`);
       }
     },
   };
   const sent = () => calls.filter((c) => c.method === "eth_sendTransaction");
+  const dryRuns = () => calls.filter((c) => c.method === "eth_call");
   const signs = () => calls.filter((c) => c.method === "personal_sign");
   const switches = () => calls.filter((c) => c.method === "wallet_switchEthereumChain");
-  return { provider, calls, sent, signs, switches };
+  return { provider, calls, sent, signs, switches, dryRuns };
 }
 
 function install(provider: Eip1193Provider) {
@@ -99,7 +110,7 @@ function makeClient() {
     authorizeDeposit: async (from: string, amount: bigint, _context?: unknown, reuse?: string) => {
       authorizeCalls.push([from, amount]);
       reuseCalls.push(reuse);
-      return { ownerCommit: COMMIT, sig: GWSIG };
+      return { ownerCommit: COMMIT, sig: GWSIG, validUntil: VALID_UNTIL };
     },
     creditOnchainDeposit: async (txHash: string) => {
       creditCalls.push(txHash);
@@ -168,10 +179,12 @@ describe("WalletDepositCard", () => {
     // [5] SEC-019 authorization for the exact (from, amount)
     expect(authorizeCalls).toEqual([[addr, 1_000_000_000n]]);
 
-    // [6] deposit tx carries the NEW calldata: selector + the gateway ownerCommit
+    // [6] deposit tx carries the permit: ownerCommit, its expiry and the gateway sig,
+    // after a read-only dry run of the same call against the vault
     expect(txField(txs[2], "to")).toBe(COLLATERAL_VAULT);
-    expect(txField(txs[2], "data").startsWith("0x2b681307")).toBe(true);
-    expect(txField(txs[2], "data")).toContain(COMMIT.slice(2));
+    expect(txField(txs[2], "data").startsWith("0xa1059e34")).toBe(true);
+    expect(txField(txs[2], "data")).toBe(encodeDeposit(1_000_000_000n, COMMIT, VALID_UNTIL, GWSIG));
+    expect(p.dryRuns().map(c => c.params)).toEqual([[{ from: addr, to: COLLATERAL_VAULT, data: txField(txs[2], "data") }, "latest"]]);
     for (const t of txs) {
       expect(txField(t, "from")).toBe(addr);
       expect((t.params![0] as Record<string, string>).chainId).toBe(BASE_SEPOLIA_CHAIN_ID);
@@ -222,6 +235,41 @@ describe("WalletDepositCard", () => {
     expect(await screen.findByText(/valid amount/i)).toBeTruthy();
     expect(p.switches().length).toBe(0);
     expect(p.sent().length).toBe(0);
+  });
+
+  it("shows the vault's capacity refusal from the dry run and sends no deposit", async () => {
+    const p = makeProvider({ eth_call: vaultRevert("BondCapacityExceeded") });
+    install(p.provider);
+    const { client, creditCalls } = makeClient();
+    render(<WalletDepositCard client={client} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/deposit capacity.*No deposit transaction was sent/i)).toBeTruthy();
+    expect(p.sent().map(c => txField(c, "data").slice(0, 10))).toEqual(["0x40c10f19", "0x095ea7b3"]);
+    expect(creditCalls).toEqual([]);
+  });
+
+  it("shows the saved permit expiry for a deposit whose send outcome is unknown", async () => {
+    const p = makeProvider({
+      eth_sendTransaction: (_call, calls) => {
+        const n = calls.filter((c) => c.method === "eth_sendTransaction").length;
+        if (n === 3) throw new Error("response lost");
+        return "0x" + n.toString(16).padStart(64, "0");
+      },
+    });
+    install(p.provider);
+    const { client } = makeClient();
+    render(<WalletDepositCard client={client} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/outcome is unknown: response lost/i)).toBeTruthy();
+    const expiry = new Date(VALID_UNTIL * 1000).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+    expect(await screen.findByText("Deposit permit expires")).toBeTruthy();
+    expect(screen.getByText(expiry)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`refuses this deposit's permit in any block after ${expiry}`))).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /resume original deposit/i })).toBeNull(); // still blocked
   });
 
   it("recovers after a mid-pipeline rejection: re-run skips completed steps", async () => {
@@ -465,6 +513,97 @@ describe("WithdrawalsSection claim-with-wallet", () => {
     expect(await screen.findByText(/^Claimable$/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /claim with wallet/i })).toBeNull();
     expect(screen.getByRole("button", { name: /copy claim command/i })).toBeTruthy();
+  });
+});
+
+describe("RefundsSection (close-only deposit refunds)", () => {
+  const refund: RefundableDeposit = {
+    id: 5, from: "0x" + "11".repeat(20), ownerCommit: "0x" + "ab".repeat(32), amount: 2_500_000n,
+  };
+  const listing = (deposits: RefundableDeposit[] = [refund]) => {
+    const list = vi.fn(async () => ({ deposits, vault: COLLATERAL_VAULT }));
+    return { list, client: { listRefundableDeposits: list } as unknown as DarkPerpClient };
+  };
+
+  it("stays hidden, and does not poll, outside close-only mode", async () => {
+    const { list, client } = listing();
+    render(<RefundsSection client={client} closeOnly={false} />);
+    await new Promise(r => setTimeout(r, 0));
+    expect(list).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Refundable deposits/)).toBeNull();
+  });
+
+  it("stays hidden in close-only mode with nothing to refund or no refund support", async () => {
+    const { client } = listing([]);
+    const { unmount } = render(<RefundsSection client={client} closeOnly />);
+    await new Promise(r => setTimeout(r, 0));
+    expect(screen.queryByText(/Refundable deposits/)).toBeNull();
+    unmount();
+    render(<RefundsSection client={{} as DarkPerpClient} closeOnly />);
+    expect(screen.queryByText(/Refundable deposits/)).toBeNull();
+  });
+
+  it("refunds from the connected wallet to the deposit's own address after a dry run", async () => {
+    const p = makeProvider();
+    install(p.provider);
+    await connect();
+    const { client } = listing();
+    render(<RefundsSection client={client} closeOnly />);
+    expect(await screen.findByText(/Refundable deposits/)).toBeTruthy();
+    expect(screen.getByText(/deposit #5/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /refund with wallet/i }));
+    expect(await screen.findByText(/Refunded ✓/)).toBeTruthy();
+    const data = encodeRefundDeposit({ ...refund, to: refund.from });
+    expect(data.startsWith("0xb07e8ad3")).toBe(true);
+    expect(p.dryRuns().map(c => c.params)).toEqual([[{ from: addr, to: COLLATERAL_VAULT, data }, "latest"]]);
+    const txs = p.sent();
+    expect(txs).toHaveLength(1);
+    expect(txField(txs[0], "to")).toBe(COLLATERAL_VAULT);
+    expect(txField(txs[0], "data")).toBe(data);
+    expect(txField(txs[0], "from")).toBe(addr);
+    expect(p.switches()).toHaveLength(1);
+  });
+
+  it("reports a vault refusal from the dry run without sending", async () => {
+    const p = makeProvider({ eth_call: vaultRevert("NotCloseOnly") });
+    install(p.provider);
+    await connect();
+    const { client } = listing();
+    render(<RefundsSection client={client} closeOnly />);
+    fireEvent.click(await screen.findByRole("button", { name: /refund with wallet/i }));
+    expect(await screen.findByText(/Refunds open only after the exchange enters close-only mode/)).toBeTruthy();
+    expect(p.sent()).toHaveLength(0);
+    expect(screen.getByRole("button", { name: /refund with wallet/i })).toBeTruthy(); // retry stays available
+  });
+
+  it("marks an already-refunded deposit without sending", async () => {
+    const p = makeProvider({ eth_call: vaultRevert("AlreadyRefunded") });
+    install(p.provider);
+    await connect();
+    const { client } = listing();
+    render(<RefundsSection client={client} closeOnly />);
+    fireEvent.click(await screen.findByRole("button", { name: /refund with wallet/i }));
+    expect(await screen.findByText(/^Refunded$/)).toBeTruthy();
+    expect(p.sent()).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /refund with wallet/i })).toBeNull();
+  });
+
+  it("offers only the copyable command without a connected wallet", async () => {
+    const { client } = listing();
+    render(<RefundsSection client={client} closeOnly />);
+    expect(await screen.findByRole("button", { name: /copy refund command/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /refund with wallet/i })).toBeNull();
+  });
+
+  it("builds the exact cast refund command and refuses shell-unsafe data", () => {
+    expect(buildRefundCommand(refund, COLLATERAL_VAULT)).toBe(
+      `cast send ${COLLATERAL_VAULT} "refundDeposit(uint64,address,bytes32,uint256,address)" ` +
+        `5 ${refund.from} ${refund.ownerCommit} 2500000 ${refund.from} ` +
+        "--rpc-url https://sepolia.base.org --private-key <YOUR_KEY>",
+    );
+    expect(() => buildRefundCommand({ ...refund, from: "$(echo unsafe)" }, COLLATERAL_VAULT)).toThrow(/Invalid/);
+    expect(() => buildRefundCommand(refund, `${COLLATERAL_VAULT}; echo unsafe`)).toThrow(/Invalid/);
+    expect(() => buildRefundCommand({ ...refund, amount: 0n }, COLLATERAL_VAULT)).toThrow(/Invalid/);
   });
 });
 

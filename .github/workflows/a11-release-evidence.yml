@@ -171,6 +171,9 @@ jobs:
         run: |
           forge build --root contracts
           ARCORA_FUNDS_EVIDENCE=/tmp/arcora-local-drills/funds-lifecycle.json ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-local-drills/funds-witnesses cargo test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture
+      - name: Gateway-free refund and challenge tools against owned Anvil (contracts built above)
+        run: |
+          ARCORA_RUN_CLAIM_ANVIL=1 ARCORA_CLAIM_ANVIL_EVIDENCE=/tmp/arcora-local-drills/claim-tools-anvil.json python3 -m unittest discover -s scripts/claim -p test_claim_tools_anvil.py -v
       - name: Release manifest against owned six-contract Anvil stack
         run: |
           forge build --root contracts/vendor/sp1-contracts

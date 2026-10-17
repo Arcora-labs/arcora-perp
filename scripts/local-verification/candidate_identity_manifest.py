@@ -154,9 +154,11 @@ def public_config(value):
     require(all(int(v, 16) != 0 for v in runtime.values()), "zero runtime hash declaration")
     key = hex_value(value["program_vkey"], 32, "candidate program_vkey")
     require(key == candidate.VKEY, "program_vkey does not match historical candidate identity")
-    exact(value["clock"], {"max_window_ms", "clock_skew_ms"}, "clock declaration")
+    exact(value["clock"], set(legacy.CLOCK_POLICY), "clock declaration")
     clock = {"max_window_ms": integer(value["clock"]["max_window_ms"], 1, 2**64, "max_window_ms"),
-             "clock_skew_ms": integer(value["clock"]["clock_skew_ms"], 0, 2**64, "clock_skew_ms")}
+             "clock_skew_ms": integer(value["clock"]["clock_skew_ms"], 0, 2**64, "clock_skew_ms"),
+             "anchor_timeout_ms": integer(value["clock"]["anchor_timeout_ms"], legacy.MIN_ANCHOR_TIMEOUT_MS,
+                                          2**64, "anchor_timeout_ms")}
     policy = hex_value(value["oracle_policy_hash"], 32, "oracle policy hash")
     require(int(policy, 16) != 0, "zero policy hash declaration")
     grace = integer(value["sequencer_grace_seconds"], 1, 2**64, "uptime grace")

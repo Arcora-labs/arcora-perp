@@ -15,13 +15,14 @@ class Fork(unittest.TestCase):
         accounts = rpc(url, "eth_accounts", [])
         owner = accounts[0]
         config = {"chain_id": 84532, "genesis_root": GENESIS,
-                  "sp1_gateway": None,
-                  "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000},
+                  "sp1_gateway": None, "deposit_permit_ttl_secs": 1800,
+                  "clock": {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3600000},
                   "operator_policy": {
                       "settlement": {"sequencer": owner, "enclave_signer": accounts[1], "governance": owner,
-                                     "liveness_timeout_blocks": 100, "challenge_window_blocks": 50,
+                                     "liveness_timeout_blocks": 100, "challenge_grace_blocks": 50,
                                      "challenge_bond_wei": 1000, "inclusion_deadline_seconds": 600,
-                                     "final_settle_grace_blocks": 10},
+                                     "final_settle_grace_blocks": 10, "progress_batches": 2,
+                                     "slash_payout_cap_usdc": 1000000000},
                       "vault": {"gateway_signer": accounts[2]},
                       "clock_verifier": {"configurator": owner},
                       "sp1_gateway": {"owner": owner}}}

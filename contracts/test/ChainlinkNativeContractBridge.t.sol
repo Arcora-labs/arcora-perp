@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {MiniTest} from "./utils/MiniTest.sol";
+import {SettlementTestConfig} from "./utils/SettlementTestConfig.sol";
 import {MockSequencerUptime} from "./utils/MockSequencerUptime.sol";
 import {MockSP1Verifier} from "../src/mocks/MockSP1Verifier.sol";
 import {SP1ZkVerifier} from "../src/SP1ZkVerifier.sol";
@@ -22,6 +23,8 @@ contract ChainlinkNativeContractBridgeTest is MiniTest {
     uint80 internal constant ROUND = 0x0102030405060708090a;
     uint64 internal constant STARTED = 1000;
     uint64 internal constant GRACE = 60;
+    /// Not part of the clock receipt or the captured context.
+    uint64 internal constant ANCHOR_TIMEOUT_MS = 3_600_000;
 
     struct Stack {
         MockSP1Verifier gateway;
@@ -77,9 +80,11 @@ contract ChainlinkNativeContractBridgeTest is MiniTest {
         x.don = new BridgeExactStreams();
         x.uptime = new MockSequencerUptime();
         x.oracle = new ChainlinkOracleVerifier(x.adapter, x.don, d.policyHash, address(x.uptime), GRACE);
-        x.clock = new ClockBoundVerifier(x.oracle, d.maxWindowMs, d.clockSkewMs);
+        x.clock = new ClockBoundVerifier(x.oracle, d.maxWindowMs, d.clockSkewMs, ANCHOR_TIMEOUT_MS);
         x.settlement = new DarkPerpSettlement(
-            address(this), address(0x123), x.clock, d.roots[0], 100, 50, 1 ether, 600, address(this), 10
+            SettlementTestConfig.legacy(
+                address(this), address(0x123), x.clock, d.roots[0], 100, 50, 1 ether, 600, address(this), 10
+            )
         );
         x.vault = new BridgeStrictPrefixVault(address(x.settlement), d.depositCount, d.roots[6]);
         x.settlement.setVault(address(x.vault));
@@ -342,13 +347,15 @@ contract ChainlinkNativeContractBridgeTest is MiniTest {
         }
     }
 
-    function test_native_prefix_count_eight_or_ten_is_refused_by_strict_mock() public {
+    function test_native_prefix_count_eight_or_ten_is_refused() public {
         T.SourceData memory d = Source.normal();
         Stack memory x = ready(d, Vector.normal());
+        // below the head: the strict mock refuses any prefix but the exported one
         vm.expectRevert(BridgeStrictPrefixVault.WrongPrefixCount.selector);
         settleRoots(x, d.roots, 8, mockProof());
         assertUnchanged(x, d);
-        vm.expectRevert(BridgeStrictPrefixVault.WrongPrefixCount.selector);
+        // beyond the head: the settlement refuses before reading the prefix
+        vm.expectRevert(DarkPerpSettlement.BadDepositCount.selector);
         settleRoots(x, d.roots, 10, mockProof());
         assertUnchanged(x, d);
     }

@@ -67,7 +67,7 @@ async function fixture(context: BrowserContext, mode: 'normal' | 'legacy' | 'mis
     else if (path === '/v1/accounts/withdrawals') body = { withdrawals: [], vault: VAULT };
     else if (path.includes('book')) body = { marketId: 1, bids: [], asks: [] };
     else if (path.includes('oracle')) body = { marketId: 1, price: '350000000000', confidence: '1', publishTimeMs: Date.now() };
-    else if (path === '/v1/accounts/deposit/authorize') body = { ownerCommit: OWNER, sig: '0x' + 'ab'.repeat(65) };
+    else if (path === '/v1/accounts/deposit/authorize') body = { ownerCommit: OWNER, sig: '0x' + 'ab'.repeat(65), validUntil: Math.floor(Date.now() / 1000) + 1800 };
     await route.fulfill({ status, json: body });
   });
   return { calls, consoleMessages, urls, sockets, setHook(value: typeof hook) { hook = value; }, posts: () => calls.filter(c => c.path === '/v1/accounts/recovery' && c.method === 'POST') };

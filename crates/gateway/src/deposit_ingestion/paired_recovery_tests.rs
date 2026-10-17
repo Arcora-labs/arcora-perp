@@ -37,7 +37,7 @@ fn permit(gw: &mut Gw, amount: u128, signer: Option<[u8; 20]>) -> ([u8; 32], [u8
     let from = signer.unwrap_or([0x42; 20]);
     gw.accounts.get_mut(&key).unwrap().deposit_address = Some(from);
     let commit = gw
-        .authorize_routed_deposit(&key, from, amount, 0, Purpose::Collateral)
+        .authorize_routed_deposit(&key, from, amount, 0, Purpose::Collateral, u64::MAX)
         .unwrap();
     (key, commit)
 }
@@ -48,6 +48,7 @@ fn page(gw: &Gw, commits: &[[u8; 32]]) -> Page {
     let block = Block {
         number: height,
         hash: [height as u8; 32],
+        timestamp: None,
     };
     let events = commits
         .iter()

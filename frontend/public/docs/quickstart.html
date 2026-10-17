@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quickstart — Arcora Perp Docs</title>
-<meta name="description" content="Six steps from an empty wallet to a settled withdrawal on the Arcora Perp testnet alpha.">
+<meta name="description" content="Seven steps from an empty wallet to a settled withdrawal on the Arcora Perp testnet alpha, plus the close-only refund path.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -30,11 +30,11 @@
 <div class="content">
 
 <h1>Quickstart</h1>
-<p class="lede">Six steps from an empty wallet to a settled withdrawal. You need a Base Sepolia EOA and, for the command-line steps, Foundry's <code>cast</code> — the app UI at <a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> walks you through the same flow interactively.</p>
+<p class="lede">Seven steps from an empty wallet to a settled withdrawal. You need a Base Sepolia EOA and, for the command-line steps, Foundry's <code>cast</code> — the app UI at <a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> walks you through the same flow interactively and runs every check below for you.</p>
 
 <div class="callout">
   <p class="callout-title">Before you start</p>
-  <p>Everything below runs against Base Sepolia (chain ID 84532) with test funds only. RPC used in the commands: <code>https://sepolia.base.org</code>. Replace <code>&lt;YOU&gt;</code> with your address and <code>&lt;KEY&gt;</code> with its private key — use a throwaway testnet key, never a mainnet one.</p>
+  <p>Everything below runs against Base Sepolia (chain ID 84532) with test funds only. RPC used in the commands: <code>https://sepolia.base.org</code>. Replace <code>&lt;YOU&gt;</code> with your address and <code>&lt;KEY&gt;</code> with its private key — use a throwaway testnet key, never a mainnet one. <code>&lt;VAULT&gt;</code> is the CollateralVault address: read it from <code>vault</code> on <code>GET /v1/accounts/me</code> (see the <a href="api.html#accounts">API reference</a>), never from an old page or post. <code>&lt;USDC&gt;</code> is the vault's own token: <code>cast call &lt;VAULT&gt; "token()(address)" --rpc-url https://sepolia.base.org</code>.</p>
 </div>
 
 <div class="step">
@@ -43,40 +43,60 @@
 </div>
 
 <div class="step">
-<h3><span class="step-num">2</span> Mint test USDC</h3>
-<p>The collateral token is an open-mint MockUSDC (6 decimals) — anyone can mint. This mints 1,000 USDC (<code>1000000000</code> base units) to yourself:</p>
-<pre><code>cast send 0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA \
+<h3><span class="step-num">2</span> Mint test USDC and approve the vault</h3>
+<p>The collateral token is an open-mint MockUSDC (6 decimals) — anyone can mint. This mints 1,000 USDC (<code>1000000000</code> base units) to yourself and lets the vault pull it:</p>
+<pre><code>cast send &lt;USDC&gt; \
   "mint(address,uint256)" &lt;YOU&gt; 1000000000 \
-  --rpc-url https://sepolia.base.org --private-key &lt;KEY&gt;</code></pre>
-</div>
-
-<div class="step">
-<h3><span class="step-num">3</span> Approve and deposit into the vault</h3>
-<p>Collateral is custodied by the CollateralVault. Approve it, then deposit:</p>
-<pre><code><span class="c"># approve the vault to pull your USDC</span>
-cast send 0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA \
-  "approve(address,uint256)" 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 1000000000 \
   --rpc-url https://sepolia.base.org --private-key &lt;KEY&gt;
 
-<span class="c"># deposit 1,000 USDC</span>
-cast send 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 \
-  "deposit(uint256)" 1000000000 \
+cast send &lt;USDC&gt; \
+  "approve(address,uint256)" &lt;VAULT&gt; 1000000000 \
   --rpc-url https://sepolia.base.org --private-key &lt;KEY&gt;</code></pre>
-<p class="dim">Keep the deposit transaction hash — you need it in the next step.</p>
 </div>
 
 <div class="step">
-<h3><span class="step-num">4</span> Bind your address and credit the deposit</h3>
-<p>Open <a href="https://perp.arcoralabs.xyz">the app</a>. The browser self-provisions a <code>/v1</code> trading account for you (the API key is stored in your browser's localStorage). To credit the on-chain deposit to that account:</p>
-<ol>
-  <li><strong>Bind the EOA you deposited from</strong> — in the app's API tab, or via <code>POST /v1/accounts/deposit/address</code>. The binding is ownership-proven: you sign a message with the EOA's key.</li>
-  <li><strong>Credit the deposit by transaction hash</strong> — via <code>POST /v1/accounts/deposit/onchain</code> with <code>{"txHash": "0x&hellip;", "marketId": 0}</code>. The gateway verifies the transaction on-chain and credits your trading balance.</li>
-</ol>
-<p class="dim">Request and signature details for both endpoints are in the <a href="api.html#accounts">API reference</a>.</p>
+<h3><span class="step-num">3</span> Bind your address to the trading account</h3>
+<p>Open <a href="https://perp.arcoralabs.xyz">the app</a>. The browser self-provisions a <code>/v1</code> trading account for you (the API key is stored in your browser's localStorage). Bind the EOA you will deposit from — in the app, or via <code>POST /v1/accounts/deposit/address</code>. The binding is ownership-proven: you sign a message with the EOA's key. Withdrawals later pay this same address.</p>
 </div>
 
 <div class="step">
-<h3><span class="step-num">5</span> Trade</h3>
+<h3><span class="step-num">4</span> Get a deposit permit</h3>
+<p>The vault accepts only gateway-permitted deposits. Ask for a permit for the exact address and amount with <code>POST /v1/accounts/deposit/authorize</code> and <code>{"from": "&lt;YOU&gt;", "amount": "1000000000", "marketId": 0, "purpose": "collateral"}</code>. The reply carries three values:</p>
+<ul>
+  <li><code>ownerCommit</code> — a blinded commitment to your trading account (32 bytes);</li>
+  <li><code>validUntil</code> — the permit's expiry, in unix seconds;</li>
+  <li><code>sig</code> — the gateway's 65-byte signature over the permit.</li>
+</ul>
+<p>The permit is good for that one address and amount, until <code>validUntil</code>. The gateway refuses a permit while deposits are halted, when the exchange is in close-only mode, or when the amount exceeds the vault's remaining deposit capacity.</p>
+</div>
+
+<div class="step">
+<h3><span class="step-num">5</span> Deposit into the vault</h3>
+<p>Send the deposit with the permit's values before it expires. A dry run first (<code>cast call</code>) reports any refusal without spending gas:</p>
+<pre><code><span class="c"># dry run: reverts with the vault's error selector if the deposit would fail</span>
+cast call &lt;VAULT&gt; \
+  "deposit(uint256,bytes32,uint64,bytes)" \
+  1000000000 &lt;OWNER_COMMIT&gt; &lt;VALID_UNTIL&gt; &lt;SIG&gt; \
+  --from &lt;YOU&gt; --rpc-url https://sepolia.base.org
+
+<span class="c"># deposit 1,000 USDC</span>
+cast send &lt;VAULT&gt; \
+  "deposit(uint256,bytes32,uint64,bytes)" \
+  1000000000 &lt;OWNER_COMMIT&gt; &lt;VALID_UNTIL&gt; &lt;SIG&gt; \
+  --rpc-url https://sepolia.base.org --private-key &lt;KEY&gt;</code></pre>
+<p>What the vault's errors mean (error selector in brackets):</p>
+<ul>
+  <li><code>PermitExpired</code> (<code>0x1a15a3cc</code>) — the block was past <code>validUntil</code>. Request a new permit (step 4); the old one can never land.</li>
+  <li><code>BondCapacityExceeded</code> (<code>0x0b9737f5</code>) — the vault is at its deposit capacity, which the operator's bond sets. Try a smaller amount or later.</li>
+  <li><code>DepositsPaused</code> (<code>0xdeeb6943</code>) or <code>InCloseOnly</code> (<code>0xe087cf65</code>) — the vault is not taking deposits.</li>
+  <li><code>BadAmount</code> (<code>0x749b5939</code>) — the amount is zero or above the per-deposit limit.</li>
+  <li><code>OwnerCommitUsed</code> (<code>0x4e54eb54</code>) — a deposit with this permit already landed. Do not send another.</li>
+</ul>
+<p class="dim">Keep the deposit transaction hash. The finalized ingester credits the deposit to your trading account on its own once the block is finalized; <code>POST /v1/accounts/deposit/onchain</code> with <code>{"txHash": "0x&hellip;", "marketId": 0}</code> returns the durable credit receipt. While the receipt is pending, check again — do not send another deposit.</p>
+</div>
+
+<div class="step">
+<h3><span class="step-num">6</span> Trade</h3>
 <p>Place orders on the Trade tab. Order terms are sealed (encrypted) in your browser to the matching enclave's key — no plaintext terms travel on the wire. You get:</p>
 <ul>
   <li><span class="pill accepted">ACCEPTED</span> — an enclave-signed receipt, within milliseconds;</li>
@@ -87,7 +107,7 @@ cast send 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 \
 </div>
 
 <div class="step">
-<h3><span class="step-num">6</span> Withdraw and claim</h3>
+<h3><span class="step-num">7</span> Withdraw and claim</h3>
 <p>Withdraw on the Account tab. The app asks your wallet to sign the withdrawal (every withdrawal is wallet-signed — the API key alone cannot move funds), and the destination is your bound deposit address. The withdrawal goes through three visible stages:</p>
 <ol>
   <li>The withdrawal is recorded off-chain and shows as <em>&ldquo;Settling on-chain&hellip;&rdquo;</em> while it waits to be included in a settlement window.</li>
@@ -95,12 +115,25 @@ cast send 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 \
   <li>Copy the <code>cast</code> command the UI builds for you and run it <strong>from any funded address</strong> — claims are permissionless, and funds can only ever go to the address bound into the leaf:</li>
 </ol>
 <pre><code><span class="c"># exact arguments are generated by the app's Account tab</span>
-cast send 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 \
+cast send &lt;VAULT&gt; \
   "claim(address,uint256,uint256,bytes32,bytes32[])" \
   &lt;TO&gt; &lt;AMOUNT&gt; &lt;NONCE&gt; &lt;ROOT&gt; &lt;PROOF&gt; \
   --rpc-url https://sepolia.base.org --private-key &lt;ANY_FUNDED_KEY&gt;</code></pre>
 <p class="dim">Each claim can execute once (<code>AlreadyClaimed</code> on replay), and any historically published root stays claimable — a later root can never strand your withdrawal.</p>
 </div>
+
+<h2 id="refunds">If the exchange enters close-only mode</h2>
+<p>Close-only mode is permanent: the vault takes no new deposits, and from then on only the wind-down settles. A deposit that reached the vault but that settled state never credited is then refundable in full, straight from the vault. The refund needs no gateway and no operator.</p>
+<ul>
+  <li>The app lists such deposits under <em>Refundable deposits</em> on the Account tab, with a wallet button and a copyable command.</li>
+  <li>From the command line, take <code>id</code> from the vault's <code>Deposit</code> event in your deposit transaction's receipt (<code>cast receipt &lt;TX&gt;</code>); <code>from</code>, <code>ownerCommit</code> and <code>amount</code> are the values you deposited with.</li>
+</ul>
+<pre><code><span class="c"># refund to the depositing address; anyone may send this</span>
+cast send &lt;VAULT&gt; \
+  "refundDeposit(uint64,address,bytes32,uint256,address)" \
+  &lt;ID&gt; &lt;FROM&gt; &lt;OWNER_COMMIT&gt; &lt;AMOUNT&gt; &lt;FROM&gt; \
+  --rpc-url https://sepolia.base.org --private-key &lt;ANY_FUNDED_KEY&gt;</code></pre>
+<p class="dim">The vault checks the first four values against its own deposit record. The last argument is the recipient: anyone may send the refund to <code>&lt;FROM&gt;</code>, and only <code>&lt;FROM&gt;</code> itself may name another recipient. Each deposit refunds once (<code>AlreadyRefunded</code>). A deposit that settled state already credited is not refundable (<code>NotRefundable</code>): that balance leaves through the normal withdrawal and claim path.</p>
 
 <h2>Next steps</h2>
 <ul class="next-links">
