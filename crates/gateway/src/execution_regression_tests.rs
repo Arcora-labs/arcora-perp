@@ -83,7 +83,8 @@ mod execution_regressions {
             .collect();
         let mut bytes = execution::SNAPSHOT_V7.to_vec();
         bytes.extend_from_slice(deposit_ingestion::SNAPSHOT_V6);
-        bytes.extend_from_slice(&postcard::to_allocvec(&(gw, prices, &gw.deposits)).unwrap());
+        let deposits = deposit_ingestion::DepositStateV6::from_current(&gw.deposits);
+        bytes.extend_from_slice(&postcard::to_allocvec(&(gw, prices, &deposits)).unwrap());
         execution::append_snapshot(gw, &mut bytes);
         bytes
     }
@@ -454,7 +455,7 @@ mod execution_regressions {
         let raw = v7_snapshot(&gw);
         let payload = raw.strip_prefix(execution::SNAPSHOT_V7).unwrap()
             .strip_prefix(deposit_ingestion::SNAPSHOT_V6).unwrap();
-        type LegacyPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositState);
+        type LegacyPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositStateV6);
         let (_, rest): (LegacyPart, _) = postcard::take_from_bytes(payload).unwrap();
         assert!(!rest.is_empty());
         assert!(Gw::boot_restored(&raw[..raw.len() - rest.len()]).is_err());
@@ -493,10 +494,10 @@ mod execution_regressions {
         let payload = raw
             .strip_prefix(account_recovery::SNAPSHOT_V8)
             .unwrap()
-            .strip_prefix(deposit_ingestion::SNAPSHOT_V6)
+            .strip_prefix(deposit_ingestion::SNAPSHOT_V7)
             .unwrap();
-        type LegacyPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositState);
-        let (_, rest): (LegacyPart, _) = postcard::take_from_bytes(payload).unwrap();
+        type CurrentPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositState);
+        let (_, rest): (CurrentPart, _) = postcard::take_from_bytes(payload).unwrap();
         assert!(!rest.is_empty());
         assert!(Gw::boot_restored(&raw[..raw.len() - rest.len()]).is_err());
         let legacy = v7_snapshot(&gw);

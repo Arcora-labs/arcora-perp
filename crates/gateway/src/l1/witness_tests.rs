@@ -20,9 +20,11 @@ pub(super) enum Fault {
     Bool,
     Overflow,
     Tuple,
-    Log(usize),
+    /// Malformed or impossible open-challenge set (see the fixture).
+    OpenSet(usize),
+    /// The open set has 513 entries, so it spans two pages.
+    LargeOpenSet,
     ForkWorld,
-    Deadline(u8),
     Lagging,
     FinalizedHash,
     AnchorHash,
@@ -116,21 +118,49 @@ impl Rpc for Fixture {
                     params[1],
                     json!({"blockHash":crate::hex32(&expected_hash),"requireCanonical":true})
                 );
+                enum Ret {
+                    U(u64),
+                    Full(u8),
+                    Addr,
+                }
+                use Ret::{Addr, Full, U};
+                // Indices are stable: `Fault::Word(n)` and `Fault::Bool` address them.
                 let words = [
-                    ("batchCount()", 6),
-                    ("currentStateRoot()", 3),
-                    ("sequencerBond()", 77),
-                    ("closeOnly()", 0),
-                    ("depositCount()", 7),
-                    ("depositTipAt(uint64)", 4),
-                    ("claimed(bytes32)", 1),
-                    ("requiredBond()", 30),
-                    ("challengeWindowBlocks()", 200),
-                    ("challenges(bytes32)", 1),
-                    ("windDownSettled()", 0),
+                    ("batchCount()", U(6)),
+                    ("currentStateRoot()", Full(3)),
+                    ("sequencerBond()", U(77)),
+                    ("closeOnly()", U(0)),
+                    ("depositCount()", U(7)),
+                    ("depositTipAt(uint64)", Full(4)),
+                    ("claimed(bytes32)", U(1)),
+                    ("requiredBond()", U(30)),
+                    ("slashCount()", U(0)),
+                    ("challenges(bytes32)", U(1)),
+                    ("windDownSettled()", U(0)),
+                    ("depositCapacity()", U(1_000_000)),
+                    ("openChallengeCount()", U(1)),
+                    ("openChallenges(uint256,uint256)", U(0)),
+                    ("ABI_VERSION()", U(3)),
+                    ("verifier()", Addr),
+                    ("proofVersion()", U(2)),
+                    ("vault()", Addr),
+                    ("settlement()", Addr),
+                    ("anchorTimeoutMs()", U(3_600_000)),
+                    ("livenessTimeoutBlocks()", U(43_200)),
+                    ("consumedDepositCount()", U(5)),
+                    ("acceptingDeposits()", U(1)),
+                    ("lastProgressBlock()", U(20)),
+                    ("pendingEth(address)", U(0)),
+                    ("challengeGraceBlocks()", U(3_600)),
+                    ("progressBatches()", U(2)),
+                    ("slashPayoutCap()", U(1_000_000_000)),
+                    ("challengeBond()", U(10_000_000_000_000_000)),
+                    ("inclusionDeadlineSecs()", U(3_600)),
+                    ("enclaveSigner()", Addr),
+                    ("sequencer()", Addr),
                 ];
                 let data = params[0]["data"].as_str().unwrap();
-                let (index, (signature, value)) = words
+                let (index, (_, value)) = words
                     .iter()
                     .enumerate()
                     .find(|(_, (signature, _))| {
@@ -139,24 +169,38 @@ impl Rpc for Fixture {
                         ))
                     })
                     .expect("known state getter");
-                assert_eq!(data.len(), if [5, 6, 9].contains(&index) { 74 } else { 10 });
+                let args = match index {
+                    5 | 6 | 9 | 24 => 1,
+                    13 => 2,
+                    _ => 0,
+                };
+                assert_eq!(data.len(), 10 + 64 * args);
                 if index == 5 {
                     assert_eq!(&data[10..], &crate::hex32(&observation::u64_word(5))[2..]);
                 }
                 if matches!(self.fault, Fault::MalformedWord) {
                     return Ok(json!("0xbad"));
                 }
-                let mut word = if index == 1 || index == 5 {
-                    [*value; 32]
-                } else {
-                    [0; 32]
+                let mut word = match value {
+                    U(n) => observation::u64_word(*n),
+                    Full(b) => [*b; 32],
+                    Addr => {
+                        observation::address_word(&crate::parse_addr20_hex(SETTLEMENT).unwrap())
+                    }
                 };
-                word[31] = *value;
+                let count = match self.fault {
+                    Fault::OpenSet(3) => 2,
+                    Fault::LargeOpenSet => 513,
+                    _ => 1,
+                };
+                if index == 12 {
+                    word = observation::u64_word(count);
+                }
                 if index == 6 && data.ends_with("02") {
                     word[31] = 0;
                 }
                 if matches!(self.fault, Fault::Word(n) if n == index) {
-                    word[31] += 1;
+                    word[31] = word[31].wrapping_add(1);
                 }
                 if matches!(self.fault, Fault::Bool) && [3, 6, 9].contains(&index) {
                     word[31] = 2;
@@ -164,21 +208,59 @@ impl Rpc for Fixture {
                 if matches!(self.fault, Fault::Overflow) {
                     word[0] = 1;
                 }
+                if index == 13 {
+                    let start = u64::from_str_radix(&data[10 + 48..10 + 64], 16).unwrap();
+                    let max = u64::from_str_radix(&data[74 + 48..74 + 64], 16).unwrap();
+                    assert_eq!(max, 512);
+                    let entries: Vec<Digest> = match self.fault {
+                        Fault::OpenSet(0) => vec![],
+                        Fault::OpenSet(3) => vec![[5; 32], [5; 32]],
+                        Fault::LargeOpenSet => (start..count.min(start + max))
+                            .map(|i| {
+                                let mut h = observation::u64_word(i);
+                                h[0] = 0xcc;
+                                h
+                            })
+                            .collect(),
+                        _ => vec![[5; 32]],
+                    };
+                    let mut out = observation::u64_word(32).to_vec();
+                    let length =
+                        entries.len() as u64 + u64::from(matches!(self.fault, Fault::OpenSet(2)));
+                    out.extend(observation::u64_word(length));
+                    if matches!(self.fault, Fault::OpenSet(1)) {
+                        out[31] = 64;
+                    }
+                    for e in entries {
+                        out.extend(e);
+                    }
+                    return Ok(json!(crate::hex0x(&out)));
+                }
                 if index == 9 {
                     let mut tuple = vec![0; 192];
-                    tuple[63] = 16;
-                    tuple[95] = 16;
-                    tuple[127] = match self.fault {
-                        Fault::Deadline(n) => n,
-                        _ => 200,
+                    if !matches!(self.fault, Fault::OpenSet(7)) {
+                        tuple[12..32].copy_from_slice(&[0x33; 20]);
+                    }
+                    tuple[95] = if matches!(self.fault, Fault::OpenSet(6)) {
+                        29
+                    } else {
+                        16
                     };
+                    tuple[127] = if matches!(self.fault, Fault::OpenSet(5)) {
+                        7
+                    } else {
+                        6
+                    };
+                    tuple[159] = 1;
                     tuple[160..].copy_from_slice(&word);
+                    if matches!(self.fault, Fault::OpenSet(4)) {
+                        tuple[191] = 0;
+                    }
                     if matches!(self.fault, Fault::Tuple) {
                         tuple.pop();
                     }
                     return Ok(json!(crate::hex0x(&tuple)));
                 }
-                let _ = signature;
                 Ok(json!(crate::hex32(&word)))
             }
             "eth_getCode" => {
@@ -201,47 +283,7 @@ impl Rpc for Fixture {
                         json!([])
                     });
                 }
-                use sha3::{Digest as _, Keccak256};
-                assert_eq!(params[0]["fromBlock"], json!("0x10"));
-                assert_eq!(params[0]["toBlock"], json!("0x1c"));
-                let topic = crate::hex0x(&Keccak256::digest(
-                    b"InclusionChallenged(bytes32,address,uint256)",
-                ));
-                assert_eq!(params[0]["topics"], json!([topic]));
-                assert_eq!(params[0]["address"], json!(SETTLEMENT));
-                if matches!(self.fault, Fault::Log(0)) {
-                    return Ok(json!([]));
-                }
-                let mut event = json!({"address":SETTLEMENT,"removed":false,"blockNumber":"0x10","blockHash":crate::hex32(&[9;32]),"transactionHash":crate::hex32(&[7;32]),"transactionIndex":"0x0","logIndex":"0x1","topics":[topic,crate::hex32(&[5;32]),crate::hex32(&observation::u64_word(1))],"data":crate::hex32(&observation::u64_word(200))});
-                match self.fault {
-                    Fault::ForkWorld => {
-                        event["blockHash"] = json!(crate::hex32(&[8; 32]));
-                        event["topics"][1] = json!(crate::hex32(&[6; 32]));
-                    }
-                    Fault::Log(1) => event["removed"] = json!(true),
-                    Fault::Log(2) => {
-                        event["address"] = json!("0x00000000000000000000000000000000000000bb")
-                    }
-                    Fault::Log(3) => event["topics"][0] = json!(crate::hex32(&[6; 32])),
-                    Fault::Log(4) => event["blockHash"] = json!(crate::hex32(&[8; 32])),
-                    Fault::Log(5) => event["blockNumber"] = json!("0xf"),
-                    Fault::Log(6) => event["data"] = json!("0xbad"),
-                    Fault::Log(7) => return Ok(json!([event, event])),
-                    Fault::Log(8) => {
-                        event["address"] =
-                            json!(format!("0x{}{}", "00".repeat(12), &SETTLEMENT[2..]))
-                    }
-                    Fault::Log(9) => {
-                        event["data"] = json!(crate::hex32(&observation::u64_word(16)))
-                    }
-                    Fault::Log(10) => {
-                        let mut duplicate = event.clone();
-                        duplicate["transactionIndex"] = json!("0x1");
-                        return Ok(json!([event, duplicate]));
-                    }
-                    _ => {}
-                }
-                Ok(json!([event]))
+                panic!("unpinned log range reached the fixture")
             }
             _ => panic!("non-read method reached fixture: {method}"),
         }

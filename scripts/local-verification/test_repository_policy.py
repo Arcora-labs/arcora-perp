@@ -57,6 +57,18 @@ class RepositoryPolicyTests(unittest.TestCase):
             self.assertNotIn("    paths:", trigger)
             self.assertNotIn("    paths-ignore:", trigger)
 
+    def test_every_opt_in_anvil_suite_runs_in_a_workflow(self):
+        # An `ARCORA_RUN_*` gate that no workflow sets is a suite CI always skips.
+        import re
+        gates = set()
+        for path in (ROOT / "scripts").rglob("*.py"):
+            gates.update(re.findall(r"environ\.get\(\s*[\"'](ARCORA_RUN_[A-Z0-9_]+)[\"']", path.read_text()))
+        self.assertIn("ARCORA_RUN_CLAIM_ANVIL", gates)
+        workflows = "\n".join(p.read_text() for p in (ROOT / ".github/workflows").glob("*.yml"))
+        for gate in sorted(gates):
+            with self.subTest(gate=gate):
+                self.assertRegex(workflows, rf"\b{gate}=1\b")
+
 
 if __name__ == "__main__":
     unittest.main()

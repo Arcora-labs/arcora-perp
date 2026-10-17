@@ -153,9 +153,16 @@ aracını kullanın. Rollback korumalı uzaktan imza veya key release servisi yo
 **Cursor yerleşimi:** deposit domain, tüketilen count/tip, receipt ledger ve
 finalized anchor snapshot içindedir; ayrıca taşınacak bir deposit-cursor dosyası
 yoktur. Restore sonrası L1 prefix/anchor doğrulaması yeniden gerekir. Challenge
-tarama cursor'u kalıcı dosya değildir; boot'ta mevcut challenge penceresini geri
-sararak yeniden kurulur. Uzun kesintide kaçmış challenge deadline'ları bu testle
-kapanmış sayılmaz.
+için kalıcı durum yoktur, kopyalanacak bir şey de yoktur: gateway açık challenge
+kümesini her tick'te settlement'tan (`openChallengeCount()` / `openChallenges`)
+yeniden okur; cursor, pencere veya deploy bloğu tutulmaz. Açık bir challenge,
+slash ya da release gelene kadar cevaplanabilir kalır ve gateway kalktığı ilk
+tick'te cevaplamayı dener. Tek istisna: challenge açıldıktan sonra
+`progressBatches` batch zaten settle olmuşsa, `challengeGraceBlocks` dolunca
+cevapsız challenge'ı herkes `slashUnanswered` ile slash'leyebilir; uzun bir
+kesintide bu olabilir ve restore onu geri almaz. Bir slash olduysa bond
+top-up'ları operatör `POST /v1/admin/bond/acknowledge-slash` ile onaylayana kadar
+durur.
 
 `deposit_ingestion::paired_recovery_tests` üç sentetik deposit (biri pencere
 mühürlendikten sonra), imzalı bir çekim ve gerçek şifreli snapshot/journal ile

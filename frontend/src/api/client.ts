@@ -14,6 +14,7 @@ import type {
   OrderBookSnapshot,
   OrderInput,
   RecoveredNote,
+  RefundableDeposit,
   Receipt,
   SystemMode,
   TrackedOrder,
@@ -126,6 +127,13 @@ export interface DarkPerpClient {
   /// of dead-ending after `requestWithdrawal`. `null` = unsupported (mock) or no
   /// account provisioned yet; the UI hides the surface entirely then.
   listWithdrawals(): Promise<{ withdrawals: WithdrawalEntry[]; vault: string } | null>;
+
+  /// Optional (the real client implements it; the mock has no L1 vault): the
+  /// account's vault deposits that settled state never credited and that the
+  /// vault will refund on-chain because the exchange is in close-only mode,
+  /// plus the vault they refund from. `null` = unsupported, no account, or the
+  /// gateway could not be read; the UI then hides the refund surface.
+  listRefundableDeposits?(): Promise<{ deposits: RefundableDeposit[]; vault: string } | null>;
 
   // ── demo-only surfaces (SEC-025-E1 Task 3) ────────────────────────────────
   // OPTIONAL because their legacy /api/* routes exist only in the demo build

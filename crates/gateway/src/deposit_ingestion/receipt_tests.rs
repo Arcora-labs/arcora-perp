@@ -7,12 +7,13 @@ fn newly_applied_credit() -> (Gw, [u8; 32], String) {
     let amount = 5_000_000;
     gw.accounts.get_mut(&key).unwrap().deposit_address = Some(from);
     let commit = gw
-        .authorize_routed_deposit(&key, from, amount, 1, Purpose::Collateral)
+        .authorize_routed_deposit(&key, from, amount, 1, Purpose::Collateral, u64::MAX)
         .unwrap();
     let start = gw.deposit_cursor();
     let block = Block {
         number: 1,
         hash: [7; 32],
+        timestamp: None,
     };
     let tx = [9; 32];
     let event = Event {
@@ -112,4 +113,36 @@ fn a01_receipt_read_does_not_reroute_a_durable_credit() {
     );
     assert_eq!(gw.seq.state.insurance_fund, 0);
     assert_eq!(gw.seq.state.consumed_deposit_count, 1);
+}
+
+#[tokio::test]
+async fn receipt_reports_unsettled_and_refundable_credits() {
+    let (mut gw, key, tx) = newly_applied_credit();
+    gw.deposits.dirty = false;
+    let read = |gw: &Gw| confirmed_receipt(gw, &key, &tx, 1, Purpose::Collateral);
+    assert_eq!(body(read(&gw)).await["status"], "credited");
+    gw.note_settled_deposit_count(0);
+    let unsettled = body(read(&gw)).await;
+    assert_eq!(unsettled["status"], "credited_unsettled");
+    assert_eq!(unsettled["credited"], "5000000");
+    assert!(unsettled.get("refundable").is_none());
+    gw.deposits.l1_close_only = true;
+    let refundable = body(read(&gw)).await;
+    assert_eq!(refundable["status"], "refundable");
+    let commit = gw.deposits.credits[&0].event.commit;
+    assert_eq!(
+        refundable["refundable"],
+        serde_json::json!([{
+            "id": 0,
+            "from": hex0x(&[0x42; 20]),
+            "ownerCommit": hex0x(&commit),
+            "amount": "5000000",
+        }])
+    );
+    // A deposit the gateway never credited cannot be pending after close-only.
+    let response = confirmed_receipt(&gw, &key, &hex0x(&[8; 32]), 1, Purpose::Collateral);
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(body(response).await["error"], CLOSE_ONLY_INTAKE);
+    gw.note_settled_deposit_count(1);
+    assert_eq!(body(read(&gw)).await["status"], "credited");
 }

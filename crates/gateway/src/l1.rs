@@ -22,9 +22,13 @@ use perp_core::Digest;
 use std::process::Command;
 
 mod clock_binding;
+mod nonce_fence;
 mod observation;
+pub(crate) use clock_binding::AnchorAge;
 use clock_binding::ClockConfig;
-use observation::{abi_bool, abi_u128, abi_u64, CanonicalRead};
+pub(crate) use nonce_fence::{fence_path, Ceiling, NonceFence};
+use observation::{abi_address, abi_bool, abi_u128, abi_u64, address_word, CanonicalRead};
+pub(crate) use observation::{OpenChallenge, OpenSetRead};
 
 impl L1 {
     /// Resolved public configuration only: no RPC, key, URL or registration read.
@@ -44,6 +48,17 @@ impl L1 {
 /// recomputes it from the signature string and guards against drift.
 pub(super) const DEPOSIT_TOPIC0: &str =
     "0xdf3f00354434921901d8a49f26c4b0e4a907d497e57f2e9478e9ba4ea43eb0f9";
+
+/// `DarkPerpSettlement.ABI_VERSION()` this gateway speaks. Boot refuses any other.
+pub(crate) const ABI_VERSION: u64 = 3;
+/// Seconds per block on the settlement chain (Base makes one block every 2 s). The
+/// settlement counts its liveness window in blocks; permit lifetimes are seconds.
+pub(crate) const L1_BLOCK_SECS: u64 = 2;
+/// `BOND_BPS` in the settlement: the bond covers this share of TVL, in basis points.
+const BOND_BPS: u128 = 500;
+/// Stake refunds owed to the sequencer are swept to the answer key once they
+/// reach one default challenge stake (0.01 ETH), so they pay for answer gas.
+const STAKE_SWEEP_MIN_WEI: u128 = 10_000_000_000_000_000;
 
 /// Per-RPC timeout handed to every `cast` invocation (bounds each JSON-RPC call).
 const CAST_RPC_TIMEOUT_SECS: u64 = 15;
@@ -88,6 +103,365 @@ pub struct L1 {
     /// (settle loop + challenge-answer loop) serialize and never race. A failed send
     /// resets it to re-seed from chain on the next attempt.
     nonce: std::sync::Arc<std::sync::Mutex<Option<u64>>>,
+    /// Optional separate key for challenge answers (`L1_ANSWER_KEYSTORE`), with its
+    /// own nonce lane so answers never queue behind a register, settle or bond send.
+    /// `None` falls back to the sequencer lane.
+    answer: Option<AnswerLane>,
+    /// Bond top-up target and the operator's slash acknowledgement (shared by clones).
+    bond_policy: std::sync::Arc<BondPolicy>,
+    /// Freshness of the open-challenge read. The settle loop refuses to seal while
+    /// the watcher cannot see the open set.
+    challenge_discovery: crate::challenge_scan::Discovery,
+    /// The sequencer address, derived once from the keystore.
+    sequencer_addr: std::sync::Arc<std::sync::OnceLock<String>>,
+    /// Durable record of the highest sequencer-key nonce ever broadcast, set once
+    /// the state path is known and shared by every clone. Unset (tests, or no
+    /// persistence) records nothing, and recovery then treats the fence as unknown.
+    nonce_fence: std::sync::Arc<std::sync::OnceLock<NonceFence>>,
+    /// Set when answers may have routed stakes to the sequencer's `pendingEth`.
+    /// The settle loop sweeps them before admission pauses, so the claim never
+    /// sits on the sequencer lane while a window waits to register.
+    stake_sweep: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// A second signing key and its nonce tracker. The key file is the operator's;
+/// the gateway never writes or removes it.
+#[derive(Clone)]
+struct AnswerLane {
+    keystore_path: String,
+    password_file: String,
+    address: String,
+    nonce: std::sync::Arc<std::sync::Mutex<Option<u64>>>,
+}
+
+/// One signer as `send_on` sees it.
+struct Lane<'a> {
+    keystore_path: &'a str,
+    password_file: &'a str,
+    address: Option<&'a str>,
+    nonce: &'a std::sync::Mutex<Option<u64>>,
+}
+
+/// Bond policy (design: post capacity toward a TVL target; stop topping up after a
+/// slash until an operator acknowledges it).
+#[derive(Default)]
+pub(crate) struct BondPolicy {
+    /// `ceil(L1_BOND_TARGET_TVL * BOND_BPS / 10_000)`: the bond that covers the
+    /// configured TVL target.
+    target_tvl_bond: u128,
+    /// The highest `slashCount()` an operator has acknowledged.
+    acknowledged_slashes: std::sync::atomic::AtomicU64,
+    /// Set while one top-up is being sent.
+    in_flight: std::sync::atomic::AtomicBool,
+}
+
+impl BondPolicy {
+    /// Record an operator's acknowledgement of `requested` slashes. Only the
+    /// exact `observed` count is accepted: a stale count would leave a newer slash
+    /// unseen, and a future one would pre-acknowledge slashes that have not
+    /// happened. The acknowledged count never goes down.
+    fn acknowledge(&self, observed: u64, requested: u64) -> Result<u64, String> {
+        if observed != requested {
+            return Err(format!(
+                "slashCount() is {observed}; acknowledge that exact value"
+            ));
+        }
+        self.acknowledged_slashes
+            .fetch_max(observed, std::sync::atomic::Ordering::SeqCst);
+        Ok(observed)
+    }
+}
+
+fn read_slash_count(r: &CanonicalRead<'_>, s: &str) -> Result<u64, String> {
+    abi_u64(r.word(s, "slashCount()", None)?, "slashCount")
+}
+
+/// Bond needed to cover `target_tvl` at `BOND_BPS`, rounded up.
+pub(crate) fn tvl_target_bond(target_tvl: u128) -> Option<u128> {
+    Some(target_tvl.checked_mul(BOND_BPS)?.checked_add(9_999)? / 10_000)
+}
+
+/// What `ensure_bond` decided from one observation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BondPlan {
+    Covered { target: u128 },
+    TopUp { amount: u128, target: u128 },
+    Paused { slash_count: u64, acknowledged: u64 },
+}
+
+/// Target `max(2 * requiredBond, bond for the TVL target)`. Any slash newer than
+/// the acknowledged count pauses top-ups, so a systematic answering fault cannot
+/// drain the operator one capped fine at a time.
+pub(crate) fn bond_plan(
+    required: u128,
+    bond: u128,
+    slash_count: u64,
+    acknowledged: u64,
+    target_tvl_bond: u128,
+) -> BondPlan {
+    if slash_count > acknowledged {
+        return BondPlan::Paused {
+            slash_count,
+            acknowledged,
+        };
+    }
+    let target = required.saturating_mul(2).max(target_tvl_bond);
+    if bond >= target {
+        BondPlan::Covered { target }
+    } else {
+        BondPlan::TopUp {
+            amount: target - bond,
+            target,
+        }
+    }
+}
+
+/// The result of one `ensure_bond` call.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BondOutcome {
+    Covered {
+        bond: u128,
+        target: u128,
+        capacity: u128,
+    },
+    ToppedUp {
+        tx: String,
+        amount: u128,
+        target: u128,
+    },
+    PausedAfterSlash {
+        slash_count: u64,
+        acknowledged: u64,
+    },
+    /// Another top-up is still being sent.
+    InFlight,
+}
+
+struct InFlight<'a>(&'a std::sync::atomic::AtomicBool);
+impl<'a> InFlight<'a> {
+    fn take(flag: &'a std::sync::atomic::AtomicBool) -> Option<Self> {
+        (!flag.swap(true, std::sync::atomic::Ordering::SeqCst)).then_some(Self(flag))
+    }
+}
+impl Drop for InFlight<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// One entry of a batched `answerChallenges` call.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChallengeAnswer {
+    pub order_hash: Digest,
+    pub by_rejection: bool,
+    pub proof: Vec<Digest>,
+}
+
+/// L1 terms the boot handshake checks before any other read relies on them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BootPosture {
+    pub abi_version: u64,
+    pub verifier: [u8; 20],
+    pub proof_version: u64,
+    pub vault: [u8; 20],
+    pub vault_settlement: [u8; 20],
+    pub anchor_timeout_ms: Option<u64>,
+    pub liveness_timeout_blocks: u64,
+    pub consumed_deposit_count: u64,
+    pub current_root: Digest,
+    /// `enclaveSigner()`: the only key whose challenge authorization the
+    /// settlement accepts.
+    pub enclave_signer: [u8; 20],
+    /// `sequencer()`: the only key that may register phase-0 anchors and settle.
+    pub sequencer: [u8; 20],
+}
+
+/// What this gateway is configured for and holds locally.
+#[derive(Clone, Debug)]
+pub(crate) struct BootExpectation {
+    pub settlement: [u8; 20],
+    pub vault: Option<[u8; 20]>,
+    pub clock_verifier: Option<[u8; 20]>,
+    /// The address of this gateway's enclave key, which signs every receipt's
+    /// `l1Challenge` authorization.
+    pub enclave_signer: [u8; 20],
+    /// The address of the sequencer keystore this gateway sends from.
+    pub sequencer: [u8; 20],
+    pub min_anchor_timeout_ms: u64,
+    pub last_settled_root: Digest,
+    pub live_root: Digest,
+    pub local_consumed: u64,
+    /// `DEPOSIT_PERMIT_TTL_SECS`.
+    pub permit_ttl_secs: u64,
+}
+
+/// The smallest `anchorTimeoutMs` that cannot cancel an anchor whose honest proof
+/// is still on its way: register finality, proving, settle finality, plus margin.
+pub(crate) fn min_anchor_timeout_ms(prover_timeout_secs: u64) -> u64 {
+    crate::clock_wait::FINALITY_BUDGET
+        .as_secs()
+        .saturating_mul(2)
+        .saturating_add(prover_timeout_secs)
+        .saturating_add(300)
+        .saturating_mul(1000)
+}
+
+/// Refuse to run against a settlement this binary does not speak, keys other
+/// than the settlement's enclave signer and sequencer, an unclocked or foreign
+/// verifier, an unpaired vault, a too-short anchor timeout, or a consumed-deposit
+/// count that disagrees with the settled root.
+pub(crate) fn check_boot_posture(p: &BootPosture, e: &BootExpectation) -> Result<(), String> {
+    if p.abi_version != ABI_VERSION {
+        return Err(format!(
+            "settlement ABI_VERSION is {}, this gateway speaks {ABI_VERSION}",
+            p.abi_version
+        ));
+    }
+    // Nothing else on L1 checks the enclave key: with another seed every
+    // receipt's l1Challenge would be refused (BadReceiptSignature) while trading,
+    // deposits and settlement all kept working.
+    if p.enclave_signer != e.enclave_signer {
+        return Err(format!(
+            "the settlement's enclaveSigner() is {} but ENCLAVE_SEED signs as {}; no inclusion challenge could be opened with this gateway's receipts",
+            crate::hex0x(&p.enclave_signer),
+            crate::hex0x(&e.enclave_signer)
+        ));
+    }
+    if p.sequencer != e.sequencer {
+        return Err(format!(
+            "the settlement's sequencer() is {} but the sequencer keystore is {}",
+            crate::hex0x(&p.sequencer),
+            crate::hex0x(&e.sequencer)
+        ));
+    }
+    if p.proof_version != 2 {
+        return Err(format!(
+            "settlement verifier proofVersion is {}, expected the clock-bound version 2",
+            p.proof_version
+        ));
+    }
+    match e.clock_verifier {
+        None => {
+            return Err("the settlement verifier is clock-bound; set CLOCK_BOUND_VERIFIER".into())
+        }
+        Some(v) if v != p.verifier => {
+            return Err("CLOCK_BOUND_VERIFIER is not the settlement's verifier()".into())
+        }
+        Some(_) => {}
+    }
+    match e.vault {
+        None => return Err("L1_VAULT is not set".into()),
+        Some(v) if v != p.vault => return Err("L1_VAULT is not the settlement's vault()".into()),
+        Some(_) if p.vault_settlement != e.settlement => {
+            return Err("the vault is not paired with this settlement".into())
+        }
+        Some(_) => {}
+    }
+    match p.anchor_timeout_ms {
+        Some(t) if t >= e.min_anchor_timeout_ms => {}
+        Some(t) => {
+            return Err(format!(
+                "clock anchorTimeoutMs {t} is below the {} ms an honest proof may take",
+                e.min_anchor_timeout_ms
+            ))
+        }
+        None => return Err("clock anchorTimeoutMs was not read".into()),
+    }
+    // A permit must expire well inside the liveness window: at most an eighth of
+    // it, so a permit issued just before a stall cannot outlive the stall by much.
+    let liveness_secs = u128::from(p.liveness_timeout_blocks) * u128::from(L1_BLOCK_SECS);
+    if u128::from(e.permit_ttl_secs) * 8 > liveness_secs {
+        return Err(format!(
+            "DEPOSIT_PERMIT_TTL_SECS {} exceeds an eighth of the settlement's {liveness_secs} s liveness window",
+            e.permit_ttl_secs
+        ));
+    }
+    // The continuity check reports a root mismatch on its own. With matching
+    // roots, the settled state binds exactly consumedDepositCount deposits; a
+    // live state with unsettled credits can only have consumed more.
+    if e.last_settled_root == p.current_root {
+        let ok = if e.live_root == e.last_settled_root {
+            e.local_consumed == p.consumed_deposit_count
+        } else {
+            e.local_consumed >= p.consumed_deposit_count
+        };
+        if !ok {
+            return Err(format!(
+                "local consumed deposit count {} disagrees with L1 consumedDepositCount {}",
+                e.local_consumed, p.consumed_deposit_count
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Immutable settlement parameters, logged at boot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SettlementParams {
+    pub liveness_timeout_blocks: u64,
+    pub challenge_grace_blocks: u64,
+    pub progress_batches: u64,
+    pub slash_payout_cap: u128,
+    pub challenge_bond: u128,
+    pub inclusion_deadline_secs: u64,
+}
+
+/// Deposit-gate terms at one block, for permit issuance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DepositGateObservation {
+    pub block: u64,
+    pub close_only: bool,
+    pub accepting_deposits: bool,
+    pub deposit_capacity: u128,
+    pub consumed_deposit_count: u64,
+    pub last_progress_block: u64,
+    pub liveness_timeout_blocks: u64,
+}
+impl DepositGateObservation {
+    /// Seconds left before anyone may trigger close-only for lack of progress.
+    pub(crate) fn remaining_liveness_secs(&self) -> u64 {
+        let idle = self.block.saturating_sub(self.last_progress_block);
+        self.liveness_timeout_blocks
+            .saturating_sub(idle)
+            .saturating_mul(L1_BLOCK_SECS)
+    }
+}
+
+/// Liveness terms at one block, for the keepalive and its alert.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct LivenessObservation {
+    pub head: u64,
+    pub last_progress_block: u64,
+    pub liveness_timeout_blocks: u64,
+    pub close_only: bool,
+}
+impl LivenessObservation {
+    /// Blocks since the settlement last progressed.
+    pub(crate) fn idle_blocks(&self) -> u64 {
+        self.head.saturating_sub(self.last_progress_block)
+    }
+    /// An idle gateway settles an empty keepalive batch once a quarter of the
+    /// liveness window has passed without progress.
+    pub(crate) fn keepalive_due(&self) -> bool {
+        !self.close_only && self.idle_blocks() >= self.liveness_timeout_blocks / 4
+    }
+    /// Blocks until the keepalive is due (0 once it is).
+    pub(crate) fn blocks_until_keepalive(&self) -> u64 {
+        (self.liveness_timeout_blocks / 4).saturating_sub(self.idle_blocks())
+    }
+    /// Half of the liveness window has passed without progress.
+    pub(crate) fn liveness_low(&self) -> bool {
+        !self.close_only && self.idle_blocks() >= self.liveness_timeout_blocks / 2
+    }
+}
+
+/// Settlement terms at the finalized block that ingestion and the account views
+/// depend on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SettlementFinality {
+    pub block: u64,
+    pub close_only: bool,
+    pub consumed_deposit_count: u64,
 }
 
 /// What the bridge last published — surfaced to the UI so on-chain settlement is visible.
@@ -165,6 +539,73 @@ fn witness_endpoint(primary: &str, witness: Option<String>) -> Result<Option<Str
     Ok(witness)
 }
 
+fn decimal_u128(value: &str) -> Option<u128> {
+    (!value.is_empty() && value.len() <= 39 && value.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| value.parse().ok())
+        .flatten()
+}
+
+/// `L1_BOND_TARGET_TVL` (USDC base units, default 0 = no TVL target) and
+/// `L1_BOND_ACKED_SLASH_COUNT` (default 0). Malformed values refuse to start.
+pub(crate) fn bond_policy_from_values(
+    target_tvl: Option<&str>,
+    acked: Option<&str>,
+) -> Result<BondPolicy, String> {
+    let target_tvl = match target_tvl {
+        None => 0,
+        Some(v) => decimal_u128(v).ok_or("L1_BOND_TARGET_TVL must be a decimal USDC amount")?,
+    };
+    let target_tvl_bond = tvl_target_bond(target_tvl).ok_or("L1_BOND_TARGET_TVL is too large")?;
+    let acknowledged = match acked {
+        None => 0,
+        Some(v) => decimal_u128(v)
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or("L1_BOND_ACKED_SLASH_COUNT must be a decimal count")?,
+    };
+    Ok(BondPolicy {
+        target_tvl_bond,
+        acknowledged_slashes: acknowledged.into(),
+        in_flight: false.into(),
+    })
+}
+
+/// Both answer-key paths or neither. The password file must not be readable by
+/// group or others.
+fn answer_paths_from_values(
+    keystore: Option<&str>,
+    password: Option<&str>,
+) -> Result<Option<(String, String)>, String> {
+    match (
+        keystore.filter(|s| !s.is_empty()),
+        password.filter(|s| !s.is_empty()),
+    ) {
+        (None, None) => Ok(None),
+        (Some(_), None) | (None, Some(_)) => {
+            Err("L1_ANSWER_KEYSTORE and L1_ANSWER_PASSWORD_FILE must be set together".into())
+        }
+        (Some(k), Some(p)) => {
+            if !std::path::Path::new(k).is_file() {
+                return Err("L1_ANSWER_KEYSTORE is not a readable file".into());
+            }
+            let meta = std::fs::metadata(p)
+                .map_err(|_| "L1_ANSWER_PASSWORD_FILE is not a readable file")?;
+            if !meta.is_file() {
+                return Err("L1_ANSWER_PASSWORD_FILE is not a readable file".into());
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                if meta.permissions().mode() & 0o077 != 0 {
+                    return Err(
+                        "L1_ANSWER_PASSWORD_FILE must not be readable by group or others".into(),
+                    );
+                }
+            }
+            Ok(Some((k.to_string(), p.to_string())))
+        }
+    }
+}
+
 fn witness_chain_override(declared: Option<&str>) -> Result<u64, String> {
     declared
         .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
@@ -174,6 +615,21 @@ fn witness_chain_override(declared: Option<&str>) -> Result<u64, String> {
             "L1_RPC_WITNESS with L1_ALLOW_MOCK_PROOF requires an explicit nonzero L1_CHAIN_ID"
                 .into()
         })
+}
+
+/// The read methods a settlement observation may send. `eth_getTransactionCount`
+/// is the sequencer nonce that the boot dead-intent check compares with the nonce
+/// fence. Nothing here signs or mutates.
+fn settlement_read_method(method: &str) -> bool {
+    matches!(
+        method,
+        "eth_chainId"
+            | "eth_getBlockByNumber"
+            | "eth_call"
+            | "eth_getCode"
+            | "eth_getLogs"
+            | "eth_getTransactionCount"
+    )
 }
 
 /// A restricted adapter for the optional witness policy. Neither endpoint receives
@@ -190,10 +646,7 @@ impl crate::deposit_rpc::Rpc for SettlementReader<'_> {
         method: &str,
         params: Vec<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
-        if !matches!(
-            method,
-            "eth_chainId" | "eth_getBlockByNumber" | "eth_call" | "eth_getCode" | "eth_getLogs"
-        ) {
+        if !settlement_read_method(method) {
             return Err("settlement observation: unsupported read method".into());
         }
         let mut args = vec![
@@ -253,6 +706,12 @@ impl L1 {
             usdc: None,
             vault: None,
             nonce: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            answer: None,
+            bond_policy: Default::default(),
+            challenge_discovery: Default::default(),
+            sequencer_addr: Default::default(),
+            nonce_fence: Default::default(),
+            stake_sweep: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
         }
     }
 
@@ -320,6 +779,29 @@ impl L1 {
             eprintln!("[clock] REFUSING to start: {error}");
             std::process::exit(1);
         });
+        // An empty value (as in deploy/env/gateway.env.example) means unset.
+        let bond_policy = bond_policy_from_values(
+            std::env::var("L1_BOND_TARGET_TVL")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .as_deref(),
+            std::env::var("L1_BOND_ACKED_SLASH_COUNT")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .as_deref(),
+        )
+        .unwrap_or_else(|error| {
+            eprintln!("[l1] REFUSING to start: {error}");
+            std::process::exit(1);
+        });
+        let answer_paths = answer_paths_from_values(
+            std::env::var("L1_ANSWER_KEYSTORE").ok().as_deref(),
+            std::env::var("L1_ANSWER_PASSWORD_FILE").ok().as_deref(),
+        )
+        .unwrap_or_else(|error| {
+            eprintln!("[l1] REFUSING to start: {error}");
+            std::process::exit(1);
+        });
         // audit DP-013: encrypt the key into a keystore, so it never enters a cast argv.
         let (keystore_path, password_file, dir) = match create_keystore(&key) {
             Ok(k) => k,
@@ -328,7 +810,7 @@ impl L1 {
                 std::process::exit(1);
             }
         };
-        Some(L1 {
+        let mut l1 = L1 {
             clock,
             rpc,
             rpc_witness,
@@ -339,6 +821,66 @@ impl L1 {
             _keystore: std::sync::Arc::new(KeystoreDir(dir)),
             usdc: std::env::var("L1_USDC").ok(),
             vault: std::env::var("L1_VAULT").ok(),
+            nonce: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            answer: None,
+            bond_policy: std::sync::Arc::new(bond_policy),
+            challenge_discovery: Default::default(),
+            sequencer_addr: Default::default(),
+            nonce_fence: Default::default(),
+            // Stakes may have accrued before this start.
+            stake_sweep: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+        };
+        match answer_paths {
+            Some((keystore_path, password_file)) => {
+                match l1.answer_lane_from(keystore_path, password_file) {
+                    Ok(lane) => {
+                        println!("[l1] challenge answers use their own key {}", lane.address);
+                        l1.answer = Some(lane);
+                    }
+                    Err(e) => {
+                        eprintln!("[l1] REFUSING to start: {e}");
+                        l1.cleanup_keystore();
+                        std::process::exit(1);
+                    }
+                }
+            }
+            None => eprintln!(
+                "[l1] WARN: L1_ANSWER_KEYSTORE is not set; challenge answers share the \
+                 sequencer key and nonce lane with register, settle and bond sends"
+            ),
+        }
+        Some(l1)
+    }
+
+    /// Validate the operator's answer keystore: its address must differ from the
+    /// sequencer's, or the two nonce trackers would race on one account.
+    fn answer_lane_from(
+        &self,
+        keystore_path: String,
+        password_file: String,
+    ) -> Result<AnswerLane, String> {
+        let address = self
+            .cast(&[
+                "wallet",
+                "address",
+                "--keystore",
+                &keystore_path,
+                "--password-file",
+                &password_file,
+            ])
+            .map_err(|_| "L1_ANSWER_KEYSTORE does not open with L1_ANSWER_PASSWORD_FILE")?;
+        let parsed = crate::parse_addr20_hex(address.trim())
+            .ok_or("L1_ANSWER_KEYSTORE did not yield an address")?;
+        let sequencer = self.sequencer_address()?;
+        if crate::parse_addr20_hex(&sequencer) == Some(parsed) {
+            return Err(
+                "L1_ANSWER_KEYSTORE must hold a different key than L1_SEQUENCER_KEY".into(),
+            );
+        }
+        Ok(AnswerLane {
+            keystore_path,
+            password_file,
+            address: crate::hex0x(&parsed),
             nonce: std::sync::Arc::new(std::sync::Mutex::new(None)),
         })
     }
@@ -369,10 +911,9 @@ impl L1 {
         )
     }
 
-    /// The confirmed transaction count of the sequencer address = its next unused nonce.
-    fn chain_nonce(&self) -> Result<u64, String> {
-        let addr = self.sequencer_address()?;
-        let out = self.cast(&["nonce", &addr, "--rpc-url", &self.rpc])?;
+    /// The confirmed transaction count of `addr` = its next unused nonce.
+    fn chain_nonce(&self, addr: &str) -> Result<u64, String> {
+        let out = self.cast(&["nonce", addr, "--rpc-url", &self.rpc])?;
         out.split_whitespace()
             .next()
             .unwrap_or("")
@@ -461,18 +1002,61 @@ impl L1 {
         args: &[&str],
         gas_limit: Option<&str>,
     ) -> Result<String, String> {
-        let mut guard = self.nonce.lock().map_err(|_| "nonce lock poisoned")?;
+        self.send_on(self.sequencer_lane(), target, sig, args, gas_limit)
+    }
+
+    fn sequencer_lane(&self) -> Lane<'_> {
+        Lane {
+            keystore_path: &self.keystore_path,
+            password_file: &self.password_file,
+            address: None,
+            nonce: &self.nonce,
+        }
+    }
+
+    /// The answer key's lane when configured, else the sequencer's.
+    fn answer_lane(&self) -> Lane<'_> {
+        match &self.answer {
+            Some(a) => Lane {
+                keystore_path: &a.keystore_path,
+                password_file: &a.password_file,
+                address: Some(&a.address),
+                nonce: &a.nonce,
+            },
+            None => self.sequencer_lane(),
+        }
+    }
+
+    fn send_on(
+        &self,
+        lane: Lane<'_>,
+        target: &str,
+        sig: &str,
+        args: &[&str],
+        gas_limit: Option<&str>,
+    ) -> Result<String, String> {
+        let mut guard = lane.nonce.lock().map_err(|_| "nonce lock poisoned")?;
         let n = match *guard {
             Some(n) => n,
-            None => self.chain_nonce()?,
+            None => match lane.address {
+                Some(addr) => self.chain_nonce(addr)?,
+                None => self.chain_nonce(&self.sequencer_address()?)?,
+            },
         };
+        // A sequencer-key nonce is made durable before the transaction can exist,
+        // so recovery can tell when no transaction of ours is still pending.
+        if lane.address.is_none() {
+            if let Some(fence) = self.nonce_fence.get() {
+                fence.cover(n)?;
+            }
+        }
         let a = send_args(
             target,
             sig,
             args,
             &n.to_string(),
-            &self.keystore_path,
-            &self.password_file,
+            lane.keystore_path,
+            lane.password_file,
             &self.rpc,
             gas_limit,
         );
@@ -486,6 +1070,29 @@ impl L1 {
                 *guard = None; // re-seed from chain next time
                 Err(e)
             }
+        }
+    }
+
+    /// Install the durable nonce fence. Once per process, before the first send.
+    pub(crate) fn set_nonce_fence(&self, fence: NonceFence) -> Result<(), String> {
+        self.nonce_fence
+            .set(fence)
+            .map_err(|_| "the nonce fence is already installed".to_string())
+    }
+
+    /// What the fence knows; `Unknown` when none is installed.
+    pub(crate) fn nonce_ceiling(&self) -> Ceiling {
+        self.nonce_fence
+            .get()
+            .map_or(Ceiling::Unknown, NonceFence::ceiling)
+    }
+
+    /// After the journal found at boot is resolved, start recording a fence that
+    /// was missing next to it (see `NonceFence::start_fresh_if_unknown`).
+    pub(crate) fn restart_unknown_nonce_fence(&self) -> Result<(), String> {
+        match self.nonce_fence.get() {
+            Some(fence) => fence.start_fresh_if_unknown(),
+            None => Ok(()),
         }
     }
 
@@ -616,6 +1223,32 @@ impl L1 {
         })
     }
 
+    /// The settled L1 state the close-only rebase returns to, at the finalized
+    /// block: close-only is final there, and so are the root and counts.
+    pub(crate) fn close_only_settled_observation(
+        &self,
+    ) -> Result<crate::wind_down::SettledL1, String> {
+        self.observe(|r| {
+            Ok(crate::wind_down::SettledL1 {
+                block: r.height(),
+                close_only: abi_bool(r.word(&self.settlement, "closeOnly()", None)?, "closeOnly")?,
+                settled: abi_bool(
+                    r.word(&self.settlement, "windDownSettled()", None)?,
+                    "windDownSettled",
+                )?,
+                batch_count: abi_u64(
+                    r.word(&self.settlement, "batchCount()", None)?,
+                    "batchCount",
+                )?,
+                root: r.word(&self.settlement, "currentStateRoot()", None)?,
+                consumed_deposit_count: abi_u64(
+                    r.word(&self.settlement, "consumedDepositCount()", None)?,
+                    "consumedDepositCount",
+                )?,
+            })
+        })
+    }
+
     #[cfg(test)]
     pub fn close_only_observation(&self) -> Result<(u64, bool), String> {
         self.observe_at(observation::AnchorPolicy::Latest, |r| {
@@ -628,54 +1261,145 @@ impl L1 {
 
     /// The sequencer key's address (the `cast wallet` derivation; no key is printed).
     fn sequencer_address(&self) -> Result<String, String> {
-        self.cast(&[
+        if let Some(addr) = self.sequencer_addr.get() {
+            return Ok(addr.clone());
+        }
+        let out = self.cast(&[
             "wallet",
             "address",
             "--keystore",
             &self.keystore_path,
             "--password-file",
             &self.password_file,
-        ])
+        ])?;
+        let addr = crate::parse_addr20_hex(out.trim())
+            .map(|a| crate::hex0x(&a))
+            .ok_or("sequencer keystore did not yield an address")?;
+        Ok(self.sequencer_addr.get_or_init(|| addr).clone())
     }
 
-    /// Ensure the USDC sequencer bond covers `requiredBond()` plus headroom. On the
-    /// testnet MockUSDC faucet this mints what's short to the sequencer, approves the
-    /// settlement, and `postBond`s it. Returns the postBond tx hash if it topped up.
-    /// USDC-denominated so the posted bond shares a unit with the 5%-of-TVL floor (Q1).
-    pub fn ensure_bond(&self) -> Result<Option<String>, String> {
-        let usdc = self.usdc.as_ref().ok_or("L1_USDC not set")?;
-        let (req, have) = self.observe_at(observation::AnchorPolicy::Latest, |r| {
+    /// The chain the primary RPC serves; must equal the witness chain when one is set.
+    fn rpc_chain_id(&self) -> Result<u64, String> {
+        use crate::deposit_rpc::Rpc as _;
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let chain = observation::quantity(&primary.call("eth_chainId", vec![])?)?;
+        if self.witness_chain.is_some_and(|w| w != chain) {
+            return Err("settlement observation: RPC chain disagrees with startup domain".into());
+        }
+        Ok(chain)
+    }
+
+    /// Whether `token` is the testnet MockUSDC faucet (`name() == "Mock USD Coin"`)
+    /// on an allowlisted testnet. Any read failure counts as "no".
+    fn mintable_mock_token(&self, token: &str) -> bool {
+        let mut expected = observation::u64_word(32).to_vec();
+        expected.extend(observation::u64_word(13));
+        let mut text = [0u8; 32];
+        text[..13].copy_from_slice(b"Mock USD Coin");
+        expected.extend(text);
+        let is_mock = self
+            .observe_at(observation::AnchorPolicy::Latest, |r| {
+                r.call_bytes(token, "name()", &[])
+            })
+            .is_ok_and(|name| name == expected);
+        is_mock
+            && self
+                .rpc_chain_id()
+                .is_ok_and(|c| l1_chain_allowed(c, false))
+    }
+
+    /// Keep the USDC sequencer bond at `max(2 * requiredBond, bond for
+    /// L1_BOND_TARGET_TVL)`, so deposit capacity exists before the first deposit.
+    /// Mints only MockUSDC on an allowlisted testnet; otherwise the top-up comes
+    /// from the sequencer's own balance. Top-ups stop after any slash newer than the
+    /// acknowledged count. One top-up runs at a time.
+    pub fn ensure_bond(&self) -> Result<BondOutcome, String> {
+        let usdc = self.usdc.clone().ok_or("L1_USDC not set")?;
+        let Some(_in_flight) = InFlight::take(&self.bond_policy.in_flight) else {
+            return Ok(BondOutcome::InFlight);
+        };
+        let terms = self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            read_bond_terms(r, &self.settlement)
+        })?;
+        let (required, bond, slash_count, capacity) = (
+            terms.required,
+            terms.bond,
+            terms.slash_count,
+            terms.capacity,
+        );
+        let acknowledged = self
+            .bond_policy
+            .acknowledged_slashes
+            .load(std::sync::atomic::Ordering::SeqCst);
+        let (amount, target) = match bond_plan(
+            required,
+            bond,
+            slash_count,
+            acknowledged,
+            self.bond_policy.target_tvl_bond,
+        ) {
+            BondPlan::Covered { target } => {
+                return Ok(BondOutcome::Covered {
+                    bond,
+                    target,
+                    capacity,
+                })
+            }
+            BondPlan::Paused {
+                slash_count,
+                acknowledged,
+            } => {
+                return Ok(BondOutcome::PausedAfterSlash {
+                    slash_count,
+                    acknowledged,
+                })
+            }
+            BondPlan::TopUp { amount, target } => (amount, target),
+        };
+        let seq = self.sequencer_address()?;
+        let seq_word =
+            address_word(&crate::parse_addr20_hex(&seq).ok_or("invalid sequencer address")?);
+        let settlement_word = address_word(
+            &crate::parse_addr20_hex(&self.settlement).ok_or("invalid settlement address")?,
+        );
+        // Token amounts are uint256; anything above u128 (an unlimited allowance)
+        // covers every top-up, so it saturates instead of failing the read.
+        let saturating = |w: Digest| abi_u128(w, "token amount").unwrap_or(u128::MAX);
+        let (balance, allowance) = self.observe_at(observation::AnchorPolicy::Latest, |r| {
             Ok((
-                abi_u128(
-                    r.word(&self.settlement, "requiredBond()", None)?,
-                    "requiredBond",
-                )?,
-                abi_u128(
-                    r.word(&self.settlement, "sequencerBond()", None)?,
-                    "sequencerBond",
-                )?,
+                saturating(r.word(&usdc, "balanceOf(address)", Some(seq_word))?),
+                saturating(
+                    r.words_args(
+                        &usdc,
+                        "allowance(address,address)",
+                        &[seq_word, settlement_word],
+                        1,
+                    )?[0],
+                ),
             ))
         })?;
-        // No TVL yet ⇒ no bond required ⇒ post nothing. Forcing a floor here made the
-        // bridge re-`mint` every tick while the previous mint was still pending, colliding
-        // on the same nonce ("replacement transaction underpriced") — spurious churn that
-        // only ever *needs* to run once a deposit makes `requiredBond > 0`.
-        if req == 0 {
-            return Ok(None);
+        if balance < amount {
+            if !self.mintable_mock_token(&usdc) {
+                return Err(format!(
+                    "bond shortfall: sequencer USDC balance {balance} is below the {amount} \
+                     top-up toward a {target} bond; fund the sequencer"
+                ));
+            }
+            let mint = (amount - balance).to_string();
+            self.send(&usdc, "mint(address,uint256)", &[&seq, &mint])?;
         }
-        // target a 2x-floor cushion so TVL growth between settles stays covered.
-        let target = req.saturating_add(req);
-        if have >= target {
-            return Ok(None);
+        let amount_arg = amount.to_string();
+        if allowance < amount {
+            self.send(
+                &usdc,
+                "approve(address,uint256)",
+                &[&self.settlement, &amount_arg],
+            )?;
         }
-        let short = (target - have).to_string();
-        let seq = self.sequencer_address()?;
-        self.send(usdc, "mint(address,uint256)", &[&seq, &short])?;
-        self.send(
-            usdc,
-            "approve(address,uint256)",
-            &[&self.settlement, &short],
-        )?;
         // Explicit gas limit: drpc load-balances reads across backends, so postBond's
         // eth_estimateGas can hit a node that hasn't seen the just-mined approve and
         // revert "InsufficientAllowance" — even though same-sender nonce order makes
@@ -686,10 +1410,152 @@ impl L1 {
         let tx = self.send_opts(
             &self.settlement.clone(),
             "postBond(uint256)",
-            &[&short],
+            &[&amount_arg],
             Some("300000"),
         )?;
-        Ok(Some(tx))
+        Ok(BondOutcome::ToppedUp { tx, amount, target })
+    }
+
+    /// Resume bond top-ups after slashes. The operator names the exact current
+    /// `slashCount()`, so acknowledging can never cover a slash not yet seen.
+    pub(crate) fn acknowledge_slashes(&self, slash_count: u64) -> Result<u64, String> {
+        let observed = self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            read_slash_count(r, &self.settlement)
+        })?;
+        self.bond_policy.acknowledge(observed, slash_count)
+    }
+
+    /// The highest `slashCount()` acknowledged so far.
+    #[cfg(test)]
+    pub(crate) fn acknowledged_slash_count(&self) -> u64 {
+        self.bond_policy
+            .acknowledged_slashes
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Settlement immutables the gateway's timing depends on.
+    pub(crate) fn settlement_params(&self) -> Result<SettlementParams, String> {
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            read_settlement_params(r, &self.settlement)
+        })
+    }
+
+    /// The boot handshake terms, at one finalized block.
+    pub(crate) fn boot_posture(&self) -> Result<BootPosture, String> {
+        let clock = self.clock.as_ref().map(|c| crate::hex0x(&c.verifier));
+        self.observe(|r| read_boot_posture(r, &self.settlement, clock.as_deref()))
+    }
+
+    /// The expectation the boot handshake compares against. Reads the sequencer
+    /// keystore's address (a local `cast` call), so call it off the async runtime.
+    pub(crate) fn boot_expectation(
+        &self,
+        enclave_signer: [u8; 20],
+        last_settled_root: Digest,
+        live_root: Digest,
+        local_consumed: u64,
+        permit_ttl_secs: u64,
+    ) -> Result<BootExpectation, String> {
+        Ok(BootExpectation {
+            settlement: crate::parse_addr20_hex(&self.settlement)
+                .ok_or("invalid L1_SETTLEMENT address")?,
+            vault: match &self.vault {
+                Some(v) => Some(crate::parse_addr20_hex(v).ok_or("invalid L1_VAULT address")?),
+                None => None,
+            },
+            clock_verifier: self.clock.as_ref().map(|c| c.verifier),
+            enclave_signer,
+            sequencer: crate::parse_addr20_hex(&self.sequencer_address()?)
+                .ok_or("invalid sequencer address")?,
+            min_anchor_timeout_ms: min_anchor_timeout_ms(
+                crate::prover_client::prover_timeout_secs(),
+            ),
+            last_settled_root,
+            live_root,
+            local_consumed,
+            permit_ttl_secs,
+        })
+    }
+
+    /// Deposit-gate terms for permit issuance, at the latest block.
+    pub(crate) fn deposit_gate_observation(&self) -> Result<DepositGateObservation, String> {
+        let s = &self.settlement;
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            Ok(DepositGateObservation {
+                block: r.height(),
+                close_only: abi_bool(r.word(s, "closeOnly()", None)?, "closeOnly")?,
+                accepting_deposits: abi_bool(
+                    r.word(s, "acceptingDeposits()", None)?,
+                    "acceptingDeposits",
+                )?,
+                deposit_capacity: abi_u128(
+                    r.word(s, "depositCapacity()", None)?,
+                    "depositCapacity",
+                )?,
+                consumed_deposit_count: abi_u64(
+                    r.word(s, "consumedDepositCount()", None)?,
+                    "consumedDepositCount",
+                )?,
+                last_progress_block: abi_u64(
+                    r.word(s, "lastProgressBlock()", None)?,
+                    "lastProgressBlock",
+                )?,
+                liveness_timeout_blocks: abi_u64(
+                    r.word(s, "livenessTimeoutBlocks()", None)?,
+                    "livenessTimeoutBlocks",
+                )?,
+            })
+        })
+    }
+
+    /// `closeOnly()` and `consumedDepositCount()` at the finalized block.
+    pub(crate) fn settlement_finality(&self) -> Result<SettlementFinality, String> {
+        let s = &self.settlement;
+        self.observe(|r| {
+            Ok(SettlementFinality {
+                block: r.height(),
+                close_only: abi_bool(r.word(s, "closeOnly()", None)?, "closeOnly")?,
+                consumed_deposit_count: abi_u64(
+                    r.word(s, "consumedDepositCount()", None)?,
+                    "consumedDepositCount",
+                )?,
+            })
+        })
+    }
+
+    /// Whether the finalized block shows the settlement in close-only.
+    pub(crate) fn close_only_finalized(&self) -> Result<bool, String> {
+        self.settlement_finality().map(|f| f.close_only)
+    }
+
+    /// `consumedDepositCount()` at the finalized block.
+    #[allow(dead_code)] // consumed by the close-only rebase
+    pub(crate) fn consumed_deposit_count(&self) -> Result<u64, String> {
+        self.observe(|r| {
+            abi_u64(
+                r.word(&self.settlement, "consumedDepositCount()", None)?,
+                "consumedDepositCount",
+            )
+        })
+    }
+
+    /// Liveness terms for the keepalive, at the latest block.
+    pub(crate) fn liveness_observation(&self) -> Result<LivenessObservation, String> {
+        let s = &self.settlement;
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            Ok(LivenessObservation {
+                head: r.height(),
+                last_progress_block: abi_u64(
+                    r.word(s, "lastProgressBlock()", None)?,
+                    "lastProgressBlock",
+                )?,
+                liveness_timeout_blocks: abi_u64(
+                    r.word(s, "livenessTimeoutBlocks()", None)?,
+                    "livenessTimeoutBlocks",
+                )?,
+                close_only: abi_bool(r.word(s, "closeOnly()", None)?, "closeOnly")?,
+            })
+        })
     }
 
     /// All candidate claims share one finalized canonical snapshot. Any malformed
@@ -756,88 +1622,233 @@ impl L1 {
         sent
     }
 
-    // ── inclusion-challenge answering (audit DP-004) ─────────────────────────────
+    // ── inclusion-challenge answering ────────────────────────────────────────────
 
-    /// Latest canonical head and immutable challenge window read as one snapshot.
-    /// The watcher cannot substitute a guessed window after a read failure.
-    pub fn challenge_scan_start_observation(&self) -> Result<(u64, u64), String> {
+    /// The shared freshness of the open-challenge read.
+    pub(crate) fn challenge_discovery(&self) -> &crate::challenge_scan::Discovery {
+        &self.challenge_discovery
+    }
+
+    /// `openChallengeCount()` at the latest block.
+    #[allow(dead_code)] // consumed by the operator alerts
+    pub(crate) fn open_challenge_count(&self) -> Result<u64, String> {
         self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            Ok((
-                r.height(),
-                abi_u64(
-                    r.word(&self.settlement, "challengeWindowBlocks()", None)?,
-                    "challengeWindowBlocks",
-                )?,
-            ))
+            abi_u64(
+                r.word(&self.settlement, "openChallengeCount()", None)?,
+                "openChallengeCount",
+            )
         })
     }
 
-    /// Deadline-sensitive challenge discovery uses a bounded numeric range ending
-    /// at a hash shared by both providers. Empty pages still require agreement and
-    /// canonical rechecks. The cursor advances only through the checked page.
-    pub fn fetch_challenges(
+    /// The whole open-challenge set at one latest block, with a configured witness
+    /// agreeing on every word. Stored details are read for at most `max_details`
+    /// hashes that are not in `known` (they cannot change while open).
+    pub(crate) fn open_challenge_set(
         &self,
-        from_block: u64,
-    ) -> Result<(Vec<String>, u64, Option<Digest>), String> {
+        known: &std::collections::BTreeSet<Digest>,
+        max_details: usize,
+    ) -> Result<OpenSetRead, String> {
         self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            r.challenges(&self.settlement, from_block)
+            r.open_challenges(&self.settlement, known, max_details)
         })
     }
 
-    /// Validate the prior scan anchor before choosing a later page. Both RPCs
-    /// agreeing on a replacement returns false; provider disagreement remains Err.
-    pub fn challenge_scan_anchor_matches(&self, height: u64, hash: Digest) -> Result<bool, String> {
-        self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            r.anchor_matches(height, hash)
-        })
-    }
-
-    /// A challenge is answerable only while open and at/before its deadline.
-    /// Expired open entries remain on-chain until slashed; retrying their answer
-    /// would always revert and could starve later, still-live challenges.
-    pub fn challenge_answerable(&self, order_hash: &str) -> Result<bool, String> {
-        let order_hash = parse_bytes32(order_hash).ok_or("invalid challenge hash")?;
-        self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            let words = r.words(&self.settlement, "challenges(bytes32)", Some(order_hash), 6)?;
-            if words[0][..12].iter().any(|b| *b != 0) {
-                return Err("settlement observation: malformed challenge address".into());
-            }
-            abi_u64(words[1], "challenge batch hint")?;
-            let opened = abi_u64(words[2], "challenge opened block")?;
-            let deadline = abi_u64(words[3], "challenge deadline")?;
-            let open = abi_bool(words[5], "challenge open")?;
-            if open && (opened > r.height() || deadline < opened) {
-                return Err("settlement observation: impossible challenge timing".into());
-            }
-            Ok(open && r.height() <= deadline)
-        })
-    }
-
-    /// Answer an inclusion challenge: prove the order is in this batch's ordered root (matched,
-    /// `answerChallenge`) or rejected root (validly rejected, `answerByRejection`) — audit DP-004.
-    pub fn answer_challenge(
+    /// Answer open challenges proven by one settled batch with a single
+    /// `answerChallenges` call from the answer lane. Entries closed meanwhile are
+    /// skipped on-chain; one invalid proof reverts the whole call.
+    pub(crate) fn answer_challenges(
         &self,
-        order_hash: &str,
         batch_id: u64,
-        proof: &[[u8; 32]],
-        by_rejection: bool,
+        answers: &[ChallengeAnswer],
     ) -> Result<String, String> {
-        let sig = if by_rejection {
-            "answerByRejection(bytes32,uint256,bytes32[])"
-        } else {
-            "answerChallenge(bytes32,uint256,bytes32[])"
-        };
-        let bid = batch_id.to_string();
-        let proof_arg = format!(
-            "[{}]",
-            proof.iter().map(hex0x32).collect::<Vec<_>>().join(",")
-        );
-        self.send(
+        if answers.is_empty() {
+            return Err("no challenge answers to send".into());
+        }
+        let args = answer_challenges_args(batch_id, answers);
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.send_on(
+            self.answer_lane(),
             &self.settlement.clone(),
-            sig,
-            &[order_hash, &bid, &proof_arg],
+            ANSWER_CHALLENGES_SIG,
+            &refs,
+            None,
         )
     }
+
+    /// Ask the settle loop to sweep stake refunds (after answers were sent).
+    pub(crate) fn request_stake_sweep(&self) {
+        self.stake_sweep
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// `sweep_stake_refunds` once per request. Called by the settle loop
+    /// before admission pauses, when no window is sealed: the claim is sent from
+    /// the sequencer key, so it must not queue a register behind it. A failed
+    /// sweep stays requested.
+    pub(crate) fn sweep_requested_stake_refunds(&self) -> Result<Option<String>, String> {
+        if !take_request(&self.stake_sweep) {
+            return Ok(None);
+        }
+        let swept = self.sweep_stake_refunds();
+        if swept.is_err() {
+            self.request_stake_sweep();
+        }
+        swept
+    }
+
+    /// Stakes that answers routed to the sequencer accrue in `pendingEth`. With a
+    /// separate answer key configured, move them there once they reach
+    /// `STAKE_SWEEP_MIN_WEI`, so they fund answer gas. Returns the claim tx.
+    fn sweep_stake_refunds(&self) -> Result<Option<String>, String> {
+        let Some(answer) = &self.answer else {
+            return Ok(None);
+        };
+        let seq = self.sequencer_address()?;
+        let seq_word =
+            address_word(&crate::parse_addr20_hex(&seq).ok_or("invalid sequencer address")?);
+        let pending = self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            abi_u128(
+                r.word(&self.settlement, "pendingEth(address)", Some(seq_word))?,
+                "pendingEth",
+            )
+        })?;
+        if pending < STAKE_SWEEP_MIN_WEI {
+            return Ok(None);
+        }
+        self.send(
+            &self.settlement.clone(),
+            CLAIM_ETH_TO_SIG,
+            &[&answer.address],
+        )
+        .map(Some)
+    }
+}
+
+/// Clear a one-shot request flag, reporting whether it was set.
+fn take_request(flag: &std::sync::atomic::AtomicBool) -> bool {
+    flag.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// `DarkPerpSettlement.answerChallenges(uint256,bytes32[],bool[],bytes32[][])`.
+pub(crate) const ANSWER_CHALLENGES_SIG: &str =
+    "answerChallenges(uint256,bytes32[],bool[],bytes32[][])";
+/// `DarkPerpSettlement.claimEthTo(address)`: pay the caller's `pendingEth` to `to`.
+pub(crate) const CLAIM_ETH_TO_SIG: &str = "claimEthTo(address)";
+
+/// The `answerChallenges` argument vector in Solidity order, as cast array literals.
+pub(crate) fn answer_challenges_args(batch_id: u64, answers: &[ChallengeAnswer]) -> Vec<String> {
+    let list = |items: Vec<String>| format!("[{}]", items.join(","));
+    vec![
+        batch_id.to_string(),
+        list(answers.iter().map(|a| hex0x32(&a.order_hash)).collect()),
+        list(answers.iter().map(|a| a.by_rejection.to_string()).collect()),
+        list(
+            answers
+                .iter()
+                .map(|a| list(a.proof.iter().map(hex0x32).collect()))
+                .collect(),
+        ),
+    ]
+}
+
+/// Bond terms `ensure_bond` decides from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BondTerms {
+    pub required: u128,
+    pub bond: u128,
+    pub slash_count: u64,
+    pub capacity: u128,
+}
+
+fn read_bond_terms(r: &CanonicalRead<'_>, s: &str) -> Result<BondTerms, String> {
+    Ok(BondTerms {
+        required: abi_u128(r.word(s, "requiredBond()", None)?, "requiredBond")?,
+        bond: abi_u128(r.word(s, "sequencerBond()", None)?, "sequencerBond")?,
+        slash_count: abi_u64(r.word(s, "slashCount()", None)?, "slashCount")?,
+        capacity: abi_u128(r.word(s, "depositCapacity()", None)?, "depositCapacity")?,
+    })
+}
+
+fn read_settlement_params(r: &CanonicalRead<'_>, s: &str) -> Result<SettlementParams, String> {
+    Ok(SettlementParams {
+        liveness_timeout_blocks: abi_u64(
+            r.word(s, "livenessTimeoutBlocks()", None)?,
+            "livenessTimeoutBlocks",
+        )?,
+        challenge_grace_blocks: abi_u64(
+            r.word(s, "challengeGraceBlocks()", None)?,
+            "challengeGraceBlocks",
+        )?,
+        progress_batches: abi_u64(r.word(s, "progressBatches()", None)?, "progressBatches")?,
+        slash_payout_cap: abi_u128(r.word(s, "slashPayoutCap()", None)?, "slashPayoutCap")?,
+        challenge_bond: abi_u128(r.word(s, "challengeBond()", None)?, "challengeBond")?,
+        inclusion_deadline_secs: abi_u64(
+            r.word(s, "inclusionDeadlineSecs()", None)?,
+            "inclusionDeadlineSecs",
+        )?,
+    })
+}
+
+/// The boot handshake terms from one snapshot. `ABI_VERSION` is read first: a
+/// settlement that does not speak this ABI fails with that reason rather than
+/// on whichever later getter it lacks.
+fn read_boot_posture(
+    r: &CanonicalRead<'_>,
+    s: &str,
+    clock: Option<&str>,
+) -> Result<BootPosture, String> {
+    let abi_version = abi_u64(
+        r.word(s, "ABI_VERSION()", None).map_err(|_| {
+            "cannot read ABI_VERSION(); the settlement predates this gateway or the RPC failed"
+                .to_string()
+        })?,
+        "ABI_VERSION",
+    )?;
+    if abi_version != ABI_VERSION {
+        return Err(format!(
+            "settlement ABI_VERSION is {abi_version}, this gateway speaks {ABI_VERSION}"
+        ));
+    }
+    let verifier = abi_address(r.word(s, "verifier()", None)?, "verifier")?;
+    let proof_version = abi_u64(
+        r.word(&crate::hex0x(&verifier), "proofVersion()", None)?,
+        "proofVersion",
+    )?;
+    let vault = abi_address(r.word(s, "vault()", None)?, "vault")?;
+    let vault_settlement = if vault == [0; 20] {
+        [0; 20]
+    } else {
+        abi_address(
+            r.word(&crate::hex0x(&vault), "settlement()", None)?,
+            "vault settlement",
+        )?
+    };
+    let anchor_timeout_ms = match clock {
+        Some(v) => Some(abi_u64(
+            r.word(v, "anchorTimeoutMs()", None)?,
+            "anchorTimeoutMs",
+        )?),
+        None => None,
+    };
+    Ok(BootPosture {
+        abi_version,
+        verifier,
+        proof_version,
+        vault,
+        vault_settlement,
+        anchor_timeout_ms,
+        liveness_timeout_blocks: abi_u64(
+            r.word(s, "livenessTimeoutBlocks()", None)?,
+            "livenessTimeoutBlocks",
+        )?,
+        consumed_deposit_count: abi_u64(
+            r.word(s, "consumedDepositCount()", None)?,
+            "consumedDepositCount",
+        )?,
+        current_root: r.word(s, "currentStateRoot()", None)?,
+        enclave_signer: abi_address(r.word(s, "enclaveSigner()", None)?, "enclaveSigner")?,
+        sequencer: abi_address(r.word(s, "sequencer()", None)?, "sequencer")?,
+    })
 }
 
 /// The nine-parameter settleBatch signature. Six roots, then SEC-019's depositsRoot and
@@ -1597,6 +2608,526 @@ mod tests {
         assert!(args[6].ends_with("7777"), "depositsRoot is 7th");
         assert_eq!(args[7], "42", "newDepositCount is 8th, decimal uint64");
         assert_eq!(args[8], "0xabcd", "proof is 9th");
+    }
+
+    fn selector(sig: &str) -> String {
+        use sha3::{Digest as _, Keccak256};
+        crate::hex0x(&Keccak256::digest(sig.as_bytes())[..4])
+    }
+
+    /// Every settlement entrypoint and getter this crate names, against the
+    /// selectors the Solidity suite pins for the deployed ABI.
+    #[test]
+    fn settlement_signatures_match_the_contract_selectors() {
+        for (sig, expected) in [
+            (ANSWER_CHALLENGES_SIG, "0x81913954"),
+            (CLAIM_ETH_TO_SIG, "0xc1f631b9"),
+            ("ABI_VERSION()", "0xf6b45cfd"),
+            ("consumedDepositCount()", "0xbefd565d"),
+            ("depositCapacity()", "0xf35ce643"),
+            ("acceptingDeposits()", "0xdf334093"),
+            ("openChallengeCount()", "0x6f443c06"),
+            ("openChallenges(uint256,uint256)", "0x555fa4f8"),
+            ("challengeGraceBlocks()", "0x48fda272"),
+            ("progressBatches()", "0xe17a6484"),
+            ("slashPayoutCap()", "0xf2a452c3"),
+            ("slashCount()", "0x4d21497f"),
+            ("challenges(bytes32)", "0xc1e69b66"),
+            (
+                "challengeAuthDigest(bytes32,uint64,uint64,uint64,address)",
+                "0x441859ad",
+            ),
+            (SETTLE_BATCH_SIG, "0xf92fc4d4"),
+            (FINAL_SETTLE_SIG, "0xd74f1bd3"),
+            (FINAL_EXIT_SIG, "0x98f16b08"),
+        ] {
+            assert_eq!(selector(sig), expected, "{sig}");
+        }
+    }
+
+    /// Discovery reads the open set, not logs; the event changed shape (staker and
+    /// open batch count instead of a deadline), so any log consumer must use this.
+    #[test]
+    fn inclusion_challenged_topic_is_the_new_event_shape() {
+        use sha3::{Digest as _, Keccak256};
+        assert_eq!(
+            crate::hex0x(&Keccak256::digest(
+                b"InclusionChallenged(bytes32,address,address,uint256)"
+            )),
+            "0x16a25995582a5d2e093efeec773455d64ba9532b4523ad1036ccf5ed3c9add0d"
+        );
+    }
+
+    #[test]
+    fn answer_lane_has_its_own_key_and_nonce_and_falls_back_to_the_sequencer() {
+        let mut l1 = L1::test_reader("http://127.0.0.1:9".into());
+        l1.keystore_path = "/seq/ks".into();
+        l1.password_file = "/seq/pw".into();
+        let lane = l1.answer_lane();
+        assert_eq!(
+            (lane.keystore_path, lane.password_file),
+            ("/seq/ks", "/seq/pw")
+        );
+        assert!(lane.address.is_none());
+        assert!(std::ptr::eq(lane.nonce, &*l1.nonce));
+        l1.answer = Some(AnswerLane {
+            keystore_path: "/ans/ks".into(),
+            password_file: "/ans/pw".into(),
+            address: crate::hex0x(&[0x44; 20]),
+            nonce: std::sync::Arc::new(std::sync::Mutex::new(Some(9))),
+        });
+        *l1.nonce.lock().unwrap() = Some(5);
+        let lane = l1.answer_lane();
+        assert_eq!(
+            (lane.keystore_path, lane.password_file),
+            ("/ans/ks", "/ans/pw")
+        );
+        assert_eq!(lane.address, Some(crate::hex0x(&[0x44; 20]).as_str()));
+        assert!(!std::ptr::eq(lane.nonce, &*l1.nonce));
+        assert_eq!(*lane.nonce.lock().unwrap(), Some(9));
+        // Register, settle and bond sends stay on the sequencer lane.
+        let seq = l1.sequencer_lane();
+        assert_eq!(seq.keystore_path, "/seq/ks");
+        assert_eq!(*seq.nonce.lock().unwrap(), Some(5));
+    }
+
+    #[test]
+    fn answer_challenges_arguments_are_parallel_cast_arrays() {
+        let answers = [
+            ChallengeAnswer {
+                order_hash: [0x11; 32],
+                by_rejection: false,
+                proof: vec![[0x21; 32], [0x22; 32]],
+            },
+            ChallengeAnswer {
+                order_hash: [0x12; 32],
+                by_rejection: true,
+                proof: vec![],
+            },
+        ];
+        let args = answer_challenges_args(9, &answers);
+        let (a, b, p1, p2) = (
+            hex0x32(&[0x11; 32]),
+            hex0x32(&[0x12; 32]),
+            hex0x32(&[0x21; 32]),
+            hex0x32(&[0x22; 32]),
+        );
+        assert_eq!(
+            args,
+            vec![
+                "9".to_string(),
+                format!("[{a},{b}]"),
+                "[false,true]".to_string(),
+                format!("[[{p1},{p2}],[]]"),
+            ]
+        );
+    }
+
+    #[test]
+    fn bond_plan_targets_capacity_and_pauses_after_unacknowledged_slashes() {
+        // No TVL yet: the TVL target still posts capacity (no early return at 0).
+        assert_eq!(
+            bond_plan(0, 0, 0, 0, 50_000_000_000),
+            BondPlan::TopUp {
+                amount: 50_000_000_000,
+                target: 50_000_000_000
+            }
+        );
+        // Twice requiredBond once that exceeds the TVL target.
+        assert_eq!(
+            bond_plan(40, 70, 0, 0, 50),
+            BondPlan::TopUp {
+                amount: 10,
+                target: 80
+            }
+        );
+        assert_eq!(
+            bond_plan(40, 80, 0, 0, 50),
+            BondPlan::Covered { target: 80 }
+        );
+        assert_eq!(bond_plan(0, 0, 0, 0, 0), BondPlan::Covered { target: 0 });
+        // A newer slash pauses even when the bond is short; an acknowledged one does not.
+        assert_eq!(
+            bond_plan(40, 0, 2, 1, 50),
+            BondPlan::Paused {
+                slash_count: 2,
+                acknowledged: 1
+            }
+        );
+        assert_eq!(
+            bond_plan(40, 0, 2, 2, 50),
+            BondPlan::TopUp {
+                amount: 80,
+                target: 80
+            }
+        );
+        assert_eq!(
+            bond_plan(u128::MAX, 0, 0, 0, 0),
+            BondPlan::TopUp {
+                amount: u128::MAX,
+                target: u128::MAX
+            }
+        );
+    }
+
+    #[test]
+    fn tvl_target_bond_rounds_up_and_policy_env_is_strict() {
+        assert_eq!(tvl_target_bond(1_000_000_000_000), Some(50_000_000_000));
+        assert_eq!(tvl_target_bond(1), Some(1));
+        assert_eq!(tvl_target_bond(20), Some(1));
+        assert_eq!(tvl_target_bond(21), Some(2));
+        assert_eq!(tvl_target_bond(0), Some(0));
+        assert_eq!(tvl_target_bond(u128::MAX), None);
+        let p = bond_policy_from_values(Some("1000000000000"), Some("3")).unwrap();
+        assert_eq!(p.target_tvl_bond, 50_000_000_000);
+        assert_eq!(
+            p.acknowledged_slashes
+                .load(std::sync::atomic::Ordering::SeqCst),
+            3
+        );
+        let p = bond_policy_from_values(None, None).unwrap();
+        assert_eq!(p.target_tvl_bond, 0);
+        for (tvl, acked) in [
+            (Some(""), None),
+            (Some("1e12"), None),
+            (Some("-1"), None),
+            (Some(" 1"), None),
+            (Some("340282366920938463463374607431768211455"), None),
+            (None, Some("x")),
+            (None, Some("18446744073709551616")),
+        ] {
+            assert!(
+                bond_policy_from_values(tvl, acked).is_err(),
+                "{tvl:?} {acked:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_slash_acknowledgement_must_name_the_exact_observed_count() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let policy = BondPolicy {
+            target_tvl_bond: 50,
+            ..Default::default()
+        };
+        // Two slashes happened; top-ups are paused.
+        let paused = |p: &BondPolicy| {
+            matches!(
+                bond_plan(
+                    40,
+                    0,
+                    2,
+                    p.acknowledged_slashes.load(SeqCst),
+                    p.target_tvl_bond
+                ),
+                BondPlan::Paused { .. }
+            )
+        };
+        assert!(paused(&policy));
+        // A stale count would leave the second slash unseen; a future one would
+        // cover a slash that has not happened yet. Neither changes anything.
+        for requested in [0, 1, 3, u64::MAX] {
+            let error = policy.acknowledge(2, requested).unwrap_err();
+            assert!(error.contains("slashCount() is 2"), "{error}");
+            assert_eq!(policy.acknowledged_slashes.load(SeqCst), 0);
+            assert!(paused(&policy));
+        }
+        assert_eq!(policy.acknowledge(2, 2), Ok(2));
+        assert_eq!(policy.acknowledged_slashes.load(SeqCst), 2);
+        assert!(!paused(&policy), "top-ups resume");
+        // The acknowledged count never goes down.
+        assert_eq!(policy.acknowledge(1, 1), Ok(1));
+        assert_eq!(policy.acknowledged_slashes.load(SeqCst), 2);
+        // A later slash pauses again until it is acknowledged in turn.
+        assert!(matches!(
+            bond_plan(40, 0, 3, policy.acknowledged_slashes.load(SeqCst), 50),
+            BondPlan::Paused {
+                slash_count: 3,
+                acknowledged: 2
+            }
+        ));
+    }
+
+    #[test]
+    fn bond_top_up_runs_one_at_a_time() {
+        let flag = std::sync::atomic::AtomicBool::new(false);
+        let first = InFlight::take(&flag).expect("first top-up");
+        assert!(InFlight::take(&flag).is_none(), "second waits");
+        drop(first);
+        assert!(InFlight::take(&flag).is_some(), "released on drop");
+    }
+
+    #[test]
+    fn stake_sweeps_run_once_per_request_and_a_failure_stays_requested() {
+        use std::sync::atomic::Ordering::SeqCst;
+        // Without an answer key there is nothing to sweep and nothing is read.
+        let mut l1 = L1::test_reader("http://127.0.0.1:9".into());
+        assert_eq!(l1.sweep_requested_stake_refunds(), Ok(None));
+        assert!(
+            !l1.stake_sweep.load(SeqCst),
+            "the start-up request was taken"
+        );
+        l1.clone().request_stake_sweep();
+        assert!(l1.stake_sweep.load(SeqCst), "requests are shared by clones");
+        // A sweep that cannot complete is asked for again on the next tick.
+        l1.answer = Some(AnswerLane {
+            keystore_path: String::new(),
+            password_file: String::new(),
+            address: crate::hex0x(&[0x66; 20]),
+            nonce: Default::default(),
+        });
+        assert!(l1.sweep_requested_stake_refunds().is_err());
+        assert!(l1.stake_sweep.load(SeqCst));
+        assert!(take_request(&l1.stake_sweep));
+        assert_eq!(
+            l1.sweep_requested_stake_refunds(),
+            Ok(None),
+            "not requested"
+        );
+    }
+
+    #[test]
+    fn answer_key_paths_are_paired_and_the_password_file_private() {
+        assert_eq!(answer_paths_from_values(None, None).unwrap(), None);
+        assert_eq!(answer_paths_from_values(Some(""), Some("")).unwrap(), None);
+        let dir = std::env::temp_dir().join(format!("answer-key-{}", rand::random::<u64>()));
+        std::fs::create_dir(&dir).unwrap();
+        let ks = dir.join("ks");
+        let pw = dir.join("pw");
+        std::fs::write(&ks, "{}").unwrap();
+        std::fs::write(&pw, "secret").unwrap();
+        let (ks_s, pw_s) = (ks.to_str().unwrap(), pw.to_str().unwrap());
+        assert!(answer_paths_from_values(Some(ks_s), None).is_err());
+        assert!(answer_paths_from_values(None, Some(pw_s)).is_err());
+        assert!(answer_paths_from_values(Some("/nonexistent/ks"), Some(pw_s)).is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&pw, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let error = answer_paths_from_values(Some(ks_s), Some(pw_s)).unwrap_err();
+            assert!(error.contains("group or others"));
+            std::fs::set_permissions(&pw, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        assert_eq!(
+            answer_paths_from_values(Some(ks_s), Some(pw_s)).unwrap(),
+            Some((ks_s.to_string(), pw_s.to_string()))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn posture() -> BootPosture {
+        BootPosture {
+            abi_version: ABI_VERSION,
+            verifier: [0x11; 20],
+            proof_version: 2,
+            vault: [0x22; 20],
+            vault_settlement: [0xaa; 20],
+            anchor_timeout_ms: Some(3_600_000),
+            liveness_timeout_blocks: 43_200,
+            consumed_deposit_count: 5,
+            current_root: [3; 32],
+            enclave_signer: [0x55; 20],
+            sequencer: [0x44; 20],
+        }
+    }
+    fn expectation() -> BootExpectation {
+        BootExpectation {
+            settlement: [0xaa; 20],
+            vault: Some([0x22; 20]),
+            clock_verifier: Some([0x11; 20]),
+            enclave_signer: [0x55; 20],
+            sequencer: [0x44; 20],
+            min_anchor_timeout_ms: min_anchor_timeout_ms(900),
+            last_settled_root: [3; 32],
+            live_root: [3; 32],
+            local_consumed: 5,
+            permit_ttl_secs: 1800,
+        }
+    }
+
+    #[test]
+    fn boot_handshake_accepts_the_launch_stack_and_refuses_each_mismatch() {
+        // (2 * 1200 + 900 + 300) s: the launch anchor timeout exactly.
+        assert_eq!(min_anchor_timeout_ms(900), 3_600_000);
+        check_boot_posture(&posture(), &expectation()).unwrap();
+        let p = posture();
+        let e = expectation();
+        let cases: Vec<(BootPosture, BootExpectation, &str)> = vec![
+            (
+                BootPosture {
+                    abi_version: 2,
+                    ..p.clone()
+                },
+                e.clone(),
+                "ABI_VERSION",
+            ),
+            // An enclave seed the settlement was not deployed with: every receipt's
+            // challenge authorization would be refused on L1.
+            (
+                p.clone(),
+                BootExpectation {
+                    enclave_signer: [0x56; 20],
+                    ..e.clone()
+                },
+                "enclaveSigner()",
+            ),
+            (
+                BootPosture {
+                    enclave_signer: [0x57; 20],
+                    ..p.clone()
+                },
+                e.clone(),
+                "ENCLAVE_SEED",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    sequencer: [0x45; 20],
+                    ..e.clone()
+                },
+                "sequencer()",
+            ),
+            (
+                BootPosture {
+                    proof_version: 1,
+                    ..p.clone()
+                },
+                e.clone(),
+                "proofVersion",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    clock_verifier: None,
+                    ..e.clone()
+                },
+                "CLOCK_BOUND_VERIFIER",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    clock_verifier: Some([0x12; 20]),
+                    ..e.clone()
+                },
+                "verifier()",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    vault: None,
+                    ..e.clone()
+                },
+                "L1_VAULT",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    vault: Some([0x23; 20]),
+                    ..e.clone()
+                },
+                "vault()",
+            ),
+            (
+                BootPosture {
+                    vault_settlement: [0xab; 20],
+                    ..p.clone()
+                },
+                e.clone(),
+                "paired",
+            ),
+            (
+                BootPosture {
+                    anchor_timeout_ms: Some(3_599_999),
+                    ..p.clone()
+                },
+                e.clone(),
+                "anchorTimeoutMs",
+            ),
+            (
+                BootPosture {
+                    anchor_timeout_ms: None,
+                    ..p.clone()
+                },
+                e.clone(),
+                "anchorTimeoutMs",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    local_consumed: 6,
+                    ..e.clone()
+                },
+                "consumed",
+            ),
+            // 24 h of 2 s blocks allows a permit of at most 3 h.
+            (
+                p.clone(),
+                BootExpectation {
+                    permit_ttl_secs: 10_801,
+                    ..e.clone()
+                },
+                "DEPOSIT_PERMIT_TTL_SECS",
+            ),
+            (
+                BootPosture {
+                    liveness_timeout_blocks: 7_199,
+                    ..p.clone()
+                },
+                e.clone(),
+                "DEPOSIT_PERMIT_TTL_SECS",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    local_consumed: 4,
+                    live_root: [4; 32],
+                    ..e.clone()
+                },
+                "consumed",
+            ),
+        ];
+        for (p, e, reason) in cases {
+            let error = check_boot_posture(&p, &e).unwrap_err();
+            assert!(error.contains(reason), "{reason}: {error}");
+        }
+        // The limit itself is allowed: 10,800 s of a 86,400 s window, and the
+        // launch TTL at the 7,200-block floor.
+        check_boot_posture(
+            &posture(),
+            &BootExpectation {
+                permit_ttl_secs: 10_800,
+                ..expectation()
+            },
+        )
+        .unwrap();
+        check_boot_posture(
+            &BootPosture {
+                liveness_timeout_blocks: 7_200,
+                ..posture()
+            },
+            &expectation(),
+        )
+        .unwrap();
+        // Unsettled live credits may only add to the settled count.
+        check_boot_posture(
+            &posture(),
+            &BootExpectation {
+                local_consumed: 6,
+                live_root: [4; 32],
+                ..expectation()
+            },
+        )
+        .unwrap();
+        // A root mismatch is left to the continuity check.
+        check_boot_posture(
+            &posture(),
+            &BootExpectation {
+                local_consumed: 0,
+                last_settled_root: [9; 32],
+                ..expectation()
+            },
+        )
+        .unwrap();
     }
 
     /// Byte-safety regression (pre-merge hygiene): non-ASCII input to the L1 hex

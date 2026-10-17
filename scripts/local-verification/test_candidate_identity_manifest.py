@@ -26,7 +26,7 @@ def config():
             "addresses": {role: "0x" + format(i, "040x") for i, role in enumerate(roles, 1)},
             "expected_runtime_code_hashes": {role: "0x" + "bb" * 32 for role in roles},
             "program_vkey": identity.candidate.VKEY,
-            "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000},
+            "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 3_600_000},
             "oracle_policy_hash": "0x" + "aa" * 32, "sequencer_grace_seconds": 60}
 
 
@@ -114,9 +114,10 @@ class ManifestTests(unittest.TestCase):
             identity.validate_manifest(self.root, manifest, config())
         addresses = {role: "0x" + format(i, "040x") for i, role in enumerate(sorted(identity.legacy.ADDRESS_ROLES), 1)}
         gateway = {env: addresses[role] for env, role in identity.legacy.ENV_ADDRESSES.items()}
-        gateway.update(L1_CHAIN_ID="31337", L1_ALLOW_MOCK_PROOF="0")
+        gateway.update(L1_CHAIN_ID="31337", L1_ALLOW_MOCK_PROOF="0", DEPOSIT_PERMIT_TTL_SECS="1800")
         old = {"chain_id": 31337, "addresses": addresses, "program_vkey": identity.candidate.VKEY,
-               "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000}, "gateway": gateway,
+               "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 3_600_000},
+               "gateway": gateway,
                "prover": {"program_vkey": identity.candidate.VKEY, "guest_elf_sha256": identity.candidate.ELF_SHA}}
         with self.assertRaises(ValueError):
             identity.legacy.public_config(old)
@@ -222,6 +223,15 @@ class ManifestTests(unittest.TestCase):
         for bad in (True, -1, 2**64):
             value = config(); value["clock"]["clock_skew_ms"] = bad
             with self.assertRaises(ValueError): identity.public_config(value)
+        # The clock constructor refuses an anchor timeout below one second.
+        for bad in (True, 0, 999, 2**64, "3600000"):
+            value = config(); value["clock"]["anchor_timeout_ms"] = bad
+            with self.subTest(anchor_timeout_ms=bad), self.assertRaises(ValueError):
+                identity.public_config(value)
+        value = config(); value["clock"]["anchor_timeout_ms"] = 1000
+        self.assertEqual(identity.public_config(value)["clock"]["anchor_timeout_ms"], 1000)
+        value = config(); del value["clock"]["anchor_timeout_ms"]
+        with self.assertRaises(ValueError): identity.public_config(value)
         for bad in ("0x" + "00" * 20, config()["addresses"]["settlement"], "0x1"):
             value = config(); value["addresses"]["oracle_wrapper"] = bad
             with self.assertRaises(ValueError): identity.public_config(value)

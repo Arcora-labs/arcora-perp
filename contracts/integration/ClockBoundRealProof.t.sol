@@ -57,8 +57,12 @@ contract ClockBoundRealProofTest is RealSP1TestBase {
         proof = realVm.envBytes("ARCORA_REAL_PROOF");
         require(proof.length == 356 && bytes4(proof) == SELECTOR, "real Groth16 proof required");
         IZkVerifier inner = IZkVerifier(address(_adapter(realGateway, key)));
+        // The anchor timeout is not part of the receipt; the 12-word settlement config
+        // keeps the previous ten words in order, then progress batches and slash cap.
         _constructAt(
-            "ClockBoundVerifier.sol:ClockBoundVerifier", abi.encode(inner, uint64(10_000), uint64(2_000)), CLOCK
+            "ClockBoundVerifier.sol:ClockBoundVerifier",
+            abi.encode(inner, uint64(10_000), uint64(2_000), uint64(3_600_000)),
+            CLOCK
         );
         _constructAt(
             "DarkPerpSettlement.sol:DarkPerpSettlement",
@@ -72,7 +76,9 @@ contract ClockBoundRealProofTest is RealSP1TestBase {
                 uint256(1 ether),
                 uint256(600),
                 address(this),
-                uint256(10)
+                uint256(10),
+                uint256(2),
+                uint256(1_000e6)
             ),
             SETTLEMENT
         );
@@ -83,20 +89,34 @@ contract ClockBoundRealProofTest is RealSP1TestBase {
         vault = new CollateralVault(SETTLEMENT, address(token), vm.addr(GW_KEY));
         settlement.setVault(address(vault));
 
-        // Reproduce the exact public synthetic Deposit op with the actual vault gate.
-        token.mint(address(0), 1_000_000);
-        bytes32 digest =
-            keccak256(abi.encodePacked(block.chainid, address(vault), address(0), OWNER_COMMIT, uint256(1_000_000)));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(GW_KEY, digest);
-        vm.startPrank(address(0));
-        token.approve(address(vault), 1_000_000);
-        vault.deposit(1_000_000, OWNER_COMMIT, abi.encodePacked(r, s, v));
-        vm.stopPrank();
-        assertEq(vault.depositChainTip(), DEPOSITS, "real vault prefix must equal proven deposit fold");
-        uint256 bond = settlement.requiredBond();
+        // The bond must cover the deposit's TVL before the vault admits it.
+        uint256 bond = (uint256(1_000_000) * settlement.BOND_BPS()) / 10_000;
         token.mint(address(this), bond);
         token.approve(SETTLEMENT, bond);
         settlement.postBond(bond);
+
+        // Reproduce the exact public synthetic Deposit op with the actual vault gate. The
+        // permit (and its deadline) is checked and discarded; it never enters the leaf.
+        token.mint(address(0), 1_000_000);
+        uint64 validUntil = uint64(block.timestamp + 1800);
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                keccak256("arcora:deposit-permit:v2"),
+                block.chainid,
+                address(vault),
+                address(0),
+                OWNER_COMMIT,
+                uint256(1_000_000),
+                uint256(validUntil)
+            )
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(GW_KEY, digest);
+        vm.startPrank(address(0));
+        token.approve(address(vault), 1_000_000);
+        vault.deposit(1_000_000, OWNER_COMMIT, validUntil, abi.encodePacked(r, s, v));
+        vm.stopPrank();
+        assertEq(vault.depositChainTip(), DEPOSITS, "real vault prefix must equal proven deposit fold");
+        assertEq(settlement.requiredBond(), bond, "bond covers the deposit exactly");
         assertEq(
             settlement.publicCommitment(PREV, MANIFEST, NEXT, bytes32(0), WITHDRAWALS, bytes32(0), DEPOSITS),
             BASE,

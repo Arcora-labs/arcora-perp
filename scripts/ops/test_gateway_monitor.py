@@ -62,6 +62,21 @@ class Evaluate(unittest.TestCase):
         active, _ = self.run_eval(doc(batch=None), status(50), now=10**9)
         self.assertEqual(active, set())
 
+    def test_gateway_alerts_are_relayed_and_unknown_names_ignored(self):
+        state = doc()
+        state["opsAlerts"] = ["stale_anchor", "liveness_low", "persistence_failed", 7, "x"]
+        active, _ = self.run_eval(state, status(7))
+        self.assertEqual(active, {"stale_anchor", "liveness_low"})
+        state["opsAlerts"] = "stale_anchor"
+        active, _ = self.run_eval(state, status(7))
+        self.assertEqual(active, set())
+
+    def test_camel_case_health_fields_are_read(self):
+        state = {"settlementHealth": "HELD", "depositIngestion": {"state": "halted"},
+                 "l1": {"batchCount": 7}, "opsAlerts": ["bond_shortfall"]}
+        active, _ = self.run_eval(state, status(7))
+        self.assertEqual(active, {"settlement_held", "deposit_halted", "bond_shortfall"})
+
     def test_unreadable_status_keeps_the_stall_clock(self):
         _, track = self.run_eval(doc(batch=7), status(8), now=1000.0)
         _, track = self.run_eval(doc(batch=7), None, track, now=1500.0)
@@ -130,6 +145,17 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(self.events(), [
             ("settlement_held", "active", 1),
             ("settlement_held", "recovered", 1),
+        ])
+
+    def test_gateway_alert_is_relayed_once_per_episode(self):
+        self.gateway.state = dict(doc(), opsAlerts=["unanswerable_challenge"])
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.run_monitor(), 0)
+        self.gateway.state = dict(doc(), opsAlerts=[])
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.events(), [
+            ("unanswerable_challenge", "active", 1),
+            ("unanswerable_challenge", "recovered", 1),
         ])
 
     def test_unreachable_gateway_alerts(self):

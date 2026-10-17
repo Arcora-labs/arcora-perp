@@ -322,16 +322,20 @@ def main():
                     if operation == 'authorize':
                         observed = baseline_permit if server_response is None else server_response
                         require(re.fullmatch(r'0x[0-9a-fA-F]{130}', observed['sig']) is not None, 'server emitted signature')
+                        deadline = observed.get('validUntil')
+                        require(type(deadline) is int and deadline > 0, 'permit carries its validUntil deadline')
                         # Read/validate an existing permit through the real route
                         # handler. It neither issues a signature nor credits funds.
                         routing = dict(permit, ownerCommit=observed['ownerCommit'])
                         for _ in range(2):
                             route = ok(restored_port, 'POST', '/v1/accounts/deposit/route', routing, current_key)
                             require(route['durability'] == 'confirmed' and route['ownerCommit'] == observed['ownerCommit'], 'same durable permit/routing retained')
+                            require(route.get('validUntil') == deadline, 'route keeps the permit deadline it was signed with')
                         changed = dict(routing, amount='2000000')
                         changed_status, _ = request(restored_port, 'POST', '/v1/accounts/deposit/route', changed, current_key)
                         require(changed_status == 400, 'existing permit cannot change amount')
                         case.update(same_permit_route_repeated=2, conflicting_route_status=changed_status,
+                                    permit_deadline_retained=True,
                                     lost_permit_automatically_reissued=False, onchain_send_attempts=0)
                         case['client_resolution'] = {
                             'before-request-body': 'request body never sent; original baseline permit retained',

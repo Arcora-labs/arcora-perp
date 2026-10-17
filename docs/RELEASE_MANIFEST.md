@@ -68,14 +68,15 @@ prover observation.
     "sp1_verifier": "0x0000000000000000000000000000000000000007"
   },
   "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
-  "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000},
+  "clock": {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3600000},
   "gateway": {
     "L1_CHAIN_ID": "31337",
     "L1_SETTLEMENT": "0x0000000000000000000000000000000000000001",
     "L1_VAULT": "0x0000000000000000000000000000000000000002",
     "L1_USDC": "0x0000000000000000000000000000000000000003",
     "CLOCK_BOUND_VERIFIER": "0x0000000000000000000000000000000000000004",
-    "L1_ALLOW_MOCK_PROOF": "0"
+    "L1_ALLOW_MOCK_PROOF": "0",
+    "DEPOSIT_PERMIT_TTL_SECS": "1800"
   },
   "prover": {
     "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
@@ -85,7 +86,7 @@ prover observation.
 ```
 
 An operator may add `validate --check-process-env` as a service pre-start check.
-This compares the six allowlisted gateway variables against the manifest and
+This compares the seven allowlisted gateway variables against the manifest and
 fails before startup on a mismatch. It does not install a startup hook or change
 running services; that integration must be configured in the target environment.
 No key values are read or emitted by the environment check.
@@ -133,9 +134,10 @@ this is reconstruction of the actual deployed template, not blanket masking of
 all constructor-dependent bytes. An altered opcode or metadata byte fails.
 
 At that same block it checks settlement ↔ vault, settlement ↔ clock verifier,
-clock → SP1 adapter → SP1 gateway, vault → token, the reviewed guest key, clock
-bounds, proof version 2, the SP1 verifier hash, and the selector's active,
-unfrozen route to the configured verifier. Zero/unbound or old direct-adapter
+clock → SP1 adapter → SP1 gateway, vault → token, the settlement's
+`ABI_VERSION() == 3`, the reviewed guest key, the clock bounds and
+`anchorTimeoutMs()`, proof version 2, the SP1 verifier hash, and the selector's
+active, unfrozen route to the configured verifier. Zero/unbound or old direct-adapter
 configurations fail. The token must have code; its implementation is not among
 the six compiled artifacts.
 
@@ -144,7 +146,7 @@ observation fields set true. It still records `release_gate: HOLD`. RPC response
 are trusted; this is not a light-client check or independent RPC consensus. The
 sequencer, enclave signer, governance, gateway signer, SP1 gateway owner and
 settlement timing/bond parameters are recorded for review. An optional, complete
-`operator_policy` in the public configuration pins all eleven expected values;
+`operator_policy` in the public configuration pins all thirteen expected values;
 any mismatch fails closed. `operator_and_settlement_policy_matches` is true only
 after every runtime, getter, finality and source recheck passes. This is matching
 a declaration, not a security/economic review: `operator_and_settlement_policy_approved`
@@ -190,10 +192,12 @@ Add this section to a separately reviewed public release configuration:
     "enclave_signer": "0x0000000000000000000000000000000000000012",
     "governance": "0x0000000000000000000000000000000000000013",
     "liveness_timeout_blocks": 100,
-    "challenge_window_blocks": 50,
+    "challenge_grace_blocks": 50,
     "challenge_bond_wei": 1000,
     "inclusion_deadline_seconds": 600,
-    "final_settle_grace_blocks": 10
+    "final_settle_grace_blocks": 10,
+    "progress_batches": 2,
+    "slash_payout_cap_usdc": 1000000000
   },
   "vault": {"gateway_signer": "0x0000000000000000000000000000000000000014"},
   "clock_verifier": {"configurator": "0x0000000000000000000000000000000000000015"},
@@ -204,7 +208,7 @@ Add this section to a separately reviewed public release configuration:
 Pass `observe-target --require-operator-policy` to reject a missing policy before
 any chain reads. Without that flag, old configs still support observation, but
 cannot claim a policy match. With a policy supplied, comparisons are mandatory
-regardless of the flag. All eleven getters use the same finalized block hash as
+regardless of the flag. All thirteen getters use the same finalized block hash as
 the runtime checks. A late chain/source change prevents the policy match flag
 from becoming true. The report also records the canonical policy SHA-256.
 
@@ -213,6 +217,20 @@ to describe renounced ownership or other intentional configurations; it does not
 endorse them as safe. Review governance availability, signer authority, economic
 bounds and recovery separately. This observer does not change deployed settings,
 rotate keys, audit token proxies, or promote `release_gate` beyond `HOLD`.
+
+### Keys introduced with settlement ABI version 3
+
+| Section | Key | Getter / meaning |
+|---|---|---|
+| `operator_policy.settlement` | `challenge_grace_blocks` | `challengeGraceBlocks()`; replaces the removed `challenge_window_blocks` |
+| `operator_policy.settlement` | `progress_batches` | `progressBatches()` (1..16 on-chain) |
+| `operator_policy.settlement` | `slash_payout_cap_usdc` | `slashPayoutCap()`, compared as the raw integer (USDC base units, 6 decimals) |
+| `clock` | `anchor_timeout_ms` | `anchorTimeoutMs()`, the minimum anchor age before `cancel` |
+| `gateway` | `DEPOSIT_PERMIT_TTL_SECS` | the gateway's deposit-permit lifetime; public, so it is allowlisted |
+
+A configuration that still carries `challenge_window_blocks`, or a clock section
+without `anchor_timeout_ms`, is refused as an unknown or missing field. The open
+challenge set is read on-chain, so no deploy-block setting is needed.
 
 CPU tests: `python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py -v`.
 The owned-Anvil integration additionally verifies the actual declared policy and

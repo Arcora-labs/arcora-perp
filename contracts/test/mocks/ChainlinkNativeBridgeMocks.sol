@@ -56,6 +56,18 @@ contract BridgeStrictPrefixVault is ICollateralVault {
         depositChainTip = tip_;
     }
 
+    /// The synthetic deposits count as landed in the construction block.
+    uint256 public immutable landedAtBlock = block.number;
+
+    /// The publisher is the settlement this prefix is paired with.
+    function settlement() external view returns (address) {
+        return publisher;
+    }
+
+    function depositBlock(uint64) external view returns (uint256) {
+        return landedAtBlock;
+    }
+
     function tvl() external pure returns (uint256) {
         return 0;
     }

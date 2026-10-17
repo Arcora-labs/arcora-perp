@@ -46,7 +46,7 @@
     <div class="flow-num">2</div>
     <div>
       <h3>Signed receipts — soft finality <span class="lat">milliseconds</span></h3>
-      <p>Every accepted order returns an <strong>enclave-signed receipt</strong> (secp256k1, recovering to the enclave signer). The receipt doubles as an inclusion proof the user can later wield in the on-chain challenge game. Order states: ACCEPTED &rarr; MATCHED (filled, soft) &rarr; SETTLED (hard).</p>
+      <p>Every accepted order returns an <strong>enclave-signed receipt</strong> (secp256k1, recovering to the enclave signer). For an account with a bound deposit address it also carries an enclave-signed L1 challenge authorization, which the user can later wield in the on-chain challenge game. Order states: ACCEPTED &rarr; MATCHED (filled, soft) &rarr; SETTLED (hard).</p>
     </div>
   </div>
   <div class="flow-step">
@@ -82,11 +82,12 @@
 <h2 id="challenge">Challenge game, bonding, liveness</h2>
 <p>The zk proof makes settled state unforgeable, but a malicious operator could still try to <em>drop</em> orders it accepted. The challenge game closes that hole:</p>
 <ul>
-  <li><strong>Operator bond.</strong> The operator posts a USDC bond with a floor of <strong>5% of vault TVL</strong> (<code>requiredBond()</code>, BOND_BPS = 500).</li>
-  <li><strong>Inclusion challenges.</strong> Anyone holding an enclave-signed receipt can open an on-chain inclusion challenge against a settled window. Challenges are themselves bonded at <strong>0.01 ETH</strong> to prevent griefing, with a <strong>300-block</strong> challenge window to answer.</li>
-  <li><strong>Slashing.</strong> If the sequencer cannot prove that the receipt's order was included in a settled window, the operator's bond is slashed to the challenger (pull-payment).</li>
-  <li><strong>Liveness / forced exit.</strong> If the sequencer stops settling for <strong>7,200 blocks</strong>, the system enters forced-exit / close-only mode. Existing published withdrawal claims remain claimable with their Merkle data. Creating new withdrawals still requires operator/prover service, and final wind-down additionally requires governance.</li>
+  <li><strong>Operator bond &mdash; deposits close at bond capacity.</strong> The operator posts a USDC bond, and the vault admits a deposit only while <strong>5% of vault TVL</strong> (<code>requiredBond()</code>, BOND_BPS = 500) stays within it. Settlement never depends on the bond.</li>
+  <li><strong>Inclusion challenges.</strong> The receipt's L1 challenge authorization is bound to the chain, the settlement contract and the account's deposit address (the beneficiary). One hour after the order was received, anyone holding it can open an on-chain challenge, staking <strong>0.01 ETH</strong> to prevent griefing. Anyone can answer with a settled window's ordered or rejected proof; open challenges are enumerable on-chain and can be answered in batches.</li>
+  <li><strong>Capped fine.</strong> If no answer lands after <strong>two further settled windows</strong> plus a <strong>3,600-block</strong> grace, the operator's bond pays a capped fine (up to <strong>1,000 USDC</strong> per order on the testnet) to the beneficiary (pull-payment), and the stake is returned. Settlement continues.</li>
+  <li><strong>Liveness and close-only.</strong> If the state root stops progressing for <strong>43,200 blocks</strong> (~24 h), or a landed deposit stays unconsumed for that long, anyone can put the system into close-only; governance can also enter it directly. Deposits that no settled window consumed are refunded at principal from the vault. Existing published withdrawal claims remain claimable with their Merkle data. Creating new withdrawals still requires operator/prover service, and final wind-down additionally requires governance.</li>
 </ul>
+<p class="dim">These are the launch defaults of the settlement ABI version 3 contracts. The July Base Sepolia deployment predates them (300-block challenge window, 7,200-block liveness window).</p>
 
 <h2>Privacy layer</h2>
 <h3>Sealed order ingress</h3>
@@ -113,9 +114,9 @@
   <tbody>
     <tr><td>Settled state transitions (fills, funding, liquidations, ADL, balances)</td><td>SP1 zkVM proof, Groth16-verified on-chain</td></tr>
     <tr><td>Withdrawals from settled state</td><td>Permissionless Merkle claims against the vault</td></tr>
-    <tr><td>Order inclusion (accepted orders make it into windows)</td><td>Signed receipts + bonded challenge game</td></tr>
+    <tr><td>Order inclusion (accepted orders make it into windows)</td><td>Signed receipts + enclave-authorized challenge game with capped fines</td></tr>
     <tr><td>Matching integrity &amp; privacy before settlement</td><td>Intel TDX attestation (enclave identity sealed to the measurement)</td></tr>
-    <tr><td>Funds safety if the operator disappears</td><td>Liveness timeout &rarr; forced-exit / close-only on settled state</td></tr>
+    <tr><td>Funds if the operator disappears</td><td>Liveness or deposit-inclusion timeout &rarr; close-only: refunds of unconsumed deposits, claims against published roots, governance wind-down for the rest</td></tr>
   </tbody>
 </table>
 </div>

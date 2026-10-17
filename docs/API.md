@@ -44,10 +44,10 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | Method | Path | Auth | Body / notes |
 |--------|------|------|--------------|
 | POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned }` |
-| GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }` |
+| GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }`; after close-only also `refundableDeposits[]` (§ Refunds after close-only) |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
 | POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
-| POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose, reuseOwnerCommit? }` — durable permit with explicit routing |
+| POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose, reuseOwnerCommit? }` → `{ ownerCommit, sig, validUntil, marketId, purpose }` — durable permit with explicit routing and a deadline |
 | POST | `/v1/accounts/deposit/route` | ✓ | `{ ownerCommit, from, amount, marketId, purpose }` — explicitly adopt a legacy pending permit |
 | POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — optional finalized ingestion accelerator / durable receipt |
 | POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
@@ -55,7 +55,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
-| POST | `/v1/orders` | ✓ | order body (below) → signed receipt |
+| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges) |
 | GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
@@ -63,7 +63,9 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/markets/:id` | – | one market |
 | GET  | `/v1/markets/:id/orderbook` | – | `{ marketId, bids[], asks[] }` |
 | GET  | `/v1/markets/:id/oracle` | – | `{ marketId, price, confidence, publishTimeMs }` |
-| GET  | `/v1/system/status` | – | `{ mode, insuranceFund, nextBatchId, accounts }` |
+| GET  | `/v1/system/status` | – | `{ mode, insuranceFund, nextBatchId, accounts }` — `mode` is `CloseOnly` once the engine or the L1 settlement is in close-only |
+| POST | `/v1/admin/settlement/cancel-anchor` | admin | `{ batchId, phase, receipt }` — cancel a stale clock anchor (§ `POST /v1/admin/settlement/cancel-anchor`) |
+| POST | `/v1/admin/bond/acknowledge-slash` | admin | `{ slashCount }` — resume bond top-ups after a slash (§ `POST /v1/admin/bond/acknowledge-slash`) |
 
 **`/v1/lp*` is not mounted in production** (SEC-025-C): the demo LP pool credits
 stakes through an unbacked mint, which would break settlement — the production
@@ -128,22 +130,25 @@ batch manifest's **rejected** set. **Rate limit:** at most 10 orders/sec per acc
 
 The collateral asset is an **open-mint** MockUSDC (6 decimals) on Base Sepolia —
 anyone may mint. Addresses live in `contracts/deployments/base-sepolia.json`
-(`MockUSDC`, `CollateralVault`). Mint, then approve + deposit into the vault:
+(`MockUSDC`, `CollateralVault`). Mint, approve the vault, then deposit with a
+gateway permit (§ Real USDC deposits, step 2):
 
 ```bash
-USDC=0xF9bd3AD70bA831b92e9F07D08121c6A750B3612a   # MockUSDC (base-sepolia.json)
-VAULT=0x3A3939E1C5De10D41942a85D4A14ac8160779bF4  # CollateralVault
+USDC=<MockUSDC from base-sepolia.json>
+VAULT=<CollateralVault from base-sepolia.json>
 RPC=https://sepolia.base.org
 
 # 1,000 test USDC (6 decimals) to yourself
 cast send $USDC "mint(address,uint256)" <YOUR_ADDR> 1000000000 --rpc-url $RPC --private-key <KEY>
-# approve + deposit into the vault
+# approve, then deposit with the ownerCommit / validUntil / sig from /v1/accounts/deposit/authorize
 cast send $USDC "approve(address,uint256)" $VAULT 1000000000 --rpc-url $RPC --private-key <KEY>
-cast send $VAULT "deposit(uint256)" 1000000000 --rpc-url $RPC --private-key <KEY>
+cast send $VAULT "deposit(uint256,bytes32,uint64,bytes)" 1000000000 <ownerCommit> <validUntil> <sig> \
+  --rpc-url $RPC --private-key <KEY>
 ```
 
-Then attribute the deposit to your API account (below). The UI exposes the same
-via the **"Get test USDC"** button.
+The vault refuses a deposit without a valid permit, so bind your address and
+authorize the deposit first (below). The UI exposes the same via the
+**"Get test USDC"** button.
 
 ## Real USDC deposits (on-chain → engine)
 
@@ -162,21 +167,64 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    § Rebinding the deposit address. Re-binding the same address is an idempotent
    no-op (no `currentSignature` needed).
 2. `POST /v1/accounts/deposit/authorize { "from": "0x<your EOA>", "amount": "<base units>", "marketId": 0, "purpose": "collateral" }`
-   — the gateway records a secret blind for this deposit and returns its `ownerCommit`
-   plus a signature. The vault accepts **only** pre-authorized deposits, so this step is
-   not optional. To retry a deposit you never sent (for example after rejecting the
-   wallet prompt), pass the earlier `ownerCommit` as `reuseOwnerCommit`: the gateway
-   re-signs that permit if it still holds it for exactly this request, and issues a
-   fresh one otherwise. Outstanding permits are limited per account and in total, and
-   issuance is rate-limited per account (429 / 503 when exceeded).
-3. On Base Sepolia, from that EOA: `usdc.approve(vault, amount)` then
-   `vault.deposit(amount, ownerCommit, signature)` — three arguments, all from step 2.
+   → `{ "ownerCommit": "0x..", "sig": "0x..", "validUntil": <unix seconds>, "marketId": 0, "purpose": "collateral" }`
+   — the gateway records a secret blind and the route for this deposit, together with
+   the permit deadline `validUntil` (now + `DEPOSIT_PERMIT_TTL_SECS`, 1,800 s by
+   default), and only then signs the permit. The vault accepts **only** permitted
+   deposits sent no later than `validUntil`, so this step is not optional. To retry a
+   deposit you never sent (for example after rejecting the wallet prompt), pass the
+   earlier `ownerCommit` as `reuseOwnerCommit`: the gateway re-issues that same permit
+   (same `validUntil`, same signature) if it still holds it for exactly this request and
+   at least 60 s remain, and issues a fresh one otherwise. Outstanding permits are
+   limited per account and in total, and issuance is rate-limited per account
+   (429 / 503 when exceeded).
 
-   **The authorization is one-shot on-chain (SEC-028).** Re-submitting the same
-   `(from, ownerCommit, amount)` reverts `AuthorizationAlreadyUsed`. Before that guard,
-   a replay minted a second leaf that the gateway could never credit — which blocked the
-   contiguous deposit queue for **every** user, permanently. Get a fresh authorization
-   for each deposit.
+   New permits are also refused:
+
+   | Condition | Response |
+   |---|---|
+   | deposit ingestion is not ready, or is halted | `503` |
+   | the settlement cannot be read at the latest block | `503`; retry |
+   | `amount` exceeds the settlement's `depositCapacity()` at the gateway's latest read | `409` `{ error, capacity }`, `capacity` a decimal string of USDC base units |
+   | the settlement is in close-only | `409` `{ error }`; no further deposits are possible (§ Refunds after close-only) |
+   | the settlement accepts no deposits (no paired vault) | `409` `{ error }` |
+   | the gateway's settles (keepalives included) are failing and less than two permit lifetimes of liveness remain | `503` `{ error }`, until settlement recovers |
+
+   The gateway reserves no capacity for a permit. The vault's bond-capacity gate
+   decides when the deposit lands, first come first served, so a permitted deposit can
+   still revert `BondCapacityExceeded` if other deposits filled the capacity first.
+3. On Base Sepolia, from that EOA: `usdc.approve(vault, amount)` then
+   `vault.deposit(amount, ownerCommit, validUntil, sig)` — four arguments, all from
+   step 2, sent no later than `validUntil`. The permit is the gateway signer's `r‖s‖v`
+   over:
+
+   ```text
+   keccak256(abi.encodePacked(
+       keccak256("arcora:deposit-permit:v2"),   // DEPOSIT_PERMIT_TAG
+       chainId, vault, from, ownerCommit, amount, uint256(validUntil)))   // 200 bytes
+   ```
+
+   The vault's own `permitDigest(from, ownerCommit, amount, validUntil)` returns the
+   same value. A deposit reverts with, in this order of checks:
+
+   | Error | Meaning |
+   |---|---|
+   | `BadAmount` | `amount` is zero or above `int128` max |
+   | `InCloseOnly` | the settlement is in close-only |
+   | `BondCapacityExceeded` | the deposit would raise the vault's TVL beyond what the sequencer bond covers (5%); see `depositCapacity()` |
+   | `DepositsPaused` | the settlement does not accept deposits from this vault |
+   | `PermitExpired` | the block time is past `validUntil` |
+   | `BadGatewaySig` | the permit does not recover to the vault's gateway signer for this exact tuple |
+   | `OwnerCommitUsed` | this `ownerCommit` already entered the deposit chain |
+
+   **One owner commitment, one deposit (SEC-028).** Re-submitting a permit, or any
+   permit for an `ownerCommit` already in the deposit chain (even one re-signed with a
+   later deadline), reverts `OwnerCommitUsed`. Without single use, a replay would mint
+   a second leaf that the gateway could never credit, and that would block the
+   contiguous deposit queue for **every** user. Get a fresh authorization for each
+   deposit. An expired permit reverts `PermitExpired`; authorize again. The gateway
+   removes a permit that never landed once a finalized block's timestamp is past its
+   `validUntil`. It never uses its own wall clock for this.
 4. **No confirm call is required.** The gateway autonomously consumes finalized
    L1 blocks in deposit-ID order, using the market and purpose recorded at
    authorization. Closing the browser does not interrupt ingestion.
@@ -190,12 +238,33 @@ replay operations, consumed prefix, receipts and remaining permits are saved
 in the same snapshot before success is reported. Identity is chain/vault/deposit ID,
 not merely transaction hash: multiple accounts can deposit in one transaction.
 
-**Confirm responses:** `200` with `status: "credited"`, `credited`, `depositIds`,
+**Confirm responses:** `200` with `status`, `credited`, `depositIds`,
 `marketId`, `purpose`, `durability: "confirmed"`; `202` with
 `status: "pendingFinalizedIngestion"` (not successful zero credit); `409` for a
 market/purpose mismatch or a historical transaction without reconstructible new
 receipts; `503` for RPC unavailability, blocked ordering, safety halt or uncertain
 durability. Pending / `503` is **not** an instruction to send funds again.
+
+`status` reports the least final state of the transaction's deposits:
+
+| `status` | Meaning |
+|---|---|
+| `credited` | a settled batch consumed the deposit (or the gateway has not read `consumedDepositCount()` yet) |
+| `credited_unsettled` | applied off-chain; no settled batch has consumed it yet |
+| `refundable` | the settlement is in close-only and no settled batch consumed it; the body adds `refundable: [{ id, from, ownerCommit, amount }]` |
+
+After close-only, a deposit the gateway never credited gets `409` with the
+close-only intake error and `credited: "0"`; it is still refundable on L1.
+
+**Credited is not yet settled.** The confirm and account views distinguish a credit
+whose deposit id is at or above the settlement's `consumedDepositCount()`: it is
+applied off-chain but no settled batch has consumed it yet. Once the settlement is
+in close-only, such a deposit is reported as **refundable**, with
+`{ id, from, ownerCommit, amount }` (`id` a JSON number, `amount` a decimal
+string), which are exactly the arguments of `vault.refundDeposit` (§ Refunds after
+close-only). Its off-chain credit, and any
+trading in windows that never settled, is discarded; only settled state carries into
+the wind-down.
 
 **Legacy permits remain unresolved, not reset.** Snapshot v5 imports retain every
 blind, account, nonce, note, replay operation and inherited consumed prefix. No
@@ -222,6 +291,14 @@ reconcile trusted chain data and preserved state. v6 is an explicit snapshot for
 upgrade; older binaries cannot safely read the new state. Preserve backups and do
 not roll back the binary while discarding credits written after upgrade.
 
+Snapshot v7 adds the permit deadline to every route. A v6 snapshot that still holds
+outstanding permits is refused, because those permits were signed for the earlier
+vault ABI; the settlement ABI version 3 stack starts from a fresh deployment. Route
+identity (`/v1/accounts/deposit/route`, legacy adoption) is compared without
+`validUntil`, and the route response echoes it. Ingestion checks each `Deposit` log's
+payer against the `from` recorded in the permit, so rebinding the deposit address
+later never fails ingestion of a deposit permitted earlier.
+
 ## Trading is gated until launch (SEC-025-D)
 
 On a fresh production deployment, **order submission is refused** until the deployment has
@@ -233,7 +310,7 @@ Do not confuse this with close-only, which is a different condition with a diffe
 | | launch gate closed | `Mode::CloseOnly` |
 |---|---|---|
 | means | the deployment has not opened yet | a wind-down is under way |
-| blocks | **all** order ingress | only *opening/increasing*; reduce-only, cancels, deposits and withdrawals still pass |
+| blocks | **all** order ingress | *opening/increasing* orders and new deposits; reduce-only, cancels and withdrawals still pass, and unconsumed deposits become refundable |
 | clears when | a proven, block-pinned settle shows the fund capitalized | never — it is terminal on-chain |
 
 The gate opens **once** and does not re-close. It is a launch gate, not a circuit breaker:
@@ -292,15 +369,140 @@ directly:
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
-   claimable, proof }] }`. Once `claimable` is `true`, `proof` is the Merkle path.
-4. On Base Sepolia: `vault.claim(to, amount, nonce, proof)` releases the USDC. The
-   leaf is single-claim (`AlreadyClaimed` on replay).
+   root, claimable, proof }] }`. Once `claimable` is `true`, `proof` is the Merkle path
+   and `root` is the published root that path verifies against. Pass that `root` to
+   `claim`, not the vault's current `withdrawalsRoot()`: a later published root can
+   differ, and a proof checked against the wrong root reverts `BadWithdrawalProof`.
+4. On Base Sepolia: `vault.claim(to, amount, nonce, root, proof)`, with `root` and
+   `proof` from step 3, releases the USDC.
+   The leaf is single-claim (`AlreadyClaimed` on replay). A claim never draws on the
+   principal of deposits that no settled batch has consumed: if paying it would leave
+   the vault holding less than `refundableOutstanding()`, it reverts
+   `ReservedForUncredited`.
 
 Existing published withdrawal leaves are claimable with their Merkle data even
 when the gateway is offline. Account balances and positions are not withdrawal
 leaves: new withdrawals still need operator/prover service and final wind-down
 requires governance. Custody keys and oracle authority remain trusted alpha
 components; proof validity does not establish independent user authorization.
+
+## Refunds after close-only
+
+A deposit that no settled batch has consumed (deposit id at or above the
+settlement's `consumedDepositCount()`) is refunded at principal from the vault once
+the settlement is in close-only. No gateway, prover or governance action is needed.
+
+1. **Close-only.** It starts on any of three triggers:
+   - anyone calls `settlement.triggerCloseOnly()` after the root has not progressed
+     for `livenessTimeoutBlocks`;
+   - anyone calls it when the oldest unconsumed deposit landed more than
+     `livenessTimeoutBlocks` ago, even while batches keep settling;
+   - governance calls `enterCloseOnly()`.
+
+   `settlement.closeOnly()` reports the state. From then on `consumedDepositCount()`
+   never changes.
+2. **Refund.** Anyone may call
+   `vault.refundDeposit(id, from, ownerCommit, amount, to)`, using the fields of the
+   deposit's `Deposit(from, ownerCommit, amount, id, newTip)` event. The vault checks
+   them against its deposit chain link at `id`. It pays `from`; `to` may differ from
+   `from` only when `from` itself sends the call (for a payer the token refuses to
+   pay). Each id is refunded once and emits `DepositRefunded(id, from, to, amount)`.
+
+```bash
+cast send $VAULT "refundDeposit(uint64,address,bytes32,uint256,address)" \
+  <id> <from> <ownerCommit> <amount> <from> --rpc-url $RPC --private-key <KEY>
+```
+
+| Error | Meaning |
+|---|---|
+| `NotPaired` | the settlement does not name this vault |
+| `NotCloseOnly` | the settlement is not in close-only yet |
+| `NotRefundable` | the id is below `consumedDepositCount()` (the settled state credited it; exit through a withdrawal) or does not exist |
+| `AlreadyRefunded` | this id was refunded already |
+| `BadRefundRecipient` | `to` is zero, or differs from `from` while someone other than `from` sends the call |
+| `BadDepositPreimage` | the arguments do not reproduce the deposit chain link at `id` |
+
+Once the gateway has seen close-only at a finalized block, `GET /v1/accounts/me`
+adds `refundableDeposits: [{ id, from, ownerCommit, amount }]` for the account's
+credits that no settled batch consumed, and `mode` in `/api/state` and
+`/v1/system/status` reads `CloseOnly`. The list survives the wind-down's rebase and
+restarts. A deposit the gateway never credited does not appear in it; the tool
+below finds it from the chain.
+
+`scripts/claim/refund_deposit.py --rpc <RPC> --vault <VAULT> --from <payer>` (or
+`--tx <hash>`, `--id <n>`) finds the `Deposit` log, checks it against the vault's
+deposit chain and the settlement state, and prints the `triggerCloseOnly` and
+`refundDeposit` calls. Like `claim_withdrawal.py`, it never signs or sends.
+
+## L1 inclusion challenges
+
+Every receipt (the `POST /v1/orders` response and each stored `receipt` in
+`GET /v1/orders`) carries `l1Challenge`, an enclave-signed authorization to
+challenge that order on L1:
+
+```json
+"l1Challenge": {
+  "chainId": 84532,
+  "settlement": "0x<DarkPerpSettlement>",
+  "beneficiary": "0x<the account's bound deposit address>",
+  "signature": "0x<130 hex, r‖s‖v>"
+}
+```
+
+The beneficiary is the account's bound deposit address when the receipt is
+served: the `POST /v1/orders` response names the address bound at acceptance, while
+`GET /v1/orders` signs for the address bound at the time of the read, so keep the
+kit from the accept response. It is `null` when the account has no bound deposit
+address or the gateway has no settlement configured. The signature is the enclave signer's over the settlement's
+`challengeAuthDigest(orderHash, seqNo, recvTimeMs, batchIdHint, beneficiary)`:
+
+```text
+keccak256(abi.encode(
+    keccak256("arcora:l1-inclusion-challenge:v1"),   // CHALLENGE_AUTH_TAG
+    chainId, settlement, orderHash, seqNo, recvTimeMs, batchIdHint, beneficiary))
+```
+
+The receipt's own `signature` (over the perp-core receipt digest) is not accepted
+on L1, and an authorization for one chain or settlement is useless on another.
+
+**Opening.** Once `recvTimeMs / 1000 + inclusionDeadlineSecs` has passed
+(3,600 s at the launch defaults), anyone may open the challenge, staking exactly
+`challengeBond()` wei:
+
+```bash
+# cast prints a decoded uint with a suffix ("10000000000000000 [1e16]"); keep the integer.
+BOND=$(cast call $SETTLEMENT "challengeBond()(uint256)" --rpc-url $RPC | cut -d' ' -f1)
+cast send $SETTLEMENT "challengeInclusion(bytes32,uint64,uint64,uint64,address,bytes)" \
+  <orderHash> <seqNo> <recvTimeMs> <batchIdHint> <beneficiary> <l1Challenge.signature> \
+  --value "$BOND" --rpc-url $RPC --private-key <KEY>
+```
+
+Each order hash can be challenged once; it is refused in close-only.
+
+**Outcomes.**
+
+- **Answered.** Anyone proves the order is in a settled batch's ordered or rejected
+  root. The stake returns to the submitter when that batch settled after the
+  challenge opened, otherwise it goes to the sequencer.
+- **Slashed.** If no answer lands, `slashUnanswered(orderHash)` becomes available
+  once `progressBatches` batches have settled since the challenge opened, plus
+  `challengeGraceBlocks`. It credits the beneficiary with
+  `min(sequencerBond, slashPayoutCap)` USDC (`claimUsdc()`, or `claimUsdcTo(to)` to
+  pay another address) and returns the stake to the submitter (`claimEth()` /
+  `claimEthTo(to)`). Settlement continues. When the bond is below the cap, only the
+  beneficiary may trigger the reduced fine at first.
+- **Released.** If close-only begins before the progress gate can be reached,
+  `releaseStaleChallenge(orderHash)` returns the stake.
+
+`scripts/claim/challenge_inclusion.py <receipt.json> --rpc <RPC>` checks a saved
+receipt's `l1Challenge` without the gateway: it recomputes the digest, recovers the
+signer, reads the challenge state from the settlement, and prints the `cast send`
+for the current stage (open, slash, release, or claim the credited fine or stake).
+It never signs or sends.
+
+**Privacy.** The beneficiary is an indexed event topic, so opening a challenge
+publicly links that address to the order hash. Keep the authorization private
+unless you intend to use it.
 
 ## Withdrawal authorization (SEC-021)
 
@@ -408,6 +610,9 @@ every **accepted** rebind (a first-time bind and rejected attempts don't touch
 it). Read the current value as `rebindCounter` from `GET /v1/accounts/me`. It
 makes every rebind signature single-use: an old rotation signature can never be
 replayed after the binding has moved again.
+
+A rebind is refused while the account holds deposit permits that have neither
+landed nor expired at a finalized block.
 
 ### ⚠ Consequences you must plan for (deliberate design decisions)
 
@@ -529,3 +734,51 @@ the one-shot oracle-free `SettleAll`; the proof-derived phase routes to governan
 `finalSettle`. After phase 1 lands, normal account withdrawal requests in proven CloseOnly
 use price-free `WindDownUnbind`/`WindDownWithdraw` and land through repeatable `finalExit`.
 A 202 means phase 1 was durably queued, not that an L1 transaction has already finalized.
+
+When the gateway observes close-only it first rebases to the L1-settled state: it
+drops the open window and any sealed window that never settled, drops credits for
+deposits at or above `consumedDepositCount()` (they are refundable on L1), and
+checks that its root equals `currentStateRoot()` and its consumed count equals
+`consumedDepositCount()`. Order hashes from the dropped windows enter the `SettleAll`
+manifest as rejected (`MarketCloseOnly`). The wind-down then starts from exactly the
+settled state. See `docs/FINAL_SETTLE_RUNBOOK.md`.
+
+### `POST /v1/admin/settlement/cancel-anchor` — cancel a stale clock anchor
+
+Operator-only (`X-Admin-Key` / `FIN_ADMIN_KEY`). Body
+`{ "batchId": <n>, "phase": 0 | 1 | 2, "receipt": "0x<32-byte clock receipt>" }`.
+Sends `ClockBoundVerifier.cancel(batchId, phase, receipt)` from the gateway's L1
+key, which must hold the role that registers that phase: the sequencer for phase 0,
+governance for phases 1 and 2.
+
+The gateway refuses the request:
+
+- while a local settle for that receipt is still in flight;
+- before the anchor is `anchorTimeoutMs()` old, measured against the latest block
+  time.
+
+On-chain, the call also requires that `batchId` is the current `batchCount()`, that
+`phase` is the current phase, and that `receipt` matches the stored anchor.
+Afterwards `cancelledReceipt(receipt)` is true and `ClockCancelled` is emitted; a
+proof bound to that receipt can never verify again. When to use it, and how to
+recover the batch afterwards, is in `docs/PROVING-RUNBOOK.md`.
+
+| Response | Meaning |
+|---|---|
+| `200` `{ tx, batchId, phase, receipt }` | the cancel transaction landed |
+| `409` `{ error }` | a precondition failed, or the settle loop is working on that window |
+| `502` `{ error, confirm }` | the send's outcome is unknown; check `cancelledReceipt(receipt)` before retrying |
+| `503` | no L1 key or no clock verifier is configured |
+| `400` | malformed body |
+
+The endpoint is exempt from the clock-admission gate. Cancelling does not resolve
+the local window: restart the gateway, and boot recovery classifies it.
+
+### `POST /v1/admin/bond/acknowledge-slash` — resume bond top-ups after a slash
+
+Operator-only (`X-Admin-Key` / `FIN_ADMIN_KEY`). Body `{ "slashCount": <n> }`.
+Automatic bond top-ups stop while the settlement's `slashCount()` is above the
+acknowledged count, and a `bond_shortfall` alert is raised. The request is accepted
+only when `n` equals the current `slashCount()`: `200 { acknowledgedSlashCount }`,
+`409 { error }` otherwise, `503` without `FIN_ADMIN_KEY` or an L1 bridge. The
+acknowledgement lasts until restart; `L1_BOND_ACKED_SLASH_COUNT` sets it at boot.

@@ -28,24 +28,28 @@ The separate policy JSON has exactly four top-level keys:
 | --- | --- |
 | `schema` | `arcora-chainlink-target-policy/v1` |
 | `runtime_hash_algorithm` | `keccak256-evm` |
-| `operator_policy` | The exact role object below, using the unchanged v2 operator-policy parser |
+| `operator_policy` | The exact role object below, using the shared `release_manifest.py` operator-policy parser |
 | `oracle_configurator` | Expected 20-byte address returned by the candidate wrapper's `configurator()` |
 
 `operator_policy` contains exactly these roles and fields:
 
 | Role | Exact fields |
 | --- | --- |
-| `settlement` | `sequencer`, `enclave_signer`, `governance`, `liveness_timeout_blocks`, `challenge_window_blocks`, `challenge_bond_wei`, `inclusion_deadline_seconds`, `final_settle_grace_blocks` |
+| `settlement` | `sequencer`, `enclave_signer`, `governance`, `liveness_timeout_blocks`, `challenge_grace_blocks`, `challenge_bond_wei`, `inclusion_deadline_seconds`, `final_settle_grace_blocks`, `progress_batches`, `slash_payout_cap_usdc` |
 | `vault` | `gateway_signer` |
 | `clock_verifier` | `configurator` |
 | `sp1_gateway` | `owner` |
 
-Address fields use 20-byte hexadecimal values. The five settlement numeric
-fields are integers in `0..2^256-1`; booleans do not count as integers. Explicit
+Address fields use 20-byte hexadecimal values. The seven settlement numeric
+fields are integers in `0..2^256-1`; booleans do not count as integers.
+`challenge_grace_blocks`, `progress_batches` and `slash_payout_cap_usdc` follow the
+settlement ABI version 3 constructor and replace the removed
+`challenge_window_blocks`. Explicit
 zero values permitted by the inherited parser are retained rather than replaced
 by defaults. The inherited name `challenge_bond_wei` compares the raw
-`challengeBond()` integer; this observer does not infer its denomination or
-approve the economic policy. Unknown, missing or extra fields fail.
+`challengeBond()` integer, and `slash_payout_cap_usdc` the raw `slashPayoutCap()`
+integer; this observer does not infer their denomination or approve the economic
+policy. Unknown, missing or extra fields fail.
 
 The observer records and checks the supplied policy separately from the
 candidate manifest. Matching a configurator, owner, signer or economic value

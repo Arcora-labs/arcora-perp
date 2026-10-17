@@ -53,8 +53,9 @@ def policy():
             "operator_policy": {
                 "settlement": {"sequencer": address(101), "enclave_signer": address(102),
                                "governance": address(103), "liveness_timeout_blocks": 100,
-                               "challenge_window_blocks": 50, "challenge_bond_wei": 1000,
-                               "inclusion_deadline_seconds": 600, "final_settle_grace_blocks": 10},
+                               "challenge_grace_blocks": 50, "challenge_bond_wei": 1000,
+                               "inclusion_deadline_seconds": 600, "final_settle_grace_blocks": 10,
+                               "progress_batches": 2, "slash_payout_cap_usdc": 1_000_000_000},
                 "vault": {"gateway_signer": address(104)},
                 "clock_verifier": {"configurator": address(105)},
                 "sp1_gateway": {"owner": address(106)}}}
@@ -96,7 +97,9 @@ class FakeRPC:
             ("sp1_adapter", "programVKey()"): case.public["program_vkey"],
             ("clock_verifier", "maxWindowMs()"): case.public["clock"]["max_window_ms"],
             ("clock_verifier", "clockSkewMs()"): case.public["clock"]["clock_skew_ms"],
+            ("clock_verifier", "anchorTimeoutMs()"): case.public["clock"]["anchor_timeout_ms"],
             ("clock_verifier", "proofVersion()"): 2,
+            ("settlement", "ABI_VERSION()"): 3,
             ("oracle_wrapper", "policyHash()"): case.public["oracle_policy_hash"],
             ("oracle_wrapper", "deploymentChainId()"): case.public["chain_id"],
             ("oracle_wrapper", "sequencerGraceSeconds()"): case.public["sequencer_grace_seconds"],
@@ -403,6 +406,7 @@ class ObserverTests(unittest.TestCase):
             with self.subTest(raw=bad[:20]):
                 self.blocked()
         for key, bad in ((("clock_verifier", "maxWindowMs()"), 2**64),
+                         (("clock_verifier", "anchorTimeoutMs()"), 2**64),
                          (("oracle_wrapper", "sequencerGraceSeconds()"), 2**64),
                          (("clock_verifier", "proofVersion()"), 256)):
             self.rpc = FakeRPC(self)

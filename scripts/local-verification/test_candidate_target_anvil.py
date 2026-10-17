@@ -156,7 +156,11 @@ class CandidateTargetAnvilTests(unittest.TestCase):
         key = identity.candidate.VKEY
         policy_hash = "0x" + "31" * 32
         grace = 10
-        max_window_ms, clock_skew_ms = 2000, 0
+        max_window_ms, clock_skew_ms, anchor_timeout_ms = 2000, 0, 3_600_000
+        # DarkPerpSettlement.Config after the verifier: genesis root, liveness, challenge
+        # grace, challenge bond, inclusion deadline, governance, final-settle grace,
+        # progress batches, slash payout cap (12 words with sequencer/enclave/verifier).
+        settlement_tail = (0, 100, 50, 1000, 600, owner, 10, 2, 1_000_000_000)
         addresses = {}
         addresses["sp1_verifier"] = deploy("sp1_verifier")
         addresses["sp1_gateway"] = deploy("sp1_gateway", owner)
@@ -168,9 +172,9 @@ class CandidateTargetAnvilTests(unittest.TestCase):
                                                addresses["verifier_proxy"], policy_hash,
                                                addresses["uptime_feed"], grace)
         addresses["clock_verifier"] = deploy("clock_verifier", addresses["oracle_wrapper"],
-                                               max_window_ms, clock_skew_ms)
+                                               max_window_ms, clock_skew_ms, anchor_timeout_ms)
         addresses["settlement"] = deploy("settlement", owner, accounts[1],
-                                           addresses["clock_verifier"], 0, 100, 50, 1000, 600, owner, 10)
+                                           addresses["clock_verifier"], *settlement_tail)
         addresses["token"] = deploy("token")
         addresses["vault"] = deploy("vault", addresses["settlement"],
                                       addresses["token"], accounts[2])
@@ -184,7 +188,8 @@ class CandidateTargetAnvilTests(unittest.TestCase):
             "chain_id": 84532, "network": 0, "addresses": addresses,
             "expected_runtime_code_hashes": {role: runtime_hash(address) for role, address in addresses.items()},
             "program_vkey": key,
-            "clock": {"max_window_ms": max_window_ms, "clock_skew_ms": clock_skew_ms},
+            "clock": {"max_window_ms": max_window_ms, "clock_skew_ms": clock_skew_ms,
+                      "anchor_timeout_ms": anchor_timeout_ms},
             "oracle_policy_hash": policy_hash, "sequencer_grace_seconds": grace,
         }
         policy = {
@@ -192,9 +197,10 @@ class CandidateTargetAnvilTests(unittest.TestCase):
             "runtime_hash_algorithm": "keccak256-evm",
             "operator_policy": {
                 "settlement": {"sequencer": owner, "enclave_signer": accounts[1], "governance": owner,
-                               "liveness_timeout_blocks": 100, "challenge_window_blocks": 50,
+                               "liveness_timeout_blocks": 100, "challenge_grace_blocks": 50,
                                "challenge_bond_wei": 1000, "inclusion_deadline_seconds": 600,
-                               "final_settle_grace_blocks": 10},
+                               "final_settle_grace_blocks": 10, "progress_batches": 2,
+                               "slash_payout_cap_usdc": 1_000_000_000},
                 "vault": {"gateway_signer": accounts[2]},
                 "clock_verifier": {"configurator": owner},
                 "sp1_gateway": {"owner": owner},
@@ -252,7 +258,8 @@ class CandidateTargetAnvilTests(unittest.TestCase):
         for name, field in (("wrong_policy_hash", "oracle_policy_hash"),
                             ("wrong_grace", "sequencer_grace_seconds"),
                             ("wrong_runtime_hash", "expected_runtime_code_hashes"),
-                            ("wrong_clock_policy", "clock")):
+                            ("wrong_clock_policy", "clock"),
+                            ("wrong_anchor_timeout", "anchor_timeout_ms")):
             bad = copy.deepcopy(public)
             if field == "oracle_policy_hash":
                 bad[field] = "0x" + "ab" * 32
@@ -260,16 +267,23 @@ class CandidateTargetAnvilTests(unittest.TestCase):
                 bad[field] += 1
             elif field == "expected_runtime_code_hashes":
                 bad[field]["oracle_wrapper"] = "0x" + "ab" * 32
+            elif field == "anchor_timeout_ms":
+                bad["clock"]["anchor_timeout_ms"] += 1
             else:
                 bad[field]["max_window_ms"] += 1
             with self.subTest(name=name):
                 rejected(name, bad)
-        for name in ("wrong_governance", "wrong_challenge_bond", "wrong_oracle_configurator"):
+        for name in ("wrong_governance", "wrong_challenge_bond", "wrong_progress_batches",
+                     "wrong_slash_payout_cap", "wrong_oracle_configurator"):
             bad_policy = copy.deepcopy(policy)
             if name == "wrong_governance":
                 bad_policy["operator_policy"]["settlement"]["governance"] = accounts[3]
             elif name == "wrong_challenge_bond":
                 bad_policy["operator_policy"]["settlement"]["challenge_bond_wei"] += 1
+            elif name == "wrong_progress_batches":
+                bad_policy["operator_policy"]["settlement"]["progress_batches"] += 1
+            elif name == "wrong_slash_payout_cap":
+                bad_policy["operator_policy"]["settlement"]["slash_payout_cap_usdc"] -= 1
             else:
                 bad_policy["oracle_configurator"] = accounts[3]
             with self.subTest(name=name):
@@ -292,12 +306,12 @@ class CandidateTargetAnvilTests(unittest.TestCase):
             bad["expected_runtime_code_hashes"][role] = runtime_hash(replacement)
             with self.subTest(role=role):
                 rejected("unbound_" + role, bad)
-        wrong_clock = deploy("clock_verifier", addresses["sp1_adapter"], max_window_ms, clock_skew_ms)
+        wrong_clock = deploy("clock_verifier", addresses["sp1_adapter"], max_window_ms, clock_skew_ms,
+                             anchor_timeout_ms)
         # Keep every link before clock.innerVerifier valid. These additional
         # REAL settlement/vault instances use the original explicit operator
         # values, token and policy; only the direct SP1 inner route is wrong.
-        wrong_settlement = deploy("settlement", owner, accounts[1], wrong_clock,
-                                  0, 100, 50, 1000, 600, owner, 10)
+        wrong_settlement = deploy("settlement", owner, accounts[1], wrong_clock, *settlement_tail)
         wrong_vault = deploy("vault", wrong_settlement, addresses["token"], accounts[2])
         call_transaction("setVault(address)", wrong_settlement, wrong_vault)
         call_transaction("bindSettlement(address)", wrong_clock, wrong_settlement)

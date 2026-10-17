@@ -11,20 +11,36 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
-/// The settlement subset the vault reads to reject deposits into a dead system.
-interface ISettlementCloseOnly {
+/// The settlement subset the vault reads. Every call is a view (STATICCALL).
+interface ISettlementGate {
+    /// 0 = accept; 1 = close-only; 2 = over bond capacity; 3 (or any other non-zero
+    /// value) = not accepting deposits from this caller.
+    function depositGate(uint256 newTvl) external view returns (uint8);
     function closeOnly() external view returns (bool);
+    function consumedDepositCount() external view returns (uint64);
+    function vault() external view returns (address);
 }
 
 /// @title CollateralVault
 /// @notice Holds pooled collateral (**USDC**, the chosen settlement asset) and
 /// releases it only against a withdrawals root published by the settlement contract
-/// from a SETTLED batch (§3: only settled state is withdrawable). The same mechanism
-/// is the forced-exit path (§6): if the system is in close-only, users still claim
-/// against the last settled withdrawals root — funds can be stalled but not stolen,
-/// because release authority is the verified state, never the sequencer.
+/// from a SETTLED batch (only settled state is withdrawable). The same mechanism is
+/// the forced-exit path: in close-only, users still claim against the last settled
+/// withdrawals root, and deposits the settled state never consumed are refunded at
+/// principal to their payer.
 contract CollateralVault {
     using MerkleLib for bytes32;
+
+    /// Prefix sums over the deposit chain, one slot per deposit.
+    struct DepositMeta {
+        /// L1 block the deposit landed in.
+        uint64 blockNumber;
+        /// Sum of all deposit amounts with id <= this one.
+        uint192 cumulative;
+    }
+
+    /// Domain tag of the gateway's deposit permit (`permitDigest`).
+    bytes32 public constant DEPOSIT_PERMIT_TAG = keccak256("arcora:deposit-permit:v2");
 
     address public immutable settlement;
     /// The settlement asset held by the vault (USDC; 6 decimals → 1 base unit =
@@ -36,6 +52,8 @@ contract CollateralVault {
     uint256 public withdrawalsEpoch;
     uint256 public totalDeposited;
     uint256 public totalWithdrawn;
+    /// Principal returned through `refundDeposit`.
+    uint256 public totalRefunded;
 
     /// Spent withdrawal leaves (double-claim prevention).
     mapping(bytes32 => bool) public claimed;
@@ -62,47 +80,29 @@ contract CollateralVault {
     /// `bytes32(0)` IS the genesis tip.
     ///
     /// @dev This exists so settlement can pin a batch to the prefix it actually PROVED
-    /// rather than to the live head. Pinning to the head made settlement race every
-    /// concurrent deposit, and since `deposit(0, ...)` costs only gas, anyone could
-    /// advance the head once per settle interval and halt settlement — and with it L1
-    /// finality and all withdrawal claims — indefinitely. With prefixes recorded, a
-    /// deposit landing mid-flight simply lands in a later batch.
+    /// rather than to the live head, so a deposit landing mid-flight simply lands in a
+    /// later batch.
     mapping(uint64 => bytes32) public depositTipAt;
 
-    /// SEC-019 (Task 6c): the gateway's secp256k1 signer. A deposit is accepted ONLY if
-    /// it carries this key's ECDSA signature over `(chainid, this vault, from,
-    /// ownerCommit, amount)`. This is a LIVENESS GATE on deposit entry, not a mint
-    /// authority: the gateway signs only after recording the `(owner, blind)` behind
-    /// `ownerCommit`, so a leaf whose commit preimage the gateway never knew — a free
-    /// `deposit(0, junkCommit)` — cannot enter and head-of-line-block the circuit's
-    /// contiguous deposit consumption (spec §1b).
-    ///
-    /// SEC-028: that is narrower than this comment used to claim. The signature alone did
-    /// NOT make every enterable leaf creditable — the tuple binds no nonce, so it was
-    /// replayable — and it still does not, because the recorded blind is memory-first.
-    /// `usedDepositAuthorization` closes the replay half; the durability half is open. It CANNOT inflate `external_in`: each deposit still performs a real
-    /// `transferFrom` and settlement still pins `depositsRoot` to the proven prefix, so a
-    /// compromised signer can permit entry but never conjure collateral.
+    /// SEC-019: the gateway's secp256k1 signer. A deposit is accepted ONLY with this
+    /// key's permit (`permitDigest`) over (chainid, this vault, payer, ownerCommit,
+    /// amount, validUntil). The gateway signs only after recording the `(owner, blind)`
+    /// behind `ownerCommit`, so a leaf whose commit preimage it never knew cannot enter
+    /// the chain. It CANNOT inflate collateral: each deposit still performs a real
+    /// `transferFrom` and settlement pins `depositsRoot` to the proven prefix.
     address public gatewaySigner;
 
-    /// SEC-028: gateway authorizations already consumed. `deposit`'s signature binds
-    /// (chainid, vault, from, ownerCommit, amount) and deliberately NOT `depositCount` —
-    /// the gateway cannot predict the landing index at signing time. Without this mapping
-    /// the same tuple mints a fresh leaf on every submission, and since the gateway
-    /// consumes its stored blind on the FIRST credit, every later identical leaf is
-    /// permanently uncreditable and head-of-line-blocks the contiguous deposit queue.
-    /// This mapping CLOSES THE REPLAY CAUSE. It does not, on its own, establish that
-    /// every leaf is creditable: an authorization whose `(owner, blind)` the gateway
-    /// recorded only in memory, and lost to a crash before its next periodic snapshot,
-    /// still yields an uncreditable leaf with no attacker and no replay. That is the
-    /// second cause and it is open.
-    ///
-    /// Keyed on the DIGEST, not the signature bytes: replay protection should bind the
-    /// authorization, not one serialization of it.
-    mapping(bytes32 => bool) public usedDepositAuthorization;
+    /// Owner commitments that already entered the chain. Each commitment enters at most
+    /// once, whatever deadline its permit carries: a re-signed permit with a new
+    /// `validUntil` is a different digest but the same commitment.
+    mapping(bytes32 => bool) public usedOwnerCommit;
+    /// Deposit ids already refunded.
+    mapping(uint64 => bool) public depositRefunded;
+    /// Per-deposit landing block and prefix sum.
+    mapping(uint64 => DepositMeta) public depositMeta;
 
     /// secp256k1 group order ÷ 2; ECDSA signatures with higher `s` are non-canonical
-    /// (malleable) and rejected in `_recover` (matches DarkPerpSettlement's F3 hygiene).
+    /// (malleable) and rejected in `_recover` (matches DarkPerpSettlement's hygiene).
     uint256 private constant SECP256K1_N_HALF = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
     /// @param from L1 payer (bound into the leaf; the funds' provenance).
@@ -116,6 +116,7 @@ contract CollateralVault {
     /// @param newTip `depositChainTip` after folding this deposit — indexers and the
     ///        sequencer replay from these without re-deriving the chain themselves.
     event Deposit(address indexed from, bytes32 indexed ownerCommit, uint256 amount, uint64 id, bytes32 newTip);
+    event DepositRefunded(uint64 indexed id, address indexed from, address to, uint256 amount);
     event WithdrawalsRootPublished(uint256 indexed epoch, bytes32 root);
     event Withdrawn(address indexed to, uint256 amount, uint256 nonce);
 
@@ -124,18 +125,33 @@ contract CollateralVault {
     error BadWithdrawalProof();
     error TransferFailed();
     error InCloseOnly();
-    /// SEC-019 (Task 6c): the deposit was not authorized by the gateway (missing,
-    /// malformed, or wrong-tuple signature).
+    /// The deposit was not authorized by the gateway (missing, malformed, or
+    /// wrong-tuple signature).
     error BadGatewaySig();
-    /// SEC-019 (Task 6c): a zero `gatewaySigner` would make the deposit gate
-    /// fail-OPEN — `_recover` returns `address(0)` for a malformed-but-guard-passing
-    /// signature (e.g. r=s=0, v=27), so `_recover(...) != gatewaySigner` would be
-    /// `address(0) != address(0)` == false and let an unauthorized deposit through.
-    /// Reject it at construction so the gate can never be bypassed.
+    /// A zero `gatewaySigner` would make the deposit gate fail-OPEN — `_recover`
+    /// returns `address(0)` for a malformed signature — so it is refused at construction.
     error ZeroGatewaySigner();
-    /// SEC-028: this exact gateway authorization (digest) was already spent by an
-    /// earlier successful deposit; replaying it must not mint a second leaf.
-    error AuthorizationAlreadyUsed();
+    /// `amount` is zero or exceeds `type(int128).max`.
+    error BadAmount();
+    /// The deposit would raise the vault's TVL beyond what the sequencer bond covers.
+    error BondCapacityExceeded();
+    /// The settlement does not accept deposits from this vault.
+    error DepositsPaused();
+    /// The permit's `validUntil` has passed.
+    error PermitExpired();
+    /// This owner commitment already entered the deposit chain.
+    error OwnerCommitUsed();
+    /// The settlement is not paired with this vault.
+    error NotPaired();
+    error NotCloseOnly();
+    /// The id is below the consumed boundary or does not exist.
+    error NotRefundable();
+    error AlreadyRefunded();
+    error BadRefundRecipient();
+    /// (from, ownerCommit, amount, id) does not reproduce the chain link at `id`.
+    error BadDepositPreimage();
+    /// The claim would dip into principal of deposits the settled state never credited.
+    error ReservedForUncredited();
 
     modifier onlySettlement() {
         if (msg.sender != settlement) revert NotSettlement();
@@ -143,20 +159,16 @@ contract CollateralVault {
     }
 
     constructor(address _settlement, address _token, address _gatewaySigner) {
-        // SEC-019 (Task 6c): a zero signer makes the deposit gate fail-open (see
-        // `ZeroGatewaySigner`), so a deploy passing `GATEWAY_SIGNER=0x0` would ship a
-        // wide-open vault. Reject it here rather than silently disable the gate.
+        // A zero signer makes the deposit gate fail-open (see `ZeroGatewaySigner`).
         if (_gatewaySigner == address(0)) revert ZeroGatewaySigner();
         settlement = _settlement;
         token = IERC20(_token);
         gatewaySigner = _gatewaySigner;
     }
 
-    /// SEC-019 (Task 6c): recover the signer of `digest` from a 65-byte `r‖s‖v`
-    /// signature, or `address(0)` if the signature is malformed, malleable (upper-half
-    /// `s`), or has a non-canonical `v`. `ecrecover` itself returns `address(0)` on
-    /// failure, so the caller's `!= gatewaySigner` check (with a non-zero signer) also
-    /// rejects a zero recovery. No import needed — `ecrecover` is a precompile.
+    /// Recover the signer of `digest` from a 65-byte `r‖s‖v` signature, or
+    /// `address(0)` if the signature is malformed, malleable (upper-half `s`), or has a
+    /// non-canonical `v`.
     function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address) {
         if (sig.length != 65) return address(0);
         bytes32 r;
@@ -171,10 +183,25 @@ contract CollateralVault {
         return ecrecover(digest, v, r, s);
     }
 
+    /// @notice The digest the gateway signs to permit `from` to deposit `amount` for
+    /// `ownerCommit` into this vault until `validUntil` (unix seconds, inclusive):
+    /// `keccak256(abi.encodePacked(DEPOSIT_PERMIT_TAG, chainid, vault, from,
+    /// ownerCommit, amount, uint256(validUntil)))`, a 200-byte preimage.
+    function permitDigest(address from, bytes32 ownerCommit, uint256 amount, uint64 validUntil)
+        public
+        view
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encodePacked(
+                DEPOSIT_PERMIT_TAG, block.chainid, address(this), from, ownerCommit, amount, uint256(validUntil)
+            )
+        );
+    }
+
     /// @notice Deposit `amount` (USDC base units) into the pooled vault. The caller
     /// must have `approve`d the vault first. The off-chain protocol mints a shielded
-    /// note of `amount` for the owner committed to by `ownerCommit`; the commitment
-    /// enters the note tree (§1).
+    /// note of `amount` for the owner committed to by `ownerCommit`.
     ///
     /// @dev SEC-019: the deposit is folded into `depositChainTip` BEFORE it can be
     /// credited off-chain. The leaf is
@@ -184,92 +211,105 @@ contract CollateralVault {
     /// (`deposit_leaf` / `deposit_chain_fold`) and in-circuit, and pinned on both sides
     /// by the same known-answer vectors. Do NOT change this encoding (no domain tag, no
     /// padded `from`, `id` as a full uint256 word) without changing the Rust side in the
-    /// same commit: any divergence silently breaks the binding this whole mechanism exists
-    /// to provide.
-    /// @param amount USDC base units to pull from `msg.sender`.
+    /// same commit.
+    /// @param amount USDC base units to pull from `msg.sender`; 1..=type(int128).max.
     /// @param ownerCommit BLINDED commitment to the shielded-note owner to credit
-    ///        off-chain: `keccak256(owner ‖ blind)`, computed by the depositor. This
-    ///        contract treats it as an opaque 32-byte word and only folds it. Bound
-    ///        into the leaf, so the sequencer cannot redirect the note to a different
-    ///        owner than the payer committed to — crediting another owner would need a
-    ///        different commit (breaking the chain match against this tip) or a keccak
-    ///        second-preimage. Passing the RAW owner here would forfeit the payer↔owner
-    ///        unlinkability for no added integrity; see spec §1a.
-    /// @param sig SEC-019 (Task 6c) gateway authorization: the `gatewaySigner`'s ECDSA
-    ///        signature over `keccak256(abi.encodePacked(chainid, this vault, from,
-    ///        ownerCommit, amount))`. Binding all four of chain, vault, payer and
-    ///        (ownerCommit, amount) stops a signature issued for one deposit from
-    ///        authorizing a different payer, owner-commit, or amount (or a replay on
-    ///        another chain/vault). It is verified then DISCARDED — it does NOT enter the
-    ///        leaf or the chain, so the leaf/fold encoding and all cross-layer KATs are
-    ///        unchanged. `depositCount`/`id` is deliberately NOT bound: the gateway can't
-    ///        predict the exact landing index at signing time (ordering is enforced by
-    ///        the chain + prefix pin, not by this signature).
-    function deposit(uint256 amount, bytes32 ownerCommit, bytes calldata sig) external {
-        // audit #11: refuse deposits once the system is in close-only. In close-only no
-        // new batch settles, so a deposit made here would never be acknowledged into a
-        // settled withdrawals root and the funds would be permanently unclaimable. Users
-        // exit via `claim` against the last settled root, not by depositing more.
-        if (ISettlementCloseOnly(settlement).closeOnly()) revert InCloseOnly();
-        // SEC-019 (Task 6c): the vault accepts a deposit ONLY if the gateway pre-authorized
-        // this exact (from, ownerCommit, amount) tuple for THIS vault on THIS chain.
-        // Verified BEFORE the transfer and then dropped; it never touches the leaf/chain.
-        //
-        // SEC-028: that check ALONE did not deliver the property this comment used to
-        // claim — "every leaf that can enter the chain is creditable off-chain by
-        // construction". The tuple binds no nonce and no id, so the same signature minted
-        // a fresh leaf on every submission, and the gateway consumes its stored blind on
-        // the FIRST credit — leaving every later identical leaf permanently uncreditable
-        // and head-of-line-blocking the contiguous queue for everyone. What establishes
-        // the property is the signature PLUS `usedDepositAuthorization` below.
-        //
-        // And it is still not the whole property. An authorization whose blind was never
-        // made durable off-chain yields the same uncreditable leaf with no attacker and no
-        // replay: the gateway holds it in memory and snapshots periodically. That is
-        // SEC-028's SECOND cause and it is NOT fixed here.
-        bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, ownerCommit, amount));
-        if (_recover(digest, sig) != gatewaySigner) revert BadGatewaySig();
-        // Placement, stated honestly. An earlier version of this comment claimed it was
-        // "load-bearing in both directions" because a failed transfer must roll the mark
-        // back — but that rollback is EVM revert atomicity and happens wherever the mark
-        // sits. Mutation testing confirmed it: moving this after `transferFrom`, or ahead
-        // of `_recover`, is invisible to every test.
-        //
-        // What placement DOES buy is checks-effects-interactions. `transferFrom` is an
-        // external call into `token`, which is immutable but chosen at deployment, so a
-        // token with transfer hooks could re-enter `deposit` with the same digest while
-        // the mark was still unset. Marking before the interaction closes that, and keeps
-        // the guard correct under a later refactor that adds one.
-        if (usedDepositAuthorization[digest]) revert AuthorizationAlreadyUsed();
-        usedDepositAuthorization[digest] = true;
+    ///        off-chain: `keccak256(owner ‖ blind)`. Bound into the leaf, so the
+    ///        sequencer cannot redirect the note to a different owner.
+    /// @param validUntil the permit deadline (unix seconds, inclusive).
+    /// @param sig the gateway permit: `gatewaySigner`'s `r‖s‖v` signature over
+    ///        `permitDigest(msg.sender, ownerCommit, amount, validUntil)`. Verified then
+    ///        discarded; it never enters the leaf or the chain.
+    function deposit(uint256 amount, bytes32 ownerCommit, uint64 validUntil, bytes calldata sig) external {
+        // The off-chain engine and ingester accept only positive amounts that fit int128.
+        if (amount == 0 || amount > uint256(uint128(type(int128).max))) revert BadAmount();
+        uint8 gate = ISettlementGate(settlement).depositGate(_tvl() + amount);
+        if (gate != 0) {
+            if (gate == 1) revert InCloseOnly();
+            if (gate == 2) revert BondCapacityExceeded();
+            revert DepositsPaused();
+        }
+        if (block.timestamp > validUntil) revert PermitExpired();
+        if (_recover(permitDigest(msg.sender, ownerCommit, amount, validUntil), sig) != gatewaySigner) {
+            revert BadGatewaySig();
+        }
+        // Marked before the token interaction (checks-effects-interactions).
+        if (usedOwnerCommit[ownerCommit]) revert OwnerCommitUsed();
+        usedOwnerCommit[ownerCommit] = true;
         if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
-        totalDeposited += amount;
+        uint256 cumulative = totalDeposited + amount;
+        totalDeposited = cumulative;
         // `id` is the PRE-increment count, so the first deposit is id 0 (matching the
-        // Rust vectors). Folded only after the transfer succeeded — a reverted deposit
-        // must leave the chain untouched.
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, ownerCommit, amount, uint256(depositCount)));
-        depositChainTip = keccak256(abi.encodePacked(depositChainTip, leaf));
-        emit Deposit(msg.sender, ownerCommit, amount, depositCount, depositChainTip);
-        depositCount += 1;
-        // record the new PREFIX tip (after `depositCount` deposits). Written after the
-        // increment, so index n always means "n deposits folded"; index 0 stays unwritten
-        // and reads back as the genesis tip via the mapping default.
-        depositTipAt[depositCount] = depositChainTip;
+        // Rust vectors). Folded only after the transfer succeeded.
+        uint64 id = depositCount;
+        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, ownerCommit, amount, uint256(id)));
+        bytes32 tip = keccak256(abi.encodePacked(depositChainTip, leaf));
+        depositChainTip = tip;
+        emit Deposit(msg.sender, ownerCommit, amount, id, tip);
+        // `cumulative` is at most 2^64 deposits of at most 2^127 each, so it fits 192 bits.
+        depositMeta[id] = DepositMeta({blockNumber: uint64(block.number), cumulative: uint192(cumulative)});
+        depositCount = id + 1;
+        // record the new PREFIX tip (after `depositCount` deposits). Index 0 stays
+        // unwritten and reads back as the genesis tip via the mapping default.
+        depositTipAt[id + 1] = tip;
     }
 
-    /// @notice Net ACCOUNTED collateral the bond floor scales off (audit Q1): the sum
-    /// of `deposit()`s minus claimed withdrawals — NOT the raw token balance. Using
-    /// the accounted figure makes the floor immune to donation/inflation griefing: a
-    /// bare `token.transfer` into the vault (bypassing `deposit`) cannot push
-    /// `requiredBond` up and stall settlement (review fix). For a pooled-collateral
-    /// vault this is also the truer measure of value-at-risk.
+    /// @notice Refund a deposit the settled state never consumed, once the paired
+    /// settlement is in close-only (its consumed count is frozen then). Permissionless;
+    /// pays the leaf's payer `from`, or `to` when `from` itself calls. The caller
+    /// supplies the leaf preimage, checked against the chain link at `id`.
+    function refundDeposit(uint64 id, address from, bytes32 ownerCommit, uint256 amount, address to) external {
+        ISettlementGate s = ISettlementGate(settlement);
+        if (s.vault() != address(this)) revert NotPaired();
+        if (!s.closeOnly()) revert NotCloseOnly();
+        if (id < s.consumedDepositCount() || id >= depositCount) revert NotRefundable();
+        if (depositRefunded[id]) revert AlreadyRefunded();
+        if (to == address(0) || (to != from && msg.sender != from)) revert BadRefundRecipient();
+        bytes32 leaf = keccak256(abi.encodePacked(from, ownerCommit, amount, uint256(id)));
+        if (keccak256(abi.encodePacked(depositTipAt[id], leaf)) != depositTipAt[id + 1]) revert BadDepositPreimage();
+        depositRefunded[id] = true;
+        totalRefunded += amount;
+        if (!token.transfer(to, amount)) revert TransferFailed();
+        emit DepositRefunded(id, from, to, amount);
+    }
+
+    /// @notice The L1 block deposit `id` landed in; 0 for an id that does not exist.
+    function depositBlock(uint64 id) external view returns (uint256) {
+        return depositMeta[id].blockNumber;
+    }
+
+    /// @notice Sum of the amounts of the first `n` deposits (0 for n = 0, and for an `n`
+    /// beyond `depositCount`, like `depositTipAt`).
+    function cumulativeDepositedAt(uint64 n) public view returns (uint256) {
+        return n == 0 ? 0 : depositMeta[n - 1].cumulative;
+    }
+
+    /// @notice Principal of deposits the settled state has not consumed and that were
+    /// not refunded: `cumulativeDepositedAt(depositCount) -
+    /// cumulativeDepositedAt(consumedDepositCount) - totalRefunded` (saturating).
+    function refundableOutstanding() public view returns (uint256) {
+        uint64 n = depositCount;
+        uint64 c = ISettlementGate(settlement).consumedDepositCount();
+        if (c > n) c = n;
+        uint256 outstanding = cumulativeDepositedAt(n) - cumulativeDepositedAt(c);
+        return outstanding > totalRefunded ? outstanding - totalRefunded : 0;
+    }
+
+    /// @notice Net ACCOUNTED collateral: deposits minus claimed withdrawals minus
+    /// refunds (saturating) — NOT the raw token balance, so a bare `token.transfer` into
+    /// the vault cannot move the bond floor or the deposit capacity.
     function tvl() external view returns (uint256) {
-        return totalDeposited > totalWithdrawn ? totalDeposited - totalWithdrawn : 0;
+        return _tvl();
+    }
+
+    function _tvl() internal view returns (uint256) {
+        uint256 out = totalWithdrawn + totalRefunded;
+        return totalDeposited > out ? totalDeposited - out : 0;
     }
 
     /// @notice Called by the settlement contract when a batch settles, publishing
-    /// that batch's authorized withdrawals (§3). Only a settled batch can reach
-    /// here, so withdrawals are inherently gated on hard finality.
+    /// that batch's authorized withdrawals. Only a settled batch can reach here, so
+    /// withdrawals are inherently gated on hard finality.
     ///
     /// @dev INVARIANT (prover-side): `root` MUST be the **cumulative** root of all
     /// authorized-but-unclaimed withdrawals as of this batch — NOT just the new
@@ -291,9 +331,11 @@ contract CollateralVault {
         emit WithdrawalsRootPublished(epoch, root);
     }
 
-    /// @notice Claim an authorized withdrawal by proving membership in the current
-    /// withdrawals root. Works identically in normal and forced-exit/close-only
-    /// modes — the authority is the settled root, not the operator. Pays out in USDC.
+    /// @notice Claim an authorized withdrawal by proving membership in a published
+    /// withdrawals root. Works identically in normal and close-only modes — the
+    /// authority is the settled root, not the operator. Pays out in USDC. A claim may
+    /// never draw on the principal of deposits the settled state has not credited
+    /// (`refundableOutstanding`).
     /// @param to recipient (the leaf binds the funds to this address)
     /// @param amount amount to release (USDC base units)
     /// @param nonce per-withdrawal uniqueness
@@ -308,6 +350,8 @@ contract CollateralVault {
         if (root == bytes32(0) || !rootPublished[root] || !root.verify(leaf, proof)) {
             revert BadWithdrawalProof();
         }
+        uint256 balance = token.balanceOf(address(this));
+        if (balance < amount || balance - amount < refundableOutstanding()) revert ReservedForUncredited();
         claimed[leaf] = true;
         totalWithdrawn += amount;
         if (!token.transfer(to, amount)) revert TransferFailed();

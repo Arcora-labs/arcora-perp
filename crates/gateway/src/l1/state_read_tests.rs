@@ -163,9 +163,30 @@ fn runtime_state_native_cast_gate_vault_claims_terminal_and_bond_positive() {
     assert_eq!(l1.current_root().unwrap(), crate::hex32(&[3; 32]));
     assert_eq!(l1.sequencer_bond().unwrap(), 77);
     // req=30/have=77: exercise the real paired bond read; no transaction/signing.
-    assert_eq!(l1.ensure_bond().unwrap(), None);
-    assert_eq!(l1.challenge_scan_start_observation().unwrap(), (28, 200));
-    assert!(l1.challenge_answerable(&crate::hex32(&[1; 32])).unwrap());
+    assert_eq!(
+        l1.ensure_bond().unwrap(),
+        BondOutcome::Covered {
+            bond: 77,
+            target: 60,
+            capacity: 1_000_000
+        }
+    );
+    let open = l1
+        .open_challenge_set(&std::collections::BTreeSet::new(), 16)
+        .unwrap();
+    assert_eq!((open.head, open.hashes), (28, vec![[5; 32]]));
+    assert_eq!(l1.open_challenge_count().unwrap(), 1);
+    assert_eq!(l1.consumed_deposit_count().unwrap(), 5);
+    let gate = l1.deposit_gate_observation().unwrap();
+    assert!(gate.accepting_deposits && !gate.close_only);
+    assert_eq!(gate.deposit_capacity, 1_000_000);
+    let live = l1.liveness_observation().unwrap();
+    assert_eq!((live.head, live.last_progress_block), (28, 20));
+    // slashCount() is 0: only that exact count is acknowledged.
+    assert!(l1.acknowledge_slashes(1).is_err());
+    assert_eq!(l1.acknowledged_slash_count(), 0);
+    assert_eq!(l1.acknowledge_slashes(0), Ok(0));
+    assert_eq!(l1.settlement_params().unwrap().progress_batches, 2);
     assert!(primary
         .fixture
         .calls
@@ -199,12 +220,17 @@ fn runtime_state_native_cast_refusals_are_all_or_nothing_and_redacted() {
             .unwrap_err();
         assert!(!error.contains(SECRET));
     }
-    for fault in [Fault::Bool, Fault::Overflow, Fault::Tuple] {
+    for fault in [
+        Fault::Bool,
+        Fault::Overflow,
+        Fault::Tuple,
+        Fault::OpenSet(0),
+    ] {
         let primary = Server::start(fault);
         let witness = Server::start(fault);
         let l1 = configured(&primary, &witness);
         assert!(
-            l1.challenge_answerable(&crate::hex32(&[1; 32])).is_err(),
+            l1.open_challenge_set(&Default::default(), 16).is_err(),
             "{fault:?}"
         );
     }
@@ -398,9 +424,162 @@ fn runtime_state_native_cast_deposit_adapter_checks_secondary_code_logs_and_word
     assert!(!err.contains(SECRET));
 }
 
+fn open_set(
+    p: Fault,
+    w: Fault,
+    known: &std::collections::BTreeSet<Digest>,
+    max_details: usize,
+) -> Result<OpenSetRead, String> {
+    let primary = Fixture::new(p);
+    let witness = Fixture::new(w);
+    let r =
+        CanonicalRead::with_policy(&primary, Some(&witness), Some(84532), AnchorPolicy::Latest)?;
+    let result = r.open_challenges(SETTLEMENT, known, max_details)?;
+    r.finish()?;
+    Ok(result)
+}
 #[test]
-fn challenge_discovery_binds_logs_to_canonical_page_and_refuses_malformed_events() {
-    let run = |p: Fault, w: Fault| -> Result<(Vec<String>, u64, Option<Digest>), String> {
+fn open_challenge_set_reads_count_pages_and_details_at_one_anchor() {
+    let read = open_set(Fault::None, Fault::None, &Default::default(), 16).unwrap();
+    assert_eq!(
+        read,
+        OpenSetRead {
+            head: 28,
+            batch_count: 6,
+            hashes: vec![[5; 32]],
+            details: vec![OpenChallenge {
+                order_hash: [5; 32],
+                beneficiary: [0x33; 20],
+                batch_id_hint: 0,
+                opened_block: 16,
+                open_batch_count: 6,
+                stake: 1,
+            }],
+        }
+    );
+    // Known hashes are not re-read: their details cannot change while open.
+    let primary = Fixture::new(Fault::None);
+    let r = CanonicalRead::with_policy(&primary, None, None, AnchorPolicy::Latest).unwrap();
+    let known = std::collections::BTreeSet::from([[5; 32]]);
+    let read = r.open_challenges(SETTLEMENT, &known, 16).unwrap();
+    assert!(read.details.is_empty());
+    use sha3::{Digest as _, Keccak256};
+    let detail = crate::hex0x(&Keccak256::digest(b"challenges(bytes32)")[..4]);
+    assert!(!primary
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(m, p)| m == "eth_call" && p[0]["data"].as_str().unwrap().starts_with(&detail)));
+}
+#[test]
+fn open_challenge_set_spans_pages_and_bounds_new_detail_reads() {
+    let read = open_set(
+        Fault::LargeOpenSet,
+        Fault::LargeOpenSet,
+        &Default::default(),
+        4,
+    )
+    .unwrap();
+    assert_eq!(read.hashes.len(), 513);
+    assert_eq!(
+        read.hashes
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        513
+    );
+    assert_eq!(read.details.len(), 4);
+}
+#[test]
+fn open_challenge_set_refuses_malformed_impossible_or_disagreeing_reads() {
+    // 0 short page, 1 bad offset, 2 length past the data, 3 duplicate, 4 listed
+    // but not open, 5 opened after the current batch count, 6 opened after the
+    // anchor block, 7 zero beneficiary.
+    for i in 0..=7 {
+        assert!(
+            open_set(
+                Fault::OpenSet(i),
+                Fault::OpenSet(i),
+                &Default::default(),
+                16
+            )
+            .is_err(),
+            "open set fault {i}"
+        );
+    }
+    for f in [
+        Fault::Bool,
+        Fault::Overflow,
+        Fault::Tuple,
+        Fault::MalformedWord,
+    ] {
+        assert!(open_set(f, f, &Default::default(), 16).is_err(), "{f:?}");
+    }
+    // The witness must agree on the count, every page and every detail.
+    for f in [
+        Fault::Word(12),
+        Fault::Word(9),
+        Fault::OpenSet(0),
+        Fault::OpenSet(5),
+        Fault::CanonicalAfter,
+        Fault::Failure(5),
+    ] {
+        assert!(
+            open_set(Fault::None, f, &Default::default(), 16).is_err(),
+            "witness {f:?}"
+        );
+    }
+}
+#[test]
+fn boot_posture_reads_every_term_from_one_snapshot() {
+    let read = |p: Fault, w: Fault| {
+        let primary = Fixture::new(p);
+        let witness = Fixture::new(w);
+        let r = CanonicalRead::with_policy(
+            &primary,
+            Some(&witness),
+            Some(84532),
+            AnchorPolicy::Finalized,
+        )?;
+        let posture = super::read_boot_posture(&r, SETTLEMENT, Some(SETTLEMENT))?;
+        r.finish()?;
+        Ok::<_, String>(posture)
+    };
+    let me = crate::parse_addr20_hex(SETTLEMENT).unwrap();
+    assert_eq!(
+        read(Fault::None, Fault::None).unwrap(),
+        BootPosture {
+            abi_version: 3,
+            verifier: me,
+            proof_version: 2,
+            vault: me,
+            vault_settlement: me,
+            anchor_timeout_ms: Some(3_600_000),
+            liveness_timeout_blocks: 43_200,
+            consumed_deposit_count: 5,
+            current_root: [3; 32],
+            enclave_signer: me,
+            sequencer: me,
+        }
+    );
+    let error = read(Fault::Word(14), Fault::Word(14)).unwrap_err();
+    assert!(error.contains("ABI_VERSION is 4"), "{error}");
+    for f in [
+        Fault::Word(14),
+        Fault::Word(16),
+        Fault::Word(19),
+        Fault::Word(21),
+        Fault::Word(30),
+        Fault::Word(31),
+        Fault::Failure(4),
+    ] {
+        assert!(read(Fault::None, f).is_err(), "witness {f:?}");
+    }
+}
+#[test]
+fn the_slash_count_an_acknowledgement_is_checked_against_is_read_strictly() {
+    let read = |p: Fault, w: Fault| {
         let primary = Fixture::new(p);
         let witness = Fixture::new(w);
         let r = CanonicalRead::with_policy(
@@ -409,128 +588,86 @@ fn challenge_discovery_binds_logs_to_canonical_page_and_refuses_malformed_events
             Some(84532),
             AnchorPolicy::Latest,
         )?;
-        let result = r.challenges(SETTLEMENT, 16)?;
+        let count = super::read_slash_count(&r, SETTLEMENT)?;
         r.finish()?;
-        Ok(result)
+        Ok::<_, String>(count)
     };
-    assert_eq!(
-        run(Fault::None, Fault::None).unwrap(),
-        (vec![crate::hex32(&[5; 32])], 29, Some([10; 32]))
-    );
-    assert!(run(Fault::None, Fault::Log(0)).is_err());
-    assert_eq!(
-        run(Fault::Log(0), Fault::Log(0)).unwrap(),
-        (vec![], 29, Some([10; 32]))
-    );
-    for i in 1..=10 {
-        assert!(
-            run(Fault::Log(i), Fault::Log(i)).is_err(),
-            "invalid matching log {i}"
-        );
-    }
-    for f in [Fault::CanonicalAfter, Fault::WrongHeight, Fault::Failure(5)] {
-        assert!(run(Fault::None, f).is_err(), "{f:?}");
+    assert_eq!(read(Fault::None, Fault::None), Ok(0));
+    // index 8 is slashCount(): a disagreeing witness, or a malformed or
+    // overflowing word, is refused rather than acknowledged.
+    for (p, w) in [
+        (Fault::None, Fault::Word(8)),
+        (Fault::MalformedWord, Fault::MalformedWord),
+        (Fault::Overflow, Fault::Overflow),
+        (Fault::None, Fault::CanonicalAfter),
+    ] {
+        assert!(read(p, w).is_err(), "{p:?} {w:?}");
     }
 }
 #[test]
-fn challenge_discovery_caps_page_size_and_never_uses_latest_as_log_bound() {
-    struct Empty {
-        calls: std::sync::Mutex<Vec<(String, Vec<Value>)>>,
-    }
-    impl Rpc for Empty {
-        fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
-            self.calls.lock().unwrap().push((m.into(), p.clone()));
-            Ok(match m {
-                "eth_chainId" => json!("0x14a34"),
-                "eth_getBlockByNumber" => {
-                    json!({"number":if p[0]==json!("latest"){json!("0x1000")}else{p[0].clone()},"hash":crate::hex32(&[9;32])})
-                }
-                "eth_getLogs" => json!([]),
-                _ => panic!("unexpected method"),
-            })
-        }
-    }
-    let primary = Empty {
-        calls: Default::default(),
-    };
-    let witness = Empty {
-        calls: Default::default(),
-    };
+fn bond_terms_and_settlement_params_are_read_strictly() {
+    let primary = Fixture::new(Fault::None);
+    let witness = Fixture::new(Fault::None);
     let r = CanonicalRead::with_policy(&primary, Some(&witness), Some(84532), AnchorPolicy::Latest)
         .unwrap();
     assert_eq!(
-        r.challenges(SETTLEMENT, 16).unwrap(),
-        (vec![], 1040, Some([9; 32]))
+        super::read_bond_terms(&r, SETTLEMENT).unwrap(),
+        super::BondTerms {
+            required: 30,
+            bond: 77,
+            slash_count: 0,
+            capacity: 1_000_000
+        }
+    );
+    assert_eq!(
+        super::read_settlement_params(&r, SETTLEMENT).unwrap(),
+        SettlementParams {
+            liveness_timeout_blocks: 43_200,
+            challenge_grace_blocks: 3_600,
+            progress_batches: 2,
+            slash_payout_cap: 1_000_000_000,
+            challenge_bond: 10_000_000_000_000_000,
+            inclusion_deadline_secs: 3_600,
+        }
     );
     r.finish().unwrap();
-    for fixture in [&primary, &witness] {
-        let calls = fixture.calls.lock().unwrap();
-        let (_, p) = calls.iter().find(|(m, _)| m == "eth_getLogs").unwrap();
-        assert_eq!(p[0]["fromBlock"], json!("0x10"));
-        assert_eq!(p[0]["toBlock"], json!("0x40f"));
-    }
+    let primary = Fixture::new(Fault::None);
+    let witness = Fixture::new(Fault::Word(8));
+    let r = CanonicalRead::with_policy(&primary, Some(&witness), Some(84532), AnchorPolicy::Latest)
+        .unwrap();
+    assert!(
+        super::read_bond_terms(&r, SETTLEMENT).is_err(),
+        "slashCount disagreement"
+    );
 }
 #[test]
 #[ignore = "requires real cast; explicitly run in native verification"]
-fn runtime_state_native_cast_challenge_discovery_requires_matching_canonical_logs() {
+fn runtime_state_native_cast_open_set_and_boot_posture_are_hash_pinned() {
     let primary = Server::start(Fault::None);
     let witness = Server::start(Fault::None);
+    let mut l1 = configured(&primary, &witness);
+    l1.clock = Some(clock_binding::ClockConfig {
+        verifier: crate::parse_addr20_hex(SETTLEMENT).unwrap(),
+        chain_id: 84532,
+        stop: None,
+        program_vkey: Default::default(),
+    });
     assert_eq!(
-        configured(&primary, &witness).fetch_challenges(16).unwrap(),
-        (vec![crate::hex32(&[5; 32])], 29, Some([10; 32]))
+        l1.open_challenge_set(&Default::default(), 16)
+            .unwrap()
+            .details
+            .len(),
+        1
     );
-    let primary = Server::start(Fault::None);
-    let witness = Server::start(Fault::Log(0));
-    assert!(configured(&primary, &witness).fetch_challenges(16).is_err());
-    for fault in [Fault::Log(1), Fault::Log(4), Fault::Log(6), Fault::Log(7)] {
-        let primary = Server::start(fault);
-        let witness = Server::start(fault);
-        assert!(configured(&primary, &witness).fetch_challenges(16).is_err());
-    }
-    for fault in [Fault::CanonicalAfter, Fault::Failure(5)] {
+    assert_eq!(l1.boot_posture().unwrap().abi_version, 3);
+    assert_eq!(l1.anchor_timeout_ms().unwrap(), 3_600_000);
+    for fault in [Fault::OpenSet(3), Fault::CanonicalAfter, Fault::Failure(5)] {
         let primary = Server::start(Fault::None);
         let witness = Server::start(fault);
         let e = configured(&primary, &witness)
-            .fetch_challenges(16)
+            .open_challenge_set(&Default::default(), 16)
             .unwrap_err();
         assert!(!e.contains(SECRET));
-    }
-}
-
-#[test]
-#[ignore = "requires real cast; explicitly run in native verification"]
-fn runtime_state_native_cast_prior_page_reorg_and_challenge_deadline_boundaries() {
-    let old_primary = Server::start(Fault::None);
-    let old_witness = Server::start(Fault::None);
-    let old = configured(&old_primary, &old_witness);
-    let (_, next, anchor) = old.fetch_challenges(16).unwrap();
-    let anchor = anchor.unwrap();
-    assert!(old.challenge_scan_anchor_matches(next - 1, anchor).unwrap());
-    let primary = Server::start(Fault::ForkWorld);
-    let witness = Server::start(Fault::ForkWorld);
-    let replacement = configured(&primary, &witness);
-    assert!(!replacement
-        .challenge_scan_anchor_matches(next - 1, anchor)
-        .unwrap());
-    assert_eq!(
-        replacement.fetch_challenges(16).unwrap().0,
-        vec![crate::hex32(&[6; 32])]
-    );
-    let primary = Server::start(Fault::None);
-    let witness = Server::start(Fault::ForkWorld);
-    assert!(configured(&primary, &witness)
-        .challenge_scan_anchor_matches(next - 1, anchor)
-        .is_err());
-    // Contract allows equality; expired entries can stay open but are unanswerable.
-    for (deadline, answerable) in [(27, false), (28, true), (29, true)] {
-        let primary = Server::start(Fault::Deadline(deadline));
-        let witness = Server::start(Fault::Deadline(deadline));
-        assert_eq!(
-            configured(&primary, &witness)
-                .challenge_answerable(&crate::hex32(&[1; 32]))
-                .unwrap(),
-            answerable
-        );
     }
 }
 

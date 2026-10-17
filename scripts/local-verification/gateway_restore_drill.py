@@ -182,6 +182,8 @@ def run(binary, out):
                 order_id = rows[0]['orderId']
                 permit_body = {'from': address, 'amount': '1000000', 'marketId': 0, 'purpose': 'collateral'}
                 permit = ok(port, 'POST', '/v1/accounts/deposit/authorize', permit_body, old_key)
+                require(type(permit.get('validUntil')) is int and permit['validUntil'] > 0,
+                        'permit carries its validUntil deadline')
                 older = state.read_bytes()  # A valid snapshot before durable credential rotation.
                 ok(port, 'DELETE', '/v1/orders/' + order_id, key=old_key)
                 challenge = ok(port, 'GET', '/v1/accounts/recovery/' + account['owner'])
@@ -258,6 +260,8 @@ def run(binary, out):
                     route = ok(restored_port, 'POST', '/v1/accounts/deposit/route', routing, current_key)
                     require(route['durability'] == 'confirmed' and route['ownerCommit'] == permit['ownerCommit'],
                             'original durable deposit route preserved')
+                    require(route.get('validUntil') == permit['validUntil'],
+                            'restored route keeps the permit deadline it was signed with')
                     retry = ok(restored_port, 'DELETE', '/v1/orders/' + order_id, key=current_key)
                     require(retry['cancelledSize'] == '10000000', 'idempotent cancellation receipt preserved')
                     verify_account(expected, ok(restored_port, 'GET', '/v1/accounts/me', key=current_key))

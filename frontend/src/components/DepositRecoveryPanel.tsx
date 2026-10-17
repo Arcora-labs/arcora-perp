@@ -24,6 +24,11 @@ export function usePendingDeposits() {
 
 const stepNames = { mint: "Mint test USDC", approve: "Approve vault", deposit: "Deposit into vault" };
 
+/** A permit expiry (unix seconds) as an unambiguous UTC timestamp. */
+export function permitExpiryText(validUntil: number): string {
+  return new Date(validUntil * 1000).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
 export function DepositRecoveryPanel({ client, pending, issue, active, onCheckStart, onCredited }: {
   client: WalletDepositClient; pending: PendingDeposit[]; issue: string | null; active: boolean;
   onCheckStart?(): void; onCredited?(): void;
@@ -88,6 +93,7 @@ export function DepositRecoveryPanel({ client, pending, issue, active, onCheckSt
                 : <code>{original.hash}</code>
               : original.retryReady ? "Ready for an explicit retry" : "Not returned by wallet"}</dd>
             {original.previousHash && <><dt>Previous failed transaction</dt><dd><code>{original.previousHash}</code></dd></>}
+            {original.permitValidUntil !== null && <><dt>Deposit permit expires</dt><dd>{permitExpiryText(original.permitValidUntil)}</dd></>}
           </dl>
           {original.retryReady ? (
             <p className="small">The finalized failure is saved. Resume the original deposit to retry the failed step; completed mint and approval steps will be kept.</p>
@@ -96,6 +102,9 @@ export function DepositRecoveryPanel({ client, pending, issue, active, onCheckSt
               {active ? "Waiting for the wallet's transaction response. " : "The transaction outcome is unknown because the wallet did not return its hash. "}
               Open this wallet’s activity on the displayed network and locate the original {stepNames[original.step].toLowerCase()} transaction for this amount.
               Automatic transaction matching is unavailable. Keep the original transaction details; new sends remain blocked.
+              {original.step === "deposit" && original.permitValidUntil !== null && (
+                <> The vault refuses this deposit's permit in any block after {permitExpiryText(original.permitValidUntil)}, so a deposit that has not landed by then cannot move funds.</>
+              )}
             </p>
           ) : (
             <>

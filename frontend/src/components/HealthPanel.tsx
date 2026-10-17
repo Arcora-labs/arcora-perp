@@ -203,8 +203,9 @@ export function HealthPanel() {
               <span className="mono">
                 {state.l1.settledRoot.slice(0, 10)}…{state.l1.settledRoot.slice(-6)}
               </span>{" "}
-              advanced on-chain via <code>settleBatch</code>, gated on a USDC bond scaled to vault
-              TVL (audit Q1).{" "}
+              advanced on-chain via <code>settleBatch</code>. The USDC bond sets the vault's
+              deposit capacity (about 20× the bond): a deposit that would take the vault's holdings
+              past it is refused, and settlement never waits on the bond.{" "}
               <a
                 className="pos"
                 href={`https://sepolia.basescan.org/tx/${state.l1.lastTx}`}
