@@ -24,34 +24,78 @@ committed to any proof or manifest.
 
 ## Q1 — How big is the sequencer bond, and is it sized to what it secures?
 
-**Mechanism.** The bond floor scales with live custodied TVL rather than being a
-fixed constant. `requiredBond() = vault.balance * BOND_BPS / 10_000` with
-`BOND_BPS = 500` (5%); `settleBatch` reverts `UnderBonded` if the posted bond is
-below the floor. As deposits grow the value at risk, the floor grows with it; as
-users withdraw, it relaxes. — `contracts/src/DarkPerpSettlement.sol`, test
-`test_settle_requires_a_bond_scaled_to_tvl` (commit `68dd03e`).
+**Mechanism — deposits close at bond capacity.** The bond floor scales with the
+vault's accounted TVL: `requiredBond() = vault.tvl() * BOND_BPS / 10_000` with
+`BOND_BPS = 500` (5%). The floor is enforced at the **entrance**, not at
+settlement:
 
-**Why it can't be gamed.** The TVL the floor reads is user collateral held in the
-vault; the sequencer cannot lower it (there is no sequencer-controlled withdrawal
-path), and the bond itself has **no withdrawal function** — it is only ever
-released by a successful slash. So the sequencer cannot post a bond, settle, and
-claw the bond back in the same breath. Forced ETH (`selfdestruct`) into the vault
-only *raises* the floor, which grieves the sequencer, not the users.
+- Before every deposit the vault asks the settlement `depositGate(tvl + amount)`.
+  A deposit that would raise `requiredBond()` above the posted `sequencerBond`
+  reverts `BondCapacityExceeded`.
+- `depositCapacity()` reports the remaining headroom: the largest TVL the bond still
+  covers, minus the current TVL. That is about 20 times the bond.
+- `settleBatch` never checks the bond. Settlement, withdrawals and wind-down
+  therefore never stop because of it; a short bond only closes the deposit entrance
+  until it is topped up.
 
-**Limit.** 5% is a policy parameter, not a theorem; it is defensible as covering
-the latency cost of a liquidation/ADL cascade on a TVL-sized book, but a venue with
-unusually fat tails should raise it. An adversarial review of this mechanism
-returned **SOUND** with no exploitable path.
+— `contracts/src/DarkPerpSettlement.sol` (`depositGate`, `depositCapacity`,
+`requiredBond`), `contracts/src/CollateralVault.sol` (`deposit`), tests in
+`contracts/test/BondCapacity.t.sol`.
+
+**Bond withdrawal.** `withdrawBond` releases only the excess above
+`max(requiredBond(), openChallengeCount() * slashPayoutCap)`, so every open
+challenge stays fully payable. It works in close-only too, because refunds and
+claims are paid by the vault, not by the bond.
+
+**What the bond pays for — a capped fine per censored order.** An order the
+sequencer accepted but never settled or rejected can be challenged on L1 with the
+enclave-signed authorization from its receipt (`docs/API.md`, § L1 inclusion
+challenges). If no answer lands, `slashUnanswered` moves
+`min(sequencerBond, slashPayoutCap)` from the bond to the **beneficiary** the
+authorization names: the account's bound deposit address. The challenger's stake
+is returned. The fine does not stop the exchange: settlement continues, and the
+smaller bond lowers deposit capacity until the operator tops it up. The gateway
+pauses automatic top-ups after a slash until the operator acknowledges it, so a
+repeated answering failure cannot silently drain the operator's balance. When the
+bond is below the cap, the fine is reduced and only the beneficiary may trigger it
+at first.
+
+**Progress gate — slow is not censoring.** A slash needs `progressBatches` (2 at
+launch) ordinary batches settled since the challenge opened, plus
+`challengeGraceBlocks` (3,600 blocks, about 2 h) after the settle block of the last
+of them. An order also cannot be challenged before `inclusionDeadlineSecs`
+(3,600 s) after its signed receive time. A slow prover, a finality wait or a
+stalled settle loop therefore produces no slashable challenge: the gate counts
+settled batches, not elapsed time. Close-only never slashes; a challenge that can no
+longer reach the gate is released and its stake returned
+(`releaseStaleChallenge`).
+
+**Why it can't be gamed.** `tvl()` is accounted collateral (deposits minus claimed
+withdrawals minus refunds), not the raw token balance, so a bare token transfer into
+the vault moves neither the floor nor the capacity. The sequencer cannot lower TVL:
+it has no withdrawal path of its own. The bond cannot be withdrawn below the floor,
+and the gateway reserves no capacity for unfunded permits; the on-chain gate decides
+at deposit time.
+
+**Limit.** 5% and the 1,000 USDC Base Sepolia fine cap are policy parameters, not
+theorems. The cap bounds the compensation per censored order; it is not insurance
+of the whole TVL. A venue with fatter tails, or a mainnet deployment, should set its
+own values.
 
 ## Q2 — If a user loses money, how do they recover it?
 
 This is the question that forces honesty, so answer it in layers — by *what caused*
 the loss, because the protocol's obligation is different for each.
 
-1. **Sequencer fault** (invalid state transition, withheld data, equivocation).
-   Recoverable. The fault is provable on L1, the bond is slashed (Q1), and the
-   honest state is the one backed by the valid proof. The bond is the user-facing
-   insurance against operator misbehavior, which is why it is sized to TVL.
+1. **Sequencer fault.** An invalid state transition never settles: the verifier
+   rejects it, and the honest state is the one backed by the valid proof. An
+   accepted order that is never settled or rejected can be challenged on L1, and an
+   unanswered challenge pays a capped fine to the account's beneficiary (Q1). A
+   sequencer that stops, or keeps settling without consuming a landed deposit, can
+   be forced into close-only by anyone; unconsumed deposits are then refunded at
+   principal from the vault, and settled balances exit through the wind-down
+   (`docs/FINAL_SETTLE_RUNBOOK.md`). The bond bounds how much value may enter
+   (capacity) and funds the fines.
 2. **Protocol bad debt** (a position goes underwater faster than it can be
    liquidated, leaving a deficit). Recoverable up to the capital stack: the
    insurance fund absorbs it first, and only a *true* depletion socializes — and
@@ -65,13 +109,13 @@ the loss, because the protocol's obligation is different for each.
    recoverable, by construction.** A perpetual is a zero-sum transfer between longs
    and shorts; "recovering" a trading loss would mean a counterparty or the
    insurance fund subsidizing it, which would make the venue insolvent on a long
-   enough timeline. The protocol's guarantee here is narrower and real: your
-   *remaining* collateral can always be withdrawn from a settled state via the
-   vault, with no sequencer in the release path.
+   enough timeline. The protocol's guarantee here is narrower and real: once your
+   *remaining* collateral is in a published withdrawals root, the vault releases it
+   with no sequencer in the release path.
 
-So "recovery" is fully specified — faults and protocol deficits are backstopped by
-slashing and insurance; trading P&L is not, and the design says so rather than
-implying otherwise.
+So "recovery" is fully specified — sequencer faults are contained by validity
+proofs, capped fines and refunds, protocol deficits by insurance; trading P&L is
+not, and the design says so rather than implying otherwise.
 
 **Transparency receipt (built).** The one remaining piece — making a socialized
 haircut *visible* rather than silent — is now a mechanism, not a TODO. The
@@ -235,7 +279,7 @@ a hit list of soon-to-be-liquidated addresses.
 
 | # | Question | Status | Where |
 |---|----------|--------|-------|
-| Q1 | Bond sizing | **Done**, review: sound | `DarkPerpSettlement.sol` (`68dd03e`) |
+| Q1 | Bond sizing | **Done** — capacity gate, capped fine, progress gate | `DarkPerpSettlement.sol`, `CollateralVault.sol` |
 | Q2 | Loss recovery | **Done** — layered model + ADL transparency receipt | this doc + `engine.rs`/`sequencer` (`4f972cc`) |
 | Q3 | Insurance feed | **Done** | `engine.rs` (`5500cc5`) |
 | Q4 | MM incentive | **Done** + review hardening | `market.rs`/`engine.rs` (`7cb9eea`,`1c1c34a`) |

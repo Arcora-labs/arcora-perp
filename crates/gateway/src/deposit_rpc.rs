@@ -9,11 +9,26 @@ use std::collections::BTreeMap;
 const TOPIC: &str = crate::l1::DEPOSIT_TOPIC0;
 const MAX_LOGS: usize = 16384;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Block {
     pub number: u64,
     pub hash: [u8; 32],
+    /// Header timestamp in seconds. `VaultSource` sets it only after recomputing
+    /// the block hash from the returned header fields, so the time is as
+    /// authentic as the block identity. It is not persisted: a restored anchor
+    /// carries `None`, and time-based decisions use a freshly fetched block.
+    #[serde(skip)]
+    pub timestamp: Option<u64>,
 }
+/// A block is identified by its number and hash. The timestamp is a function of
+/// the hash once validated, and is absent on a block restored from a snapshot,
+/// so it does not take part in comparisons.
+impl PartialEq for Block {
+    fn eq(&self, other: &Self) -> bool {
+        self.number == other.number && self.hash == other.hash
+    }
+}
+impl Eq for Block {}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Domain {
     pub chain: u64,
@@ -127,15 +142,28 @@ fn uint64(b: &[u8]) -> Result<u64, Error> {
     Ok(u64::from_be_bytes(b[24..].try_into().unwrap()))
 }
 
+/// Parse a block header and bind its timestamp to the reported hash. A header
+/// whose fields do not hash to the reported value is a provider fault: retry.
+pub(crate) fn validated_block(v: &Value) -> Result<Block, Error> {
+    let number = quantity(&v["number"])?;
+    let hash = digest(&v["hash"])?;
+    let timestamp = quantity(&v["timestamp"])?;
+    if header::header_hash(v)? != hash {
+        return Err("block header does not hash to the reported block hash".into());
+    }
+    Ok(Block {
+        number,
+        hash,
+        timestamp: Some(timestamp),
+    })
+}
+
 impl<R: Rpc> VaultSource<R> {
     fn block(&self, tag: Value) -> Result<Block, Error> {
         let v = self
             .rpc
             .call("eth_getBlockByNumber", vec![tag.clone(), json!(false)])?;
-        let block = Block {
-            number: quantity(&v["number"])?,
-            hash: digest(&v["hash"])?,
-        };
+        let block = validated_block(&v)?;
         if tag != json!("finalized") && quantity(&tag)? != block.number {
             return Err("RPC returned the wrong block height".into());
         }
@@ -388,6 +416,37 @@ fn validate_logs(
         return Err("incomplete or forked log page".into());
     }
     Ok(events)
+}
+
+mod header;
+
+#[cfg(test)]
+pub(crate) const TEST_GENESIS_TIME: u64 = 1_700_000_000;
+
+/// A self-consistent block header for height `n` (2 s blocks from
+/// `TEST_GENESIS_TIME`). A nonzero `salt` yields a sibling with another hash.
+#[cfg(test)]
+pub(crate) fn test_header(n: u64, salt: u8) -> Value {
+    let mut v = json!({
+        "parentHash": hex0x(&[n as u8; 32]),
+        "sha3Uncles": hex0x(&[0x1d; 32]),
+        "miner": hex0x(&[0; 20]),
+        "stateRoot": hex0x(&[2; 32]),
+        "transactionsRoot": hex0x(&[3; 32]),
+        "receiptsRoot": hex0x(&[4; 32]),
+        "logsBloom": hex0x(&[0; 256]),
+        "difficulty": "0x0",
+        "number": format!("0x{n:x}"),
+        "gasLimit": "0x1c9c380",
+        "gasUsed": "0x0",
+        "timestamp": format!("0x{:x}", TEST_GENESIS_TIME + 2 * n),
+        "extraData": if salt == 0 { "0x".to_string() } else { format!("0x{salt:02x}") },
+        "mixHash": hex0x(&[5; 32]),
+        "nonce": "0x0000000000000000",
+        "baseFeePerGas": "0x7",
+    });
+    v["hash"] = json!(hex0x(&header::header_hash(&v).unwrap()));
+    v
 }
 
 #[cfg(test)]

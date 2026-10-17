@@ -1,5 +1,6 @@
 """Exercise deployment observations without a network connection or chain writes."""
 import contextlib
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -16,10 +17,25 @@ OTHER_HASH = "0x" + "bb" * 32
 WITNESS = "https://independent.example"
 
 
+def clock_stack_record():
+    """A synthetic clock-stack deployment record (fresh addresses, same params)."""
+    config = json.loads((ROOT / "contracts/deployments/base-sepolia.json").read_text())
+    config["contracts"] = {
+        "DarkPerpSettlement": {"address": "0x" + "a1" * 20},
+        "CollateralVault": {"address": "0x" + "a2" * 20},
+        "ClockBoundVerifier": {"address": "0x" + "a3" * 20},
+        "SP1ZkVerifier": {"address": "0x" + "a4" * 20, "programVKey": "0x" + "00" * 32,
+                          "sp1VerifierGateway": "0x" + "a5" * 20},
+        "MockUSDC": {"address": "0x" + "a6" * 20},
+    }
+    config["params"]["governance"] = "0x" + "a7" * 20
+    return config
+
+
 class DeploymentObservationTests(unittest.TestCase):
-    def observe(self, fail_getter=None, reorg=False, witness=None, change=None):
+    def observe(self, fail_getter=None, reorg=False, witness=None, change=None, record=None):
         calls = []
-        config = json.loads((ROOT / "contracts/deployments/base-sepolia.json").read_text())
+        config = record or json.loads((ROOT / "contracts/deployments/base-sepolia.json").read_text())
         address = {name: item["address"] for name, item in config["contracts"].items()}
         bindings = {
             (address["DarkPerpSettlement"], "vault()"): address["CollateralVault"],
@@ -30,6 +46,15 @@ class DeploymentObservationTests(unittest.TestCase):
             (address["CollateralVault"], "token()"): address["MockUSDC"],
             (address["SP1ZkVerifier"], "gateway()"): config["contracts"]["SP1ZkVerifier"]["sp1VerifierGateway"],
         }
+        if "ClockBoundVerifier" in address:
+            bindings.update({
+                (address["DarkPerpSettlement"], "verifier()"): address["ClockBoundVerifier"],
+                (address["DarkPerpSettlement"], "governance()"): config["params"]["governance"],
+                (address["DarkPerpSettlement"], "ABI_VERSION()"): "0x03",
+                (address["ClockBoundVerifier"], "settlement()"): address["DarkPerpSettlement"],
+                (address["ClockBoundVerifier"], "innerVerifier()"): address["SP1ZkVerifier"],
+                (address["ClockBoundVerifier"], "proofVersion()"): "0x02",
+            })
         def rpc(req, timeout):
             body = json.loads(req.data)
             endpoint = "primary" if req.full_url == config["rpc"] else "witness"
@@ -58,6 +83,10 @@ class DeploymentObservationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "observation.json"
             argv = [str(SCRIPT), "--output", str(out)]
+            if record is not None:
+                path = Path(directory) / "record.json"
+                path.write_text(json.dumps(record))
+                argv.extend(["--deployment", str(path)])
             if witness is not None:
                 argv.extend(["--witness-rpc", witness])
             captured_stdout = io.StringIO()
@@ -384,6 +413,62 @@ class DeploymentObservationTests(unittest.TestCase):
         self.assertEqual(code, 0)  # It is an agreed observation, explicitly not a binding match.
         self.assertEqual(result["rpc_agreement"]["status"], "AGREED")
         self.assertFalse(result["configured_bindings_match"])
+
+
+class ClockStackObservationTests(unittest.TestCase):
+    """The same harness against a clock-stack record. The legacy cases above already
+    cover the transport, witness and redaction rules, so they are not repeated."""
+    observe = DeploymentObservationTests.observe
+
+    def setUp(self):
+        self.record = clock_stack_record()
+
+    def test_legacy_record_is_reported_as_legacy(self):
+        result, _, code = self.observe()
+        self.assertEqual(code, 0)
+        self.assertEqual(result["record_kind"], "legacy")
+        self.assertNotIn("ClockBoundVerifier", result["contracts"])
+
+    def test_clock_stack_bindings_versions_and_counters_are_observed(self):
+        result, calls, code = self.observe(record=self.record, witness=WITNESS)
+        self.assertEqual(code, 0, result.get("blocker"))
+        self.assertEqual(result["record_kind"], "clock-stack")
+        self.assertEqual(result["status"], "OBSERVED")
+        self.assertTrue(result["configured_bindings_match"])
+        bound = {(item["contract"], item["getter"]): item for item in result["bindings"]}
+        self.assertEqual(bound[("DarkPerpSettlement", "verifier()")]["expected"],
+                         self.record["contracts"]["ClockBoundVerifier"]["address"])
+        for key in (("ClockBoundVerifier", "settlement()"), ("ClockBoundVerifier", "innerVerifier()"),
+                    ("DarkPerpSettlement", "governance()")):
+            self.assertTrue(bound[key]["matches"], key)
+        self.assertEqual(bound[("DarkPerpSettlement", "ABI_VERSION()")]["observed"], 3)
+        self.assertEqual(bound[("ClockBoundVerifier", "proofVersion()")]["observed"], 2)
+        getters = [p[0]["data"] for ep, m, p in calls if m == "eth_call" and ep == "primary"]
+        for signature in ("lastProgressBlock()", "consumedDepositCount()", "openChallengeCount()",
+                          "depositCapacity()", "refundableOutstanding()", "anchorTimeoutMs()"):
+            self.assertIn(signature, getters)
+        self.assertNotIn("challengeWindowBlocks()", getters)
+        record_sha = hashlib.sha256(json.dumps(self.record).encode()).hexdigest()
+        self.assertEqual(result["config_sha256"], record_sha)
+
+    def test_wrong_abi_version_or_direct_verifier_is_not_a_binding_match(self):
+        settlement = self.record["contracts"]["DarkPerpSettlement"]["address"]
+        for signature, raw in (("ABI_VERSION()", "0x" + "00" * 31 + "02"),
+                               ("verifier()", "0x" + "00" * 12 + self.record["contracts"]["SP1ZkVerifier"]["address"][2:])):
+            with self.subTest(getter=signature):
+                def change(_, method, params, response, __, signature=signature, raw=raw):
+                    if method == "eth_call" and params[0] == {"to": settlement, "data": signature}:
+                        response["result"] = raw
+                    return response
+                result, _, code = self.observe(record=self.record, change=change)
+                self.assertEqual(code, 0)  # Observed, explicitly not a binding match.
+                self.assertFalse(result["configured_bindings_match"])
+
+    def test_missing_clock_getter_is_partial(self):
+        result, _, code = self.observe(record=self.record, fail_getter="anchorTimeoutMs()")
+        self.assertNotEqual(code, 0)
+        self.assertEqual(result["status"], "PARTIAL")
+        self.assertEqual(result["call_errors"][0]["getter"], "anchorTimeoutMs()")
 
 
 if __name__ == "__main__":

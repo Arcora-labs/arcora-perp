@@ -55,10 +55,25 @@ impl Default for MockRpc {
         }
     }
 }
+/// A self-consistent header for height `n`; `fork` gives a sibling at the same
+/// height with a different hash.
+fn header_json(n: u64, fork: bool) -> Value {
+    test_header(n, u8::from(fork))
+}
+fn block_time(n: u64) -> u64 {
+    TEST_GENESIS_TIME + 2 * n
+}
 fn block(n: u64) -> Block {
-    let mut hash = [0u8; 32];
-    hash[24..].copy_from_slice(&n.to_be_bytes());
-    Block { number: n, hash }
+    validated_block(&header_json(n, false)).unwrap()
+}
+fn height_of(hash: &[u8; 32]) -> u64 {
+    (0..=16)
+        .find(|n| {
+            [false, true]
+                .iter()
+                .any(|f| validated_block(&header_json(*n, *f)).unwrap().hash == *hash)
+        })
+        .expect("known block hash")
 }
 fn count(n: u64) -> u64 {
     if n < 2 {
@@ -128,17 +143,12 @@ impl Rpc for MockRpc {
                 } else {
                     quantity(&p[0]).unwrap()
                 };
-                let mut b = block(n);
-                if self.reorg && n == 2 {
-                    b.hash[0] ^= 1;
-                }
-                Ok(json!({"number":format!("0x{n:x}"),"hash":hex0x(&b.hash)}))
+                Ok(header_json(n, self.reorg && n == 2))
             }
             "eth_call" => {
                 assert_eq!(p[0]["to"], hex0x(&[1; 20]));
                 assert_eq!(p[1]["requireCanonical"], true);
-                let hash = digest(&p[1]["blockHash"]).unwrap();
-                let n = u64::from_be_bytes(hash[24..].try_into().unwrap());
+                let n = height_of(&digest(&p[1]["blockHash"]).unwrap());
                 let data = bytes(&p[0]["data"]).unwrap();
                 use sha3::{Digest, Keccak256};
                 if data[..4] == Keccak256::digest(b"depositCount()")[..4] {
@@ -187,6 +197,8 @@ fn a01_rpc_pages_whole_blocks_in_canonical_order_deduplicates_and_catches_up() {
     let source = VaultSource::new(mock);
     let first = source.fetch(cursor()).unwrap();
     assert_eq!(first.end, block(2));
+    // The page end carries the header-bound time of the block it ends at.
+    assert_eq!(first.end.timestamp, Some(block_time(2)));
     assert_eq!(
         first.events.iter().map(|e| e.id).collect::<Vec<_>>(),
         vec![0, 1]
@@ -414,4 +426,51 @@ fn a01_rpc_wrong_historical_header_number_is_rejected() {
     assert!(VaultSource::new(WrongHeight(MockRpc::default()))
         .fetch(cursor())
         .is_err());
+}
+
+#[test]
+fn a01_rpc_header_time_must_hash_to_the_reported_block() {
+    // A provider that keeps the hash but changes the time is caught.
+    struct ShiftedTime(MockRpc);
+    impl Rpc for ShiftedTime {
+        fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
+            let mut v = self.0.call(m, p)?;
+            if m == "eth_getBlockByNumber" {
+                v["timestamp"] = json!(format!("0x{:x}", 1_800_000_000u64));
+            }
+            Ok(v)
+        }
+    }
+    assert!(matches!(
+        VaultSource::new(ShiftedTime(MockRpc::default())).fetch(cursor()),
+        Err(Error::Retry(_))
+    ));
+    // A header without the fields needed to recompute its hash is refused too.
+    struct Minimal(MockRpc);
+    impl Rpc for Minimal {
+        fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
+            let v = self.0.call(m, p)?;
+            Ok(if m == "eth_getBlockByNumber" {
+                json!({"number": v["number"], "hash": v["hash"], "timestamp": v["timestamp"]})
+            } else {
+                v
+            })
+        }
+    }
+    assert!(VaultSource::new(Minimal(MockRpc::default()))
+        .fetch(cursor())
+        .is_err());
+}
+
+#[test]
+fn a01_block_identity_ignores_the_unpersisted_timestamp() {
+    let fresh = block(2);
+    let restored: Block = postcard::from_bytes(&postcard::to_allocvec(&fresh).unwrap()).unwrap();
+    assert_eq!(restored.timestamp, None);
+    assert_eq!(restored, fresh);
+    // The persisted layout is still exactly (number, hash).
+    assert_eq!(
+        postcard::to_allocvec(&fresh).unwrap(),
+        postcard::to_allocvec(&(fresh.number, fresh.hash)).unwrap()
+    );
 }

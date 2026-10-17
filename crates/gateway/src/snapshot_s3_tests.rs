@@ -177,11 +177,45 @@ fn frozen(version: &str, name: &str) -> Vec<u8> {
     .unwrap()
 }
 
+type MarketDynamics = Vec<(u64, i128, i128, bool)>;
+
+/// The frozen v6, v7 and v8 writers each left one pending deposit permit, signed
+/// for the vault ABI before permit deadlines, and this gateway refuses such state.
+/// This copy drops every outstanding permit (route and blind) and nothing else, so
+/// the rest of each historical migration is still exercised.
+fn without_outstanding_permits(plain: &[u8]) -> Vec<u8> {
+    let marker = crate::deposit_ingestion::SNAPSHOT_V6;
+    let at = plain
+        .windows(marker.len())
+        .position(|w| w == marker)
+        .expect("v6 deposit layer")
+        + marker.len();
+    type Part = (Gw, MarketDynamics, crate::deposit_ingestion::DepositStateV6);
+    let ((mut gw, prices, mut deposits), rest): (Part, _) =
+        postcard::take_from_bytes(&plain[at..]).unwrap();
+    deposits.clear_routes();
+    for account in gw.accounts.values_mut() {
+        account.deposit_authorizations.clear();
+    }
+    let mut out = plain[..at].to_vec();
+    out.extend(postcard::to_allocvec(&(&gw, &prices, &deposits)).unwrap());
+    out.extend_from_slice(rest);
+    out
+}
+
 #[test]
 fn s3_historical_writers_preserve_state_authority_and_replay() {
     for version in ["v5", "v6", "v7", "v8"] {
         let sealed = frozen(version, "sealed.bin");
-        let plain = snapshot::open(&sealed, &[0xC3; 32]).unwrap();
+        let mut plain = snapshot::open(&sealed, &[0xC3; 32]).unwrap();
+        if version != "v5" {
+            let error = Gw::boot_restored(&plain).err().unwrap();
+            assert!(
+                error.contains("outstanding deposit permits"),
+                "{version}: {error}"
+            );
+            plain = without_outstanding_permits(&plain);
+        }
         let mut gw = Gw::boot_restored(&plain).unwrap_or_else(|e| panic!("{version}: {e}"));
         let meta: serde_json::Value =
             serde_json::from_slice(&frozen(version, "meta.json")).unwrap();
@@ -195,9 +229,16 @@ fn s3_historical_writers_preserve_state_authority_and_replay() {
             frozen(version, "state.bin"),
             "{version} full native state including nullifiers/notes"
         );
+        let mut accounts: std::collections::BTreeMap<[u8; 32], Account> =
+            postcard::from_bytes(&frozen(version, "accounts.bin")).unwrap();
+        if version != "v5" {
+            for account in accounts.values_mut() {
+                account.deposit_authorizations.clear();
+            }
+        }
         assert_eq!(
             postcard::to_allocvec(&gw.accounts).unwrap(),
-            frozen(version, "accounts.bin"),
+            postcard::to_allocvec(&accounts).unwrap(),
             "{version} legacy account fields and authority"
         );
         assert_eq!(
@@ -222,13 +263,24 @@ fn s3_historical_writers_preserve_state_authority_and_replay() {
             );
         }
         if version != "v5" {
-            assert_eq!(gw.deposits.routes.len(), 1);
+            assert!(gw.deposits.routes.is_empty());
             assert_eq!(gw.deposits.credits.len(), 1);
+            let mut expected: crate::deposit_ingestion::DepositStateV6 =
+                postcard::from_bytes(&frozen(version, "deposits.bin")).unwrap();
+            expected.clear_routes();
             assert_eq!(
-                postcard::to_allocvec(&gw.deposits).unwrap(),
-                frozen(version, "deposits.bin"),
-                "{version} pending and consumed A01 routing"
+                postcard::to_allocvec(&crate::deposit_ingestion::DepositStateV6::from_current(
+                    &gw.deposits
+                ))
+                .unwrap(),
+                postcard::to_allocvec(&expected).unwrap(),
+                "{version} consumed A01 routing"
             );
+            assert!(gw
+                .deposits
+                .credits
+                .values()
+                .all(|c| c.route.valid_until == 0));
         }
         let upgrade = gw.snapshot_plain();
         let mut upgraded = Gw::boot_restored(&upgrade).unwrap();
@@ -311,7 +363,9 @@ fn s3_historical_writers_preserve_state_authority_and_replay() {
 
 #[test]
 fn s3_authenticated_parser_mutation_budget() {
-    let plain = snapshot::open(&frozen("v8", "sealed.bin"), &[0xC3; 32]).unwrap();
+    let plain = without_outstanding_permits(
+        &snapshot::open(&frozen("v8", "sealed.bin"), &[0xC3; 32]).unwrap(),
+    );
     let canonical = Gw::boot_restored(&plain).unwrap().snapshot_plain();
     let mut inputs: Vec<(String, Vec<u8>, bool)> = Vec::new();
     let cut_step = (plain.len() / 128).max(1);

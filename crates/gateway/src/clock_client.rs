@@ -1,7 +1,7 @@
 //! Gateway clock protocol selector. Registration is a chain mutation, so callers
 //! MUST durably persist an unproved intent before prove_and_prepare is called.
 use crate::{
-    prover_client::{ProverClient, ProverClientError, RemoteProveResp},
+    prover_client::{PreflightRefusal, ProverClient, ProverClientError, RemoteProveResp},
     L1,
 };
 use perp_core::clock::ClockContext;
@@ -38,6 +38,116 @@ impl ProverClient for ClockProverClient {
         }
         self.inner.prove_clocked(w, c)
     }
+    fn public_identity(
+        &self,
+    ) -> Result<Option<crate::prover_client::ProverPublicIdentity>, String> {
+        self.inner.public_identity()
+    }
+    fn preflight(&self, w: &WindowWitness, phase: u8) -> Result<(), PreflightRefusal> {
+        self.preflight_with(w, phase, crate::strict_production())
+    }
+}
+
+impl ClockProverClient {
+    /// The prover's own checks (request size), then the settlement's batch and
+    /// phase at the latest block, then, in production with a remote prover, its
+    /// program against the on-chain SP1 adapter. All before any registration.
+    pub(crate) fn preflight_with(
+        &self,
+        w: &WindowWitness,
+        phase: u8,
+        production: bool,
+    ) -> Result<(), PreflightRefusal> {
+        self.inner.preflight(w, phase)?;
+        self.l1.clock_register_preflight(w.batch_id, phase)?;
+        if production {
+            // A transient identity failure is not a property of the window; the
+            // size check above already fell back to the transport limit.
+            if let Ok(Some(identity)) = self.inner.public_identity() {
+                check_program_identity(
+                    &identity,
+                    self.l1.clock_program_vkey(),
+                    expected_elf_sha256()?,
+                )
+                .map_err(PreflightRefusal::Refused)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// `PROVER_EXPECTED_ELF_SHA256` (64 hex): the guest ELF hash of the release or
+/// candidate route in use. Optional; when set the prover must report it.
+fn expected_elf_sha256() -> Result<Option<[u8; 32]>, PreflightRefusal> {
+    match std::env::var("PROVER_EXPECTED_ELF_SHA256") {
+        Err(_) => Ok(None),
+        Ok(v) if v.is_empty() => Ok(None),
+        Ok(v) => crate::parse_hex32(&format!("0x{}", v.trim_start_matches("0x")))
+            .map(Some)
+            .ok_or_else(|| {
+                PreflightRefusal::Refused("PROVER_EXPECTED_ELF_SHA256 is not 32-byte hex".into())
+            }),
+    }
+}
+
+/// The prover's program must be the one the on-chain SP1 adapter verifies.
+pub(crate) fn check_program_identity(
+    identity: &crate::prover_client::ProverPublicIdentity,
+    onchain_vkey: Result<perp_core::Digest, String>,
+    expected_elf: Option<[u8; 32]>,
+) -> Result<(), String> {
+    let onchain = onchain_vkey.map_err(|e| format!("on-chain programVKey: {e}"))?;
+    if identity.program_vkey != onchain {
+        return Err(format!(
+            "the prover reports program vkey {} but the clock verifier route verifies {}; \
+             the window is not registered",
+            crate::hex32(&identity.program_vkey),
+            crate::hex32(&onchain)
+        ));
+    }
+    if let Some(elf) = expected_elf {
+        if identity.elf_sha256 != elf {
+            return Err(
+                "the prover's guest ELF hash differs from PROVER_EXPECTED_ELF_SHA256; the window is not registered"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// A journaled clock intent's classification at one finalized block.
+pub(crate) struct DeadIntentCheck {
+    pub evidence: crate::rollback_journal::DeadIntentEvidence,
+    /// Set when the intent can never settle, with what recovery does about it.
+    pub dead: Option<(
+        crate::rollback_journal::DeadIntent,
+        crate::rollback_journal::DeadIntentAction,
+    )>,
+}
+
+/// Read the dead-intent evidence for a journal's clock intent
+/// (`ClockIntent::of(journal)`) at one finalized block and classify it.
+pub(crate) fn check_dead_intent(
+    l1: &L1,
+    intent: crate::rollback_journal::ClockIntent,
+) -> Result<DeadIntentCheck, String> {
+    if !l1.clock_enabled() {
+        return Err("clock mode not configured".into());
+    }
+    let evidence = l1.dead_intent_evidence(&intent)?;
+    Ok(classify(intent, evidence))
+}
+
+/// The pure half of [`check_dead_intent`].
+pub(crate) fn classify(
+    intent: crate::rollback_journal::ClockIntent,
+    evidence: crate::rollback_journal::DeadIntentEvidence,
+) -> DeadIntentCheck {
+    use crate::rollback_journal::{classify_dead_intent, dead_intent_action};
+    let dead = classify_dead_intent(intent.batch, intent.phase, &evidence)
+        .map(|d| (d, dead_intent_action(d, intent.phase, intent.timed)));
+    DeadIntentCheck { evidence, dead }
 }
 
 /// Version gate for the exact-resume path, hoisted out of `resume_exact` so it

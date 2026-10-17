@@ -21,9 +21,10 @@ def config():
     addresses = {role: "0x" + format(i, "040x")
                  for i, role in enumerate(sorted(release.ADDRESS_ROLES), 1)}
     gateway = {env: addresses[role] for env, role in release.ENV_ADDRESSES.items()}
-    gateway.update(L1_CHAIN_ID="31337", L1_ALLOW_MOCK_PROOF="0")
+    gateway.update(L1_CHAIN_ID="31337", L1_ALLOW_MOCK_PROOF="0", DEPOSIT_PERMIT_TTL_SECS="1800")
     return {"chain_id": 31337, "addresses": addresses, "program_vkey": release.clock.EXPECTED_VKEY,
-            "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000}, "gateway": gateway,
+            "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 3_600_000},
+            "gateway": gateway,
             "prover": {"program_vkey": release.clock.EXPECTED_VKEY,
                        "guest_elf_sha256": release.clock.EXPECTED_ELF}}
 
@@ -76,11 +77,51 @@ class ConfigTests(unittest.TestCase):
 
     def test_bad_types_and_unschedulable_clock_policy_are_rejected(self):
         for field, bad in (("chain_id", True), ("chain_id", 2**64), ("clock_skew_ms", 399),
-                           ("max_window_ms", "30000"), ("max_window_ms", 2**64)):
+                           ("max_window_ms", "30000"), ("max_window_ms", 2**64),
+                           ("anchor_timeout_ms", 999), ("anchor_timeout_ms", True),
+                           ("anchor_timeout_ms", 2**64)):
             value = config()
             (value if field == "chain_id" else value["clock"])[field] = bad
             with self.subTest(field=field, value=bad), self.assertRaises(ValueError):
                 release.public_config(value)
+        value = config()
+        value["clock"]["anchor_timeout_ms"] = release.MIN_ANCHOR_TIMEOUT_MS
+        self.assertEqual(release.public_config(value)["clock"]["anchor_timeout_ms"], 1000)
+
+    def test_clock_policy_requires_the_anchor_timeout(self):
+        value = config()
+        del value["clock"]["anchor_timeout_ms"]
+        with self.assertRaisesRegex(ValueError, "clock policy"):
+            release.public_config(value)
+        value = config()
+        value["clock"]["anchor_timeout"] = 3_600_000
+        with self.assertRaisesRegex(ValueError, "clock policy"):
+            release.public_config(value)
+
+    def test_permit_ttl_is_part_of_the_public_gateway_config(self):
+        value = config()
+        del value["gateway"]["DEPOSIT_PERMIT_TTL_SECS"]
+        with self.assertRaisesRegex(ValueError, "public gateway config"):
+            release.public_config(value)
+        for bad in ("0", "-1", "01", "1800 ", "", 1800, None, "18446744073709551616", "1e3"):
+            value = config()
+            value["gateway"]["DEPOSIT_PERMIT_TTL_SECS"] = bad
+            with self.subTest(value=bad), self.assertRaises(ValueError):
+                release.public_config(value)
+        result = release.public_config(config())
+        env = dict(result["gateway"])
+        release.check_environment(result, env)
+        env["DEPOSIT_PERMIT_TTL_SECS"] = "3600"
+        with self.assertRaisesRegex(ValueError, "process environment mismatch: DEPOSIT_PERMIT_TTL_SECS"):
+            release.check_environment(result, env)
+
+    def test_settlement_policy_follows_the_twelve_word_constructor(self):
+        self.assertEqual(list(release.SETTLEMENT_POLICY), [
+            "liveness_timeout_blocks", "challenge_grace_blocks", "challenge_bond_wei",
+            "inclusion_deadline_seconds", "final_settle_grace_blocks", "progress_batches",
+            "slash_payout_cap_usdc"])
+        self.assertNotIn("challengeWindowBlocks()", release.SETTLEMENT_POLICY.values())
+        self.assertEqual(release.SETTLEMENT_ABI_VERSION, 3)
 
     def test_unknown_or_secret_config_keys_are_rejected_without_echo(self):
         value = config()
@@ -299,7 +340,9 @@ class TargetTests(unittest.TestCase):
             ("sp1_adapter", "programVKey()"): release.clock.EXPECTED_VKEY,
             ("clock_verifier", "maxWindowMs()"): 30000,
             ("clock_verifier", "clockSkewMs()"): 10000,
+            ("clock_verifier", "anchorTimeoutMs()"): 3_600_000,
             ("clock_verifier", "proofVersion()"): 2,
+            ("settlement", "ABI_VERSION()"): 3,
             ("sp1_verifier", "VERIFIER_HASH()"): "0x" + release.clock.target.VERIFIER_HASH,
         }
         validator = patch.object(release, "validate_manifest", return_value=self.manifest)
@@ -340,7 +383,10 @@ class TargetTests(unittest.TestCase):
         result = self.observe()
         self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
         self.assertEqual(set(result["contracts"]), set(release.CONTRACTS))
-        self.assertEqual(len(result["bindings"]), 12)
+        self.assertEqual(len(result["bindings"]), 14)
+        bound = {(item["contract"], item["getter"]) for item in result["bindings"]}
+        self.assertIn(("settlement", "ABI_VERSION()"), bound)
+        self.assertIn(("clock_verifier", "anchorTimeoutMs()"), bound)
         self.assertEqual(result["scope"]["release_gate"], "HOLD")
         self.assertFalse(result["scope"]["operator_and_settlement_policy_approved"])
         self.assertFalse(result["scope"]["token_runtime_verified"])
@@ -555,8 +601,10 @@ class AnvilTargetTests(unittest.TestCase):
         addresses["sp1_gateway"] = deploy("sp1_gateway", owner)
         transact(release.deployment_reader.selector("addRoute(address)") + word(addresses["sp1_verifier"]), addresses["sp1_gateway"])
         addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_gateway"], release.clock.EXPECTED_VKEY)
-        addresses["clock_verifier"] = deploy("clock_verifier", addresses["sp1_adapter"], 30000, 10000)
-        addresses["settlement"] = deploy("settlement", owner, accounts[1], addresses["clock_verifier"], 0, 100, 50, 1000, 600, owner, 10)
+        addresses["clock_verifier"] = deploy("clock_verifier", addresses["sp1_adapter"], 30000, 10000, 3_600_000)
+        # DarkPerpSettlement.Config: 12 words, a static struct encoded inline.
+        addresses["settlement"] = deploy("settlement", owner, accounts[1], addresses["clock_verifier"], 0,
+                                         100, 50, 1000, 600, owner, 10, 2, 1_000_000_000)
         addresses["token"] = deploy("token")
         addresses["vault"] = deploy("vault", addresses["settlement"], addresses["token"], accounts[2])
         transact(release.deployment_reader.selector("setVault(address)") + word(addresses["vault"]), addresses["settlement"])
@@ -567,9 +615,10 @@ class AnvilTargetTests(unittest.TestCase):
         public["gateway"].update({env: addresses[role] for env, role in release.ENV_ADDRESSES.items()})
         public["operator_policy"] = {
             "settlement": {"sequencer": owner, "enclave_signer": accounts[1], "governance": owner,
-                           "liveness_timeout_blocks": 100, "challenge_window_blocks": 50,
+                           "liveness_timeout_blocks": 100, "challenge_grace_blocks": 50,
                            "challenge_bond_wei": 1000, "inclusion_deadline_seconds": 600,
-                           "final_settle_grace_blocks": 10},
+                           "final_settle_grace_blocks": 10, "progress_batches": 2,
+                           "slash_payout_cap_usdc": 1_000_000_000},
             "vault": {"gateway_signer": accounts[2]},
             "clock_verifier": {"configurator": owner},
             "sp1_gateway": {"owner": owner},
@@ -582,7 +631,8 @@ class AnvilTargetTests(unittest.TestCase):
         self.assertTrue(observed["scope"]["operator_and_settlement_policy_matches"])
         self.assertFalse(observed["scope"]["operator_and_settlement_policy_approved"])
         policy_rejections = {}
-        for field, wrong in (("governance", accounts[3]), ("challenge_bond_wei", 1001)):
+        for field, wrong in (("governance", accounts[3]), ("challenge_bond_wei", 1001),
+                             ("progress_batches", 3), ("slash_payout_cap_usdc", 999_999_999)):
             bad_public = copy.deepcopy(public)
             bad_public["operator_policy"]["settlement"][field] = wrong
             # A new declared policy requires its own manifest identity. The

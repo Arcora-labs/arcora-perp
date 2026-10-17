@@ -61,3 +61,66 @@ fn emit_receipt_fixture() {
         "RECEIPT FIXTURE (copy into Solidity CrossLayer.t.sol)"
     );
 }
+
+/// The L1 inclusion-challenge authorization for the fixture order above, signed by
+/// the same enclave. `DarkPerpSettlement.challengeInclusion` accepts only this
+/// signature, over `challengeAuthDigest`:
+/// `keccak256(abi.encode(CHALLENGE_AUTH_TAG, chainid, settlement, orderHash, seqNo,
+/// recvTimeMs, batchIdHint, beneficiary))`. The vector (chain 84532, settlement
+/// 0x22…22, beneficiary 0x33…33) is pinned in contracts/test/CrossLayer.t.sol, which
+/// computes it with the deployed settlement code at that fixed address.
+#[test]
+fn emit_challenge_authorization_fixture() {
+    use sha3::{Digest as _, Keccak256 as Sha3};
+    let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]);
+    let order_hash = {
+        let mut h = [0u8; 32];
+        for (i, b) in h.iter_mut().enumerate() {
+            let pair = &"0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5"
+                [i * 2..i * 2 + 2];
+            *b = u8::from_str_radix(pair, 16).unwrap();
+        }
+        h
+    };
+    let uint = |n: u64| {
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&n.to_be_bytes());
+        w
+    };
+    let address = |a: [u8; 20]| {
+        let mut w = [0u8; 32];
+        w[12..].copy_from_slice(&a);
+        w
+    };
+    let tag: [u8; 32] = Sha3::digest(b"arcora:l1-inclusion-challenge:v1").into();
+    let mut preimage = Vec::with_capacity(256);
+    for word in [
+        tag,
+        uint(84532),
+        address([0x22; 20]),
+        order_hash,
+        uint(0),
+        uint(1000),
+        uint(0),
+        address([0x33; 20]),
+    ] {
+        preimage.extend_from_slice(&word);
+    }
+    let digest: [u8; 32] = Sha3::digest(&preimage).into();
+    let (r, s, v) = enclave.sign_prehash(&digest);
+    assert_eq!(
+        format!(
+            "tag={} digest={} sig={}{}{:02x}",
+            hex(&tag),
+            hex(&digest),
+            hex(&r),
+            hex(&s),
+            v
+        ),
+        "tag=69f32c88aac1254085ee4ba164b69f2f12fb02828e83d559eff228842bdcc42a \
+         digest=c97f5f187d95859ac2b5787fc5a2b4aaab47da927688f0b2038e0a03ff6f337d \
+         sig=490ce9b286399686afb9dfb81f58c2fa2622d492fb468f27682b22fc15ed8164\
+4c1c3b569abd8431ff2e339bb14d1022a5ef5d58dad371b6cfe314ad28e414821b",
+        "CHALLENGE AUTHORIZATION FIXTURE (copy into Solidity CrossLayer.t.sol)"
+    );
+}

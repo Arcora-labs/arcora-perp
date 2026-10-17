@@ -2,16 +2,19 @@
 """External health monitor for one gateway, run by a systemd timer.
 
 Reads only the public, unauthenticated surfaces: `GET /api/state`
-(settlement_health, deposit_ingestion.state, l1.batchCount) and
-`GET /v1/system/status` (openWindowId). It raises episodic, redacted alerts
-through ops_notify. Each condition is reported once when it starts and once
-when it clears:
+(settlementHealth, depositIngestion.state, l1.batchCount, opsAlerts; the
+snake_case spellings are accepted too) and `GET /v1/system/status`
+(openWindowId). It raises episodic, redacted alerts through ops_notify. Each
+condition is reported once when it starts and once when it clears:
 
 * gateway_unreachable: either read failed (connection, HTTP status, size, JSON).
-* settlement_held: settlement_health == "HELD".
-* deposit_halted: deposit_ingestion.state == "halted".
+* settlement_held: settlementHealth == "HELD".
+* deposit_halted: depositIngestion.state == "halted".
 * settle_stall: a sealed window is waiting (openWindowId > l1.batchCount) and
   the same lag has persisted for --stall-seconds. No L1 means no check.
+* the gateway's own alerts in ops_notify.GATEWAY_ALERTS (bond_shortfall,
+  unanswerable_challenge, challenge_discovery_failed, stale_anchor,
+  liveness_low), while `opsAlerts` lists them. Other names are ignored.
 
 This complements the gateway's own alerts: it also fires when the process is
 down or wedged, which in-process alerts cannot report. An alert whose
@@ -32,16 +35,24 @@ MAX_BODY = 16 * 1024 * 1024
 TIMEOUT_SECONDS = 5.0
 
 
+def _field(doc, camel, snake):
+    """The gateway serializes /api/state in camelCase; accept snake_case too."""
+    return doc[camel] if camel in doc else doc.get(snake)
+
+
 def evaluate(state_doc, status_doc, track, now, stall_seconds):
     """Return (active condition names, new stall-tracking dict)."""
     if state_doc is None:
         return {"gateway_unreachable"}, dict(track)
     active = set()
-    if state_doc.get("settlement_health") == "HELD":
+    if _field(state_doc, "settlementHealth", "settlement_health") == "HELD":
         active.add("settlement_held")
-    deposits = state_doc.get("deposit_ingestion")
+    deposits = _field(state_doc, "depositIngestion", "deposit_ingestion")
     if isinstance(deposits, dict) and deposits.get("state") == "halted":
         active.add("deposit_halted")
+    alerts = _field(state_doc, "opsAlerts", "ops_alerts")
+    if isinstance(alerts, list):
+        active.update(a for a in alerts if isinstance(a, str) and a in ops_notify.GATEWAY_ALERTS)
 
     l1 = state_doc.get("l1")
     if not isinstance(l1, dict) or not isinstance(l1.get("batchCount"), int):

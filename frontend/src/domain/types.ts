@@ -201,6 +201,21 @@ export interface WithdrawalEntry {
   proof: string[];
 }
 
+/// A vault deposit that settled state never credited, refundable on-chain
+/// once the exchange is in close-only mode: `refundDeposit(id, from,
+/// ownerCommit, amount, to)`. The vault checks all four fields against its own
+/// deposit chain, so a wrong value can only revert, never redirect funds.
+export interface RefundableDeposit {
+  /// Vault deposit id (the `Deposit` event's sequence number).
+  id: number;
+  /// The depositing address; the refund pays it unless it names another.
+  from: string;
+  /// The blinded owner commitment the deposit carried (0x…, 32 bytes).
+  ownerCommit: string;
+  /// USDC base units (6 dp).
+  amount: bigint;
+}
+
 /// A sealed batch as published to the order-commitment log (§2/§3). `manifestHash`
 /// binds the batch's contents; `orderedRoot` is the Merkle root of its ordered
 /// order-hash leaves (what inclusion challenges prove against). `finality` is the

@@ -1300,6 +1300,42 @@ fn clock_idle_funding_noops_do_not_create_an_unbounded_window() {
 }
 
 #[test]
+fn keepalive_seals_only_an_empty_window_and_it_replays_untimed() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    let before = seq.state.clone();
+    let batch = seq.state.next_batch_id;
+    // An idle funding op blocks the keepalive until it is discarded.
+    seq.apply(&BatchOp::AccrueFunding {
+        market_id: 0,
+        mark: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 5_000),
+        now_ms: 5_000,
+    })
+    .unwrap();
+    assert!(seq.seal_empty_window().is_none());
+    assert_eq!(seq.state.next_batch_id, batch);
+    assert!(seq.discard_idle_funding_window());
+    let witness = seq.seal_empty_window().expect("empty window seals");
+    assert_eq!(witness.batch_id, batch);
+    assert!(witness.ops.is_empty());
+    assert!(witness.manifest.ordered.is_empty() && witness.manifest.rejected.is_empty());
+    assert_eq!(witness.manifest.batch_time_ms, 0);
+    assert_eq!(seq.state.next_batch_id, batch + 1);
+    let bounds = perp_core::clock::TimeBounds::derive(&witness.ops).unwrap();
+    assert_eq!((bounds.first_ms, bounds.last_ms, bounds.count), (0, 0, 0));
+    let mut replay = witness.pre_state.clone();
+    let roots =
+        perp_core::commitment::derive_roots(&mut replay, &witness.ops, &witness.manifest).unwrap();
+    assert_eq!(roots.prev_state_root, before.state_root());
+    assert_eq!(roots.new_state_root, seq.state.state_root());
+    assert_eq!(replay.consumed_deposit_count, before.consumed_deposit_count);
+    // Any operation, terminal or not, makes the window non-empty.
+    seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+    assert!(seq.seal_empty_window().is_none());
+}
+
+#[test]
 fn clock_idle_compaction_cannot_drop_actual_funding_or_terminal_intent() {
     let mut seq = setup();
     seq.seal_genesis_baseline();
@@ -1319,4 +1355,83 @@ fn clock_idle_compaction_cannot_drop_actual_funding_or_terminal_intent() {
     seq.apply(&BatchOp::SettleAll).unwrap();
     assert!(!seq.discard_idle_funding_window());
     assert!(seq.window_has_pending_settle_all());
+}
+
+/// A sealed window that can never settle is voided, not re-injected: the state,
+/// baseline and Counter B return to its pre-state, ops gathered since the seal go
+/// with it, and its order hashes come back once each for a later rejected list.
+#[test]
+fn void_window_discards_the_sealed_and_open_windows() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    let settled = seq.state.clone();
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let orders = [
+        order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+        order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+    ];
+    let sealed = seq.seal_batch(&orders, 20_000);
+    assert!(!sealed.settled_order_hashes.is_empty());
+    let w = seq.seal_window();
+    assert_eq!(w.pre_state.state_root(), settled.state_root());
+    // Ops keep arriving in the next window before the void.
+    let rest = order(1, Side::Sell, SIZE_SCALE, 101_000 * PRICE_SCALE, 3);
+    let _ = seq.seal_batch(std::slice::from_ref(&rest), 20_700);
+    assert!(seq.window_has_pending_manifest());
+    let voided = seq.void_window(&w);
+    assert_eq!(seq.state.state_root(), settled.state_root());
+    assert_eq!(seq.window_baseline().state_root(), settled.state_root());
+    assert_eq!(seq.current_window_id(), w.batch_id);
+    assert!(!seq.open_window_has_ops() && !seq.window_has_pending_manifest());
+    for hash in w.manifest.ordered.iter() {
+        assert_eq!(voided.iter().filter(|h| *h == hash).count(), 1);
+    }
+    assert!(voided.contains(&rest.order_hash::<Keccak256>()));
+    // The next window starts from the settled state under the same batch id.
+    let next = seq.seal_window();
+    assert_eq!(next.batch_id, w.batch_id);
+    assert_eq!(next.pre_state.state_root(), settled.state_root());
+    assert!(next.ops.is_empty());
+}
+
+/// Voiding the open window drops its ops and manifest and returns the state to the
+/// window baseline; rejecting the voided hashes afterwards puts each in the
+/// manifest once, and a window that settles them replays.
+#[test]
+fn void_open_window_returns_to_the_baseline_and_rejects_once() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    let settled = seq.state.clone();
+    let batch = seq.current_window_id();
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let orders = [
+        order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+        order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+    ];
+    let _ = seq.seal_batch(&orders, 20_000);
+    fund(&mut seq, 3, 1_000, 0x33);
+    assert_ne!(seq.state.state_root(), settled.state_root());
+    let voided = seq.void_open_window();
+    assert_eq!(voided.len(), 2);
+    assert_eq!(seq.state.state_root(), settled.state_root());
+    assert_eq!(
+        seq.state.consumed_deposit_count,
+        settled.consumed_deposit_count
+    );
+    assert_eq!(seq.current_window_id(), batch);
+    assert!(!seq.open_window_has_ops() && !seq.window_has_pending_manifest());
+    seq.reject_in_window(&voided, RejectReason::MarketCloseOnly);
+    seq.reject_in_window(&voided, RejectReason::MarketCloseOnly);
+    seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+    let w = seq.seal_window();
+    assert_eq!(w.manifest.rejected.len(), 2);
+    assert!(w
+        .manifest
+        .rejected
+        .iter()
+        .all(|(h, r)| voided.contains(h) && *r == RejectReason::MarketCloseOnly));
+    let derived =
+        perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
+            .expect("a manifest of rejections replays");
+    assert_eq!(derived.new_state_root, seq.state.state_root());
 }

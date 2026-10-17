@@ -2,7 +2,7 @@
 // collateral flow: mint test USDC → approve → vault.deposit → bind the EOA to
 // the /v1 trading account → credit the deposit — all driven from the browser
 // wallet instead of the `cast` CLI. NO wallet library is used: the module talks
-// raw EIP-1193 `request()` and hand-encodes the three fixed ABI shapes it needs
+// raw EIP-1193 `request()` and hand-encodes the few fixed ABI shapes it needs
 // (selectors are keccak-derived and pinned byte-exact in wallet.test.ts).
 //
 // SCOPE: the wallet signs transactions and ONE `personal_sign` bind proof. It
@@ -201,7 +201,11 @@ export async function sendTx(tx: {
     });
   } catch (e) {
     if (isUserRejection(e)) throw Object.assign(new Error("Transaction rejected in the wallet."), { code: USER_REJECTED });
-    throw new Error(`Transaction outcome is unknown: ${errMessage(e)}. Check wallet activity before any retry.`);
+    // A decoded vault error explains the failure, but it is not proof that
+    // nothing was submitted, so the outcome stays unknown.
+    const data = revertDataOf(e), vaultError = data ? decodeVaultError(data) : null;
+    const reported = vaultError ? ` The wallet reported the vault error ${vaultError}: ${VAULT_ERROR_TEXT[vaultError]}` : "";
+    throw new Error(`Transaction outcome is unknown: ${errMessage(e)}.${reported} Check wallet activity before any retry.`);
   }
   if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash)) {
     throw new Error("Wallet returned an invalid transaction hash.");
@@ -430,26 +434,71 @@ export function encodeApprove(spender: string, amount: bigint): string {
   return calldata("approve(address,uint256)", [encodeAddress(spender), encodeUint256(amount)]);
 }
 
+/// Largest amount the vault accepts in one deposit: amounts must fit the
+/// protocol's signed 128-bit balance (`BadAmount` above it, and for zero).
+export const DEPOSIT_AMOUNT_MAX = (1n << 127n) - 1n;
+
+const U64_MAX = (1n << 64n) - 1n;
+
+/// A uint64 as a 32-byte ABI word (throws out-of-range).
+export function encodeUint64(v: bigint): Uint8Array {
+  if (v < 0n || v > U64_MAX) throw new Error(`uint64 out of range: ${v}`);
+  return encodeUint256(v);
+}
+
 /**
- * `deposit(uint256,bytes32,bytes)` — SEC-019 CollateralVault deposit: amount,
- * the gateway-issued blinded owner commitment, and the gateway's 65-byte
- * authorization signature (r‖s‖v) over keccak256(chainid ‖ vault ‖ from ‖
- * ownerCommit ‖ amount). `sig` is the one dynamic argument: its head word is
- * the tail offset (3 args × 32 = 0x60), the tail is length (65) ‖ the bytes
- * zero-padded to 96.
+ * `deposit(uint256,bytes32,uint64,bytes)` — CollateralVault deposit: amount,
+ * the gateway-issued blinded owner commitment, the permit expiry `validUntil`
+ * (unix seconds; the vault refuses the permit once `block.timestamp` is past
+ * it), and the gateway's 65-byte permit signature (r‖s‖v) over
+ * keccak256(tag ‖ chainid ‖ vault ‖ from ‖ ownerCommit ‖ amount ‖ validUntil).
+ * `sig` is the one dynamic argument: its head word is the tail offset
+ * (4 args × 32 = 0x80), the tail is length (65) ‖ the bytes zero-padded to 96.
  */
-export function encodeDeposit(amount: bigint, ownerCommit: string, sig: string): string {
+export function encodeDeposit(amount: bigint, ownerCommit: string, validUntil: bigint | number, sig: string): string {
+  if (amount <= 0n || amount > DEPOSIT_AMOUNT_MAX) {
+    throw new Error("deposit amount must be between 1 and 2^127-1 base units");
+  }
   if (!/^0x[0-9a-fA-F]{130}$/.test(sig)) {
     throw new Error("gateway sig must be 65-byte 0x hex (r‖s‖v)");
   }
+  if (typeof validUntil === "number" && !Number.isSafeInteger(validUntil)) {
+    throw new Error(`uint64 out of range: ${validUntil}`);
+  }
   const tail = new Uint8Array(96); // 65 sig bytes zero-padded to 3 words
   tail.set(hexToBytes(sig.slice(2).toLowerCase()));
-  return calldata("deposit(uint256,bytes32,bytes)", [
+  return calldata("deposit(uint256,bytes32,uint64,bytes)", [
     encodeUint256(amount),
     encodeBytes32(ownerCommit), // throws on non-32-byte hex
-    encodeUint256(3n * 32n), // offset of the bytes tail
+    encodeUint64(BigInt(validUntil)),
+    encodeUint256(4n * 32n), // offset of the bytes tail
     encodeUint256(65n), // bytes length
     tail,
+  ]);
+}
+
+/**
+ * `refundDeposit(uint64,address,bytes32,uint256,address)` — returns the
+ * principal of a deposit the settled state never credited, once the exchange
+ * is in close-only mode. The vault checks `(from, ownerCommit, amount, id)`
+ * against its own deposit chain, so only the exact original deposit matches.
+ * Anyone may send it when `to == from`; only `from` itself may name another
+ * recipient. All five arguments are static words.
+ */
+export function encodeRefundDeposit(r: {
+  id: bigint | number;
+  from: string;
+  ownerCommit: string;
+  amount: bigint;
+  to: string;
+}): string {
+  if (typeof r.id === "number" && !Number.isSafeInteger(r.id)) throw new Error(`uint64 out of range: ${r.id}`);
+  return calldata("refundDeposit(uint64,address,bytes32,uint256,address)", [
+    encodeUint64(BigInt(r.id)),
+    encodeAddress(r.from),
+    encodeBytes32(r.ownerCommit),
+    encodeUint256(r.amount),
+    encodeAddress(r.to),
   ]);
 }
 
@@ -475,6 +524,87 @@ export function encodeClaim(w: {
     ...w.proof.map(encodeBytes32),
   ];
   return calldata("claim(address,uint256,uint256,bytes32,bytes32[])", words);
+}
+
+// ── vault revert decoding and dry runs ───────────────────────────────────────
+
+/// The CollateralVault custom errors a deposit or refund can revert with. Each
+/// is a no-argument error, so its revert data is exactly its 4-byte selector.
+export const VAULT_ERRORS = [
+  "BadAmount", "BondCapacityExceeded", "DepositsPaused", "InCloseOnly", "PermitExpired",
+  "BadGatewaySig", "OwnerCommitUsed", "TransferFailed", "NotPaired", "NotCloseOnly",
+  "NotRefundable", "AlreadyRefunded", "BadRefundRecipient", "BadDepositPreimage",
+] as const;
+export type VaultErrorName = (typeof VAULT_ERRORS)[number];
+
+const VAULT_ERROR_BY_SELECTOR = new Map<string, VaultErrorName>(
+  VAULT_ERRORS.map((name) => [selectorHex(`${name}()`), name]),
+);
+
+/// Readable text for each vault error, phrased for the deposit/refund UI.
+export const VAULT_ERROR_TEXT: Record<VaultErrorName, string> = {
+  BadAmount: "The vault does not accept this amount: it must be above zero and within the per-deposit limit.",
+  BondCapacityExceeded: "The vault is at its deposit capacity, which the operator's bond sets. Try again later.",
+  DepositsPaused: "The vault is not accepting deposits right now.",
+  InCloseOnly: "The exchange is in close-only mode, so the vault accepts no new deposits.",
+  PermitExpired: "The gateway's deposit permit has expired.",
+  BadGatewaySig: "The vault did not accept the gateway's deposit permit.",
+  OwnerCommitUsed: "A deposit with this permit has already landed. Do not send another one; check your wallet activity and the deposit's credit status.",
+  TransferFailed: "The vault could not pull the USDC. Check this wallet's USDC balance and its approval for the vault.",
+  NotPaired: "This vault is not paired with the settlement contract, so refunds are unavailable.",
+  NotCloseOnly: "Refunds open only after the exchange enters close-only mode.",
+  NotRefundable: "This deposit is not refundable: settled state already includes it, or it does not exist.",
+  AlreadyRefunded: "This deposit has already been refunded.",
+  BadRefundRecipient: "Only the depositing address may send a refund to another address.",
+  BadDepositPreimage: "The refund details do not match the original deposit recorded by the vault.",
+};
+
+/** The vault error a revert's data names, or null for anything else. */
+export function decodeVaultError(revertData: string): VaultErrorName | null {
+  if (!/^0x[0-9a-fA-F]{8}/.test(revertData)) return null;
+  return VAULT_ERROR_BY_SELECTOR.get(revertData.slice(0, 10).toLowerCase()) ?? null;
+}
+
+/** Best-effort revert data carried by a provider error. Wallets nest it under
+ * different keys (`data`, `data.data`, `data.originalError.data`, `error.data`,
+ * `cause`), so walk those few shapes, bounded in depth. */
+export function revertDataOf(e: unknown): string | null {
+  const seen = new Set<unknown>();
+  const walk = (value: unknown, depth: number): string | null => {
+    if (typeof value === "string") return /^0x(?:[0-9a-fA-F]{2}){4,}$/.test(value) ? value.toLowerCase() : null;
+    if (depth > 4 || typeof value !== "object" || value === null || seen.has(value)) return null;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    for (const key of ["data", "originalError", "error", "cause"]) {
+      const found = walk(record[key], depth + 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(e, 0);
+}
+
+export type DryRunResult =
+  | { status: "ok" }
+  | { status: "reverted"; data: string; error: VaultErrorName | null }
+  | { status: "unavailable" };
+
+/**
+ * Simulate a call with `eth_call` at the latest block before asking the wallet
+ * to send it. Read-only: nothing is signed or broadcast. A revert that carries
+ * data is reported (decoded when it is a vault error). A provider that cannot
+ * simulate, or a failure without revert data, is "unavailable": the caller
+ * then proceeds exactly as it would without a dry run.
+ */
+export async function dryRunCall(tx: { from: string; to: string; data: string }): Promise<DryRunResult> {
+  try {
+    await provider().request({ method: "eth_call", params: [{ from: tx.from, to: tx.to, data: tx.data }, "latest"] });
+    return { status: "ok" };
+  } catch (e) {
+    const data = revertDataOf(e);
+    if (!data) return { status: "unavailable" };
+    return { status: "reverted", data, error: decodeVaultError(data) };
+  }
 }
 
 // ── gateway bind digest ───────────────────────────────────────────────────────
@@ -555,6 +685,14 @@ export function depositWalletGuard(address: string) {
   };
 }
 
+/** A gateway deposit permit. `validUntil` is unix seconds: the vault refuses
+ * the permit in any block whose timestamp is past it. */
+export interface DepositPermit {
+  readonly ownerCommit: string;
+  readonly sig: string;
+  readonly validUntil: number;
+}
+
 export interface WalletDepositClient {
   captureDepositContext(options?: { existingOnly?: boolean }): Promise<DepositContext>;
   /** The self-provisioned /v1 account (apiKey + 32-byte owner pubkey). */
@@ -562,12 +700,13 @@ export interface WalletDepositClient {
   /** POST /v1/accounts/deposit/address — bind the EOA (ownership-proven). */
   bindDepositAddress(address: string, signature: string, context?: DepositContext): Promise<void>;
   /** POST /v1/accounts/deposit/authorize — SEC-019: the gateway pre-authorizes
-   *  this exact (from, amount), returning the blinded ownerCommit + 65-byte
-   *  gateway sig that `deposit(amount, ownerCommit, sig)` requires on-chain.
+   *  this exact (from, amount), returning the blinded ownerCommit, the permit
+   *  expiry `validUntil` (unix seconds) and the 65-byte gateway sig that
+   *  `deposit(amount, ownerCommit, validUntil, sig)` requires on-chain.
    *  `from` must be the account's already-bound deposit address. `reuseOwnerCommit`
    *  names an earlier, never-sent permit to re-sign if the gateway still holds it
    *  for exactly this request (otherwise a fresh permit is issued). */
-  authorizeDeposit(from: string, amount: bigint, context?: DepositContext, reuseOwnerCommit?: string): Promise<{ ownerCommit: string; sig: string }>;
+  authorizeDeposit(from: string, amount: bigint, context?: DepositContext, reuseOwnerCommit?: string): Promise<DepositPermit>;
   /** POST /v1/accounts/deposit/onchain — credit a confirmed deposit tx. Returns
    *  the credited amount in USDC base units. */
   creditOnchainDeposit(txHash: string, context?: DepositContext): Promise<bigint>;

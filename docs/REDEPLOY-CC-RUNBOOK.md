@@ -17,13 +17,29 @@ Neither blocks the other; the redeploy can ship with the prover still un-atteste
 on GX10 exactly as today, and the CC-prover migration can happen on its own
 schedule. Combine them into one window only if convenient.
 
+**UPDATE 2026-10-17 — the redeploy targets settlement ABI version 3.** The new
+contracts (`DarkPerpSettlement.ABI_VERSION() == 3`) add the consumed-deposit
+boundary, refunds in close-only, the bond-capacity deposit gate, enclave-authorized
+inclusion challenges with capped fines, and clock-anchor cancel. They change the
+redeploy in five ways, each detailed below:
+
+- `deploy_clock_stack.py` is the only release deploy path; `Deploy.s.sol` is a
+  testnet/mock harness and is not used here (0c, Phase 2).
+- The new stack uses a fresh, never-used `ENCLAVE_SEED` (0c).
+- The old stack is retired with a final ordinary settle and normal withdrawals,
+  never through close-only (0f).
+- The gateway and prover run from the deploy block onward; the gateway posts the
+  bond before any deposit, and the answer key is funded (Phase 2).
+- Never roll the gateway binary back across this change (Phase 4).
+
 ---
 
 ## Why this window exists (what's already done)
 
 All four audit soundness findings are merged on `main` and the frontend leg is
-merged (`999bdde`): the frontend already emits `deposit(uint256,bytes32,bytes)`
-calldata and MUST NOT be published until the new vault is live. The currently
+merged (`999bdde`). With settlement ABI version 3 the frontend emits
+`deposit(uint256,bytes32,uint64,bytes)` calldata, and it MUST NOT be published
+until the new vault is live. The currently
 deployed stack (see `contracts/deployments/base-sepolia.json`) is pre-SEC-019:
 `DarkPerpSettlement 0x0869…`, `CollateralVault 0x57e9…` (old arity),
 `SP1ZkVerifier 0x8012F3b3` (programVKey pinned to the OLD guest), `MockUSDC
@@ -110,13 +126,26 @@ workloads (no reboot for this service).** See the migration plan `docs/PROVER-CC
 a changed `ORACLE_SIGNER_KEY` after genesis = fail-closed oracle outage, see
 ZK-001 minors):
 - `GATEWAY_SIGNER_KEY` (fresh secp256k1 scalar). Its ADDRESS goes to the vault
-  ctor (`GATEWAY_SIGNER` env of `Deploy.s.sol`) — off the local anvil chain it is
-  required and the default anvil accounts are refused. A production gateway
-  likewise refuses to boot without a secret (non-public) `GATEWAY_SIGNER_KEY`.
+  constructor through `operator_policy.vault.gateway_signer` in the
+  `deploy_clock_stack.py` config; off Anvil the tool refuses a default anvil
+  account. A production gateway likewise refuses to boot without a secret
+  (non-public) `GATEWAY_SIGNER_KEY`.
 - `ORACLE_SIGNER_KEY` (fresh scalar). Its address becomes every
   `Market.oracle_pubkey` at genesis.
-- Confirm `ENCLAVE_SEED` + `ENCLAVE_SIGNER` stay what the live CVM uses today
-  (unchanged enclave, measurement `0x422890f6…faf55bd`).
+- `ENCLAVE_SEED` (fresh, **never used by any earlier stack**). Its enclave
+  address becomes the settlement's immutable `enclaveSigner`
+  (`operator_policy.settlement.enclave_signer`); receipts and L1 challenge
+  authorizations are signed with it. Keep it fixed for the life of the new stack:
+  the settlement accepts challenge authorizations only from the `enclaveSigner` set
+  at deploy. The enclave measurement (`0x422890f6…faf55bd`) is unaffected.
+- `L1_ANSWER_KEYSTORE` with `L1_ANSWER_PASSWORD_FILE`: a separate L1 key for
+  challenge answers, on its own nonce lane. Both are set together: a V3 keystore
+  and its password file (mode 0600), for an address that is not the sequencer's.
+  The gateway falls back to the sequencer key with a warning when both are unset.
+  Fund it with Base Sepolia ETH before Phase 2.
+- `FIN_ADMIN_KEY` stays the operator credential for the admin endpoints, including
+  `POST /v1/admin/bond/acknowledge-slash` and
+  `POST /v1/admin/settlement/cancel-anchor`.
 
 **0d. Build the new guest + compute the clean prod genesis.**
 - SP1 guest rebuild on merged `main` (per `docs/PROVING-RUNBOOK.md`) → record
@@ -135,6 +164,28 @@ ZK-001 minors):
   `VERIFIED_AT_FINALIZED_BLOCK`. `forge test` + workspace `cargo test` green on
   the exact commit being shipped. Recorded dry runs:
   `docs/audits/2026-10-16-clock-stack-deploy-kit/`.
+- Settlement and clock parameters for the deploy config. They assume Base's 2 s
+  blocks. Off an owned Anvil the tool enforces the floors:
+
+  | Parameter | Launch value | Floor |
+  |---|---|---|
+  | `liveness_timeout_blocks` | 43,200 (24 h) | 7,200 |
+  | `final_settle_grace_blocks` | 300 | 150 |
+  | `challenge_grace_blocks` | 3,600 (2 h) | 1,200 |
+  | `progress_batches` | 2 | 2 (1..16 on-chain) |
+  | `inclusion_deadline_seconds` | 3,600 | 3,600 |
+  | `challenge_bond_wei` | 0.01 ETH | > 0 |
+  | `slash_payout_cap_usdc` | 1,000e6 (USDC base units) | > 0 |
+  | clock `anchor_timeout_ms` | 3,600,000 | 3,600,000 |
+  | clock `max_window_ms` / `clock_skew_ms` | 30,000 / 30,000 | window ≥ 400, skew ≥ 20,000 |
+  | gateway `DEPOSIT_PERMIT_TTL_SECS` | 1,800 | ≤ liveness seconds / 8 |
+  | gateway `L1_BOND_TARGET_TVL` | 1,000,000e6 (testnet) | – |
+
+  Re-check these against the measured prover p99 and Base finality before the
+  window; the tool enforces only the floors.
+- GPU dry run before the window: prove an **empty keepalive batch** and a normal
+  batch under the real guest. The keepalive is what keeps an idle stack out of the
+  liveness timeout.
 
 **0e. Stage the frontend build.** Everything is merged; contract addresses
 are build-time env (`VITE_COLLATERAL_VAULT`, `VITE_MOCK_USDC`; unset keeps the
@@ -149,9 +200,13 @@ run` (183) so the only window-day delta is the constants.
   reverse-SSH tunnels, SSH users, host addresses, or alert topics here.
 - Proof smoke needs RAM headroom. Pause non-essential local workloads until
   Phase 2 completes, then restore them (~30 GB was the observed headroom gap).
-- Old stack (optional but honest): wind down via
-  `docs/FINAL_SETTLE_RUNBOOK.md` (close-only + `finalSettle`) so any old-stack
-  balances become claimable instead of stranded. Testnet — operator's call.
+- **Retire the old stack (`DarkPerpSettlement 0x0869…`) with a final ordinary
+  settle and normal withdrawals — never through close-only.** Its vault predates
+  the refund path; its exit is ordinary settlement and claims. Announce the
+  retirement, stop taking new deposits on the old stack, let one last ordinary
+  `settleBatch` credit every deposit that landed, publish the withdrawals and let
+  users claim. Then withdraw the old bond with `withdrawBond`. Testnet — but do it before
+  the old gateway is turned off.
 
 ---
 
@@ -207,17 +262,42 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
    signer flags after `--` (`--account NAME` or `--ledger`; the tool never
    handles keys). It deploys, in order: our own SP1 verifier + gateway +
    `addRoute`, `SP1ZkVerifier` (reviewed program key, not configurable),
-   `ClockBoundVerifier`, `DarkPerpSettlement` (`GENESIS_ROOT` from 0d,
-   governance, bonds), `MockUSDC`, `CollateralVault` (`GATEWAY_SIGNER` = real
-   address), `setVault`, `bindSettlement`. Do **not** reuse Succinct's Base
-   Sepolia gateway `0x397A…`: its runtime code differs from the vendored
-   artifact the release manifest pins, so `observe-target` reports BLOCKED
-   (2026-10-16 fork dry run). Then run `release_manifest.py observe-target`
-   against the public chain; it must report `VERIFIED_AT_FINALIZED_BLOCK`.
+   `ClockBoundVerifier` (four words: inner verifier, `max_window_ms`,
+   `clock_skew_ms`, `anchor_timeout_ms`), `DarkPerpSettlement` (the twelve-word
+   `Config`, with `GENESIS_ROOT` from 0d, the fresh enclave signer and governance),
+   `MockUSDC`, `CollateralVault` (`GATEWAY_SIGNER` = real address), `setVault`
+   (the settlement checks the vault names it), `bindSettlement`.
+   `<output>.deployment.json` records `deploy_block` and `settlement_block`, the
+   block where the settlement's liveness clock starts. The deploy config also
+   carries `deposit_permit_ttl_secs`, which becomes the public
+   `DEPOSIT_PERMIT_TTL_SECS`. Do **not** use `Deploy.s.sol`: it
+   wires only `MockZkVerifier`, and `observe-target` checks only this tool's
+   artifacts. Do **not** reuse Succinct's Base Sepolia gateway `0x397A…`: its
+   runtime code differs from the vendored artifact the release manifest pins, so
+   `observe-target` reports BLOCKED (2026-10-16 fork dry run). Then run
+   `release_manifest.py observe-target` against the public chain; it must report
+   `VERIFIED_AT_FINALIZED_BLOCK`, including `ABI_VERSION() == 3`.
+   - **Start the gateway and prover right after the deploy** (step 3 follows
+     immediately). The liveness window runs from the deploy block. If the stack is
+     not launched at once, deploy no more than `livenessTimeoutBlocks / 2` before
+     launch.
 3. Repoint the gateway env (addresses, `ORACLE_SIGNER_KEY`,
-   `GATEWAY_SIGNER_KEY`, `PROVER_URL`, seal-root config) and boot. The boot
-   itself is a test: prod-mode refusals must NOT fire with real keys (if one
-   fires, the env is wrong — that's the guard working).
+   `GATEWAY_SIGNER_KEY`, the fresh `ENCLAVE_SEED`, `PROVER_URL`, seal-root
+   config, `DEPOSIT_PERMIT_TTL_SECS`, `L1_BOND_TARGET_TVL`, `L1_ANSWER_KEYSTORE`,
+   `L1_ANSWER_PASSWORD_FILE`)
+   and boot. The boot itself is a test: prod-mode refusals must NOT fire with real
+   keys (if one fires, the env is wrong — that's the guard working).
+   - The boot handshake also refuses unless the settlement reports
+     `ABI_VERSION() == 3`, the verifier reports proof version 2 with
+     `CLOCK_BOUND_VERIFIER` set, the vault names the settlement,
+     `anchorTimeoutMs()` covers the gateway's finality and proving budgets, and
+     `DEPOSIT_PERMIT_TTL_SECS` fits the liveness window.
+   - **Bond before deposits.** Without a bond the deposit capacity is 19 base
+     units, so the vault refuses any real deposit until a bond is posted. The gateway's bond top-up posts toward
+     `max(2 × requiredBond, 5% of L1_BOND_TARGET_TVL)` before it issues permits.
+     It mints only on allowlisted testnets with MockUSDC; elsewhere it posts from
+     the sequencer's balance. Check `depositCapacity()` is non-zero before opening
+     deposits.
    - **Verify `L1_VAULT` is exported in the systemd unit BEFORE starting the
      cutover (step 1), not here.** The SEC-021 production boot gate
      (`vault_binding_ok_for_mode`) calls `exit(1)` when a prod-posture
@@ -233,9 +313,15 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
    proof is ~10–14 GB RSS. This also proves the guest now enforces
    `deposits_root` + the oracle signature gate end-to-end.
 5. Health: status snapshot shows `settlement_health: HEALTHY`; the
-   settle-stall alert (`openWindowId > batchCount`) stays quiet.
+   settle-stall alert (`openWindowId > batchCount`) stays quiet. Confirm the first
+   idle keepalive settles within `livenessTimeoutBlocks / 4` of the deploy block
+   (`lastProgressBlock()` advances), and that `openChallengeCount()` reads succeed.
 
 ## Phase 3 — Frontend release
+
+**The frontend sends `deposit(uint256,bytes32,uint64,bytes)` with the permit's
+`validUntil`.** That calldata only works against the new vault, so publish the new
+frontend only once the new stack is live, and never the old frontend against it.
 
 **The gateway and frontend must ship together (SEC-021).** The old frontend
 against the new gateway gets a 400 on every withdrawal (no `nonce`/`signature`
@@ -261,9 +347,21 @@ publish this phase immediately after Phase 2's boot check passes.
   commit alert topics or webhook URLs.
 - Update `.superpowers/sdd/progress.md` + operator notes: what shipped, new
   addresses, whether the CC leg ran.
-- Rollback note: the OLD stack addresses remain on-chain and archived in the
-  deployments file; the old frontend build is the last pre-`999bdde` `main`
-  build. Rolling back = repoint gateway env + republish old frontend.
+- **Never roll the gateway binary back across this change.** A gateway built
+  before settlement ABI version 3 does not read the on-chain open-challenge set,
+  and only the new binary performs the boot handshake. Do not point a pre-change
+  binary at the new contracts, and do not point the new binary at the old ones (it
+  refuses to boot). If the new stack has to be abandoned, move forward: governance
+  `enterCloseOnly()` on the new stack, then refunds and the wind-down
+  (`docs/FINAL_SETTLE_RUNBOOK.md`). The OLD stack addresses remain on-chain and
+  archived in the deployments file under `supersededDeploys`.
+- **Slashes.** After any `SequencerSlashed`, automatic bond top-up pauses until the
+  operator acknowledges the new `slashCount()`:
+  `POST /v1/admin/bond/acknowledge-slash {"slashCount": <current>}` with
+  `FIN_ADMIN_KEY` (lasts until restart), and `L1_BOND_ACKED_SLASH_COUNT=<current>`
+  in the gateway env so a restart does not pause top-ups again. Investigate why
+  the challenge went unanswered before acknowledging; the acknowledgement resumes
+  top-ups toward the bond target.
 
 ---
 
@@ -272,6 +370,6 @@ publish this phase immediately after Phase 2's boot check passes.
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | CC leg in or out of this window | In ONLY if the 0a branch (`feat/sec020-phase2-local`, code done) is merged and 0b confirmed a procedure; the 0a deferred items (a)–(d) run IN the window and gate CC-enable; else redeploy-only window |
-| 2 | Wind down the old stack via finalSettle | Yes (honest exit; cheap on testnet) |
-| 3 | Reuse `MockUSDC 0x8a52` | Yes, if `Deploy.s.sol` accepts an existing token address at dry-run |
+| 2 | Retire the old stack | With a final ordinary settle + normal withdrawals, then `withdrawBond`; never close-only (its vault predates the refund path) |
+| 3 | Reuse `MockUSDC 0x8a52` | No: `deploy_clock_stack.py` always deploys a fresh `MockUSDC`; it has no option for an existing token |
 | 4 | Other workloads on the prover host | Pause until Phase 2 smoke passes (RAM headroom), then restore |

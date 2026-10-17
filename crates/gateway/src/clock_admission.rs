@@ -99,8 +99,13 @@ pub(crate) async fn http_gate(
         *request.method(),
         axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
     );
-    // This endpoint only requests recovery; it cannot mutate financial state.
-    let recovery = request.uri().path() == "/v1/admin/settlement/resume";
+    // These endpoints only request recovery or cancel a dead L1 anchor; they
+    // cannot mutate financial state, and they are needed while a window holds
+    // admission closed.
+    let recovery = matches!(
+        request.uri().path(),
+        "/v1/admin/settlement/resume" | "/v1/admin/settlement/cancel-anchor"
+    );
     let _permit = if readonly || recovery {
         None
     } else {

@@ -70,11 +70,16 @@ PRIVACY BRIDGE — Aztec (opsiyonel, Faz 4): padding/batching/relayer
 ZK eksik evren verilirse yalan söylemez; sadece eksik evreni doğrular. Inclusion
 ayrı kanıtlanır.
 
-**Her kabul edilen emir için imzalı receipt:**
+**Her kabul edilen emir için imzalı receipt ve L1 challenge yetkisi:**
 ```
 order_hash = H(encrypted_order, user_ephemeral_key, nonce, expiry, market_id)
 receipt    = Sign_enclave(order_hash, seq_no, recv_time, batch_id_hint)
+l1_auth    = Sign_enclave(keccak(CHALLENGE_AUTH_TAG, chain_id, settlement,
+                                 order_hash, seq_no, recv_time, batch_id_hint,
+                                 beneficiary))
 ```
+`beneficiary`, hesabın bağlı deposit adresidir; bağlı adres yoksa `l1_auth`
+üretilmez. Çıplak receipt imzası L1'de challenge açmaz.
 
 **Her batch bir manifest yayınlar:**
 ```
@@ -87,21 +92,36 @@ batch_manifest = {
 ```
 
 **Boşluk paylaşımı:** ZK → manifest'teki sıralı emirler altında fill doğruluğu
-(Proof-v2). Inclusion açığı **ripeness gate + challenge/answer + slashUnanswered**
-ile kapanır (SEQ-001, implemente edildi): imzalı `recvTimeMs`'den
-`inclusionDeadlineSecs` sonra bir emir challenge edilebilir hale gelir (erken/spam
-challenge açılamaz — `DarkPerpSettlement.challengeInclusion`). Sequencer
-`answerChallenge` ile emri gerçekten SETTLED bir batch'in `orderedRoot`'unda
-kanıtlarsa: inclusion challenge açıldıktan SONRA gerçekleştiyse (forced inclusion)
-challenger'ın stake'i challenger'a **refund** edilir (slash YOK); challenge
-açılmadan ÖNCE zaten dahil edilmişse (gürültü/griefing) stake sequencer'a kalır.
-Hiçbir cevap gelmezse `slashUnanswered` sequencer bond'unu challenger'a **slash**
-eder ve sistemi close-only'e sokar. İkisi *birlikte* censorship/withholding'i
-kapatır.
+(Proof-v2). Inclusion açığı **ripeness gate + challenge/answer + progress gate +
+sınırlı ceza** ile kapanır (SEQ-001, implemente edildi):
+
+- İmzalı `recvTimeMs`'den `inclusionDeadlineSecs` sonra bir emir, `l1_auth` ile
+  challenge edilebilir (erken/spam challenge açılamaz; her order hash en fazla bir
+  kez — `DarkPerpSettlement.challengeInclusion`). Yetki zincire, settlement'a ve
+  beneficiary'ye bağlıdır; challenge'ı herkes gönderebilir.
+- Cevap izinsizdir: herkes emri gerçekten SETTLED bir batch'in `orderedRoot` ya da
+  `rejectedRoot`'unda kanıtlayabilir (`answerChallenge`, `answerByRejection`, toplu
+  `answerChallenges`). Açık challenge'lar zincirde sayılabilir bir kümede durur
+  (`openChallenges`), log taraması gerekmez.
+- Cevap batch'i challenge açıldıktan SONRA settle olduysa (forced inclusion)
+  challenger'ın stake'i ona **refund** edilir; emir challenge'dan ÖNCE zaten dahilse
+  (gürültü/griefing) stake sequencer'a kalır.
+- Cevap gelmezse: challenge açıldıktan sonra `progressBatches` normal batch settle
+  olup sonuncusunun üzerinden `challengeGraceBlocks` geçince `slashUnanswered`, bond'dan
+  `min(sequencerBond, slashPayoutCap)` USDC'yi **beneficiary**'ye öder ve stake'i
+  iade eder. Settlement **durmaz**; close-only'e girilmez. Küçülen bond yalnızca
+  deposit kapasitesini düşürür.
+- Progress gate saati değil settle edilmiş batch'leri sayar; yavaş ama dürüst bir
+  prover ya da finality beklemesi cezaya yol açmaz. Close-only hiçbir zaman ceza
+  doğurmaz: kapıya artık ulaşamayacak bir challenge `releaseStaleChallenge` ile
+  stake'i iade edilerek kapanır.
+
+Receipt + challenge oyunu, kabul edilmiş bir emrin sessizce düşürülmesini L1'de
+bedelli kılar. Ret gerekçesinin meşruiyeti kanıtlanmaz (bkz. `docs/SECURITY.md`).
 
 *(Kod: `order.rs` — `Order::order_hash`, `Receipt`, `BatchManifest`;
-`contracts/DarkPerpSettlement.sol` — `challengeInclusion`, `answerChallenge`,
-`slashUnanswered`.)*
+`contracts/DarkPerpSettlement.sol` — `challengeAuthDigest`, `challengeInclusion`,
+`answerChallenge`, `answerChallenges`, `slashUnanswered`, `releaseStaleChallenge`.)*
 
 ---
 
@@ -119,7 +139,7 @@ SETTLED  = ZK proof Ethereum'da verify oldu (hard)
 | MATCHED + batch prove edilemedi | Batch reddedilir; etkilenen fill'ler **rollback**; insurance yalnızca kanıtlı protokol hatasında |
 | MATCHED + enclave crash | Önceden yayımlanmış çekim kökü ve Merkle verisiyle claim yapılabilir; receipt + state root tek başına çıkış hakkı değildir. Yeni çıkış operator/prover ve final wind-down sırasında governance gerektirir |
 | MATCHED var, L1 hard root yok | Withdraw **mümkün değil** |
-| Receipt var, MATCHED yok, timeout aşıldı | Inclusion ihlali → slashing + forced-exit |
+| Receipt var, MATCHED yok, timeout aşıldı | Inclusion ihlali → L1 challenge; cevapsız kalırsa bond'dan sınırlı ceza, settlement devam eder (§2) |
 
 İlke: **bağlayıcı olan SETTLED'dır.** *(Kod: `order.rs` — `Finality::is_withdrawable`.)*
 
@@ -160,18 +180,25 @@ edilir. Public'e per-position açıklama **yok**; yalnızca aggregate + ZK proof
 
 ```
 Withdrawals only from hard-finalized state.
-Sequencer/enclave unavailable for T blocks
-   → user initiates forced action against last hard root
-   → system enters CLOSE-ONLY emergency mode
+Root not progressed for livenessTimeoutBlocks, OR the oldest unconsumed deposit
+older than livenessTimeoutBlocks, OR governance decides
+   → anyone calls triggerCloseOnly() (governance: enterCloseOnly())
+   → system enters irreversible CLOSE-ONLY mode; consumedDepositCount freezes
+   → deposits above that count are refunded at principal from the vault
+     (CollateralVault.refundDeposit, permissionless)
    → settled balances stay claimable (CollateralVault.claim) against any published
-     withdrawals root; open perps wind down via reduce-only closes + a governance
-     finalSettle landing pad
+     withdrawals root; open perps wind down via a governance finalSettle (SettleAll)
+     and repeatable finalExit
    → insurance fund covers protocol-fault shortfall, not market loss
 ```
 Açık pozisyon collateral'ı **pozisyon kapatılmadan** çekilemez. **Bugün teslim
 edilen mekanizma (EXIT-001):** `CollateralVault.claim()` close-only'de de açık
 kalır — herhangi bir yayınlanmış withdrawals root'una karşı, settle edilmiş
 bakiyeler her zaman çekilebilir (yetki hep verified state'te, operatörde değil).
+Hiçbir settled batch'in tüketmediği deposit'ler close-only'de operatör, prover ya
+da governance olmadan payer'a iade edilir; `claim` bu anaparaya dokunamaz
+(`ReservedForUncredited`). Settle edilmemiş pencerelerdeki işlemler wind-down'a
+taşınmaz; yalnızca settled state geçerlidir.
 Açık pozisyonlar close-only'de reduce-only kapanışlarla küçülür; bu kapanışların
 withdrawals root'a girmesi için governance-only `DarkPerpSettlement.finalSettle`
 bir landing pad sağlar (close-only + `closeOnlyBlock + finalSettleGraceBlocks`
@@ -305,7 +332,7 @@ bound'suz oracle güveni yok. *(Kod: `market.rs` deterministik parametreler;
 
 ## 14. Düşmanca DD — ölümcül sorulara cevap
 
-1. **Emir alınmadı/gecikti, nasıl kanıtlanır?** → signed receipt + inclusion timeout → L1 slashing/forced-exit (§2).
+1. **Emir alınmadı/gecikti, nasıl kanıtlanır?** → signed receipt + enclave imzalı L1 challenge yetkisi + ripeness → cevapsız challenge'a bond'dan sınırlı ceza; duran sequencer'a close-only + deposit refund (§2, §6).
 2. **Preconf var, batch prove olmadı, pozisyon var mı?** → Hayır; bağlayıcı SETTLED. Rollback + kanıtlı-fault insurance (§3).
 3. **ZK tüm order book'u mu kanıtlıyor?** → v1: invariant'lar; matching receipt+manifest+slashing. v2: committed-log determinism (§4).
 4. **Sequencer kapanırsa hangi fiyat?** → close-only, conservative TWAP, son hard state (§6).

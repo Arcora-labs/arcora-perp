@@ -1,8 +1,9 @@
 import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 import {
-  BASE_SEPOLIA_CHAIN_ID, COLLATERAL_VAULT, MOCK_USDC, bindDepositDigest,
-  depositWalletGuard, encodeApprove, encodeDeposit, encodeMint, ensureBaseSepolia,
-  isUserRejection, personalSign, sendTx, waitForTx, transactionStatus, verifyFinalizedRevertedTransaction, type WalletDepositClient,
+  BASE_SEPOLIA_CHAIN_ID, COLLATERAL_VAULT, DEPOSIT_AMOUNT_MAX, MOCK_USDC, VAULT_ERROR_TEXT, bindDepositDigest,
+  depositWalletGuard, dryRunCall, encodeApprove, encodeDeposit, encodeMint, ensureBaseSepolia,
+  isUserRejection, personalSign, sendTx, waitForTx, transactionStatus, verifyFinalizedRevertedTransaction,
+  type DepositPermit, type WalletDepositClient,
 } from "./wallet";
 
 export type DepositStep = "chain" | "mint" | "approve" | "bind" | "authorize" | "deposit" | "credit";
@@ -14,6 +15,9 @@ type Journal = {
   sending: "mint" | "approve" | "deposit" | null;
   retryStep?: "mint" | "approve" | "deposit";
   failed?: { step: "mint" | "approve" | "deposit"; hash: string }[];
+  /** Expiry (unix seconds) of the gateway permit the deposit step uses. Not a
+   * secret: it only tells a later reader when that permit stops being valid. */
+  validUntil?: number;
 };
 const steps: DepositStep[] = ["chain", "mint", "approve", "bind", "authorize", "deposit", "credit"];
 const transactionSteps = ["mint", "approve", "deposit"] as const;
@@ -37,7 +41,13 @@ export type PendingDeposit = {
   readonly hash: string | null; readonly unknownSend: boolean;
   readonly hasDeposit: boolean;
   readonly retryReady: boolean; readonly previousHash: string | null;
+  /** Expiry (unix seconds) of the permit an unfinished vault deposit uses, if saved. */
+  readonly permitValidUntil: number | null;
 };
+
+/** A permit with less than this many seconds left is never sent: wallet
+ * confirmation and inclusion take time, and the vault refuses an expired one. */
+export const PERMIT_SEND_MARGIN_SECS = 120;
 
 /** Public journal metadata only; loading this view never registers an account or
  * contacts a wallet/gateway. A stored original operation stays visible even
@@ -61,7 +71,8 @@ export function pendingDeposits(): PendingDeposit[] {
     pending.push(Object.freeze({ id, revision: JSON.stringify(journal), base: domain[0], chainId: domain[1], vault: domain[2], wallet: domain[3],
       owner: journal.owner, marketId: journal.marketId, recoveryNonce: journal.recoveryNonce, amount: BigInt(journal.amount),
       step, hash: journal.sending || journal.retryStep ? null : journal.txs[step] ?? null, unknownSend: journal.sending !== null,
-      hasDeposit: !!journal.txs.deposit, retryReady: !!journal.retryStep, previousHash: journal.failed?.at(-1)?.hash ?? null }));
+      hasDeposit: !!journal.txs.deposit, retryReady: !!journal.retryStep, previousHash: journal.failed?.at(-1)?.hash ?? null,
+      permitValidUntil: step === "deposit" && !journal.retryStep ? journal.validUntil ?? null : null }));
   }
   return pending;
 }
@@ -135,6 +146,7 @@ async function reconcileOriginalDeposit(client: WalletDepositClient, pending: Pe
         }
         journal.failed = [...(journal.failed ?? []), { step: pending.step, hash: pending.hash }];
         delete journal.txs[pending.step];
+        if (pending.step === "deposit") delete journal.validUntil; // the retry gets a fresh permit
         journal.done = journal.done.filter(step => steps.indexOf(step) < failedIndex);
         journal.retryStep = pending.step;
         journal.recoveryNonce = context.recoveryNonce;
@@ -167,7 +179,13 @@ async function reconcileOriginalDeposit(client: WalletDepositClient, pending: Pe
  * the gateway to re-sign that permit rather than leave another one outstanding; the
  * gateway does so only while it still holds it. Memory only, so no signature enters
  * the durable journal; dropped once a deposit transaction is sent. */
-const sessionPermits = new Map<string, { owner: string; marketId: number; amount: string; auth: { ownerCommit: string; sig: string } }>();
+const sessionPermits = new Map<string, { owner: string; marketId: number; amount: string; auth: DepositPermit }>();
+
+const nowSecs = () => Math.floor(Date.now() / 1000);
+/** Whether a permit still has enough life left to be offered to the wallet. */
+function permitUsable(permit: DepositPermit): boolean {
+  return permit.validUntil - nowSecs() > PERMIT_SEND_MARGIN_SECS;
+}
 
 /** No credentials or signatures enter this durable, origin-wide recovery journal. */
 function readJournal(key: string): Journal | null {
@@ -184,6 +202,7 @@ function readJournal(key: string): Journal | null {
       transactionSteps.some(step => j.done.includes(step) && !j.txs[step]) ||
       (j.done.includes("credit") && !j.txs.deposit) ||
       (j.sending !== null && !transactionSteps.includes(j.sending)) ||
+      (j.validUntil !== undefined && (!Number.isSafeInteger(j.validUntil) || j.validUntil <= 0)) ||
       (j.failed !== undefined && (!Array.isArray(j.failed) || j.failed.some(item => !item || !transactionSteps.includes(item.step) || typeof item.hash !== "string" || !/^0x[0-9a-f]{64}$/.test(item.hash)))) ||
       (j.retryStep !== undefined && (!transactionSteps.includes(j.retryStep) || j.sending !== null || j.txs[j.retryStep] || j.done.includes(j.retryStep) || j.failed?.at(-1)?.step !== j.retryStep || transactionSteps.some(step => steps.indexOf(step) > steps.indexOf(j.retryStep!) && j.txs[step]))) ||
       Object.entries(j.txs).some(([step, hash]) => !transactionSteps.includes(step as typeof transactionSteps[number]) || typeof hash !== "string" || !/^0x[0-9a-f]{64}$/.test(hash))) {
@@ -201,7 +220,7 @@ export async function runWalletDeposit({ client, address, amount, assertView, pr
   client: WalletDepositClient; address: string; amount: bigint; resume?: PendingDeposit;
   assertView(): void; progress(value: DepositProgress): void;
 }): Promise<bigint> {
-  if (amount <= 0n) throw new Error("Enter a valid amount.");
+  if (amount <= 0n || amount > DEPOSIT_AMOUNT_MAX) throw new Error("Enter a valid amount.");
   address = address.toLowerCase();
   const context = await client.captureDepositContext({ existingOnly: !!resume });
   assertView(); context.assertCurrent();
@@ -277,8 +296,43 @@ export async function runWalletDeposit({ client, address, amount, assertView, pr
       await waitForTx(hash);
       await check();
     };
-    let auth: { ownerCommit: string; sig: string } | undefined;
+    let auth: DepositPermit | undefined;
     let credited = 0n;
+    /** Ask the gateway for a permit (re-signing `reuse` if it still holds it) and
+     * remember it for a same-session retry that sends no deposit transaction. */
+    const authorize = async (reuse?: string) => {
+      const permit = await client.authorizeDeposit(address, amount, context, reuse);
+      sessionPermits.set(key, { owner: context.owner, marketId: context.marketId, amount: amount.toString(), auth: permit });
+      await check();
+      return permit;
+    };
+    /** The permit the deposit transaction will carry. An expiring permit is
+     * replaced, never sent. A dry run then asks the vault whether it would
+     * accept the deposit, so a capacity, pause, close-only or expiry refusal is
+     * reported before any wallet prompt. At most one replacement permit. */
+    const sendablePermit = async (): Promise<DepositPermit> => {
+      let renewed = false;
+      const renew = async (): Promise<DepositPermit> => {
+        if (renewed) {
+          throw new Error("The new deposit permit also expired before it could be sent. Check this device's clock and try again; no deposit transaction was sent.");
+        }
+        renewed = true;
+        const fresh = await authorize(); // a fresh permit: an expired one is never re-signed
+        if (!permitUsable(fresh)) {
+          throw new Error("The gateway's deposit permit expires too soon to send. Check this device's clock and try again; no deposit transaction was sent.");
+        }
+        return fresh;
+      };
+      let permit = auth && permitUsable(auth) ? auth : await renew();
+      for (;;) {
+        const simulated = await dryRunCall({ from: address, to: context.vault, data: encodeDeposit(amount, permit.ownerCommit, permit.validUntil, permit.sig) });
+        await check();
+        if (simulated.status !== "reverted") return permit;
+        if (simulated.error === "PermitExpired") { permit = await renew(); continue; }
+        const reason = simulated.error ? VAULT_ERROR_TEXT[simulated.error] : `The vault refused this deposit in a dry run (revert data ${simulated.data.slice(0, 10)}).`;
+        throw new Error(`${reason} No deposit transaction was sent.`);
+      }
+    };
     const executors: [DepositStep, () => Promise<void>][] = [
       ["chain", async () => {
         await ensureBaseSepolia();
@@ -297,16 +351,21 @@ export async function runWalletDeposit({ client, address, amount, assertView, pr
       }],
       ["authorize", async () => {
         const kept = sessionPermits.get(key);
-        const reuse = kept && kept.owner === context.owner && kept.marketId === context.marketId && kept.amount === amount.toString()
-          ? kept.auth.ownerCommit : undefined;
-        auth = await client.authorizeDeposit(address, amount, context, reuse);
-        sessionPermits.set(key, { owner: context.owner, marketId: context.marketId, amount: amount.toString(), auth });
-        await check();
+        // Re-sign only a permit with life left; an expiring one is replaced.
+        const reuse = kept && kept.owner === context.owner && kept.marketId === context.marketId && kept.amount === amount.toString() &&
+          permitUsable(kept.auth) ? kept.auth.ownerCommit : undefined;
+        auth = await authorize(reuse);
       }],
-      ["deposit", () => sendAndWait("deposit", context.vault, () => {
-        if (!auth) throw new Error("Missing deposit authorization.");
-        return encodeDeposit(amount, auth.ownerCommit, auth.sig);
-      })],
+      ["deposit", async () => {
+        if (!journal.txs.deposit) {
+          auth = await sendablePermit();
+          journal.validUntil = auth.validUntil; // saved with the send intent below
+        }
+        await sendAndWait("deposit", context.vault, () => {
+          if (!auth) throw new Error("Missing deposit authorization.");
+          return encodeDeposit(amount, auth.ownerCommit, auth.validUntil, auth.sig);
+        });
+      }],
       ["credit", async () => {
         const hash = journal.txs.deposit;
         if (!hash) throw new Error("Missing deposit transaction hash.");

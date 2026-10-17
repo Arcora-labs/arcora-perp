@@ -35,14 +35,24 @@ pub(super) fn header(v: &Value) -> Result<(u64, Digest), String> {
             .ok_or("settlement observation: missing/invalid block hash")?,
     ))
 }
-fn block(rpc: &dyn Rpc, tag: Value) -> Result<(u64, Digest), String> {
-    let h = header(&rpc.call("eth_getBlockByNumber", vec![tag.clone(), json!(false)])?)?;
+/// One header, plus its timestamp when the header fields hash to the reported
+/// block hash. Callers that need the time ask for it explicitly.
+fn fetch(rpc: &dyn Rpc, tag: Value) -> Result<((u64, Digest), Option<u64>), String> {
+    let v = rpc.call("eth_getBlockByNumber", vec![tag.clone(), json!(false)])?;
+    let h = header(&v)?;
     if tag != json!("latest") && tag != json!("finalized") && quantity(&tag)? != h.0 {
         return Err(
             "settlement observation: canonical block changed or provider disagrees (height)".into(),
         );
     }
-    Ok(h)
+    let time = crate::deposit_rpc::validated_block(&v)
+        .ok()
+        .filter(|b| (b.number, b.hash) == h)
+        .and_then(|b| b.timestamp);
+    Ok((h, time))
+}
+fn block(rpc: &dyn Rpc, tag: Value) -> Result<(u64, Digest), String> {
+    Ok(fetch(rpc, tag)?.0)
 }
 fn chain_agreement(
     primary: &dyn Rpc,
@@ -63,7 +73,34 @@ pub(super) struct CanonicalRead<'a> {
     primary: &'a dyn Rpc,
     witness: Option<&'a dyn Rpc>,
     anchor: (u64, Digest),
+    /// The anchor header's timestamp, when its fields hashed to the anchor hash.
+    anchor_time: Option<u64>,
 }
+
+/// One open inclusion challenge as the settlement stores it. These values do
+/// not change while the challenge is open, and a closed hash cannot reopen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct OpenChallenge {
+    pub order_hash: Digest,
+    pub beneficiary: [u8; 20],
+    pub batch_id_hint: u64,
+    pub opened_block: u64,
+    pub open_batch_count: u64,
+    pub stake: u128,
+}
+
+/// The settlement's whole open-challenge set at one canonical block, with the
+/// stored details of the hashes the caller did not know yet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct OpenSetRead {
+    pub head: u64,
+    pub batch_count: u64,
+    pub hashes: Vec<Digest>,
+    pub details: Vec<OpenChallenge>,
+}
+
+/// `openChallenges(start, max)` clamps `max` to this page size on-chain.
+pub(crate) const OPEN_CHALLENGE_PAGE: u64 = 512;
 impl<'a> CanonicalRead<'a> {
     pub fn new(
         primary: &'a dyn Rpc,
@@ -85,16 +122,16 @@ impl<'a> CanonicalRead<'a> {
             AnchorPolicy::Finalized => "finalized",
             _ => "latest",
         };
-        let head = block(primary, json!(tag))?;
-        let anchor = match policy {
+        let (head, head_time) = fetch(primary, json!(tag))?;
+        let (anchor, anchor_time) = match policy {
             AnchorPolicy::Confirmed(depth) => {
                 let height = head
                     .0
                     .checked_sub(depth)
                     .ok_or("settlement observation: insufficient gate confirmations")?;
-                block(primary, json!(format!("0x{height:x}")))?
+                fetch(primary, json!(format!("0x{height:x}")))?
             }
-            _ => head,
+            _ => (head, head_time),
         };
         if let Some(witness) = witness {
             let witness_head = block(witness, json!(tag))?;
@@ -118,10 +155,16 @@ impl<'a> CanonicalRead<'a> {
             primary,
             witness,
             anchor,
+            anchor_time,
         })
     }
     pub fn height(&self) -> u64 {
         self.anchor.0
+    }
+    /// The anchor block's header-bound timestamp (seconds).
+    pub fn timestamp(&self) -> Result<u64, String> {
+        self.anchor_time
+            .ok_or_else(|| "settlement observation: anchor header did not hash to its block hash; no block time".into())
     }
     pub fn word(&self, to: &str, signature: &str, arg: Option<Digest>) -> Result<Digest, String> {
         Ok(self.words(to, signature, arg, 1)?[0])
@@ -142,6 +185,24 @@ impl<'a> CanonicalRead<'a> {
         args: &[Digest],
         count: usize,
     ) -> Result<Vec<Digest>, String> {
+        let bytes = self.call_bytes(to, signature, args)?;
+        if bytes.len() != count * 32 {
+            return Err(format!(
+                "settlement observation: invalid ABI word for {signature}"
+            ));
+        }
+        // Exact length validation above guarantees no trailing bytes. Fixed-size
+        // array chunks avoid fallible slice conversions and preserve word order.
+        Ok(bytes.as_chunks::<32>().0.to_vec())
+    }
+    /// Raw return data of one hash-pinned call; a configured witness must return
+    /// the same bytes. The length is checked by the caller's decoder.
+    pub fn call_bytes(
+        &self,
+        to: &str,
+        signature: &str,
+        args: &[Digest],
+    ) -> Result<Vec<u8>, String> {
         let hash = Keccak256::digest(signature.as_bytes());
         let mut calldata = hash[..4].to_vec();
         for arg in args {
@@ -151,157 +212,138 @@ impl<'a> CanonicalRead<'a> {
             json!({"to":to,"data":crate::hex0x(&calldata)}),
             json!({"blockHash":crate::hex32(&self.anchor.1),"requireCanonical":true}),
         ];
-        let parse = |v: Value| -> Result<Vec<Digest>, String> {
-            if v.as_str().is_none_or(|s| s.len() != 2 + count * 64) {
+        let parse = |v: Value| -> Result<Vec<u8>, String> {
+            if v.as_str().is_none_or(|s| s.len() % 64 != 2) {
                 return Err(format!(
                     "settlement observation: invalid ABI word for {signature}"
                 ));
             }
-            let bytes = hex_bytes(&v)?;
-            if bytes.len() != count * 32 {
-                return Err(format!(
-                    "settlement observation: invalid ABI word for {signature}"
-                ));
-            }
-            // Exact length validation above guarantees no trailing bytes. Fixed-size
-            // array chunks avoid fallible slice conversions and preserve word order.
-            Ok(bytes.as_chunks::<32>().0.to_vec())
+            hex_bytes(&v)
         };
-        let words = parse(self.primary.call("eth_call", params.clone())?)?;
+        let bytes = parse(self.primary.call("eth_call", params.clone())?)?;
         if let Some(witness) = self.witness {
-            if parse(witness.call("eth_call", params)?)? != words {
+            if parse(witness.call("eth_call", params)?)? != bytes {
                 return Err(format!(
                     "settlement observation: witness disagrees on {signature}"
                 ));
             }
         }
-        Ok(words)
+        Ok(bytes)
     }
-    /// Query one bounded challenge page and bind its event metadata to canonical
-    /// headers. Disagreement or malformed/omitted events never become an empty page.
-    pub fn challenges(
+    /// The account nonce (transaction count, the next unused nonce) of `account`
+    /// at the anchor block. A configured witness must report the same value.
+    pub fn nonce(&self, account: &[u8; 20]) -> Result<u64, String> {
+        let params = vec![
+            json!(crate::hex0x(account)),
+            json!({"blockHash":crate::hex32(&self.anchor.1),"requireCanonical":true}),
+        ];
+        let n = quantity(
+            &self
+                .primary
+                .call("eth_getTransactionCount", params.clone())?,
+        )?;
+        if let Some(witness) = self.witness {
+            if quantity(&witness.call("eth_getTransactionCount", params)?)? != n {
+                return Err(
+                    "settlement observation: witness disagrees on the account nonce".into(),
+                );
+            }
+        }
+        Ok(n)
+    }
+    /// A strictly encoded `bytes32[]` return value holding at most `max` entries.
+    pub fn bytes32_array(
+        &self,
+        to: &str,
+        signature: &str,
+        args: &[Digest],
+        max: u64,
+    ) -> Result<Vec<Digest>, String> {
+        let bytes = self.call_bytes(to, signature, args)?;
+        let words = bytes.as_chunks::<32>().0;
+        let malformed = || format!("settlement observation: malformed bytes32[] from {signature}");
+        if words.len() < 2 || words.len() * 32 != bytes.len() {
+            return Err(malformed());
+        }
+        if abi_u64(words[0], "array offset").map_err(|_| malformed())? != 32 {
+            return Err(malformed());
+        }
+        let n = abi_u64(words[1], "array length").map_err(|_| malformed())?;
+        if n > max || words.len() as u64 != n + 2 {
+            return Err(malformed());
+        }
+        Ok(words[2..].to_vec())
+    }
+    /// The whole open-challenge set at this anchor: the count, every page of
+    /// hashes, and the six stored words of up to `max_details` hashes not in
+    /// `known`. A page that disagrees with the count, a duplicate, or a stored
+    /// challenge that is not open or cannot exist at this block is an error,
+    /// never a shorter set.
+    pub fn open_challenges(
         &self,
         settlement: &str,
-        from: u64,
-    ) -> Result<(Vec<String>, u64, Option<Digest>), String> {
-        const PAGE_BLOCKS: u64 = 1024;
-        const MAX_LOGS: usize = 4096;
-        if from > self.anchor.0 {
-            return Ok((Vec::new(), from, None));
-        }
-        let end = from.saturating_add(PAGE_BLOCKS - 1).min(self.anchor.0);
-        let anchor = self.canonical_height(end)?;
-        let page = Self {
-            primary: self.primary,
-            witness: self.witness,
-            anchor,
-        };
-        let topic = crate::hex0x(&Keccak256::digest(
-            b"InclusionChallenged(bytes32,address,uint256)",
-        ));
-        let params = vec![
-            json!({"address":settlement,"topics":[topic],"fromBlock":format!("0x{from:x}"),"toBlock":format!("0x{end:x}")}),
-        ];
-        let logs = self.primary.call("eth_getLogs", params.clone())?;
-        let entries = logs
-            .as_array()
-            .filter(|a| a.len() <= MAX_LOGS)
-            .ok_or("challenge observation: malformed or oversized logs")?;
-        if let Some(witness) = self.witness {
-            if witness.call("eth_getLogs", params)? != logs {
-                return Err("challenge observation: witness log disagreement".into());
-            }
-        }
-        let target = crate::parse_addr20_hex(settlement)
-            .ok_or("challenge observation: invalid settlement address")?;
+        known: &std::collections::BTreeSet<Digest>,
+        max_details: usize,
+    ) -> Result<OpenSetRead, String> {
+        let count = abi_u64(
+            self.word(settlement, "openChallengeCount()", None)?,
+            "openChallengeCount",
+        )?;
+        let batch_count = abi_u64(self.word(settlement, "batchCount()", None)?, "batchCount")?;
         let mut hashes = Vec::new();
-        let mut positions = std::collections::BTreeSet::new();
-        let mut headers = std::collections::BTreeMap::new();
-        for log in entries {
-            let height = quantity(&log["blockNumber"])?;
-            let block_hash = log["blockHash"]
-                .as_str()
-                .and_then(parse_bytes32)
-                .ok_or("challenge observation: invalid event block hash")?;
-            if log["removed"] != json!(false)
-                || !(from..=end).contains(&height)
-                || log["address"].as_str().and_then(crate::parse_addr20_hex) != Some(target)
-            {
-                return Err(
-                    "challenge observation: wrong contract, removed or out-of-range event".into(),
-                );
+        let mut seen = std::collections::BTreeSet::new();
+        let mut start = 0u64;
+        while start < count {
+            let want = (count - start).min(OPEN_CHALLENGE_PAGE);
+            let page = self.bytes32_array(
+                settlement,
+                "openChallenges(uint256,uint256)",
+                &[u64_word(start), u64_word(OPEN_CHALLENGE_PAGE)],
+                OPEN_CHALLENGE_PAGE,
+            )?;
+            if page.len() as u64 != want {
+                return Err("challenge observation: open-set page disagrees with its count".into());
             }
-            let topics = log["topics"]
-                .as_array()
-                .filter(|t| t.len() == 3)
-                .ok_or("challenge observation: invalid topics")?;
-            if topics[0].as_str().and_then(parse_bytes32) != parse_bytes32(&topic) {
-                return Err("challenge observation: wrong event signature".into());
-            }
-            let order = topics[1]
-                .as_str()
-                .and_then(parse_bytes32)
-                .ok_or("challenge observation: invalid order hash")?;
-            let challenger = topics[2]
-                .as_str()
-                .and_then(parse_bytes32)
-                .ok_or("challenge observation: invalid challenger")?;
-            if challenger[..12].iter().any(|b| *b != 0) {
-                return Err("challenge observation: invalid challenger address padding".into());
-            }
-            let deadline: Digest = hex_bytes(&log["data"])?
-                .try_into()
-                .map_err(|_| "challenge observation: invalid deadline ABI")?;
-            if abi_u64(deadline, "challenge deadline")? <= height {
-                return Err("challenge observation: impossible deadline".into());
-            }
-            quantity(&log["transactionIndex"])?;
-            if log["transactionHash"]
-                .as_str()
-                .and_then(parse_bytes32)
-                .is_none()
-                || !positions.insert((height, quantity(&log["logIndex"])?))
-            {
-                return Err(
-                    "challenge observation: invalid transaction or duplicate log position".into(),
-                );
-            }
-            let canonical = match headers.get(&height) {
-                Some(hash) => *hash,
-                None => {
-                    let (_, hash) = self.canonical_height(height)?;
-                    headers.insert(height, hash);
-                    hash
+            for hash in page {
+                if !seen.insert(hash) {
+                    return Err("challenge observation: duplicate open challenge".into());
                 }
+                hashes.push(hash);
+            }
+            start += want;
+        }
+        let mut details = Vec::new();
+        for hash in hashes
+            .iter()
+            .filter(|h| !known.contains(*h))
+            .take(max_details)
+        {
+            let w = self.words(settlement, "challenges(bytes32)", Some(*hash), 6)?;
+            let c = OpenChallenge {
+                order_hash: *hash,
+                beneficiary: abi_address(w[0], "challenge beneficiary")?,
+                batch_id_hint: abi_u64(w[1], "challenge batch hint")?,
+                opened_block: abi_u64(w[2], "challenge opened block")?,
+                open_batch_count: abi_u64(w[3], "challenge open batch count")?,
+                stake: abi_u128(w[4], "challenge stake")?,
             };
-            if canonical != block_hash {
-                return Err("challenge observation: event block is not canonical".into());
+            if !abi_bool(w[5], "challenge open")? {
+                return Err("challenge observation: listed challenge is not open".into());
             }
-            hashes.push(crate::hex32(&order));
+            if c.beneficiary == [0; 20]
+                || c.opened_block > self.height()
+                || c.open_batch_count > batch_count
+            {
+                return Err("challenge observation: impossible open challenge".into());
+            }
+            details.push(c);
         }
-        page.finish()?;
-        Ok((
+        Ok(OpenSetRead {
+            head: self.height(),
+            batch_count,
             hashes,
-            end.checked_add(1)
-                .ok_or("challenge observation: cursor overflow")?,
-            Some(page.anchor.1),
-        ))
-    }
-    pub fn anchor_matches(&self, height: u64, hash: Digest) -> Result<bool, String> {
-        if height > self.anchor.0 {
-            return Err("challenge observation: latest height behind saved scan anchor".into());
-        }
-        Ok(self.canonical_height(height)?.1 == hash)
-    }
-    fn canonical_height(&self, height: u64) -> Result<(u64, Digest), String> {
-        let tag = json!(format!("0x{height:x}"));
-        let anchor = block(self.primary, tag.clone())?;
-        if let Some(witness) = self.witness {
-            if block(witness, tag)? != anchor {
-                return Err("challenge observation: witness block disagreement".into());
-            }
-        }
-        Ok(anchor)
+            details,
+        })
     }
     pub fn finish(&self) -> Result<(), String> {
         let height = json!(format!("0x{:x}", self.anchor.0));
@@ -317,6 +359,21 @@ impl<'a> CanonicalRead<'a> {
         }
         Ok(())
     }
+}
+pub(super) fn address_word(a: &[u8; 20]) -> Digest {
+    let mut word = [0; 32];
+    word[12..].copy_from_slice(a);
+    word
+}
+pub(super) fn abi_address(word: Digest, label: &str) -> Result<[u8; 20], String> {
+    if word[..12].iter().any(|b| *b != 0) {
+        return Err(format!(
+            "settlement observation: {label} is not an address word"
+        ));
+    }
+    let mut a = [0; 20];
+    a.copy_from_slice(&word[12..]);
+    Ok(a)
 }
 pub(super) fn u64_word(n: u64) -> Digest {
     let mut word = [0; 32];

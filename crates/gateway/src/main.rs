@@ -92,6 +92,7 @@ mod candidate_recovery_tests;
 #[cfg(test)]
 mod candidate_registration;
 mod candles;
+mod challenge_auth;
 mod challenge_scan;
 mod clock_admission;
 mod clock_client;
@@ -145,7 +146,9 @@ use l1::{L1Status, L1};
 // (the window path derives roots inside prover_client); tests still assert with it.
 #[cfg(test)]
 use withdrawals::merkle_root;
-use withdrawals::{inclusion_leaf, merkle_proof, owner_commit, rejection_leaf, Withdrawal};
+#[cfg(test)]
+use withdrawals::{inclusion_leaf, merkle_proof, rejection_leaf};
+use withdrawals::{owner_commit, Withdrawal};
 
 /// 0x-prefixed lowercase hex of a 32-byte digest (for L1 calldata + display).
 fn hex32(d: &Digest) -> String {
@@ -338,6 +341,7 @@ enum BootRecoveryOutcome {
 /// `finalSettle` could be mistaken for ours. Callers that cannot or need not
 /// observe (tests, a gate already open, a non-roll-forward shape) pass
 /// `Inconclusive`, which can never open the gate and never latches it either.
+#[cfg(test)]
 fn apply_boot_recovery(
     gw: &mut Gw,
     j: rollback_journal::RollbackJournal,
@@ -345,6 +349,26 @@ fn apply_boot_recovery(
     chain_root: &str,
     bond: u128,
     gate_observation: trading_gate::GateObservation,
+) -> BootRecoveryOutcome {
+    apply_boot_recovery_classified(gw, j, chain_bc, chain_root, bond, gate_observation, None)
+}
+
+/// `apply_boot_recovery` with the journal's dead-intent classification, read at one
+/// finalized block by `clock_client::check_dead_intent`. A dead intent whose policy
+/// is automatic returns the window's operations to the open window exactly as the
+/// rollback row does: nothing on L1 has to be undone, and no transaction of ours
+/// can still be mined. Every other dead intent HOLDs with the reason.
+fn apply_boot_recovery_classified(
+    gw: &mut Gw,
+    j: rollback_journal::RollbackJournal,
+    chain_bc: u64,
+    chain_root: &str,
+    bond: u128,
+    gate_observation: trading_gate::GateObservation,
+    dead: Option<(
+        rollback_journal::DeadIntent,
+        rollback_journal::DeadIntentAction,
+    )>,
 ) -> BootRecoveryOutcome {
     use rollback_journal::RecoveryAction;
     let b_snap = gw.seq.state.next_batch_id;
@@ -358,14 +382,51 @@ fn apply_boot_recovery(
         .l1_status
         .as_ref()
         .is_some_and(|st| chain_root.eq_ignore_ascii_case(&st.settled_root));
-    match rollback_journal::recovery_action(
+    match rollback_journal::recovery_action_classified(
         j.batch_id,
         j.prepared.is_some(),
         b_snap,
         chain_bc,
         root_matches_prepared,
         root_matches_settled,
+        dead.map(|(d, _)| d),
     ) {
+        RecoveryAction::VoidDeadIntent(reason) => {
+            let action = dead.map_or(
+                rollback_journal::DeadIntentAction::Hold("no recovery policy was given"),
+                |(_, a)| a,
+            );
+            match action {
+                rollback_journal::DeadIntentAction::ReturnToOpenWindow
+                    if Some(b_snap) == j.batch_id.checked_add(1) =>
+                {
+                    gw.seq.rollback_window(&j.witness);
+                    gw.rollback_window_withdrawals(j.ww);
+                    println!(
+                        "[recovery] the clock intent of window {} can never settle ({reason:?}); \
+                         nothing on L1 is undone and its operations are back in the open window",
+                        j.batch_id
+                    );
+                    BootRecoveryOutcome::DeleteJournal { mutated: true }
+                }
+                rollback_journal::DeadIntentAction::ReturnToOpenWindow => {
+                    println!(
+                        "[recovery] the clock intent of window {} can never settle ({reason:?}); \
+                         the restored snapshot already holds its operations in the open window",
+                        j.batch_id
+                    );
+                    BootRecoveryOutcome::DeleteJournal { mutated: false }
+                }
+                rollback_journal::DeadIntentAction::Hold(why) => {
+                    eprintln!(
+                        "[recovery] HOLDING: the clock intent of window {} can never settle \
+                         ({reason:?}): {why}. Keeping the journal; startup is refused until it resolves",
+                        j.batch_id
+                    );
+                    BootRecoveryOutcome::KeepJournal
+                }
+            }
+        }
         RecoveryAction::Stale => {
             println!(
                 "[recovery] rollback journal for window {} is stale (its commit was already \
@@ -552,6 +613,8 @@ const MAKER_REBATE_BPS: i128 = 0; // no maker rebate — the LP pool earns the h
 const TREASURY_FEE_BPS: i128 = 8; // 0.08% → protocol treasury (operator revenue); 0.02% → insurance
 const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows with volume
 const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
+/// How often the L1 health task reads liveness, anchor age and finalized close-only.
+const L1_HEALTH_SECS: u64 = 60;
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
 /// Registration bounds across all clients, on top of the per-client limit above.
@@ -563,6 +626,26 @@ const REGISTER_LIMIT_PRUNE_AT: usize = 4_096;
 const MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT: usize = 64;
 const MAX_OPEN_DEPOSIT_PERMITS: usize = 20_000;
 const DEPOSIT_AUTHORIZE_RATE: u32 = 10; // max deposit authorizations/min per account
+/// `DEPOSIT_PERMIT_TTL_SECS` when unset: a permit is valid for 30 minutes.
+const DEFAULT_DEPOSIT_PERMIT_TTL_SECS: u64 = 1800;
+
+/// `DEPOSIT_PERMIT_TTL_SECS`: unset or empty takes the default; anything else must
+/// be a positive decimal number of seconds (the release manifest's rule). The boot
+/// handshake also bounds it by the settlement's liveness window.
+fn parse_deposit_permit_ttl(raw: Option<&str>) -> Result<u64, String> {
+    match raw.filter(|v| !v.is_empty()) {
+        None => Ok(DEFAULT_DEPOSIT_PERMIT_TTL_SECS),
+        Some(v) => v
+            .bytes()
+            .all(|b| b.is_ascii_digit())
+            .then(|| v.parse::<u64>().ok())
+            .flatten()
+            .filter(|n| *n > 0)
+            .ok_or_else(|| {
+                format!("DEPOSIT_PERMIT_TTL_SECS must be a positive decimal number of seconds (got {v:?})")
+            }),
+    }
+}
 const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
 /// How long an acknowledged snapshot waits before giving up. A wedge here means the
 /// writer cannot make progress — most likely a caller holding `App.gw` across the await —
@@ -737,8 +820,19 @@ fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
 
 fn http_get_json_command(
     url: &str,
-    mut command: std::process::Command,
+    command: std::process::Command,
 ) -> Result<serde_json::Value, String> {
+    http_get_json_bounded(url, command, 10, 30)
+}
+
+/// `http_get_json` with explicit connect and whole-transfer bounds in seconds.
+fn http_get_json_bounded(
+    url: &str,
+    mut command: std::process::Command,
+    connect_secs: u64,
+    max_secs: u64,
+) -> Result<serde_json::Value, String> {
+    let (connect, max) = (connect_secs.to_string(), max_secs.to_string());
     command.args([
         "-q",
         // A configured attestation URL names one HTTP(S) transfer. Curl's
@@ -750,9 +844,9 @@ fn http_get_json_command(
         "-S",
         "--fail",
         "--connect-timeout",
-        "10",
+        &connect,
         "--max-time",
-        "30",
+        &max,
         "--",
         url,
     ]);
@@ -762,7 +856,7 @@ fn http_get_json_command(
         curl_transport::Limits {
             stdout: curl_transport::MAX_GET_RESPONSE_BYTES,
             stderr: curl_transport::MAX_STDERR_BYTES,
-            timeout: std::time::Duration::from_secs(35),
+            timeout: std::time::Duration::from_secs(max_secs.saturating_add(5)),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -1077,6 +1171,7 @@ struct WState {
     markets: Vec<WMarket>,
     selected_market_id: u64,
     market: WMarket,
+    /// "CloseOnly" once the engine or the L1 settlement is in close-only, else "Normal".
     mode: String,
     oracle: WOracle,
     book: WBook,
@@ -1109,6 +1204,9 @@ struct WState {
     /// Wall-clock ms the settle loop entered HELD (omitted unless currently HELD).
     #[serde(skip_serializing_if = "Option::is_none")]
     settlement_held_since_ms: Option<u64>,
+    /// Operational alerts currently active (snake_case kinds, as delivered to
+    /// FIN_ALERT_* collectors), for monitors that poll this surface.
+    ops_alerts: Vec<ops_alerts::AlertKind>,
     /// The verified TEE attestation the enclave is bound to (else null = stub).
     attestation: Option<WAttestation>,
     /// The LP pool (counterparty) — TVL, NAV/share, and the demo user's stake.
@@ -1343,8 +1441,11 @@ fn default_settle_health() -> crate::settle_health::SettleHealth {
 
 // Public receipt material only. Runtime-only and bounded: repeated polling must
 // not perform one ECDSA operation per historical order while holding App.gw.
+/// Keyed by the receipt digest, the unsigned window id, the enclave signer and the
+/// L1 challenge-authorization digest (which binds chain, settlement and beneficiary).
+type ReceiptCacheKey = (Digest, u64, [u8; 20], Option<Digest>);
 type ReceiptCache =
-    std::sync::Mutex<std::collections::BTreeMap<(Digest, u64, [u8; 20]), serde_json::Value>>;
+    std::sync::Mutex<std::collections::BTreeMap<ReceiptCacheKey, serde_json::Value>>;
 const MAX_RECEIPT_CACHE: usize = 4096;
 
 #[derive(Serialize, serde::Deserialize)]
@@ -1366,6 +1467,10 @@ struct Gw {
     // A01 extension is versioned outside the frozen v5 positional Gw encoding.
     #[serde(skip)]
     deposits: deposit_ingestion::DepositState,
+    /// The settlement this gateway settles to (`L1_SETTLEMENT`), set at boot. Receipts
+    /// carry an L1 challenge authorization bound to it; `None` (no L1) carries none.
+    #[serde(skip)]
+    l1_settlement: Option<[u8; 20]>,
     seq: Sequencer,
     #[serde(skip)]
     receipt_cache: ReceiptCache,
@@ -1648,15 +1753,6 @@ fn oracle_of(
         signature: OracleSig::sign(signer, &digest),
     }
 }
-/// The block the inclusion-challenge watcher should (re)start scanning from: rewind
-/// 1.5× the challenge window behind `now_block` (min 64 blocks) so a restart that
-/// straddles a challenge still scans it. 1× the window already covers every
-/// still-answerable challenge (raised no more than `window` blocks ago); the extra
-/// half-window is margin, and over-scanning is a harmless no-op (audit #8).
-fn challenge_scan_start(now_block: u64, window_blocks: u64) -> u64 {
-    now_block.saturating_sub(window_blocks.saturating_add(window_blocks / 2).max(64))
-}
-
 /// Strict `time-in-force` parse: exactly one of the four documented values.
 /// Unlike a lenient `_ => Ioc` fallback, an empty or unrecognized value is an
 /// ERROR — a malformed plaintext order must be REJECTED, not silently reinterpreted
@@ -2060,6 +2156,7 @@ impl Gw {
             ops_alerts: Default::default(),
             wind_down_started: false,
             deposits: Default::default(),
+            l1_settlement: None,
             seq,
             receipt_cache: ReceiptCache::default(),
             archive,
@@ -2138,7 +2235,7 @@ impl Gw {
         let mut bytes = wind_down::SNAPSHOT_V9.to_vec();
         bytes.push(u8::from(self.wind_down_started));
         bytes.extend_from_slice(account_recovery::SNAPSHOT_V8);
-        bytes.extend_from_slice(deposit_ingestion::SNAPSHOT_V6);
+        bytes.extend_from_slice(deposit_ingestion::SNAPSHOT_V7);
         bytes.extend(
             postcard::to_allocvec(&(self, mkt_px, &self.deposits)).expect("snapshot encode"),
         );
@@ -2167,18 +2264,42 @@ impl Gw {
             } else {
                 (plain, false, false)
             };
-        if version7 && !plain.starts_with(deposit_ingestion::SNAPSHOT_V6) {
+        if version7
+            && !plain.starts_with(deposit_ingestion::SNAPSHOT_V7)
+            && !plain.starts_with(deposit_ingestion::SNAPSHOT_V6)
+        {
             return Err("v7 snapshot missing A01 payload".into());
         }
         type MarketDynamics = Vec<(u64, i128, i128, bool)>;
-        let (mut gw, mkt_px): (Gw, MarketDynamics) = if let Some(payload) =
-            plain.strip_prefix(deposit_ingestion::SNAPSHOT_V6)
-        {
-            let ((mut gw, prices, deposits), rest): (
+        // The current deposit layer, or the v6 one without permit deadlines, which
+        // is accepted only when it holds no outstanding permit.
+        let a01 = if let Some(payload) = plain.strip_prefix(deposit_ingestion::SNAPSHOT_V7) {
+            let ((gw, prices, deposits), rest): (
                 (Gw, MarketDynamics, deposit_ingestion::DepositState),
                 _,
             ) = postcard::take_from_bytes(payload)
+                .map_err(|e| format!("v7 deposit snapshot decode: {e}"))?;
+            Some((gw, prices, deposits, rest))
+        } else if let Some(payload) = plain.strip_prefix(deposit_ingestion::SNAPSHOT_V6) {
+            let ((gw, prices, deposits), rest): (
+                (Gw, MarketDynamics, deposit_ingestion::DepositStateV6),
+                _,
+            ) = postcard::take_from_bytes(payload)
                 .map_err(|e| format!("v6 snapshot decode: {e}"))?;
+            if gw
+                .accounts
+                .values()
+                .any(|a| !a.deposit_authorizations.is_empty())
+            {
+                return Err("v6 snapshot holds outstanding deposit permits signed for the earlier vault ABI; this gateway needs a fresh deployment".into());
+            }
+            Some((gw, prices, deposits.upgrade()?, rest))
+        } else {
+            None
+        };
+        let (mut gw, mkt_px): (Gw, MarketDynamics) = if let Some((mut gw, prices, deposits, rest)) =
+            a01
+        {
             gw.deposits = deposits;
             if version7 {
                 if rest.is_empty() {
@@ -2368,7 +2489,7 @@ impl Gw {
                 return Ok(()); // idempotent re-bind of the same address: no-op
             }
             if !self.accounts[key].deposit_authorizations.is_empty() {
-                return Err("Confirm all outstanding deposit authorizations before rebinding; issued L1 permits do not expire.".into());
+                return Err("Pending deposit authorizations have not landed or expired at a finalized block; rebind once they have.".into());
             }
             let cur = current_sig.ok_or(
                 "rebinding requires `currentSignature` from the account's current deposit address",
@@ -2411,9 +2532,10 @@ impl Gw {
     /// `ownerCommit = keccak(owner ‖ deposit_blind)`, records `(ownerCommit → blind)` in
     /// the account's authorization set (so the eventual `Deposit` event is creditable by
     /// construction — no uncreditable leaf can head-of-line-block the queue, spec §1b),
-    /// and returns `ownerCommit`. The caller signs `keccak256(chainid ‖ vault ‖ from ‖
-    /// ownerCommit ‖ amount)` with the gateway key and hands the user `(ownerCommit, sig)`
-    /// to submit as `deposit(amount, ownerCommit, sig)` on L1. The blind is per-deposit,
+    /// and returns `ownerCommit`. The caller signs the vault's `permitDigest(from,
+    /// ownerCommit, amount, validUntil)` with the gateway key and hands the user
+    /// `(ownerCommit, validUntil, sig)` to submit as `deposit(amount, ownerCommit,
+    /// validUntil, sig)` on L1. The blind is per-deposit,
     /// high-entropy, secret, and reproducible (stored) — the four §5 requirements.
     fn account_authorize_deposit(
         &mut self,
@@ -3051,24 +3173,49 @@ impl Gw {
     /// (nothing to prove). Errors WITHOUT mutating if the window's batch id would not
     /// match the on-chain `batchCount` (a desync a prior fault left behind — recovery is
     /// Slice 3b-3). Otherwise seals the window and takes its incremental withdrawal set.
+    #[cfg(test)]
     fn begin_window_settle(
         &mut self,
         chain_batch_count: u64,
     ) -> Result<Option<(WindowWitness, Vec<Withdrawal>)>, String> {
-        self.deposits.check_ready()?;
-        // SEC-025-B break 4: a window can carry consensus-relevant manifest content with
-        // an UNCHANGED engine root — a resting unfilled order is in `ordered` but moves no
-        // state. Settling is what populates the challenge-answer store, and both on-chain
-        // answer paths require a settled batch, so a root-only predicate leaves an honest
-        // sequencer unable to answer a ripe challenge. Still returns None when the window
-        // is empty in both senses, so idle ticks burn no proofs.
-        // SettleAll still needs a phase-1 proof when a circuit breaker has
-        // already flattened all positions and its state root is unchanged.
-        let pending_wind_down = self.seq.window_has_pending_settle_all();
-        if self.seq.state.state_root() == self.last_settled_root
+        self.begin_window_settle_mode(chain_batch_count, false)
+    }
+
+    /// Nothing to settle: the engine root has not moved since the last settle and
+    /// the open window carries no manifest entry and no SettleAll.
+    ///
+    /// SEC-025-B break 4: a window can carry consensus-relevant manifest content with
+    /// an UNCHANGED engine root — a resting unfilled order is in `ordered` but moves no
+    /// state. Settling is what populates the challenge-answer store, and both on-chain
+    /// answer paths require a settled batch, so a root-only predicate leaves an honest
+    /// sequencer unable to answer a ripe challenge. Idle only when the window is empty
+    /// in both senses, so idle ticks burn no proofs. SettleAll still needs a phase-1
+    /// proof when a circuit breaker has already flattened all positions and its state
+    /// root is unchanged.
+    fn window_is_idle(&self) -> bool {
+        self.seq.state.state_root() == self.last_settled_root
             && !self.seq.window_has_pending_manifest()
-            && !pending_wind_down
-        {
+            && !self.seq.window_has_pending_settle_all()
+    }
+
+    /// `begin_window_settle`, plus the liveness keepalive: with `keepalive` set, an
+    /// idle window is sealed EMPTY (idle funding no-ops are discarded first) instead
+    /// of skipped. An empty window registers untimed and only advances the batch
+    /// counter, which resets the settlement's liveness clock.
+    fn begin_window_settle_mode(
+        &mut self,
+        chain_batch_count: u64,
+        keepalive: bool,
+    ) -> Result<Option<(WindowWitness, Vec<Withdrawal>)>, String> {
+        // After L1 close-only only the wind-down's own windows can settle: an
+        // ordinary window or a keepalive would never register. The wind-down's
+        // close-only rebase discards whatever the open window holds.
+        if self.deposits.l1_close_only && !self.wind_down_started {
+            return Ok(None);
+        }
+        self.deposits.check_ready()?;
+        let idle = self.window_is_idle();
+        if idle && !keepalive {
             return Ok(None);
         }
         // Pre-check the counter BEFORE sealing (which bumps it), so a desync leaves the
@@ -3082,9 +3229,65 @@ impl Gw {
         expected
             .checked_add(1)
             .ok_or("window batch counter exhausted")?;
+        if idle {
+            if !self.window_withdrawals.is_empty() {
+                return Err("keepalive: an idle window cannot carry withdrawals".into());
+            }
+            self.seq.discard_idle_funding_window();
+            let witness = self
+                .seq
+                .seal_empty_window()
+                .ok_or("keepalive: the idle window holds operations that cannot be discarded")?;
+            return Ok(Some((witness, Vec::new())));
+        }
         let witness = self.seq.seal_window();
         let ww = core::mem::take(&mut self.window_withdrawals);
         Ok(Some((witness, ww)))
+    }
+
+    /// Fold one round of L1 health reads into the alerts and the deposit views:
+    /// `LivenessLow` at half the liveness window without progress, `StaleAnchor`
+    /// once the current anchor is older than `anchorTimeoutMs`, and, from the
+    /// finalized block, the close-only latch and the consumed deposit count. A
+    /// failed read leaves the previous state in place.
+    fn apply_l1_health(
+        &mut self,
+        liveness: Result<l1::LivenessObservation, String>,
+        anchor: Option<Result<Option<l1::AnchorAge>, String>>,
+        finality: Result<l1::SettlementFinality, String>,
+    ) {
+        match liveness {
+            Ok(obs) if obs.liveness_low() => {
+                self.ops_alerts.activate(ops_alerts::AlertKind::LivenessLow)
+            }
+            Ok(_) => self.ops_alerts.recover(ops_alerts::AlertKind::LivenessLow),
+            Err(e) => eprintln!("[l1] liveness read failed: {e}"),
+        }
+        match anchor {
+            Some(Ok(Some(age))) if age.stale() => {
+                eprintln!(
+                    "[l1] clock anchor for batch {} phase {} is {} ms old (timeout {} ms); its window needs operator recovery",
+                    age.batch, age.phase, age.age_ms, age.timeout_ms
+                );
+                self.ops_alerts.activate(ops_alerts::AlertKind::StaleAnchor);
+            }
+            Some(Ok(_)) => self.ops_alerts.recover(ops_alerts::AlertKind::StaleAnchor),
+            Some(Err(e)) => eprintln!("[l1] anchor age read failed: {e}"),
+            None => {}
+        }
+        match finality {
+            Ok(f) => {
+                if f.close_only && !self.deposits.l1_close_only {
+                    println!(
+                        "[l1] the settlement is in close-only at finalized block {}; deposit intake stops and unconsumed deposits are refundable",
+                        f.block
+                    );
+                    self.deposits.l1_close_only = true;
+                }
+                self.note_settled_deposit_count(f.consumed_deposit_count);
+            }
+            Err(e) => eprintln!("[l1] finalized settlement read failed: {e}"),
+        }
     }
 
     /// Slice 3b-2a: apply a completed new-path window settle to gateway state. Accumulates
@@ -3110,6 +3313,8 @@ impl Gw {
             self.withdraw_proofs.insert(leaf, entry);
         }
         self.last_settled_root = prepared.outcome.new_root;
+        // settleBatch stores this as the settlement's consumedDepositCount.
+        self.note_settled_deposit_count(prepared.outcome.new_deposit_count);
         // SEC-025-D: open ONCE, and only on a proven, block-pinned normal settle over a
         // capitalized post-state. Never re-closes — see `trading_gate`'s module doc for
         // why a launch gate must not double as a circuit breaker.
@@ -3650,7 +3855,13 @@ impl Gw {
     /// ENCLAVE_SEED, so an ordinary authenticated restore reproduces the same
     /// key and byte-identical signature. No persisted postcard fields change.
     /// Only trusted, stored receipt metadata reaches this helper, not user JSON.
-    fn receipt_json(&self, stored: &WReceipt) -> serde_json::Value {
+    ///
+    /// `l1Challenge` is the enclave's authorization to challenge this order on L1:
+    /// a signature over the settlement's `challengeAuthDigest`, which binds the
+    /// chain, the settlement and `beneficiary` (the account's bound deposit address,
+    /// which a slash would pay). It is `null` without a beneficiary or without a
+    /// configured settlement.
+    fn receipt_json(&self, stored: &WReceipt, beneficiary: Option<[u8; 20]>) -> serde_json::Value {
         let Some(order_hash) = parse_hex32(&stored.order_hash) else {
             return serde_json::Value::Null; // do not sign corrupt stored metadata
         };
@@ -3663,7 +3874,24 @@ impl Gw {
         };
         let digest = receipt.signing_digest::<Keccak256>();
         let signer = self.seq.enclave().eth_address();
-        let cache_key = (digest, stored.window_id, signer);
+        let challenge = self
+            .l1_settlement
+            .zip(beneficiary)
+            .map(|(settlement, beneficiary)| challenge_auth::ChallengeAuth {
+                chain_id: self.chain_id,
+                settlement,
+                order_hash,
+                seq_no: stored.seq_no,
+                recv_time_ms: stored.recv_time_ms,
+                batch_id_hint: stored.batch_id_hint,
+                beneficiary,
+            });
+        let cache_key = (
+            digest,
+            stored.window_id,
+            signer,
+            challenge.map(|c| c.digest()),
+        );
         if let Ok(cache) = self.receipt_cache.lock() {
             if let Some(wire) = cache.get(&cache_key) {
                 return wire.clone();
@@ -3677,6 +3905,15 @@ impl Gw {
         let mut wire = serde_json::to_value(stored).expect("receipt fields serialize");
         wire["signature"] = serde_json::json!(hex0x(&signature));
         wire["enclaveSigner"] = serde_json::json!(hex0x(&signer));
+        wire["l1Challenge"] = match challenge {
+            Some(auth) => serde_json::json!({
+                "chainId": auth.chain_id,
+                "settlement": hex0x(&auth.settlement),
+                "beneficiary": hex0x(&auth.beneficiary),
+                "signature": hex0x(&auth.sign(self.seq.enclave())),
+            }),
+            None => serde_json::Value::Null,
+        };
         if let Ok(mut cache) = self.receipt_cache.lock() {
             if cache.len() >= MAX_RECEIPT_CACHE {
                 cache.clear();
@@ -3756,6 +3993,18 @@ impl Gw {
             "chainId": self.chain_id,
             "vault": hex0x(&self.vault),
         }))
+        .map(|mut view| {
+            // After L1 close-only: the credits no settled batch consumed, with the
+            // exact `vault.refundDeposit` arguments.
+            if self.l1_close_only_observed() {
+                view["refundableDeposits"] = self
+                    .refundable_credits(key)
+                    .into_iter()
+                    .map(deposit_ingestion::refund_json)
+                    .collect();
+            }
+            view
+        })
     }
     /// One scan per market, not one full-book scan per historical order row.
     fn live_order_hashes(&self, owner: &PubKey) -> std::collections::BTreeSet<Digest> {
@@ -3799,7 +4048,7 @@ impl Gw {
                     // fields cannot fail serialization today, but a panic is never
                     // the right default on a serving path — the frontend already
                     // synthesizes a stub for an absent/null receipt.
-                    "receipt": self.receipt_json(&o.receipt),
+                    "receipt": self.receipt_json(&o.receipt, a.deposit_address),
                 })
             })
             .collect();
@@ -3831,9 +4080,20 @@ impl Gw {
             "receivedTimeMs": m.px_ms,
         }))
     }
+    /// The mode the public surfaces report: close-only once the engine entered it,
+    /// or once the settlement is observed in close-only on L1 before the wind-down
+    /// starts (no ordinary batch can settle again, and unconsumed deposits are
+    /// refundable).
+    fn public_mode(&self) -> &'static str {
+        if self.seq.state.mode == Mode::CloseOnly || self.l1_close_only_observed() {
+            "CloseOnly"
+        } else {
+            "Normal"
+        }
+    }
     fn v1_status_json(&self) -> serde_json::Value {
         serde_json::json!({
-            "mode": if self.seq.state.mode == Mode::CloseOnly { "CloseOnly" } else { "Normal" },
+            "mode": self.public_mode(),
             "insuranceFund": self.seq.state.insurance_fund.to_string(),
             "treasury": self.seq.state.treasury.to_string(),
             "nextBatchId": self.seq.current_batch_id(),
@@ -3884,7 +4144,10 @@ impl Gw {
     /// settled on-chain batch that committed it and build the Merkle proof against that batch's
     /// ordered root (matched) or rejected root (validly rejected). Returns
     /// `(is_rejection, batch_id, proof)`; `None` if no retained batch holds the order (a genuine
-    /// withhold the sequencer cannot — and should not — answer).
+    /// withhold the sequencer cannot — and should not — answer). The challenge watcher's
+    /// index (`challenge_scan::AnswerIndex`) makes the same earliest-batch choice; this
+    /// reference stays for the tests that pin it.
+    #[cfg(test)]
     fn build_challenge_answer(&self, order_hash: &Digest) -> Option<(bool, u64, Vec<[u8; 32]>)> {
         for (&batch_id, (ordered, rejected)) in &self.batch_orders {
             if let Some(i) = ordered.iter().position(|h| h == order_hash) {
@@ -5124,7 +5387,7 @@ impl Gw {
             .map(|o| WTrackedOrder {
                 id: o.id.clone(),
                 input: o.input.clone(),
-                receipt: self.receipt_json(&o.receipt),
+                receipt: self.receipt_json(&o.receipt, None),
                 finality: self.finality_str(&o.order_hash),
                 cancellable: live.contains(&o.order_hash)
                     || (!o.sealed
@@ -5209,11 +5472,7 @@ impl Gw {
             markets,
             selected_market_id: sel,
             market: self.wmarket(sel_mkt),
-            mode: if self.seq.state.mode == Mode::CloseOnly {
-                "CloseOnly".into()
-            } else {
-                "Normal".into()
-            },
+            mode: self.public_mode().into(),
             oracle: WOracle {
                 market_id: sel,
                 price: sel_mkt.px.to_string(),
@@ -5257,6 +5516,7 @@ impl Gw {
             settlement_consecutive_failures: self.settle_health.consecutive_failures(),
             settlement_last_error: self.settle_health.last_error().map(|s| s.to_string()),
             settlement_held_since_ms: self.settlement_held_since_ms,
+            ops_alerts: self.ops_alerts.active(),
             attestation: self.attestation.as_ref().map(|a| WAttestation {
                 measurement: hex0x(&a.measurement),
                 tcb: a.tcb.clone(),
@@ -5972,6 +6232,8 @@ struct App {
     /// deposit/authorize` signs `keccak256(chainid ‖ vault ‖ from ‖ ownerCommit ‖ amount)`
     /// with it so a user may enter a deposit (a liveness gate on entry, not a mint key).
     gateway_signer: GatewaySigner,
+    /// `DEPOSIT_PERMIT_TTL_SECS`: each permit's deadline is issuance time plus this.
+    permit_ttl_secs: u64,
     /// Slice 3b-2a: the settle path's prover client (None ⇒ legacy cumulative+mock path).
     prover: Option<std::sync::Arc<dyn prover_client::ProverClient>>,
     /// REAL per-market price history (the chart's past bars): the engine's own
@@ -6022,6 +6284,10 @@ struct App {
     /// retried immediately instead of waiting out the HELD backoff. Setting it NEVER fakes
     /// health — health clears only when a real settle succeeds.
     force_settle: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The (batch, wind-down phase) whose registration, proof or settlement the
+    /// settle loop is working on. The anchor-cancel endpoint refuses that window
+    /// and holds this lock across its own check and send.
+    settle_in_flight: tokio::sync::Mutex<Option<(u64, u8)>>,
 }
 
 impl App {
@@ -6093,8 +6359,9 @@ struct OnchainDepositReq {
     market_id: u64,
 }
 /// SEC-019 (Task 7b): request to authorize a deposit — the gateway generates the blind,
-/// records `(ownerCommit → blind)`, and returns `(ownerCommit, sig)` for the user to
-/// submit as `deposit(amount, ownerCommit, sig)` on L1.
+/// records `(ownerCommit → blind)` with its route and deadline, and returns
+/// `(ownerCommit, validUntil, sig)` for the user to submit as
+/// `deposit(amount, ownerCommit, validUntil, sig)` on L1.
 #[derive(Deserialize)]
 struct DepositAuthorizeReq {
     #[serde(rename = "marketId")]
@@ -6281,11 +6548,15 @@ const DEMO_GATEWAY_SIGNER_KEY: [u8; 32] = [
     0x4b, 0xac, 0xb4, 0x78, 0xcb, 0xed, 0x5e, 0xfc, 0xae, 0x78, 0x4d, 0x7b, 0xf4, 0xf2, 0xff, 0x80,
 ];
 
-/// SEC-019 (Task 7b): the gateway's deposit-authorization signer. Holds the secret
+/// Preimage of `CollateralVault.DEPOSIT_PERMIT_TAG`.
+const DEPOSIT_PERMIT_DOMAIN: &[u8] = b"arcora:deposit-permit:v2";
+
+/// SEC-019 (Task 7b): the gateway's deposit-permit signer. Holds the secret
 /// `gatewaySigner` key whose ADDRESS the deployed `CollateralVault` pins, plus the chain
-/// id + vault address needed to reproduce the contract's digest BYTE-IDENTICALLY. It signs
-/// `keccak256(abi.encodePacked(chainid, vault, from, ownerCommit, amount))` so a user may
-/// ENTER a deposit; the signature only gates entry (every deposit still performs a real
+/// id + vault address needed to reproduce the contract's `permitDigest` BYTE-IDENTICALLY.
+/// It signs `keccak256(abi.encodePacked(DEPOSIT_PERMIT_TAG, chainid, vault, from,
+/// ownerCommit, amount, uint256(validUntil)))` so a user may ENTER a deposit until
+/// `validUntil`; the signature only gates entry (every deposit still performs a real
 /// `transferFrom` and settlement still pins `depositsRoot`), so it is a liveness gate, NOT
 /// a mint authority (spec §1b). A compromised signer can authorize deposits but cannot
 /// conjure collateral.
@@ -6344,38 +6615,53 @@ impl GatewaySigner {
         eth_address(&self.key)
     }
 
-    /// The digest the contract recomputes and `ecrecover`s in `deposit(...)`:
-    /// `keccak256(abi.encodePacked(uint256 chainid, address vault, address from,
-    /// bytes32 ownerCommit, uint256 amount))`. Byte-identical to
-    /// `CollateralVault.deposit`'s digest (chainid + amount as 32-byte BE words, vault +
-    /// from as their 20 address bytes, ownerCommit as its 32 bytes) — verified by the KAT
-    /// in `gateway_signature_round_trips_and_matches_solidity_digest`.
-    fn digest(&self, from: &[u8; 20], owner_commit: &[u8; 32], amount: u128) -> [u8; 32] {
+    /// The digest the contract recomputes and `ecrecover`s in `deposit(...)`, i.e.
+    /// `CollateralVault.permitDigest(from, ownerCommit, amount, validUntil)`:
+    /// `keccak256(abi.encodePacked(bytes32 DEPOSIT_PERMIT_TAG, uint256 chainid,
+    /// address vault, address from, bytes32 ownerCommit, uint256 amount,
+    /// uint256 validUntil))`, a 200-byte preimage (the tag, chainid, amount and
+    /// validUntil as 32-byte BE words, vault + from as their 20 address bytes,
+    /// ownerCommit as its 32 bytes). Verified against the Solidity vector by
+    /// `gateway_signature_round_trips_and_matches_solidity_digest`.
+    fn digest(
+        &self,
+        from: &[u8; 20],
+        owner_commit: &[u8; 32],
+        amount: u128,
+        valid_until: u64,
+    ) -> [u8; 32] {
         use sha3::{Digest as _, Keccak256 as RawKeccak};
+        let tag: [u8; 32] = RawKeccak::digest(DEPOSIT_PERMIT_DOMAIN).into();
         let mut chain = [0u8; 32];
         chain[24..].copy_from_slice(&self.chain_id.to_be_bytes()); // uint256, low 8 bytes
         let mut amt = [0u8; 32];
         amt[16..].copy_from_slice(&amount.to_be_bytes()); // uint256, low 16 bytes (< 2^128)
+        let mut until = [0u8; 32];
+        until[24..].copy_from_slice(&valid_until.to_be_bytes()); // uint256(uint64)
         let mut h = RawKeccak::new();
+        h.update(tag);
         h.update(chain);
         h.update(self.vault);
         h.update(from);
         h.update(owner_commit);
         h.update(amt);
+        h.update(until);
         h.finalize().into()
     }
 
-    /// Sign the deposit-authorization digest, returning a 65-byte `r‖s‖v` signature that
-    /// the contract's `ecrecover` accepts: low-`s` (k256 normalizes S) and `v ∈ {27, 28}`
-    /// — mirroring `recover_eth_address`'s conventions, inverted. The user submits this as
-    /// `deposit(amount, ownerCommit, sig)` on L1.
+    /// Sign the deposit-permit digest, returning a 65-byte `r‖s‖v` signature that the
+    /// contract's `ecrecover` accepts: low-`s` (k256 normalizes S) and `v ∈ {27, 28}`
+    /// — mirroring `recover_eth_address`'s conventions, inverted. RFC 6979 makes it
+    /// deterministic, so re-signing a stored permit reproduces the same bytes. The user
+    /// submits it as `deposit(amount, ownerCommit, validUntil, sig)` on L1.
     fn sign(
         &self,
         from: &[u8; 20],
         owner_commit: &[u8; 32],
         amount: u128,
+        valid_until: u64,
     ) -> Result<[u8; 65], String> {
-        let digest = self.digest(from, owner_commit, amount);
+        let digest = self.digest(from, owner_commit, amount, valid_until);
         let (sig, recid) = self
             .key
             .sign_prehash_recoverable(&digest)
@@ -6726,6 +7012,116 @@ async fn post_v1_admin_resume(State(app): State<Shared>, headers: HeaderMap) -> 
     }
 }
 
+/// `POST /v1/admin/settlement/cancel-anchor {"batchId": n, "phase": p, "receipt": "0x…"}`
+/// (`X-Admin-Key: FIN_ADMIN_KEY`): cancel a clock anchor whose bound proof will never
+/// settle, as the registrant role, once it is older than `anchorTimeoutMs` at the
+/// latest block. Refused while the settle loop is working on that batch and phase.
+/// Every `cancel` precondition is checked before the transaction is sent; a send
+/// error is ambiguous and must be confirmed with `cancelledReceipt(receipt)`.
+/// Cancelling does not resolve the local window: boot recovery does, after a restart.
+async fn post_v1_admin_cancel_anchor(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let configured = std::env::var("FIN_ADMIN_KEY").ok();
+    let presented = headers.get("x-admin-key").and_then(|v| v.to_str().ok());
+    match admin_resume_authz(configured.as_deref(), presented) {
+        AdminAuthz::Disabled => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":"anchor cancel disabled — set FIN_ADMIN_KEY"})),
+            )
+                .into_response()
+        }
+        AdminAuthz::Unauthorized => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error":"missing or invalid X-Admin-Key"})),
+            )
+                .into_response()
+        }
+        AdminAuthz::Ok => {}
+    }
+    let (Some(batch), Some(phase), Some(receipt)) = (
+        body.get("batchId").and_then(|v| v.as_u64()),
+        body.get("phase")
+            .and_then(|v| v.as_u64())
+            .filter(|p| *p <= 2)
+            .map(|p| p as u8),
+        body.get("receipt")
+            .and_then(|v| v.as_str())
+            .and_then(parse_hex32),
+    ) else {
+        return err400(
+            "batchId (u64), phase (0, 1 or 2) and receipt (0x + 64 hex) are required".into(),
+        )
+        .into_response();
+    };
+    let Some(l1) = app.l1.clone().filter(L1::clock_enabled) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error":"no clock-bound L1 settlement is configured"})),
+        )
+            .into_response();
+    };
+    // Held across the check and the send, so the settle loop cannot start on
+    // this window in between.
+    let in_flight = app.settle_in_flight.lock().await;
+    if *in_flight == Some((batch, phase)) {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error":"the settle loop is registering, proving or settling this window; cancel only once it has stopped"})),
+        )
+            .into_response();
+    }
+    let checker = l1.clone();
+    match tokio::task::spawn_blocking(move || checker.check_cancel_anchor(batch, phase, receipt))
+        .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"error": error})),
+            )
+                .into_response()
+        }
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error":"anchor cancel check failed"})),
+            )
+                .into_response()
+        }
+    }
+    let sent = tokio::task::spawn_blocking(move || l1.cancel_anchor(batch, phase, receipt)).await;
+    drop(in_flight);
+    match sent {
+        Ok(Ok(tx)) => {
+            println!(
+                "[clock] cancelled the anchor of batch {batch} phase {phase} (receipt {}): {tx}",
+                hex32(&receipt)
+            );
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"tx": tx, "batchId": batch, "phase": phase, "receipt": hex32(&receipt)})),
+            )
+                .into_response()
+        }
+        Ok(Err(error)) => (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": error, "confirm": "read cancelledReceipt(receipt) before retrying"})),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error":"anchor cancel failed; read cancelledReceipt(receipt) before retrying"})),
+        )
+            .into_response(),
+    }
+}
+
 /// A06: explicitly start the one-shot counterparty-free wind-down. This endpoint
 /// never fabricates the L1 condition: it requires a successful block-pinned read
 /// showing the deployed settlement is already in close-only. The SettleAll op is
@@ -6783,8 +7179,64 @@ async fn post_v1_admin_wind_down(
         }
     };
     let block = observation.block;
+    // Close-only rebase: after close-only no ordinary window can settle, so a
+    // gateway still holding unsettled state first returns to the L1-settled state.
+    // Only that read is finalized; it is taken when the rebase is needed.
+    let rebase_needed = {
+        let gw = app.gw.lock().await;
+        observation.check_start(&gw).is_err()
+            && gw.close_only_rebase_applies(observation.close_only, observation.settled)
+    };
+    let settled_l1 = if rebase_needed {
+        let l1 = app.l1.clone().expect("checked above");
+        match tokio::task::spawn_blocking(move || l1.close_only_settled_observation()).await {
+            Ok(Ok(settled)) => Some(settled),
+            Ok(Err(e)) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({"error":format!("cannot read the finalized settled state for the close-only rebase: {e}")})),
+                )
+                    .into_response()
+            }
+            Err(e) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({"error":format!("finalized settled-state reader failed: {e}")})),
+                )
+                    .into_response()
+            }
+        }
+    } else {
+        None
+    };
     {
         let mut gw = app.gw.lock().await;
+        // The rebase and the queued SettleAll are persisted together below; a
+        // crash before that restores the pre-rebase snapshot, and a retry rebases
+        // again from the same finalized state.
+        let voided = match settled_l1.as_ref() {
+            Some(settled) => match gw.rebase_to_settled(settled) {
+                Ok(voided) => {
+                    println!(
+                        "[wind-down] close-only rebase to finalized block {}: settled root {}, batch {}, {} deposit(s) consumed; {} unsettled order(s) voided",
+                        settled.block,
+                        hex32(&settled.root),
+                        settled.batch_count,
+                        settled.consumed_deposit_count,
+                        voided.len()
+                    );
+                    voided
+                }
+                Err(error) => {
+                    return (
+                        StatusCode::CONFLICT,
+                        Json(serde_json::json!({"error":error,"observedBlock":settled.block})),
+                    )
+                        .into_response()
+                }
+            },
+            None => Vec::new(),
+        };
         if let Err(error) = observation.check_start(&gw) {
             return (
                 StatusCode::CONFLICT,
@@ -6824,6 +7276,10 @@ async fn post_v1_admin_wind_down(
         for (note, view) in archive_targets {
             gw.archive.record(window, &note, &view, rand::rngs::OsRng);
         }
+        // After check_start passed, so the phase-1 manifest publishes the orders the
+        // rebase discarded as rejected. The phase-1 grammar constrains ops only.
+        gw.seq
+            .reject_in_window(&voided, perp_core::order::RejectReason::MarketCloseOnly);
     }
     if let Err(e) = snapshot_now(&app.snapshot_req).await {
         return (
@@ -6839,6 +7295,62 @@ async fn post_v1_admin_wind_down(
 
 /// A01: optional operator receipt/acceleration endpoint. Payer and purpose are
 /// fixed by the durable permit, never inferred from this confirm request.
+/// `POST /v1/admin/bond/acknowledge-slash {"slashCount": n}` resumes automatic bond
+/// top-ups after a slash. `n` must equal the settlement's current `slashCount()`,
+/// so an acknowledgement never covers a slash the operator has not seen. It lasts
+/// until restart; set `L1_BOND_ACKED_SLASH_COUNT` to keep it across restarts.
+async fn post_v1_admin_bond_acknowledge_slash(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let configured = std::env::var("FIN_ADMIN_KEY").ok();
+    let presented = headers.get("x-admin-key").and_then(|v| v.to_str().ok());
+    match admin_resume_authz(configured.as_deref(), presented) {
+        AdminAuthz::Disabled => return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error":"slash acknowledgement disabled — set FIN_ADMIN_KEY"})),
+        )
+            .into_response(),
+        AdminAuthz::Unauthorized => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error":"missing or invalid X-Admin-Key"})),
+            )
+                .into_response()
+        }
+        AdminAuthz::Ok => {}
+    }
+    let Some(count) = body.get("slashCount").and_then(|v| v.as_u64()) else {
+        return err400("slashCount (the current settlement slashCount) is required".into())
+            .into_response();
+    };
+    let Some(l1) = app.l1.clone() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error":"no L1 settlement bridge is configured"})),
+        )
+            .into_response();
+    };
+    match tokio::task::spawn_blocking(move || l1.acknowledge_slashes(count)).await {
+        Ok(Ok(acknowledged)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"acknowledgedSlashCount": acknowledged})),
+        )
+            .into_response(),
+        Ok(Err(error)) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": error})),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error":"slash acknowledgement failed"})),
+        )
+            .into_response(),
+    }
+}
+
 async fn post_v1_admin_insurance_bootstrap(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -7111,12 +7623,84 @@ async fn post_v1_deposit_onchain(
     .await
 }
 
+/// Why the settlement's current terms refuse a new deposit permit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PermitGateRefusal {
+    /// The settlement is in close-only; no deposit can land again.
+    CloseOnly,
+    /// The settlement accepts no deposits (no paired vault).
+    NotAccepting,
+    /// The deposit would exceed what the posted bond covers.
+    OverCapacity { capacity: u128 },
+    /// Settlement is failing and too little liveness remains for a permit's lifetime.
+    LivenessLow { remaining_secs: u64 },
+}
+
+/// Gate one permit against the settlement terms read at the latest block. The
+/// gateway reserves no capacity: the vault's own gate decides when the deposit
+/// lands. A permit is also refused while settlement (keepalives included) is
+/// failing and less than two permit lifetimes of liveness remain.
+pub(crate) fn permit_gate(
+    terms: &l1::DepositGateObservation,
+    amount: u128,
+    settlement_failing: bool,
+    ttl_secs: u64,
+) -> Result<(), PermitGateRefusal> {
+    if terms.close_only {
+        return Err(PermitGateRefusal::CloseOnly);
+    }
+    if !terms.accepting_deposits {
+        return Err(PermitGateRefusal::NotAccepting);
+    }
+    if amount > terms.deposit_capacity {
+        return Err(PermitGateRefusal::OverCapacity {
+            capacity: terms.deposit_capacity,
+        });
+    }
+    let remaining_secs = terms.remaining_liveness_secs();
+    if settlement_failing && remaining_secs < ttl_secs.saturating_mul(2) {
+        return Err(PermitGateRefusal::LivenessLow { remaining_secs });
+    }
+    Ok(())
+}
+
+fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Response {
+    match refusal {
+        PermitGateRefusal::CloseOnly => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "the settlement is in close-only; no further deposits are possible"
+            })),
+        ),
+        PermitGateRefusal::NotAccepting => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "the settlement is not accepting deposits"})),
+        ),
+        PermitGateRefusal::OverCapacity { capacity } => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "the deposit exceeds the vault's current deposit capacity",
+                "capacity": capacity.to_string(),
+            })),
+        ),
+        PermitGateRefusal::LivenessLow { remaining_secs } => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": format!("settlement is failing and only {remaining_secs} s of liveness remain; deposits resume once settlement recovers")
+            })),
+        ),
+    }
+    .into_response()
+}
+
 /// SEC-019 (Task 7b): authorize an L1 deposit. Records a fresh per-deposit blind under
-/// `ownerCommit = keccak(owner ‖ blind)` and returns `{ ownerCommit, sig }` where `sig`
-/// is the gateway's ECDSA signature over `keccak256(chainid ‖ vault ‖ from ‖ ownerCommit
-/// ‖ amount)`. The user submits `deposit(amount, ownerCommit, sig)` on L1; without this
-/// signature the vault refuses the deposit (so every on-chain leaf is creditable by
-/// construction — spec §1b). The SECRET blind is never returned, only `ownerCommit`.
+/// `ownerCommit = keccak(owner ‖ blind)`, the route and the permit deadline
+/// `validUntil = now + DEPOSIT_PERMIT_TTL_SECS`, and only once that is durable returns
+/// `{ ownerCommit, sig, validUntil }`, where `sig` is the gateway's ECDSA signature over
+/// `CollateralVault.permitDigest(from, ownerCommit, amount, validUntil)`. The user
+/// submits `deposit(amount, ownerCommit, validUntil, sig)` on L1; without this signature
+/// the vault refuses the deposit (so every on-chain leaf is creditable by construction —
+/// spec §1b). The SECRET blind is never returned, only `ownerCommit`.
 async fn post_v1_deposit_authorize(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -7156,33 +7740,87 @@ async fn post_v1_deposit_authorize(
                 .into_response()
         }
     };
+    // The settlement's deposit terms at the latest block, read without the lock.
+    let terms = match app.l1.clone() {
+        Some(l1) => match tokio::task::spawn_blocking(move || l1.deposit_gate_observation()).await
+        {
+            Ok(Ok(terms)) => Some(terms),
+            Ok(Err(e)) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "error": format!("cannot read the settlement's deposit terms; retry: {e}")
+                    })),
+                )
+                    .into_response()
+            }
+            Err(_) => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({"error": "cannot read the settlement's deposit terms; retry"})),
+                )
+                    .into_response()
+            }
+        },
+        None => None,
+    };
+    let now_s = now_ms() / 1000;
     // Release the account lock before requesting durability. No signature may be
     // constructed or returned until the writer acknowledges the stored blind.
-    let (commit, reused) = {
+    let (commit, valid_until, reused) = {
         let mut gw = app.gw.lock().await;
-        let route = deposit_ingestion::Route {
+        if let Err(error) = gw.deposits.check_ready() {
+            if gw.deposits.halt.is_some() {
+                gw.ops_alerts.activate(ops_alerts::AlertKind::DepositHalted);
+            }
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({ "error": error })),
+            )
+                .into_response();
+        }
+        if gw.l1_close_only_observed() {
+            return permit_refusal_response(PermitGateRefusal::CloseOnly);
+        }
+        if let Some(terms) = &terms {
+            let failing = !matches!(
+                gw.settle_health.health(),
+                crate::settle_health::Health::Healthy
+            );
+            if let Err(refusal) = permit_gate(terms, amount, failing, app.permit_ttl_secs) {
+                return permit_refusal_response(refusal);
+            }
+        }
+        let request = deposit_ingestion::Route {
             key,
             from,
             amount,
             market: req.market_id,
             purpose: req.purpose,
+            valid_until: 0,
         };
-        // A permit still held for exactly this request was made durable before its
-        // signature was first released: re-signing it issues nothing new.
-        if let Some(commit) = reuse.filter(|c| gw.holds_permit(c, &route)) {
+        // A permit still held for exactly this request, with enough time left, was
+        // made durable before its signature was first released: re-signing it with
+        // its stored deadline issues nothing new and reproduces the same signature.
+        let held = reuse.and_then(|c| {
+            gw.held_permit_deadline(&c, &request, now_s)
+                .map(|until| (c, until))
+        });
+        if let Some((commit, until)) = held {
             if let Err(e) = gw.refuse_if_wind_down_started() {
                 return err400(e).into_response();
             }
-            (commit, true)
+            (commit, until, true)
         } else {
-            let now_s = now_ms() / 1000;
             if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
                 return (status, Json(serde_json::json!({ "error": error }))).into_response();
             }
-            match gw.authorize_routed_deposit(&key, from, amount, req.market_id, req.purpose) {
+            let until = now_s.saturating_add(app.permit_ttl_secs);
+            match gw.authorize_routed_deposit(&key, from, amount, req.market_id, req.purpose, until)
+            {
                 Ok(c) => {
                     gw.charge_deposit_permit(&key, req.purpose, now_s);
-                    (c, false)
+                    (c, until, false)
                 }
                 Err(e) => return err400(e).into_response(),
             }
@@ -7207,10 +7845,11 @@ async fn post_v1_deposit_authorize(
                 .into_response();
         }
     }
-    match app.gateway_signer.sign(&from, &commit, amount) {
+    match app.gateway_signer.sign(&from, &commit, amount, valid_until) {
         Ok(sig) => Json(serde_json::json!({
             "ownerCommit": hex0x(&commit),
             "sig": hex0x(&sig),
+            "validUntil": valid_until,
             "marketId": req.market_id,
             "purpose": req.purpose,
         }))
@@ -7522,7 +8161,8 @@ async fn post_v1_order(
             ),
             ArchiveSlot::Poisoned => Err("candidate price archive lock is poisoned".into()),
         };
-        result.map(|receipt| gw.receipt_json(&receipt))
+        let beneficiary = gw.accounts.get(&key).and_then(|a| a.deposit_address);
+        result.map(|receipt| gw.receipt_json(&receipt, beneficiary))
     };
     match r {
         Ok(receipt) => Json(receipt).into_response(),
@@ -7775,7 +8415,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
             "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": ok("apiKey + owner + callerSigned") } },
-            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode)", "responses": ok("account"), "security": auth["security"] } },
+            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode; after close-only, refundableDeposits lists { id, from, ownerCommit, amount } for vault.refundDeposit)", "responses": ok("account"), "security": auth["security"] } },
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
@@ -7783,12 +8423,12 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
-            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + gateway sig for deposit(amount, ownerCommit, sig)", "security": auth["security"],
+            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (409) in close-only or above depositCapacity() (the body carries `capacity`), and (503) while ingestion is not ready or settlement is failing with little liveness left", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
-                "responses": ok("ownerCommit + sig") } },
+                "responses": ok("ownerCommit + sig + validUntil (unix seconds)") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
-                "responses": { "200": { "description": "Owned durable credit receipt" }, "202": { "description": "pendingFinalizedIngestion; do not send funds again" }, "409": { "description": "Routing mismatch or legacy receipt" }, "503": { "description": "Ingestion unavailable or durability unknown" } } } },
+                "responses": { "200": { "description": "Owned durable credit receipt; status credited, credited_unsettled (not yet in settled state) or refundable (close-only began first; `refundable` lists the vault.refundDeposit arguments)" }, "202": { "description": "pendingFinalizedIngestion; do not send funds again" }, "409": { "description": "Routing mismatch, legacy receipt, or close-only (deposits the settlement has not consumed are refunded by the vault, not credited)" }, "503": { "description": "Ingestion unavailable or durability unknown" } } } },
             "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal; SEC-021: every withdrawal is wallet-signed — the API key alone can never move funds)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
@@ -7828,7 +8468,8 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         .as_object_mut()
         .unwrap()
         .remove("reuseOwnerCommit");
-    route["post"]["responses"] = ok("ownerCommit + routing + durability; no new signature");
+    route["post"]["responses"] =
+        ok("ownerCommit + routing + durability + validUntil; no new signature");
     spec["paths"]["/v1/accounts/deposit/route"] = route;
     if !prod {
         // demo/dev only — mirrors the `build_router` gating (SEC-025-C Task 3):
@@ -7911,7 +8552,7 @@ async fn post_order(State(app): State<Shared>, Json(req): Json<OrderReq>) -> imp
             for ev in events {
                 app.broadcast_event(ev).await;
             }
-            let receipt = app.gw.lock().await.receipt_json(&receipt);
+            let receipt = app.gw.lock().await.receipt_json(&receipt, None);
             Json(receipt).into_response()
         }
         Err(e) => err400(e).into_response(),
@@ -8475,7 +9116,15 @@ fn build_router_with_policy(
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
         .route("/v1/admin/settlement/resume", post(post_v1_admin_resume))
+        .route(
+            "/v1/admin/settlement/cancel-anchor",
+            post(post_v1_admin_cancel_anchor),
+        )
         .route("/v1/admin/wind-down", post(post_v1_admin_wind_down))
+        .route(
+            "/v1/admin/bond/acknowledge-slash",
+            post(post_v1_admin_bond_acknowledge_slash),
+        )
         .route(
             "/v1/admin/insurance/bootstrap",
             post(post_v1_admin_insurance_bootstrap),
@@ -8507,12 +9156,32 @@ fn build_router_with_policy(
 /// op stream must bind to exact archived records before the journal is durable —
 /// an unarchived price can never reach the durability barrier. Returns the
 /// envelope to persist with every later stage of this window's journal.
+#[cfg(test)]
 fn begin_journaled_window_settle(
     gw: &mut Gw,
     chain_batch_count: u64,
     path: Option<&std::path::Path>,
     seed: &[u8; 32],
     archive: Option<&report_archive_binding::ArchiveBinding>,
+) -> Result<
+    Option<(
+        rollback_journal::RollbackJournal,
+        Option<rollback_journal::ArchiveEnvelope>,
+    )>,
+    String,
+> {
+    begin_journaled_window_settle_mode(gw, chain_batch_count, path, seed, archive, false)
+}
+
+/// `begin_journaled_window_settle`; `keepalive` seals an idle window empty (see
+/// `Gw::begin_window_settle_mode`).
+fn begin_journaled_window_settle_mode(
+    gw: &mut Gw,
+    chain_batch_count: u64,
+    path: Option<&std::path::Path>,
+    seed: &[u8; 32],
+    archive: Option<&report_archive_binding::ArchiveBinding>,
+    keepalive: bool,
 ) -> Result<
     Option<(
         rollback_journal::RollbackJournal,
@@ -8534,7 +9203,7 @@ fn begin_journaled_window_settle(
                 .into(),
         );
     }
-    let Some((witness, ww)) = gw.begin_window_settle(chain_batch_count)? else {
+    let Some((witness, ww)) = gw.begin_window_settle_mode(chain_batch_count, keepalive)? else {
         return Ok(None);
     };
     // Archive binding happens BEFORE journal persistence: archive durable →
@@ -8976,6 +9645,12 @@ async fn main() {
              demo/test only, never production"
         );
     }
+    let permit_ttl_secs =
+        parse_deposit_permit_ttl(std::env::var("DEPOSIT_PERMIT_TTL_SECS").ok().as_deref())
+            .unwrap_or_else(|e| {
+                eprintln!("[sec-019] REFUSING to start: {e}");
+                std::process::exit(1);
+            });
     // SEC-021 (review Finding 3): in production the deployment binding must be real.
     if !vault_binding_ok_for_mode(prod, gateway_signer.vault) {
         eprintln!(
@@ -9112,6 +9787,7 @@ async fn main() {
     // identity, never the restore default.
     gw.chain_id = gateway_signer.chain_id;
     gw.vault = gateway_signer.vault;
+    gw.l1_settlement = l1.as_ref().and_then(|c| parse_addr20_hex(&c.settlement));
     // Task 5: with a prover configured, the tick loop's SETTLE_TICKS simulation is OFF —
     // finality advances only when a window's proof verifies on L1. Set BEFORE the
     // boot-recovery block below, so a roll-forward re-commit already runs under the
@@ -9196,6 +9872,18 @@ async fn main() {
                 eprintln!("[chainlink-archive] REFUSING to start: {reason}");
                 std::process::exit(1);
             }
+        }
+    }
+    // The nonce fence must exist before the first sequencer-key send, which may be
+    // the exact-journal resume below. A journal found without it is never voided.
+    if let (Some(sp), Some(l1c)) = (&state_path, &l1) {
+        let installed =
+            l1::NonceFence::open(l1::fence_path(sp), enclave_seed, startup_journal.is_some())
+                .and_then(|fence| l1c.set_nonce_fence(fence));
+        if let Err(e) = installed {
+            eprintln!("[l1] REFUSING to start: nonce fence: {e}");
+            l1c.cleanup_keystore();
+            std::process::exit(1);
         }
     }
     // Task 3 (crash recovery): resolve any in-flight window settle the rollback
@@ -9309,10 +9997,46 @@ async fn main() {
                                     .await
                                     .unwrap_or_else(|e| Err(e.to_string()))
                                 };
+                                // A clock intent that can never settle is classified at one
+                                // finalized block first: resuming it would re-send a
+                                // registration or settle that cannot succeed.
+                                let dead = match rollback_journal::ClockIntent::of(&j)
+                                    .filter(|_| prover.as_ref().is_some_and(|p| p.clock_enabled()))
+                                {
+                                    Some(intent) => {
+                                        let chain = l1c.clone();
+                                        match tokio::task::spawn_blocking(move || {
+                                            clock_client::check_dead_intent(&chain, intent)
+                                        })
+                                        .await
+                                        .unwrap_or_else(|e| Err(e.to_string()))
+                                        {
+                                            Ok(check) => {
+                                                if check.evidence.close_only {
+                                                    gw.deposits.l1_close_only = true;
+                                                }
+                                                if !check.evidence.fenced {
+                                                    eprintln!(
+                                                        "[recovery] window {}: at finalized block {} the sequencer nonce has not passed every recorded sequencer-key send; a transaction of ours may still be mined",
+                                                        j.batch_id, check.evidence.block
+                                                    );
+                                                }
+                                                check.dead
+                                            }
+                                            Err(e) => {
+                                                eprintln!("[recovery] window {}: dead-intent check failed ({e}); it is not treated as dead", j.batch_id);
+                                                None
+                                            }
+                                        }
+                                    }
+                                    None => None,
+                                };
                                 // Resume only the exact immutable, durably prepared clock
                                 // window. Finality lag or a reorg keeps the WAL and refuses
                                 // startup; it never turns into a legacy rollback/re-seal.
-                                if let (Ok((bc, root, _)), Some(client)) = (&reads, &prover) {
+                                if let (Ok((bc, root, _)), Some(client), None) =
+                                    (&reads, &prover, &dead)
+                                {
                                     if client.clock_enabled()
                                         && j.prepared.is_some()
                                         && *bc == j.batch_id
@@ -9393,13 +10117,14 @@ async fn main() {
                                             }
                                             _ => trading_gate::GateObservation::Inconclusive,
                                         };
-                                        match apply_boot_recovery(
+                                        match apply_boot_recovery_classified(
                                             &mut gw,
                                             j,
                                             chain_bc,
                                             &chain_root,
                                             bond,
                                             gate_observation,
+                                            dead,
                                         ) {
                                             // Task 3 fix: a MUTATED resolution is persisted
                                             // synchronously BEFORE the journal is deleted
@@ -9414,6 +10139,18 @@ async fn main() {
                                                     &enclave_seed,
                                                     archive_binding.as_ref(),
                                                 );
+                                                // The journal found at boot is resolved: a
+                                                // fence that was missing beside it starts
+                                                // recording from the next send.
+                                                if !unresolved_startup_journal {
+                                                    if let Err(e) =
+                                                        l1c.restart_unknown_nonce_fence()
+                                                    {
+                                                        eprintln!("[l1] REFUSING to start: nonce fence: {e}");
+                                                        l1c.cleanup_keystore();
+                                                        std::process::exit(1);
+                                                    }
+                                                }
                                             }
                                             BootRecoveryOutcome::KeepJournal => {}
                                         }
@@ -9443,6 +10180,64 @@ async fn main() {
                 l1c.cleanup_keystore();
             }
             std::process::exit(1);
+        }
+    }
+    // L1 boot handshake: refuse a settlement ABI this binary does not speak, an
+    // unclocked or foreign verifier, an unpaired vault, an anchor timeout that an
+    // honest in-flight proof could outlive, and a consumed-deposit count that
+    // disagrees with the settled root, before any later read relies on them.
+    if let Some(l1c) = &l1 {
+        let expectation = l1c.boot_expectation(
+            gw.last_settled_root,
+            gw.seq.state.state_root(),
+            gw.seq.state.consumed_deposit_count,
+            permit_ttl_secs,
+        );
+        let posture = {
+            let l1c = l1c.clone();
+            tokio::task::spawn_blocking(move || l1c.boot_posture())
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
+        };
+        let verdict = expectation
+            .and_then(|e| posture.and_then(|p| l1::check_boot_posture(&p, &e).map(|()| p)));
+        match verdict {
+            Ok(p) => {
+                println!(
+                    "[l1] boot handshake OK (ABI_VERSION {}, anchorTimeoutMs {}, consumedDepositCount {}, permit TTL {permit_ttl_secs} s)",
+                    p.abi_version,
+                    p.anchor_timeout_ms.unwrap_or_default(),
+                    p.consumed_deposit_count
+                );
+                // With matching roots the settled state consumed exactly this
+                // many deposits; credits at or above it are not settled yet.
+                if gw.last_settled_root == p.current_root {
+                    gw.note_settled_deposit_count(p.consumed_deposit_count);
+                }
+            }
+            Err(e) => {
+                eprintln!("[l1] REFUSING to start: {e}");
+                l1c.cleanup_keystore();
+                std::process::exit(1);
+            }
+        }
+        let params = {
+            let l1c = l1c.clone();
+            tokio::task::spawn_blocking(move || l1c.settlement_params())
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
+        };
+        match params {
+            Ok(p) => println!(
+                "[l1] settlement parameters: liveness {} blocks, challenge grace {} blocks, progress {} batches, slash cap {}, challenge stake {} wei, inclusion deadline {} s",
+                p.liveness_timeout_blocks,
+                p.challenge_grace_blocks,
+                p.progress_batches,
+                p.slash_payout_cap,
+                p.challenge_bond,
+                p.inclusion_deadline_secs
+            ),
+            Err(e) => eprintln!("[l1] WARN: settlement parameters unreadable: {e}"),
         }
     }
     // State ↔ L1 continuity, on EVERY L1-configured boot (SEC-025-C): the gateway's
@@ -9601,6 +10396,7 @@ async fn main() {
         l1: l1.clone(),
         snapshot_req,
         gateway_signer,
+        permit_ttl_secs,
         prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
         attestor,
@@ -9609,6 +10405,7 @@ async fn main() {
         prover_session_token,
         archive: archive_binding.map(std::sync::Mutex::new),
         force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        settle_in_flight: tokio::sync::Mutex::new(None),
     });
 
     let signals = service_shutdown::Signals::new().expect("shutdown signal handlers");
@@ -10003,79 +10800,123 @@ async fn main() {
             "[l1] bridge ON → settlement {} every {L1_SETTLE_SECS}s",
             l1.settlement
         );
-        // audit DP-004: answer inclusion challenges so an honest sequencer is not slashed for an
-        // order it matched or validly rejected. Watch InclusionChallenged, build the Merkle proof
-        // from the retained per-batch order hashes, and submit answerChallenge / answerByRejection.
+        // L1 health: liveness and anchor age at the latest block, close-only and the
+        // consumed deposit count at the finalized one. Independent of the settle loop,
+        // so the alerts still fire while settlement is held.
+        {
+            let app = app.clone();
+            let l1m = l1.clone();
+            let stop = service_policy.shutdown.clone();
+            background.push(tokio::spawn(async move {
+                let mut iv = tokio::time::interval(Duration::from_secs(L1_HEALTH_SECS));
+                iv.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    if !stop.next_tick(&mut iv).await {
+                        break;
+                    }
+                    let l1c = l1m.clone();
+                    let read = tokio::task::spawn_blocking(move || {
+                        (
+                            l1c.liveness_observation(),
+                            l1c.clock_enabled().then(|| l1c.anchor_age()),
+                            l1c.settlement_finality(),
+                        )
+                    })
+                    .await;
+                    match read {
+                        Ok((liveness, anchor, finality)) => app
+                            .gw
+                            .lock()
+                            .await
+                            .apply_l1_health(liveness, anchor, finality),
+                        Err(e) => eprintln!("[l1] health read task failed: {e}"),
+                    }
+                }
+            }));
+        }
+        // Answer inclusion challenges so an honest sequencer is not fined for an order it
+        // matched or validly rejected. Each tick reads the settlement's whole open set at
+        // one canonical block, groups the hashes the retained settled batches can prove
+        // by batch, and sends batched answers from the answer lane. The settle loop
+        // refuses to seal while this read is failing or stale.
         {
             let app = app.clone();
             let l1a = l1.clone();
             let stop = service_policy.shutdown.clone();
             background.push(tokio::spawn(async move {
-                // audit #8: DON'T start at the current block — that silently skips any
-                // InclusionChallenged raised while we were restarting/down, letting an
-                // honest sequencer be slashed for a challenge it could have answered. A
-                // challenge is answerable only within `challengeWindowBlocks`, so rewind
-                // past that window (see challenge_scan_start); over-scanning older /
-                // already-answered challenges is a harmless no-op (challenge_answerable gates
-                // the answer). The data to answer is in the persisted batch_orders.
-                let mut from_block = challenge_scan::Cursor::default();
+                let mut watcher = challenge_scan::Watcher::default();
+                let mut sending: Option<tokio::task::JoinHandle<()>> = None;
+                let discovery = l1a.challenge_discovery().clone();
+                let alerts = app.gw.lock().await.ops_alerts.clone();
                 let mut iv = tokio::time::interval(Duration::from_secs(L1_SETTLE_SECS));
                 loop {
                     if !stop.next_tick(&mut iv).await { break; }
-                    let start_l1 = l1a.clone();
-                    let fetch_l1 = l1a.clone();
-                    let check_l1 = l1a.clone();
-                    let result = challenge_scan::advance(
-                        &mut from_block,
-                        || async move {
-                            tokio::task::spawn_blocking(move || {
-                                let (now, window) = start_l1.challenge_scan_start_observation()?;
-                                Ok(challenge_scan_start(now, window))
-                            }).await.map_err(|_| "challenge startup join failed".to_string())?
-                        },
-                        |height, hash| {
-                            let check_l1 = check_l1.clone();
-                            async move {
-                                tokio::task::spawn_blocking(move || check_l1.challenge_scan_anchor_matches(height, hash))
-                                    .await.map_err(|_| "challenge anchor join failed".to_string())?
+                    let known = watcher.known();
+                    let read_l1 = l1a.clone();
+                    let read = tokio::task::spawn_blocking(move || {
+                        read_l1.open_challenge_set(&known, challenge_scan::MAX_NEW_DETAILS)
+                    })
+                    .await
+                    .map_err(|_| "open-challenge read join failed".to_string())
+                    .and_then(|r| r);
+                    let read = match read {
+                        Ok(read) => read,
+                        Err(e) => {
+                            let failures = discovery.record_failure();
+                            eprintln!("[l1] open-challenge read failed ({failures} in a row); settlement waits: {e}");
+                            if failures >= challenge_scan::DISCOVERY_ALERT_AFTER {
+                                alerts.activate(ops_alerts::AlertKind::ChallengeDiscoveryFailed);
                             }
-                        },
-                        |from| async move {
-                            tokio::task::spawn_blocking(move || fetch_l1.fetch_challenges(from))
-                                .await.map_err(|_| "challenge scan join failed".to_string())?
-                        },
-                        |oh| {
-                            let app = app.clone();
-                            let l1c = l1a.clone();
-                            async move {
-                                let eligibility_l1 = l1c.clone();
-                                let eligibility_hash = oh.clone();
-                                let answerable = tokio::task::spawn_blocking(move || eligibility_l1.challenge_answerable(&eligibility_hash))
-                                    .await.map_err(|_| "challenge eligibility join failed".to_string())??;
-                                if !answerable { return Ok(()); }
-                                // Build the answer under the gw lock, then submit off-lock.
-                                let answer = {
-                                    let gw = app.gw.lock().await;
-                                    parse_hex32(&oh).and_then(|h| gw.build_challenge_answer(&h))
-                                };
-                                let Some((by_rejection, batch_id, proof)) = answer else {
-                                    // A batch may settle after the challenge opened. Keep
-                                    // this hash pending while discovery continues independently.
-                                    return Err("challenge awaiting retained batch".to_string());
-                                };
-                                tokio::task::spawn_blocking(move || {
-                                    if l1c.challenge_answerable(&oh)? {
-                                        let tx = l1c.answer_challenge(&oh, batch_id, &proof, by_rejection)?;
-                                        println!("[l1] answered inclusion challenge {oh} (batch {batch_id}, rejection={by_rejection}) tx {tx}");
-                                    }
-                                    Ok(())
-                                }).await.map_err(|_| "challenge answer join failed".to_string())?
-                            }
-                        },
-                    ).await;
-                    if let Err(e) = result {
-                        eprintln!("[l1] challenge scan or pending answer will retry: {e}");
+                            continue;
+                        }
+                    };
+                    discovery.record_ok(std::time::Instant::now());
+                    alerts.recover(ops_alerts::AlertKind::ChallengeDiscoveryFailed);
+                    let open = read.hashes.len();
+                    watcher.observe(read);
+                    let plan = {
+                        let gw = app.gw.lock().await;
+                        watcher.plan(&gw.batch_orders)
+                    };
+                    if plan.unanswerable.is_empty() {
+                        alerts.recover(ops_alerts::AlertKind::UnanswerableChallenge);
+                    } else {
+                        alerts.activate(ops_alerts::AlertKind::UnanswerableChallenge);
+                        eprintln!(
+                            "[l1] {} open challenge(s) name orders no settled batch holds: {}",
+                            plan.unanswerable.len(),
+                            plan.unanswerable.iter().take(8).map(hex32).collect::<Vec<_>>().join(", ")
+                        );
                     }
+                    if plan.sends.is_empty() {
+                        if open > 0 {
+                            println!("[l1] {open} open challenge(s); {} awaiting their batch", plan.awaiting);
+                        }
+                        continue;
+                    }
+                    // Answers are sent off this loop, so a long answer round never makes
+                    // the open-set read stale (which would hold settlement). One round at
+                    // a time: the next read still lists answers that have not mined yet.
+                    if sending.as_ref().is_some_and(|h| !h.is_finished()) {
+                        println!("[l1] {open} open challenge(s); previous answer round still sending");
+                        continue;
+                    }
+                    let send_l1 = l1a.clone();
+                    sending = Some(tokio::task::spawn_blocking(move || {
+                        let (_, error) = challenge_scan::send_answers(plan.sends, |batch, answers| {
+                            let tx = send_l1.answer_challenges(batch, answers)?;
+                            println!("[l1] answered {} inclusion challenge(s) from batch {batch} tx {tx}", answers.len());
+                            Ok(tx)
+                        });
+                        if let Some(e) = error {
+                            eprintln!("[l1] some challenge answers will retry: {e}");
+                        }
+                        match send_l1.sweep_stake_refunds() {
+                            Ok(Some(tx)) => println!("[l1] swept stake refunds to the answer key: {tx}"),
+                            Ok(None) => {}
+                            Err(e) => eprintln!("[l1] stake refund sweep will retry: {e}"),
+                        }
+                    }));
                 }
             }));
         }
@@ -10105,6 +10946,12 @@ async fn main() {
             // machine dictates the next delay (exponential → HELD cap). `next_attempt`
             // starts open (now) so the first tick attempts normally.
             let mut next_attempt = tokio::time::Instant::now();
+            // When the liveness clock is next read for the keepalive. Reads happen only
+            // while the window is idle, at most once per L1_SETTLE_SECS.
+            let mut liveness_read_at = tokio::time::Instant::now();
+            // Set when the preflight saw close-only at the latest block, before the
+            // finalized close-only latch that `begin_window_settle_mode` checks.
+            let mut close_only_seen = false;
             loop {
                 if !stop.next_tick(&mut iv).await { break; }
                 // FIN-001 Task 4: an operator forced a resume (POST /v1/admin/settlement/resume) —
@@ -10123,28 +10970,97 @@ async fn main() {
                     let mut admission = match app.clock_admission.pause(&stop).await {
                         Ok(p) => p, Err(_) => break,
                     };
-                    // (A) top up the sequencer bond (as the legacy path does) + read the
-                    // on-chain batch count (RPC, no lock). The bond top-up runs BEFORE the
-                    // window is sealed, so an underbond settleBatch revert cannot strand the
-                    // sequencer past the desync guard.
+                    // (A) keep the bond at its target (deposit capacity) and read the
+                    // on-chain batch count (RPC, no lock). Settlement never depends on the
+                    // bond, so a bond problem only raises an alert; only a failed batch
+                    // count read skips this tick.
                     let l1c = l1.clone();
-                    let bc = match tokio::task::spawn_blocking(move || -> Result<u64, String> {
-                        if let Some(tx) = l1c.ensure_bond()? {
-                            println!("[l1] bond topped up: {tx}");
-                        }
-                        l1c.batch_count()
+                    let (bond, bc) = match tokio::task::spawn_blocking(move || {
+                        (l1c.ensure_bond(), l1c.batch_count())
                     })
                     .await
                     {
-                        Ok(Ok(bc)) => bc,
-                        Ok(Err(e)) => {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!("[l1] bond/batch_count join: {e}");
+                            continue;
+                        }
+                    };
+                    {
+                        let alerts = app.gw.lock().await.ops_alerts.clone();
+                        match bond {
+                            Ok(l1::BondOutcome::Covered { .. }) => {
+                                alerts.recover(ops_alerts::AlertKind::BondShortfall);
+                            }
+                            Ok(l1::BondOutcome::ToppedUp { tx, amount, target }) => {
+                                println!("[l1] bond topped up by {amount} toward {target}: {tx}");
+                                alerts.recover(ops_alerts::AlertKind::BondShortfall);
+                            }
+                            Ok(l1::BondOutcome::PausedAfterSlash { slash_count, acknowledged }) => {
+                                eprintln!("[l1] bond top-ups paused: slashCount {slash_count} > acknowledged {acknowledged}; acknowledge via POST /v1/admin/bond/acknowledge-slash");
+                                alerts.activate(ops_alerts::AlertKind::BondShortfall);
+                            }
+                            Ok(l1::BondOutcome::InFlight) => {}
+                            Err(e) => {
+                                eprintln!("[l1] bond: {e}");
+                                alerts.activate(ops_alerts::AlertKind::BondShortfall);
+                            }
+                        }
+                    }
+                    let bc = match bc {
+                        Ok(bc) => bc,
+                        Err(e) => {
                             eprintln!("[l1] batch_count: {e}");
                             continue;
                         }
-                        Err(e) => {
-                            eprintln!("[l1] batch_count join: {e}");
-                            continue;
+                    };
+                    // No progress while blind to open challenges: refuse to seal unless
+                    // the watcher's latest open-set read succeeded recently.
+                    if let Err(e) = l1.challenge_discovery().settle_permitted(
+                        std::time::Instant::now(),
+                        Duration::from_secs(3 * L1_SETTLE_SECS),
+                    ) {
+                        eprintln!("[l1] window settle held: {e}");
+                        continue;
+                    }
+                    // Keepalive: an idle exchange settles nothing, but after
+                    // livenessTimeoutBlocks without progress anyone may close the
+                    // settlement. While idle, read the liveness clock and, once a
+                    // quarter of the window has passed, seal and settle an empty window.
+                    let keepalive = if app.gw.lock().await.window_is_idle()
+                        && tokio::time::Instant::now() >= liveness_read_at
+                    {
+                        let l1c = l1.clone();
+                        let read = tokio::task::spawn_blocking(move || l1c.liveness_observation())
+                            .await
+                            .map_err(|e| e.to_string())
+                            .and_then(|r| r);
+                        match read {
+                            Ok(obs) => {
+                                let wait = obs
+                                    .blocks_until_keepalive()
+                                    .saturating_mul(l1::L1_BLOCK_SECS)
+                                    .clamp(L1_SETTLE_SECS, 600);
+                                liveness_read_at =
+                                    tokio::time::Instant::now() + Duration::from_secs(wait);
+                                if obs.keepalive_due() {
+                                    println!(
+                                        "[l1] keepalive: no progress for {} of {} blocks; settling an empty window",
+                                        obs.idle_blocks(),
+                                        obs.liveness_timeout_blocks
+                                    );
+                                }
+                                obs.keepalive_due()
+                            }
+                            Err(e) => {
+                                eprintln!("[l1] keepalive liveness read failed: {e}");
+                                liveness_read_at = tokio::time::Instant::now()
+                                    + Duration::from_secs(L1_SETTLE_SECS);
+                                false
+                            }
                         }
+                    } else {
+                        false
                     };
                     // Persist the previous resolution before replacing its journal.
                     // This also covers a previous rollback or a committed window whose
@@ -10158,6 +11074,11 @@ async fn main() {
                     // Stage 1 and seal share Gw's lock with every snapshot capture.
                     let begun = {
                         let mut gw = app.gw.lock().await;
+                        if close_only_seen && !gw.wind_down_started {
+                            // A latest-block close-only refused the last ordinary window;
+                            // only the wind-down's windows can settle from here.
+                            continue;
+                        }
                         if client.clock_enabled()
                             && gw.window_withdrawals.is_empty()
                             && gw.seq.state.state_root() == gw.last_settled_root
@@ -10177,12 +11098,13 @@ async fn main() {
                                 ArchiveSlot::Guard(g) => Some(&**g),
                                 _ => None,
                             };
-                            match begin_journaled_window_settle(
+                            match begin_journaled_window_settle_mode(
                                 &mut gw,
                                 bc,
                                 jpath.as_deref(),
                                 &enclave_seed,
                                 archive_ref,
+                                keepalive,
                             ) {
                             Ok(Some((journal, envelope))) => {
                                 let cand: Vec<[u8; 32]> =
@@ -10239,11 +11161,70 @@ async fn main() {
                         }
                     }
                     if client.clock_enabled() {
-                        let intent = prover_client::prepare_unproved(&journal.witness, &journal.ww);
-                        let durable = intent.and_then(|p| {
-                            journal.prepared = Some(p);
-                            rollback_journal::write_versioned(jpath.as_deref().ok_or("clock registration requires journal")?, &journal, envelope.as_ref(), &enclave_seed)
-                        });
+                        let intent = match prover_client::prepare_unproved(&journal.witness, &journal.ww) {
+                            Ok(p) => p,
+                            Err(error) => {
+                                hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
+                                break;
+                            }
+                        };
+                        // Preflight: request size, batch and wind-down phase, and in
+                        // production the prover's program. Nothing has been sent, so a
+                        // refusal rolls the window back like a failed prove.
+                        let phase = intent.outcome.wind_down_phase;
+                        let pf_client = client.clone();
+                        let (returned, preflight) = match tokio::task::spawn_blocking(move || {
+                            let result = pf_client.preflight(&journal.witness, phase);
+                            (journal, result)
+                        })
+                        .await
+                        {
+                            Ok(v) => v,
+                            Err(join) => {
+                                hold_settlement_for_recovery(&app, format!("preflight worker failed: {join}")).await;
+                                break;
+                            }
+                        };
+                        journal = returned;
+                        if let Err(refusal) = preflight {
+                            let wrong_phase = matches!(refusal, prover_client::PreflightRefusal::WrongPhase(_));
+                            eprintln!("[l1] window {batch_id} was not registered: {refusal}; rolled back, nothing was sent");
+                            {
+                                let mut gw = app.gw.lock().await;
+                                gw.seq.rollback_window(&witness_rb);
+                                gw.rollback_window_withdrawals(ww_rb);
+                                if !wrong_phase {
+                                    let (action, just_held) = gw.settle_breaker_failed(refusal.to_string());
+                                    next_attempt = tokio::time::Instant::now() + action.delay();
+                                    if just_held {
+                                        let msg = crate::settle_health::held_alert_message(
+                                            gw.settle_health.consecutive_failures(),
+                                            gw.settle_health.last_error().unwrap_or(""),
+                                        );
+                                        eprintln!("{msg}");
+                                    }
+                                }
+                            }
+                            if let Err(error) = snapshot_now(&app.snapshot_req).await {
+                                hold_settlement_for_recovery(&app, format!("preflight rollback not durable: {error}")).await;
+                                break;
+                            }
+                            if wrong_phase && phase == 0 {
+                                // Close-only began. Stop sealing ordinary windows and reopen
+                                // admission so the operator can start the wind-down; its
+                                // close-only rebase discards the open window.
+                                close_only_seen = true;
+                                if let Some(p) = admission.as_mut() {
+                                    p.resolved();
+                                }
+                            }
+                            continue;
+                        }
+                        journal.prepared = Some(intent);
+                        let durable = jpath
+                            .as_deref()
+                            .ok_or_else(|| "clock registration requires journal".to_string())
+                            .and_then(|path| rollback_journal::write_versioned(path, &journal, envelope.as_ref(), &enclave_seed));
                         if let Err(error) = durable {
                             hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
                             break;
@@ -10296,6 +11277,11 @@ async fn main() {
                     let envelope_bg = envelope.clone();
                     let deposit_guard_app = app.clone();
                     let clock_mode = client.clock_enabled();
+                    let window_phase = journal
+                        .prepared
+                        .as_ref()
+                        .map_or(0, |p| p.outcome.wind_down_phase);
+                    *app.settle_in_flight.lock().await = Some((batch_id, window_phase));
                     let res = tokio::task::spawn_blocking(move || -> SettleAttempt {
                         let prepared = match prover_client::prove_and_prepare(
                             client.as_ref(),
@@ -10358,6 +11344,7 @@ async fn main() {
                         })
                     })
                     .await;
+                    *app.settle_in_flight.lock().await = None;
                     match res {
                         Ok(SettleAttempt::Ok {
                             prepared,
@@ -12248,6 +13235,7 @@ mod tests {
             l1: None,
             snapshot_req: None,
             gateway_signer: GatewaySigner::from_env().expect("demo gateway signer"),
+            permit_ttl_secs: DEFAULT_DEPOSIT_PERMIT_TTL_SECS,
             prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
             attestor: None,
@@ -12256,46 +13244,66 @@ mod tests {
             prover_session_token: None,
             archive: None,
             force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            settle_in_flight: tokio::sync::Mutex::new(None),
         })
     }
 
     // ── SEC-019 (Task 7b): real L1-bound deposit crediting + gateway auth signing ──
 
-    /// The gateway's deposit-authorization signature recovers to the gateway address
-    /// under the SAME verifier the contract mirrors, and its digest is BYTE-IDENTICAL to
-    /// Solidity's `keccak256(abi.encodePacked(chainid, vault, from, ownerCommit, amount))`
-    /// (KAT from `cast keccak $(cast abi-encode --packed ...)`). If this drifts, the
-    /// deployed vault's `ecrecover` would reject every gateway-issued deposit signature.
+    /// The gateway's deposit permit recovers to the gateway address under the SAME
+    /// verifier the contract mirrors, and its digest is BYTE-IDENTICAL to
+    /// `CollateralVault.permitDigest(from, ownerCommit, amount, validUntil)`. The digest,
+    /// tag and signature vectors are the ones contracts/test/CrossLayer.t.sol pins (computed
+    /// with `cast keccak $(cast abi-encode --packed ...)` and `cast wallet sign --no-hash`).
+    /// If this drifts, the deployed vault's `ecrecover` would reject every gateway permit.
     #[test]
     fn gateway_signature_round_trips_and_matches_solidity_digest() {
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
         let vault = [0x11u8; 20];
         let from = [0x22u8; 20];
         let oc = [0x33u8; 32];
+        let until = 1_800_000_000u64;
         let gs = GatewaySigner::from_parts(DEMO_GATEWAY_SIGNER_KEY, 84532, vault).unwrap();
-        // digest byte-parity with Solidity abi.encodePacked (chainid=84532, amount=1000).
+        let tag: [u8; 32] = RawKeccak::digest(DEPOSIT_PERMIT_DOMAIN).into();
+        assert_eq!(
+            hex0x(&tag),
+            "0x64f75800264cb4053b5b671aa4a797e49b39732e10c2ad3768fceffb4b2c0bb4",
+            "DEPOSIT_PERMIT_TAG"
+        );
         let expected =
-            parse_hex32("0x616596ebb8fceaa76501abebf569187adcbc045cda51a9e3023a217d9e8c440b")
+            parse_hex32("0xb487c678ab8b02ccbd35a03ea1d01c38f0183258f2c23b56f3fb5096096c07cc")
                 .unwrap();
         assert_eq!(
-            gs.digest(&from, &oc, 1000),
+            gs.digest(&from, &oc, 1000, until),
             expected,
-            "gateway digest must match Solidity abi.encodePacked"
+            "gateway digest must match CollateralVault.permitDigest"
         );
-        // sign → recover round-trip: the gateway's sig recovers to its OWN address.
-        let sig = gs.sign(&from, &oc, 1000).unwrap();
+        // RFC 6979: the signature is the exact Solidity vector, so re-signing is stable.
+        let sig = gs.sign(&from, &oc, 1000, until).unwrap();
         assert_eq!(
-            recover_eth_address(&gs.digest(&from, &oc, 1000), &sig),
+            hex0x(&sig),
+            "0x67b721dee260db90686eebd17d9fc542e190fe4472fba8c3a9bba2863cbe781c\
+             4e826942fcd397b7f786a39d0182baf9588e947c0f2c153e08ca326ec25f1d611c"
+        );
+        assert_eq!(sig, gs.sign(&from, &oc, 1000, until).unwrap());
+        assert_eq!(
+            recover_eth_address(&expected, &sig),
             Some(gs.address()),
             "gateway signature must recover to the gateway address"
         );
+        assert_eq!(
+            hex0x(&gs.address()),
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        );
         // contract accepts only low-s + v ∈ {27,28}.
         assert!(sig[64] == 27 || sig[64] == 28, "v must be 27 or 28");
-        // a sig for (from, oc, amount) must NOT verify for a different amount.
-        assert_ne!(
-            recover_eth_address(&gs.digest(&from, &oc, 999), &sig),
-            Some(gs.address()),
-            "the signature is bound to the amount"
-        );
+        // The permit binds the amount and the deadline.
+        for other in [
+            gs.digest(&from, &oc, 999, until),
+            gs.digest(&from, &oc, 1000, until + 1),
+        ] {
+            assert_ne!(recover_eth_address(&other, &sig), Some(gs.address()));
+        }
     }
 
     /// A deposit whose stored blind reproduces the on-chain `ownerCommit` is credited,
@@ -13055,6 +14063,113 @@ mod tests {
         );
     }
 
+    /// The anchor-cancel endpoint is operator-only, validates its body, needs a
+    /// clock-bound bridge, refuses the window the settle loop is working on before
+    /// any L1 read, and is reachable while a window holds clock admission closed.
+    #[tokio::test]
+    async fn cancel_anchor_endpoint_is_gated_and_refuses_an_in_flight_window() {
+        let _env = wind_down::ADMIN_ENV_LOCK.lock().await;
+        use tower::ServiceExt as _;
+        let key = "0x".to_string() + &"aa".repeat(32);
+        let receipt = hex32(&[0x5a; 32]);
+        let call = |app: &Shared, admin: Option<&str>, body: serde_json::Value| {
+            let mut req = axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/admin/settlement/cancel-anchor")
+                .header("content-type", "application/json");
+            if let Some(k) = admin {
+                req = req.header("x-admin-key", k);
+            }
+            let req = req.body(axum::body::Body::from(body.to_string())).unwrap();
+            let router = build_router(app.clone(), false);
+            async move {
+                let response = router.oneshot(req).await.unwrap();
+                let status = response.status();
+                let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+                    .await
+                    .unwrap();
+                (status, String::from_utf8_lossy(&bytes).to_string())
+            }
+        };
+        let body = serde_json::json!({"batchId": 7, "phase": 0, "receipt": receipt});
+        let previous = std::env::var_os("FIN_ADMIN_KEY");
+        std::env::remove_var("FIN_ADMIN_KEY");
+        let app = test_app();
+        assert_eq!(
+            call(&app, Some(&key), body.clone()).await.0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        std::env::set_var("FIN_ADMIN_KEY", &key);
+        assert_eq!(
+            call(&app, Some("0x00"), body.clone()).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            call(&app, None, body.clone()).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        for bad in [
+            serde_json::json!({"batchId": 7, "phase": 3, "receipt": receipt}),
+            serde_json::json!({"batchId": 7, "phase": 0, "receipt": "0x12"}),
+            serde_json::json!({"phase": 0, "receipt": receipt}),
+        ] {
+            assert_eq!(call(&app, Some(&key), bad).await.0, StatusCode::BAD_REQUEST);
+        }
+        // No clock-bound bridge configured.
+        assert_eq!(
+            call(&app, Some(&key), body.clone()).await.0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        // An unroutable RPC: a refusal before any read cannot reach it.
+        let mut app = test_app();
+        let inner = Arc::get_mut(&mut app).unwrap();
+        inner.l1 = Some(L1::test_clocked_reader(
+            "http://127.0.0.1:9".into(),
+            [0x11; 20],
+            84532,
+        ));
+        inner.clock_admission = clock_admission::ClockAdmission::new(true);
+        *app.settle_in_flight.lock().await = Some((7, 0));
+        // A sealed, unresolved window holds admission closed; the endpoint still answers.
+        let stop = service_shutdown::Shutdown::default();
+        let mut paused = app.clock_admission.pause(&stop).await.unwrap().unwrap();
+        paused.arm();
+        let (status, text) = call(&app, Some(&key), body.clone()).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{text}");
+        assert!(text.contains("settle loop"), "{text}");
+        // Another window passes the in-flight check and reaches the L1 check.
+        let (status, _) = call(
+            &app,
+            Some(&key),
+            serde_json::json!({"batchId": 8, "phase": 0, "receipt": receipt}),
+        )
+        .await;
+        assert_ne!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_ne!(status, StatusCode::OK);
+        drop(paused);
+        match previous {
+            Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),
+            None => std::env::remove_var("FIN_ADMIN_KEY"),
+        }
+    }
+
+    /// After a finalized close-only observation an ordinary window, or a
+    /// keepalive, is never sealed before the wind-down starts.
+    #[test]
+    fn close_only_stops_ordinary_window_seals() {
+        let mut gw = Gw::boot();
+        let (key, _) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 1_000 * QUOTE_SCALE).unwrap();
+        let bc = gw.seq.current_window_id();
+        gw.deposits.l1_close_only = true;
+        let before = gw.snapshot_plain();
+        assert!(gw.begin_window_settle_mode(bc, false).unwrap().is_none());
+        assert!(gw.begin_window_settle_mode(bc, true).unwrap().is_none());
+        assert_eq!(gw.snapshot_plain(), before);
+        gw.deposits.l1_close_only = false;
+        assert!(gw.begin_window_settle_mode(bc, false).unwrap().is_some());
+    }
+
     /// A snapshot sealed under one enclave seed must not open under another —
     /// the restore path is fail-closed on the wrong secret (no silent fresh boot).
     #[test]
@@ -13355,6 +14470,49 @@ mod tests {
 
         // an order in no retained batch → no answer (a genuine withhold, correctly unanswerable)
         assert!(gw.build_challenge_answer(&[9u8; 32]).is_none());
+    }
+
+    /// The watcher's batched plan answers every hash exactly as `build_challenge_answer`
+    /// would: same batch, same root and the same proof, including hashes that appear
+    /// in several batches or in both lists.
+    #[test]
+    fn challenge_watcher_plan_matches_build_challenge_answer() {
+        let mut gw = Gw::boot();
+        let h = |n: u8| [n; 32];
+        gw.batch_orders
+            .insert(3, (vec![h(1), h(2), h(3)], vec![h(4)]));
+        gw.batch_orders
+            .insert(4, (vec![h(4), h(5)], vec![h(1), h(6)]));
+        gw.batch_orders.insert(5, (vec![h(6), h(6)], vec![h(7)]));
+        let open: Vec<Digest> = (1..=8).map(h).collect();
+        let mut watcher = challenge_scan::Watcher::default();
+        watcher.observe(l1::OpenSetRead {
+            head: 50,
+            batch_count: 6,
+            hashes: open.clone(),
+            details: vec![],
+        });
+        let plan = watcher.plan(&gw.batch_orders);
+        let planned: std::collections::HashMap<Digest, (bool, u64, Vec<[u8; 32]>)> = plan
+            .sends
+            .iter()
+            .flat_map(|(batch, answers)| {
+                answers
+                    .iter()
+                    .map(move |a| (a.order_hash, (a.by_rejection, *batch, a.proof.clone())))
+            })
+            .collect();
+        for hash in &open {
+            assert_eq!(
+                planned.get(hash).cloned(),
+                gw.build_challenge_answer(hash),
+                "{hash:?}"
+            );
+        }
+        assert_eq!(
+            plan.awaiting, 1,
+            "hash 8 is in no batch and has no details yet"
+        );
     }
 
     // audit DP-006 follow-up: production must reject the public demo enclave seed (a
@@ -15371,20 +16529,6 @@ mod tests {
         );
     }
 
-    /// AUDIT (#8): on boot the challenge watcher rewinds past the challenge window so
-    /// a restart doesn't skip challenges raised while it was down (→ wrongful slash).
-    #[test]
-    fn challenge_scan_start_rewinds_past_the_window() {
-        // rewinds 1.5x the window behind the current block
-        assert_eq!(challenge_scan_start(10_000, 300), 10_000 - 450);
-        // saturates at 0 near genesis rather than underflowing
-        assert_eq!(challenge_scan_start(100, 300), 0);
-        // a tiny/zero window still rewinds a 64-block floor (never starts at `now`,
-        // which is the pre-fix bug that skipped in-flight challenges)
-        assert_eq!(challenge_scan_start(10_000, 0), 10_000 - 64);
-        assert_eq!(challenge_scan_start(10_000, 10), 10_000 - 64);
-    }
-
     /// AUDIT (Tier-3): the order-history cap evicts the OLDEST terminal (SETTLED) entries
     /// first and NEVER a live/in-flight one, bounding growth without losing pending orders.
     #[test]
@@ -17089,6 +18233,85 @@ mod tests {
         assert_eq!(leaves2, ww_leaves, "same withdrawal leaves after recovery");
     }
 
+    /// The dead-intent row: a prepared clock intent that can never settle returns
+    /// to the open window when its policy is automatic (and the restored snapshot
+    /// still holds the seal), resolves without mutation when the snapshot already
+    /// rolled it back, and HOLDs otherwise. Without a classification the prepared
+    /// intent keeps holding, as before.
+    #[test]
+    fn boot_recovery_returns_a_dead_clock_intent_to_the_open_window() {
+        use rollback_journal::{DeadIntent, DeadIntentAction};
+        let seed = [43u8; 32];
+        let mut gw = Gw::boot();
+        let (key, sk) = register_withdrawer(&mut gw);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+        let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
+        let intent = prover_client::prepare_unproved(&witness, &ww).unwrap();
+        let journal = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness,
+            ww,
+            prepared: Some(intent),
+        };
+        let plain = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
+        let restored = || Gw::boot_restored(&plain).expect("restore");
+        let run = |gw: &mut Gw, dead, chain_bc| {
+            apply_boot_recovery_classified(
+                gw,
+                journal.clone(),
+                chain_bc,
+                "0x00",
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                dead,
+            )
+        };
+        let automatic = Some((
+            DeadIntent::CloseOnlyPhaseZero,
+            DeadIntentAction::ReturnToOpenWindow,
+        ));
+        // No classification, a HOLD policy, or a landed batch: keep the journal, no mutation.
+        for (dead, chain_bc) in [
+            (None, bc),
+            (
+                Some((DeadIntent::EmptyAfterFence, DeadIntentAction::Hold("timed"))),
+                bc,
+            ),
+            (automatic, bc + 1),
+        ] {
+            let mut gw = restored();
+            let before = gw.snapshot_plain();
+            assert_eq!(
+                run(&mut gw, dead, chain_bc),
+                BootRecoveryOutcome::KeepJournal
+            );
+            assert_eq!(gw.snapshot_plain(), before, "HOLD never mutates");
+        }
+        // The automatic policy returns the window's ops and withdrawals.
+        let mut gw = restored();
+        assert_eq!(gw.seq.state.next_batch_id, bc + 1);
+        assert_eq!(
+            run(&mut gw, automatic, bc),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert_eq!(gw.seq.state.next_batch_id, bc);
+        let (w2, ww2) = gw.begin_window_settle(bc).unwrap().expect("re-sealed");
+        assert_eq!(w2.batch_id, bc);
+        assert_eq!(ww2.iter().map(|w| w.leaf()).collect::<Vec<_>>(), ww_leaves);
+        // A snapshot that already holds the rollback resolves without mutation.
+        gw.seq.rollback_window(&w2);
+        gw.rollback_window_withdrawals(ww2);
+        let before = gw.snapshot_plain();
+        assert_eq!(
+            run(&mut gw, automatic, bc),
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
+        );
+        assert_eq!(gw.snapshot_plain(), before);
+    }
+
     /// The ROLL-FORWARD row end-to-end across a simulated restart: the tx landed
     /// but the commit died with the process. Boot recovery re-commits from the
     /// journal's `prepared`: l1_status matches the chain, the claim proof is
@@ -17736,4 +18959,5 @@ mod tests {
     include!("audit_remediation_tests.rs");
     include!("execution_regression_tests.rs");
     include!("audit_cancellation_tests.rs");
+    include!("permit_keepalive_tests.rs");
 }

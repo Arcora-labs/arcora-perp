@@ -111,14 +111,19 @@ class PolicyTargetTests(unittest.TestCase):
         self.assertIn('explicit operator policy required', result['blocker'])
         self.assertEqual(self.calls, [])
 
-    def test_complete_policy_checks_all_eleven_getters_at_same_block(self):
+    def test_complete_policy_checks_all_thirteen_getters_at_same_block(self):
         self.public['operator_policy'] = policy()
         result = self.observe(required=True)
         self.assertEqual(result['status'], 'VERIFIED_AT_FINALIZED_BLOCK', result)
         self.assertTrue(result['scope']['operator_and_settlement_policy_matches'])
         self.assertFalse(result['scope']['operator_and_settlement_policy_approved'])
         self.assertEqual(result['scope']['release_gate'], 'HOLD')
-        self.assertEqual(len(result['bindings']), 23)
+        # 14 stack bindings + 6 operator addresses + 7 settlement policy values.
+        self.assertEqual(len(result['bindings']), 27)
+        policy_getters = {item['getter'] for item in result['bindings'] if item['contract'] == 'settlement'}
+        for signature in ('challengeGraceBlocks()', 'progressBatches()', 'slashPayoutCap()'):
+            self.assertIn(signature, policy_getters)
+        self.assertNotIn('challengeWindowBlocks()', policy_getters)
         self.assertEqual(result['operator_policy_sha256'], release.digest(release.canonical(policy())))
         self.assertTrue(all(params[-1] == {'blockHash': self.head['hash'], 'requireCanonical': True}
                             for method, params in self.calls if method in ('eth_call', 'eth_getCode')))

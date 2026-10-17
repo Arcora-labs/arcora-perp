@@ -18,23 +18,47 @@ OWNER = "0x" + "f1" * 20
 
 
 def policy():
+    """Small local-test values: below the Base floors, valid for the constructors."""
     return {
         "settlement": {"sequencer": OWNER, "enclave_signer": "0x" + "e2" * 20, "governance": OWNER,
-                       "liveness_timeout_blocks": 100, "challenge_window_blocks": 50,
+                       "liveness_timeout_blocks": 100, "challenge_grace_blocks": 50,
                        "challenge_bond_wei": 1000, "inclusion_deadline_seconds": 600,
-                       "final_settle_grace_blocks": 10},
+                       "final_settle_grace_blocks": 10, "progress_batches": 2,
+                       "slash_payout_cap_usdc": 1_000_000_000},
         "vault": {"gateway_signer": "0x" + "a3" * 20},
         "clock_verifier": {"configurator": OWNER},
         "sp1_gateway": {"owner": OWNER},
     }
 
 
+def launch_policy():
+    """The Base Sepolia launch defaults."""
+    value = policy()
+    value["settlement"].update(liveness_timeout_blocks=43_200, challenge_grace_blocks=3_600,
+                               challenge_bond_wei=10**16, inclusion_deadline_seconds=3_600,
+                               final_settle_grace_blocks=300, progress_batches=2,
+                               slash_payout_cap_usdc=1_000_000_000)
+    return value
+
+
+LAUNCH_CLOCK = {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3_600_000}
+
+
 def plan_config(**overrides):
     value = {"chain_id": 31337, "genesis_root": GENESIS, "sp1_gateway": None,
-             "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000},
-             "operator_policy": policy()}
+             "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 60000},
+             "operator_policy": policy(), "deposit_permit_ttl_secs": 1800}
     value.update(overrides)
     return value
+
+
+def launch_config(**overrides):
+    value = plan_config(chain_id=84532, clock=dict(LAUNCH_CLOCK), operator_policy=launch_policy())
+    value.update(overrides)
+    return value
+
+
+PUBLIC = {"FAKE_CHAIN": "84532", "FAKE_CLIENT": "Geth/v1.14"}
 
 
 # Records every argv; answers like cast. Contract addresses are 0x..01, 0x..02, ...
@@ -133,6 +157,110 @@ class Guards(CastFixture):
         self.assertEqual(self.run_cli(signer=()), 2)
         self.assertEqual(self.sends(), [])
 
+    def test_old_policy_keys_and_old_clock_shape_are_refused(self):
+        old = policy()
+        old["settlement"]["challenge_window_blocks"] = old["settlement"].pop("challenge_grace_blocks")
+        for overrides in ({"operator_policy": old},
+                          {"clock": {"max_window_ms": 30000, "clock_skew_ms": 10000}}):
+            with self.subTest(overrides=list(overrides)):
+                self.write_config(**overrides)
+                self.assertEqual(self.run_cli(), 2)
+        config = plan_config()
+        del config["deposit_permit_ttl_secs"]
+        self.config.write_text(json.dumps(config))
+        self.assertEqual(self.run_cli(), 2)
+        self.assertEqual(self.sends(), [])
+
+    def test_values_the_constructors_would_revert_on_are_refused_before_any_send(self):
+        cases = [("progress_batches", 0), ("progress_batches", 17), ("slash_payout_cap_usdc", 0),
+                 ("slash_payout_cap_usdc", 2**128), ("liveness_timeout_blocks", 0),
+                 ("challenge_grace_blocks", 0), ("governance", "0x" + "00" * 20),
+                 ("sequencer", "0x" + "00" * 20), ("enclave_signer", "0x" + "00" * 20)]
+        for field, bad in cases:
+            config = policy()
+            config["settlement"][field] = bad
+            with self.subTest(field=field, value=bad):
+                self.write_config(operator_policy=config)
+                self.assertEqual(self.run_cli(), 2)
+        for clock in ({"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 999},
+                      {"max_window_ms": 30000, "clock_skew_ms": 399, "anchor_timeout_ms": 60000},
+                      {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 2**64}):
+            with self.subTest(clock=clock):
+                self.write_config(clock=clock)
+                self.assertEqual(self.run_cli(), 2)
+        for ttl in (0, -1, "1800", True, 2**64):
+            with self.subTest(ttl=ttl):
+                self.write_config(deposit_permit_ttl_secs=ttl)
+                self.assertEqual(self.run_cli(), 2)
+        self.assertEqual(self.sends(), [])
+        # The upper edges are accepted.
+        config = policy()
+        config["settlement"].update(progress_batches=16, slash_payout_cap_usdc=2**128 - 1)
+        self.write_config(operator_policy=config)
+        self.assertEqual(self.run_cli(), 0)
+
+
+class BaseFloors(CastFixture):
+    def test_launch_defaults_pass_the_floors_on_a_public_chain(self):
+        self.write_config(**launch_config())
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 0)
+        self.assertEqual(len(self.sends()), 10)
+        public = json.loads(self.output.read_text())
+        self.assertEqual(public["clock"], LAUNCH_CLOCK)
+        self.assertEqual(public["gateway"]["DEPOSIT_PERMIT_TTL_SECS"], "1800")
+        record = json.loads(self.output.with_suffix(".deployment.json").read_text())
+        self.assertFalse(record["owned_test_chain"])
+
+    def test_each_floor_is_refused_on_a_public_chain(self):
+        for section, key, minimum in deploy.BASE_FLOORS:
+            config = launch_config()
+            target = config["clock"] if section == "clock" else config["operator_policy"]["settlement"]
+            target[key] = minimum - 1
+            if (section, key) == ("clock", "max_window_ms"):
+                continue  # below 400 is already a config error everywhere
+            with self.subTest(floor=key):
+                self.config.write_text(json.dumps(config))
+                self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 2)
+                # The same value at the floor passes.
+                target[key] = minimum
+                self.config.write_text(json.dumps(config))
+                self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 0)
+
+    def test_permit_ttl_is_bounded_by_an_eighth_of_liveness(self):
+        liveness_secs = launch_policy()["settlement"]["liveness_timeout_blocks"] * 2
+        self.write_config(**launch_config(deposit_permit_ttl_secs=liveness_secs // 8 + 1))
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 2)
+        self.assertEqual(self.sends(), [])
+        self.write_config(**launch_config(deposit_permit_ttl_secs=liveness_secs // 8))
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 0)
+
+    def test_owned_anvil_at_base_sepolia_chain_id_skips_the_floors(self):
+        # The candidate harness and the fork dry run use Anvil with chain id 84532.
+        self.write_config(chain_id=84532)
+        self.assertEqual(self.run_cli(env={"FAKE_CHAIN": "84532"}), 0)
+        record = json.loads(self.output.with_suffix(".deployment.json").read_text())
+        self.assertTrue(record["owned_test_chain"])
+
+    def test_small_values_are_refused_on_a_public_chain(self):
+        self.write_config(chain_id=84532)
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 2)
+        self.assertEqual(self.sends(), [])
+
+    def test_explicit_owned_test_chain_flag(self):
+        # A non-Anvil chain the operator owns may waive the floors explicitly.
+        self.write_config(chain_id=900)
+        own = {"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=own), 2)
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain", "--owned-test-chain"], env=own), 0)
+        # A public Base chain id is never an owned test chain unless the client is Anvil.
+        self.write_config(chain_id=84532)
+        before = len(self.sends())
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain", "--owned-test-chain"], env=PUBLIC), 2)
+        self.write_config(chain_id=8453)
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain", "--owned-test-chain"],
+                                      env={"FAKE_CHAIN": "8453", "FAKE_CLIENT": "Geth/v1.14"}), 2)
+        self.assertEqual(len(self.sends()), before)
+
 
 class Order(CastFixture):
     def test_fresh_stack_deploys_in_dependency_order(self):
@@ -154,20 +282,39 @@ class Order(CastFixture):
             payload = s.index("--create") if "--create" in s else len(s) - 3
             self.assertEqual(s[1:payload], ["--rpc-url", "http://127.0.0.1:8545", "--json", "--unlocked", "--from", OWNER])
 
-    def test_settlement_constructor_words_follow_the_policy(self):
+    @staticmethod
+    def constructor_words(send, code):
+        initcode = send[send.index("--create") + 1]
+        args = initcode[len(code):]
+        return [args[64 * i:64 * (i + 1)] for i in range(len(args) // 64)], len(args)
+
+    def test_settlement_constructor_is_the_twelve_word_config_in_order(self):
         self.write_config()
         self.run_cli()
-        settlement = self.sends()[5]
-        initcode = settlement[settlement.index("--create") + 1]
-        words = [initcode[len(self.artifacts["settlement"]) + 64 * i:][:64] for i in range(10)]
+        words, size = self.constructor_words(self.sends()[5], self.artifacts["settlement"])
+        self.assertEqual(size, 12 * 64)
         p = policy()["settlement"]
         self.assertEqual(words, [
             p["sequencer"][2:].rjust(64, "0"), p["enclave_signer"][2:].rjust(64, "0"),
             "0" * 24 + format(5, "040x"),  # clock verifier = 5th contract created
             GENESIS[2:],
-            format(100, "064x"), format(50, "064x"), format(1000, "064x"), format(600, "064x"),
-            p["governance"][2:].rjust(64, "0"), format(10, "064x"),
+            format(100, "064x"),  # livenessTimeoutBlocks
+            format(50, "064x"),  # challengeGraceBlocks
+            format(1000, "064x"),  # challengeBond
+            format(600, "064x"),  # inclusionDeadlineSecs
+            p["governance"][2:].rjust(64, "0"),
+            format(10, "064x"),  # finalSettleGraceBlocks
+            format(2, "064x"),  # progressBatches
+            format(1_000_000_000, "064x"),  # slashPayoutCap
         ])
+
+    def test_clock_constructor_is_four_words_with_the_anchor_timeout(self):
+        self.write_config()
+        self.run_cli()
+        words, size = self.constructor_words(self.sends()[4], self.artifacts["clock_verifier"])
+        self.assertEqual(size, 4 * 64)
+        self.assertEqual(words, ["0" * 24 + format(4, "040x"),  # adapter = 4th contract created
+                                 format(30000, "064x"), format(10000, "064x"), format(60000, "064x")])
 
     def test_output_is_a_valid_release_public_config(self):
         self.write_config()
@@ -176,8 +323,16 @@ class Order(CastFixture):
         self.assertEqual(release.public_config(public)["program_vkey"], release.clock.EXPECTED_VKEY)
         self.assertEqual(public["gateway"]["L1_SETTLEMENT"], public["addresses"]["settlement"])
         self.assertEqual(public["gateway"]["L1_ALLOW_MOCK_PROOF"], "0")
+        self.assertEqual(public["gateway"]["DEPOSIT_PERMIT_TTL_SECS"], "1800")
+        self.assertEqual(public["clock"]["anchor_timeout_ms"], 60000)
+        self.assertEqual(set(public["operator_policy"]["settlement"]),
+                         {"sequencer", "enclave_signer", "governance"} | set(release.SETTLEMENT_POLICY))
         record = json.loads(self.output.with_suffix(".deployment.json").read_text())
         self.assertEqual(len(record["transactions"]), 10)
+        # Fake cast mines send n at block 100 + n; the settlement is the 6th send.
+        self.assertEqual(record["deploy_block"], 101)
+        self.assertEqual(record["settlement_block"], 106)
+        self.assertTrue(record["owned_test_chain"])
 
     def test_existing_sp1_gateway_is_reused(self):
         gateway = "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B"
@@ -199,6 +354,7 @@ class Order(CastFixture):
         partial = json.loads(self.output.with_suffix(".partial.json").read_text())
         self.assertEqual(sorted(partial["addresses"]), ["clock_verifier", "sp1_adapter", "sp1_gateway", "sp1_verifier"])
         self.assertEqual(partial["failed"], "settlement")
+        self.assertEqual(partial["deploy_block"], 101)
 
 
 if __name__ == "__main__":
@@ -255,9 +411,10 @@ class OwnedAnvil(unittest.TestCase):
         owner = accounts[0]
         operator_policy = {
             "settlement": {"sequencer": owner, "enclave_signer": accounts[1], "governance": owner,
-                           "liveness_timeout_blocks": 100, "challenge_window_blocks": 50,
+                           "liveness_timeout_blocks": 100, "challenge_grace_blocks": 50,
                            "challenge_bond_wei": 1000, "inclusion_deadline_seconds": 600,
-                           "final_settle_grace_blocks": 10},
+                           "final_settle_grace_blocks": 10, "progress_batches": 2,
+                           "slash_payout_cap_usdc": 1_000_000_000},
             "vault": {"gateway_signer": accounts[2]},
             "clock_verifier": {"configurator": owner},
             "sp1_gateway": {"owner": owner},
@@ -266,8 +423,9 @@ class OwnedAnvil(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         config = tmp / "deploy.json"
         config.write_text(json.dumps({"chain_id": 31337, "genesis_root": GENESIS, "sp1_gateway": None,
-                                      "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000},
-                                      "operator_policy": operator_policy}))
+                                      "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000,
+                                                "anchor_timeout_ms": 3_600_000},
+                                      "operator_policy": operator_policy, "deposit_permit_ttl_secs": 1800}))
         output = tmp / "public-config.json"
         code = deploy.main(["--config", str(config), "--rpc", url, "--output", str(output),
                             "--", "--unlocked", "--from", owner])
@@ -285,3 +443,15 @@ class OwnedAnvil(unittest.TestCase):
         self.assertEqual(observed["status"], "VERIFIED_AT_FINALIZED_BLOCK", observed)
         self.assertEqual(len(observed["contracts"]), 6)
         self.assertTrue(observed["scope"]["operator_and_settlement_policy_matches"])
+        getters = observed["contracts"]["settlement"]["getters"]
+        self.assertEqual(getters["ABI_VERSION()"], release.SETTLEMENT_ABI_VERSION)
+        self.assertEqual(getters["progressBatches()"], 2)
+        self.assertEqual(getters["slashPayoutCap()"], 1_000_000_000)
+        self.assertEqual(observed["contracts"]["clock_verifier"]["getters"]["anchorTimeoutMs()"], 3_600_000)
+        record = json.loads(output.with_suffix(".deployment.json").read_text())
+        # The settlement's liveness clock starts at its creation block.
+        progress = int(rpc(url, "eth_call", [{"to": public["addresses"]["settlement"],
+                                              "data": release.deployment_reader.selector("lastProgressBlock()")},
+                                             "latest"]), 16)
+        self.assertEqual(progress, record["settlement_block"])
+        self.assertLessEqual(record["deploy_block"], record["settlement_block"])

@@ -57,6 +57,14 @@ bir release kararı gerektirir.
 sürüm). Succinct varyantında yalnız `sp1_gateway`, `sp1_verifier` ve
 `operator_policy.sp1_gateway.owner` değerleri farklıdır.
 
+**17 Ekim 2026 notu:** `fork_dry_run.py`, settlement ABI version 3'ün yapılandırma
+anahtarlarına güncellendi: clock bölümüne `anchor_timeout_ms`, settlement
+politikasına `challenge_grace_blocks`, `progress_batches` ve
+`slash_payout_cap_usdc`, üst düzeye `deposit_permit_ttl_secs` eklendi;
+`challenge_window_blocks` kaldırıldı. Yukarıdaki
+JSON kayıtları önceki sözleşme setiyle ve script'in önceki sürümüyle üretildi;
+tarihsel kanıttır, yeni sözleşmeler için yeniden çalıştırılmadı.
+
 ## Doğrulanmayanlar
 
 - Gerçek Base Sepolia'ya deploy yapılmadı. Prover olmadan kontratlar boşta

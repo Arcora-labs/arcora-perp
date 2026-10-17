@@ -218,7 +218,7 @@ X-Api-Key: &lt;your api key&gt;
 Content-Type: application/json
 
 {"epochId": 3, "sealed": "0x01&hellip;"}</code></pre>
-<p>The response is an enclave-signed receipt. Keep it: it proves your order was accepted, and it is the evidence you would use in the <a href="architecture.html#challenge">on-chain inclusion challenge</a> if a settled window ever omitted your order.</p>
+<p>The response is an enclave-signed receipt. Keep it: it proves your order was accepted. For an account with a bound deposit address it also carries <code>l1Challenge</code> (<code>{chainId, settlement, beneficiary, signature}</code>), the enclave-signed authorization you would use in the <a href="architecture.html#challenge">on-chain inclusion challenge</a> if no settled window ever included or rejected your order. Opening a challenge publicly links the beneficiary address to the order hash.</p>
 
 <footer>
   <p>Arcora Perp is a <strong>public testnet alpha</strong> on Base Sepolia (chain ID 84532). All funds are test funds (open-mint MockUSDC). The contracts have not been audited by a third party — do not treat this as production software.</p>

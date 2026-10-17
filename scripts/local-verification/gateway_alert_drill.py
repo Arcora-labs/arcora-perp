@@ -17,6 +17,9 @@ EXPECTED_CASES = {
     # One episode, redelivered once per bounded attempt (ops_alerts DELIVERY_RETRY).
     "collector-503-retains-failure": 3,
 }
+# Every `ops_alerts::` test in the gateway binary, so a filter that silently
+# matches fewer tests fails the drill.
+EXPECTED_OPS_ALERT_TESTS = 10
 
 
 def main():
@@ -55,7 +58,7 @@ def main():
             events_valid = events_valid and event.get("schema") == "arcora.ops-alert.v1"
     passed = (
         exit_code == 0 and not timed_out and source_unchanged and events_valid
-        and len(summaries) == 1 and summaries[0][:5] == ("ok", "9", "0", "0", "0")
+        and len(summaries) == 1 and summaries[0][:5] == ("ok", str(EXPECTED_OPS_ALERT_TESTS), "0", "0", "0")
     )
     record = {
         "status": "PASS" if passed else "FAIL",

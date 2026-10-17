@@ -62,7 +62,7 @@ export function TestnetNotice() {
           </pre>
           <p className="banner__desc">
             The deposit itself is <strong>gateway-authorized</strong> (SEC-019): the vault
-            requires an <code>ownerCommit</code> + signature issued by{" "}
+            requires an <code>ownerCommit</code>, a permit expiry and a signature issued by{" "}
             <code>POST /v1/accounts/deposit/authorize</code>, so a bare{" "}
             <code>cast send</code> can no longer enter the vault. Use the in-app flow
             (<strong>Connect wallet → Deposit</strong>) — it authorizes and deposits for you.

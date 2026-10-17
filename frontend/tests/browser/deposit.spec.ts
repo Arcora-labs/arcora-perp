@@ -45,6 +45,7 @@ async function fixture(context: BrowserContext) {
           if (params![0] === 'finalized') { await pause('finality'); return { number: control.finalizedNumber, hash: '0x' + 'c8'.padStart(64, '0') }; }
           return { number: params![0], hash: '0x' + '64'.padStart(64, '0') };
         }
+        if (method === 'eth_call') return '0x'; // deposit dry run: the vault would accept
         throw new Error('Unexpected wallet method: ' + method);
       },
     } });
@@ -66,7 +67,7 @@ async function fixture(context: BrowserContext) {
     else if (path.startsWith('/v1/accounts/recovery/')) json = { ...SCOPE, owner: OWNER, authorizer: ADDRESS, recoveryNonce: generation };
     else if (path === '/v1/accounts/recovery') { generation++; json = { owner: OWNER, apiKey: NEW, recoveryNonce: generation, durability: 'confirmed' }; }
     else if (path === '/v1/accounts/withdrawals') json = { withdrawals: [], vault: VAULT };
-    else if (path === '/v1/accounts/deposit/authorize') json = { ownerCommit: OWNER, sig: '0x' + 'ab'.repeat(65) };
+    else if (path === '/v1/accounts/deposit/authorize') json = { ownerCommit: OWNER, sig: '0x' + 'ab'.repeat(65), validUntil: Math.floor(Date.now() / 1000) + 1800 };
     else if (path === '/v1/accounts/deposit/onchain') json = { status: 'credited', durability: 'confirmed', purpose: 'collateral', marketId: call.body.marketId, depositIds: [0], credited: '1000000000', account: { ...SCOPE, owner: OWNER, recoveryNonce: call.key === NEW ? generation : 0 } };
     else if (path.includes('book')) json = { marketId: 1, bids: [], asks: [] };
     else if (path.includes('oracle')) json = { marketId: 1, price: '350000000000', confidence: '1', publishTimeMs: Date.now() };
@@ -91,7 +92,7 @@ test('DP-01 full synthetic wallet pipeline retains exact calldata and scoped HTT
   const txs = await api(page, 'window.depositWallet.sends');
   expect(txs).toHaveLength(3);
   expect(txs.every((tx: any) => tx.chainId === '0x14a34')).toBe(true);
-  expect(txs.map((t: any) => t.data.slice(0, 10))).toEqual(['0x40c10f19', '0x095ea7b3', '0x2b681307']);
+  expect(txs.map((t: any) => t.data.slice(0, 10))).toEqual(['0x40c10f19', '0x095ea7b3', '0xa1059e34']);
   expect(txs[2].to.toLowerCase()).toBe(VAULT);
   const authorize = f.calls.find(c => c.path.endsWith('/deposit/authorize'))!;
   expect(authorize.key).toBe(OLD); expect(authorize.body).toEqual({ from: ADDRESS, amount: '1000000000', marketId: 0, purpose: 'collateral' });
@@ -255,7 +256,7 @@ test('DP-11 finalized failure is saved without sending, survives reload, and ret
   await page.getByRole('button', { name: 'Resume original deposit', exact: true }).click();
   await expect(page.locator('.walletflow .notice--ok')).toContainText('credited to your trading account');
   const sends = await api(page, 'window.depositWallet.sends');
-  expect(sends).toHaveLength(1); expect(sends[0].data.startsWith('0x2b681307')).toBe(true);
+  expect(sends).toHaveLength(1); expect(sends[0].data.startsWith('0xa1059e34')).toBe(true);
   expect(f.calls.filter(call => call.path.endsWith('/deposit/authorize'))).toHaveLength(2);
   expect(f.calls.filter(call => call.path.endsWith('/deposit/onchain')).map(call => call.body.txHash)).toEqual(['0x' + '4'.padStart(64, '0')]);
   expect(await api(page, 'Object.keys(localStorage).filter(k => k.startsWith("darkperp.deposit.resolved.v1:")).length')).toBe(1);

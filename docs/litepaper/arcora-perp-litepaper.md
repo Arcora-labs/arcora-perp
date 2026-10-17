@@ -8,6 +8,8 @@
 
 > **Source/status update — 2026-10-09:** The selected product model is a custodial alpha. The gateway holds spending keys and price-publisher authority; the development prover can access plaintext witnesses. PR #31 has real clock-proof evidence for its pinned source, while the July deployment record is older. Live infrastructure and target capacity were not verified by that source proof. In clock mode, all new financial requests (including closes, cancellation, margin changes and withdrawal creation) pause through settlement/recovery. Historical live and timing descriptions below are not fresh deployment evidence.
 
+> **Source update — 2026-10-17:** The contracts in this source report settlement ABI version 3: the consumed-deposit boundary with refunds in close-only, deposits that close at bond capacity, and the enclave-authorized challenge game with capped fines described in §4.4–4.5. They are not deployed yet; the July Base Sepolia deployment predates these rules.
+
 ## 1. Abstract
 
 Arcora Perp is a perpetual futures exchange built as an application-specific rollup. The matching engine runs inside an Intel TDX confidential VM: order terms are encrypted in the trader's browser to an attested enclave key, matched in milliseconds on a price-time-priority book, and acknowledged with an enclave-signed receipt. Trading activity is sealed into windows; each window is re-executed inside the SP1 zkVM, and the resulting Groth16 proof is verified on-chain before the new state root is accepted. Collateral sits in an on-chain vault, and withdrawals from settled state are claimable by anyone via Merkle proofs, permanently.
@@ -39,7 +41,7 @@ Arcora Perp splits the roles so each technology carries only the load it is good
 
 - The **TEE** is responsible for *confidentiality and speed*: private matching, millisecond acknowledgements, and an attested identity that signs receipts.
 - The **zk proof** is responsible for *correctness*: every settled state root must be reproduced by re-executing the engine inside a zkVM. Integrity does not rest on the hardware.
-- The **L1 contract** is responsible for *custody and escape hatches*: it holds the collateral, enforces state-root continuity, adjudicates challenges, and permits claims against already published withdrawal roots. Creating new exit roots still requires operator/prover service and governance during final wind-down.
+- The **L1 contract** is responsible for *custody and escape hatches*: it holds the collateral, enforces state-root continuity, adjudicates challenges, permits claims against already published withdrawal roots, and refunds deposits that settlement never consumed once close-only begins. Creating new exit roots still requires operator/prover service and governance during final wind-down.
 
 The result: a trader experiences CEX-like latency and CEX-like privacy, while the on-chain contract only ever advances to states that carry a validity proof. The pipeline, end to end:
 
@@ -95,13 +97,15 @@ USDC never sits with the operator: it sits in `CollateralVault`. A withdrawal is
 
 ### 4.4 The challenge game
 
-Soft finality is only as good as its enforcement. The operator posts a USDC bond with an on-chain floor of **5% of vault TVL** (`requiredBond()`, `BOND_BPS = 500`); settlement halts if the bond falls below the floor. A user holding an enclave-signed receipt can open an on-chain **inclusion challenge** (posting a 0.01 ETH challenge bond as an anti-grief measure). The sequencer then has a 300-block challenge window to prove, on-chain, that the receipted order was included in a settled window. If it cannot, the operator's bond is slashed — paid out pull-payment style — to the challenger.
+Soft finality is only as good as its enforcement. Every receipt for an account with a bound deposit address carries an enclave-signed **L1 challenge authorization**, bound to the chain, the settlement contract and a beneficiary: the account's deposit address. Once an hour has passed since the order's signed receive time (`inclusionDeadlineSecs`), anyone holding that authorization can open an on-chain **inclusion challenge**, staking 0.01 ETH as an anti-grief measure. Anyone can answer it by proving the order is in a settled window's ordered or rejected root; open challenges are enumerable on-chain and can be answered in batches. If no answer lands after two further windows have settled plus a two-hour grace (`progressBatches`, `challengeGraceBlocks`), the operator's USDC bond pays a capped fine (up to 1,000 USDC per order on the testnet, `slashPayoutCap`) to the beneficiary, pull-payment style, and the stake is returned. Settlement continues after a fine.
 
-This converts the millisecond receipt from a promise into an enforceable claim: silently dropping an acknowledged order costs the operator real collateral.
+The bond is sized to the vault, and **deposits close at bond capacity**: the vault admits a deposit only while 5% of its TVL (`requiredBond()`, `BOND_BPS = 500`) stays within the posted bond, so a bond covers about twenty times its size in deposits. Settlement itself never depends on the bond.
+
+This converts the millisecond receipt from a promise into an enforceable claim: silently dropping an acknowledged order costs the operator real collateral. A slow prover is not fined, because the gate counts settled windows, not elapsed time.
 
 ### 4.5 Liveness and forced exit
 
-If the sequencer stops settling for 7200 blocks (`livenessBlocks`), the contract enters forced-exit/close-only mode. Only withdrawals already included in published roots can be claimed independently with their Merkle data. Account balances and open positions are not withdrawal leaves. New exits need the operator/prover and, for finalSettle/finalExit, governance; the liveness timeout does not remove these dependencies.
+If the state root stops progressing for 43,200 blocks (about 24 hours, `livenessTimeoutBlocks`), or a landed deposit stays unconsumed by settlement for that long, anyone can switch the contract into irreversible close-only mode; governance can also enter it directly. The operator keeps an idle exchange live with empty keepalive settlements. In close-only, deposits that no settled window consumed are refunded at principal straight from the vault, permissionlessly and from public L1 data alone. Withdrawals already included in published roots can be claimed independently with their Merkle data. Account balances and open positions are not withdrawal leaves. New exits need the operator/prover and, for finalSettle/finalExit, governance; the liveness timeout does not remove these dependencies.
 
 ### 4.6 Crash safety
 
@@ -142,12 +146,12 @@ Matching and ordering run with privacy and integrity attested to Intel TDX hardw
 
 ### 6.3 What signed receipts guarantee
 
-An acknowledged order is a bonded commitment. Through the inclusion-challenge game (§4.4), omitting a receipted order from settlement is a slashable offense, adjudicated on-chain against the operator's 5%-of-TVL bond.
+An acknowledged order is a bonded commitment. Through the inclusion-challenge game (§4.4), omitting a receipted order from settlement draws a capped fine from the operator's bond, paid to the account's beneficiary and adjudicated on-chain. Deposits close at bond capacity, so the bond grows with the value it secures.
 
 ### 6.4 Current limitations (testnet alpha)
 
 1. **The zk prover is not yet TEE-attested.** It currently runs on a development workstation; the witness leaves the sequencer enclave sealed, but the prover machine's attestation measurement is a stub. Consequence, stated plainly: the plaintext window witness is exposed to operator-controlled prover hardware today, so the privacy perimeter currently includes that machine. State *integrity* is unaffected — the chain still accepts nothing without a valid proof. Roadmap fix: attestation-gated witness-key release to an x86_64 TDX prover.
-2. **Operator liveness is a single point of failure.** If the sequencer goes down, trading halts. Existing published claims remain available with their Merkle data. New withdrawal roots require the operator/prover and, in final wind-down, governance; the timeout alone does not make every balance independently withdrawable.
+2. **Operator liveness is a single point of failure.** If the sequencer goes down, trading halts. Existing published claims remain available with their Merkle data, and deposits that no settled window consumed are refunded from the vault once close-only begins. New withdrawal roots require the operator/prover and, in final wind-down, governance; the timeout alone does not make every balance independently withdrawable.
 3. **Ordering fairness is not yet zk-proven.** The proof attests correct *execution* of the sequenced operations; the *sequencing itself* is enclave-attested only. A matching-fairness proof ("Proof v2") — proving the ordering policy, not just the execution — is on the roadmap.
 4. **Clock proving has no accepted latency bound yet.** The old ~10–20 minute observation is not a current capacity guarantee. One proof per window, over a full-state witness, so hard finality lags soft finality by that interval and proving cost grows with total account count. A sparse-witness redesign (proof cost independent of total accounts) is on the roadmap.
 5. **No third-party audit yet.** The contracts and engine have been through internal multi-agent adversarial audits — 13 findings were remediated before alpha — but no independent firm has audited the system. Treat it accordingly.
