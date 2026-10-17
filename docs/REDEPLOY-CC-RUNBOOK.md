@@ -155,8 +155,9 @@ ZK-001 minors):
   from 0c: `ORACLE_SIGNER_KEY=… darkperp-gateway --print-genesis-root` prints
   `GENESIS_ROOT=0x…` and exits before any L1, attestation, prover or state-file
   access (a production boot only reaches its genesis log line after verifying a
-  live clock-bound settlement, so it cannot be used for this). It refuses the
-  built-in development oracle key. The root is the markets-only production
+  live clock-bound settlement, so it cannot be used for this). It refuses every
+  public development oracle key: the built-in default and any other default
+  Anvil account, even when set explicitly. The root is the markets-only production
   genesis: no sentinel deposit leaves (SEC-019), `oracle_pubkey` = that signer.
 - Dry-run `scripts/local-verification/deploy_clock_stack.py` against a local
   Anvil fork of Base Sepolia (`anvil --fork-url https://sepolia.base.org`),

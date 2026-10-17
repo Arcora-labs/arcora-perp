@@ -1649,26 +1649,29 @@ struct Gw {
     oracle_crosschecks: HashMap<u64, oracle_feed::crosscheck::CrosscheckGate>,
 }
 
-/// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
-/// Mirrors `default_settle_health`: a restored `Gw` re-derives it from the same env
-/// the original boot used, so the persisted `Market.oracle_pubkey` still matches. A
-/// SET-but-malformed `ORACLE_SIGNER_KEY` fails closed (exit) rather than silently
-/// signing with the dev key — `main()` validates it up front, so this only fires on
-/// a genuinely broken restore environment.
 /// `--print-genesis-root`: the markets-only production genesis root for the
 /// configured ORACLE_SIGNER_KEY (the root depends on it via each market's
-/// `oracle_pubkey`). Refuses the built-in development key, which would yield a
-/// root for a publisher nobody operates. Returns the process exit code.
+/// `oracle_pubkey`). Refuses every public development key — the built-in default
+/// and any other default Anvil account, even when set explicitly — since its root
+/// would pin a publisher anyone can sign as (`oracle_signer_is_public`, the same
+/// rule a production boot applies). Returns the process exit code.
 fn print_genesis_root() -> i32 {
     if std::env::args().count() != 2 {
         eprintln!("[genesis] usage: gateway --print-genesis-root");
         return 2;
     }
     match oracle_feed::signer_from_env_checked() {
-        Ok((_, false)) => {}
+        Ok((signer, is_default)) if !oracle_signer_is_public(&signer, is_default) => {}
         Ok((_, true)) => {
             eprintln!(
                 "[genesis] REFUSING: set ORACLE_SIGNER_KEY to the operator's oracle publisher key"
+            );
+            return 2;
+        }
+        Ok((_, false)) => {
+            eprintln!(
+                "[genesis] REFUSING: ORACLE_SIGNER_KEY is a public development key (a default \
+                 Anvil account); set it to the operator's secret oracle publisher key"
             );
             return 2;
         }
@@ -1685,6 +1688,12 @@ fn print_genesis_root() -> i32 {
     0
 }
 
+/// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
+/// Mirrors `default_settle_health`: a restored `Gw` re-derives it from the same env
+/// the original boot used, so the persisted `Market.oracle_pubkey` still matches. A
+/// SET-but-malformed `ORACLE_SIGNER_KEY` fails closed (exit) rather than silently
+/// signing with the dev key — `main()` validates it up front, so this only fires on
+/// a genuinely broken restore environment.
 fn boot_oracle_signer() -> k256::ecdsa::SigningKey {
     oracle_feed::signer_from_env().unwrap_or_else(|e| {
         eprintln!("[fatal] oracle publisher signer: {e}");
