@@ -61,10 +61,15 @@ contract ClockBoundVerifierTest is MiniTest {
         returns (ClockBoundVerifier clock, DarkPerpSettlement st)
     {
         clock = new ClockBoundVerifier(inner, maxWindowMs, skewMs, timeoutMs);
-        st = new DarkPerpSettlement(
+        st = _settlement(clock, gov);
+        clock.bindSettlement(IClockSettlement(address(st)));
+    }
+
+    /// Kept separate from `_stack` so neither frame exceeds the non-viaIR stack limit.
+    function _settlement(ClockBoundVerifier clock, address gov) internal returns (DarkPerpSettlement) {
+        return new DarkPerpSettlement(
             SettlementTestConfig.legacy(address(this), address(0x123), clock, ROOT, 100, 50, 1 ether, 600, gov, 10)
         );
-        clock.bindSettlement(IClockSettlement(address(st)));
     }
 
     function base() internal view returns (bytes32) {

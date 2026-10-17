@@ -513,11 +513,15 @@ contract DeployVerifierEnvTest is MiniTest {
         assertEq(s.vault(), address(paired), "paired vault bound");
         vm.expectRevert(bytes("vault set"));
         s.setVault(address(paired));
-        // only the sequencer binds
-        DarkPerpSettlement s2 = new DarkPerpSettlement(_cfg(new ClockBoundVerifier(mock, 30_000, 30_000, 3_600_000)));
-        CollateralVault v2 = new CollateralVault(address(s2), address(usdc), address(0x6A7E));
+    }
+
+    function test_only_the_sequencer_binds_the_vault() public {
+        MockZkVerifier mock = new MockZkVerifier();
+        MockUSDC usdc = new MockUSDC();
+        DarkPerpSettlement s = new DarkPerpSettlement(_cfg(new ClockBoundVerifier(mock, 30_000, 30_000, 3_600_000)));
+        CollateralVault v = new CollateralVault(address(s), address(usdc), address(0x6A7E));
         vm.prank(address(0xBAD));
         vm.expectRevert(DarkPerpSettlement.NotSequencer.selector);
-        s2.setVault(address(v2));
+        s.setVault(address(v));
     }
 }
