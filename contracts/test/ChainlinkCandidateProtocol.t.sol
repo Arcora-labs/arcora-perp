@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 import {ChainlinkCandidateFixture} from "./ChainlinkOracleVerifier.t.sol";
 import {ChainlinkOracleVerifier} from "../src/ChainlinkOracleVerifier.sol";
-import {ClockBoundVerifier, IClockSettlement} from "../src/ClockBoundVerifier.sol";
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
 import {ChainlinkCandidateProtocolVector as Vector} from "./fixtures/ChainlinkCandidateProtocolVector.sol";
 
@@ -44,11 +43,7 @@ contract ChainlinkCandidateProtocolTest is ChainlinkCandidateFixture {
         internal
         returns (bytes32 cb, ChainlinkOracleVerifier.Entry[] memory e)
     {
-        o = new ChainlinkOracleVerifier(inner, don, v.policyHash, address(uptime), 10);
-        c = new ClockBoundVerifier(o, 10_000, 2_000);
-        s = new DarkPerpSettlement(address(this), address(0x123), c, R, 100, 50, 1 ether, 600, address(this), 10);
-        c.bindSettlement(IClockSettlement(address(s)));
-        o.bindClock(c);
+        deployStack(new ChainlinkOracleVerifier(inner, don, v.policyHash, address(uptime), 10));
         vm.warp(v.lastMs / 1000);
         bytes32 receipt = c.register(0, R, base(), firstMs, v.lastMs, v.timedOps, 0);
         cb = keccak256(abi.encode(c.DOMAIN(), base(), receipt));

@@ -4,109 +4,202 @@ pragma solidity ^0.8.24;
 import {Vm} from "../test/utils/MiniTest.sol";
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
 import {CollateralVault} from "../src/CollateralVault.sol";
+import {ClockBoundVerifier, IClockSettlement} from "../src/ClockBoundVerifier.sol";
 import {MockUSDC} from "../src/mocks/MockUSDC.sol";
-import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 import {IZkVerifier} from "../src/interfaces/IZkVerifier.sol";
 import {DeployGuard} from "./DeployGuard.sol";
 
+/// The one cheatcode this script needs beyond MiniTest's `Vm` subset.
+interface DeployCheats {
+    function getCode(string calldata artifactPath) external view returns (bytes memory);
+}
+
 /// @title Deploy
-/// @notice Deploys the dark-perp L1 stack (Phase 0 / Sepolia testnet) and wires
-/// it: verifier → settlement → vault. Parameters come from env vars with sane
-/// defaults so a bare `forge script` simulates cleanly.
+/// @notice Testnet / dev harness ONLY: deploys a clock-bound stack over the unsound
+/// MockZkVerifier and wires it, in order: MockZkVerifier → ClockBoundVerifier →
+/// DarkPerpSettlement → MockUSDC → CollateralVault → setVault → bindSettlement →
+/// seed mint (+ optional bond). Release deployments use
+/// `scripts/local-verification/deploy_clock_stack.py`, the only path the release
+/// manifest's observe-target checks; this script refuses to wire any other verifier.
 ///
 /// Usage (dry run):   forge script script/Deploy.s.sol
 /// Usage (broadcast): PRIVATE_KEY=0x.. forge script script/Deploy.s.sol \
-///                      --rpc-url $SEPOLIA_RPC --broadcast
+///                      --rpc-url $BASE_SEPOLIA_RPC --broadcast
+///
+/// Block counts assume Base's 2 s blocks (1,800 blocks ≈ 1 hour).
 ///
 /// Env (optional with defaults, except where noted):
 ///   PRIVATE_KEY      deployer key. REQUIRED off the local anvil chain (31337);
 ///                    defaults to anvil account #0 only for a local simulation
-///   ENCLAVE_SIGNER   secp256k1 address the enclave signs receipts with
-///   GATEWAY_SIGNER   secp256k1 address the gateway signs deposit authorizations with
-///                    (SEC-019 Task 6c). REQUIRED off the local anvil chain; defaults
-///                    to the sequencer only for a local simulation
+///   ENCLAVE_SIGNER   secp256k1 address the enclave signs receipts and challenge
+///                    authorizations with. REQUIRED off 31337 (local default: sequencer)
+///   GATEWAY_SIGNER   secp256k1 address the gateway signs deposit permits with.
+///                    REQUIRED off 31337 (local default: sequencer)
+///   GOVERNANCE       wind-down / close-only governance. REQUIRED off 31337
+///                    (local default: sequencer)
 ///   ALLOW_PUBLIC_DEV_KEYS  set to 1 to accept a default anvil account as deployer or
 ///                    GATEWAY_SIGNER off the local chain (fork dry runs only, UNSAFE)
-///   GENESIS_ROOT     initial state root
-///   LIVENESS_BLOCKS  close-only liveness timeout (default 7200 ≈ 1 day)
-///   CHALLENGE_BLOCKS inclusion challenge window (default 300 ≈ 1 hr)
+///   ALLOW_MOCK_VERIFIER  set to 1 to deploy the mock on a chain outside DeployGuard's
+///                    testnet allowlist (UNSAFE)
+///   GENESIS_ROOT     initial state root. REQUIRED (non-zero) off 31337
+///   LIVENESS_BLOCKS  close-only liveness timeout (default 43200 ≈ 24 h)
+///   CHALLENGE_GRACE_BLOCKS  slash grace after the progress gate (default 3600 ≈ 2 h)
 ///   CHALLENGE_BOND   challenger stake in wei (default 0.01 ether)
-///   INCLUSION_DEADLINE_SECS  §2 inclusion SLA before an order is challengeable (default 600)
-///   VERIFIER         address of an already-deployed real verifier (e.g. the
-///                    SP1ZkVerifier) to bind; unset/zero deploys MockZkVerifier
-///   GOVERNANCE       address allowed to call `finalSettle` (default: sequencer)
-///   FINAL_SETTLE_GRACE_BLOCKS  blocks after close-only before `finalSettle` is
-///                    allowed (default 300)
+///   INCLUSION_DEADLINE_SECS  seconds after receipt before an order is challengeable
+///                    (default 3600)
+///   FINAL_SETTLE_GRACE_BLOCKS  blocks after close-only before `finalSettle`
+///                    (default 300 ≈ 10 min)
+///   PROGRESS_BATCHES phase-0 batches a challenge must outlive before a slash (default 2)
+///   SLASH_PAYOUT_CAP USDC base units one slash may pay (default 1,000e6)
+///   MAX_WINDOW_MS    clock: widest timed window (default 30000, minimum 400)
+///   CLOCK_SKEW_MS    clock: register-time skew bound (default 30000, minimum 400)
+///   ANCHOR_TIMEOUT_MS  clock: anchor age before cancel (default 3600000)
+///   INITIAL_BOND     USDC base units to post as the sequencer bond (default 0)
 ///
-/// NOTE: without VERIFIER this ships MockZkVerifier — set VERIFIER to the real
-/// SP1/Risc0 verifier before any non-testnet deploy (see docs/PROVING.md).
+/// Refused: VERIFIER or INNER_VERIFIER set (this harness never wires a real verifier).
 contract Deploy {
     Vm internal constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
     // Anvil account #0 (a published key): the local-simulation default deployer.
     uint256 internal constant ANVIL_PK = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
     uint256 internal constant LOCAL_CHAIN_ID = 31337;
+    /// USDC seeded to the sequencer: 1,000,000 USDC (6 decimals).
+    uint256 internal constant SEED_USDC = 1_000_000_000_000;
+    uint256 internal constant MIN_CLOCK_PARAM = 400;
 
     function run()
         external
-        returns (DarkPerpSettlement settlement, CollateralVault vault, IZkVerifier verifier, MockUSDC usdc)
+        returns (DarkPerpSettlement settlement, CollateralVault vault, ClockBoundVerifier clock, MockUSDC usdc)
     {
+        // Preflight, all before any broadcast, in this order: external verifier, deployer
+        // key, gateway signer, mock guard, settlement parameters, clock parameters.
+        _refuseExternalVerifier();
         uint256 pk = _deployerKey();
         address sequencer = vm.addr(pk);
-        // Preflight before any broadcast: a missing or public signer fails up front. Not
-        // kept in a named local, to stay under the non-viaIR stack limit.
         _gatewaySigner(sequencer);
-        address enclaveSigner = vm.envOr("ENCLAVE_SIGNER", sequencer);
-        bytes32 genesis = bytes32(vm.envOr("GENESIS_ROOT", uint256(0)));
-        uint256 liveness = vm.envOr("LIVENESS_BLOCKS", uint256(7200));
-        uint256 challengeWindow = vm.envOr("CHALLENGE_BLOCKS", uint256(300));
-        uint256 challengeBond = vm.envOr("CHALLENGE_BOND", uint256(0.01 ether));
-        uint256 inclusionDeadline = vm.envOr("INCLUSION_DEADLINE_SECS", uint256(600));
-        address governance = vm.envOr("GOVERNANCE", sequencer);
-        uint256 finalSettleGrace = vm.envOr("FINAL_SETTLE_GRACE_BLOCKS", uint256(300));
-
-        // Verifier selection: a set VERIFIER binds a real (e.g. SP1) verifier;
-        // unset/zero deploys MockZkVerifier (dev/testnet only).
-        address verifierEnv = vm.envOr("VERIFIER", address(0));
-        if (verifierEnv == address(0)) {
-            // audit DP-007: MockZkVerifier accepts proof == publicCommitment (unsound). Never
-            // wire it on a real-value chain — the sequencer could publish any withdrawals root
-            // and drain the vault. Testnets only, unless the operator explicitly overrides.
-            // (A real VERIFIER needs no Mock guard.)
-            require(
-                DeployGuard.isTestnet(block.chainid) || vm.envOr("ALLOW_MOCK_VERIFIER", uint256(0)) == 1,
-                "Deploy: MockZkVerifier is unsound; refusing on a non-testnet chain (set ALLOW_MOCK_VERIFIER=1 to override, UNSAFE)"
-            );
-        }
+        // MockZkVerifier accepts proof == commitment (unsound): testnets only, unless
+        // the operator explicitly overrides.
+        require(
+            DeployGuard.isTestnet(block.chainid) || vm.envOr("ALLOW_MOCK_VERIFIER", uint256(0)) == 1,
+            "Deploy: MockZkVerifier is unsound; refusing on a non-testnet chain (set ALLOW_MOCK_VERIFIER=1 to override, UNSAFE)"
+        );
+        DarkPerpSettlement.Config memory cfg = _config(sequencer);
+        (uint64 maxWindowMs, uint64 clockSkewMs, uint64 anchorTimeoutMs) = _clockParams();
+        uint256 initialBond = vm.envOr("INITIAL_BOND", uint256(0));
 
         vm.startBroadcast(pk);
 
-        verifier = verifierEnv == address(0) ? IZkVerifier(address(new MockZkVerifier())) : IZkVerifier(verifierEnv);
-        settlement = new DarkPerpSettlement(
-            sequencer,
-            enclaveSigner,
-            verifier,
-            genesis,
-            liveness,
-            challengeWindow,
-            challengeBond,
-            inclusionDeadline,
-            governance,
-            finalSettleGrace
+        IZkVerifier mock = IZkVerifier(_create("MockZkVerifier.sol:MockZkVerifier", ""));
+        clock = ClockBoundVerifier(
+            _create(
+                "ClockBoundVerifier.sol:ClockBoundVerifier", abi.encode(mock, maxWindowMs, clockSkewMs, anchorTimeoutMs)
+            )
         );
-        // USDC is the collateral asset (6 decimals). MockUSDC ships an open faucet
-        // for the testnet — replace with the canonical USDC address before mainnet.
-        usdc = new MockUSDC();
-        // SEC-019 (Task 6c): the gateway key that authorizes deposit entry. Only a local
-        // simulation may default it to the sequencer (`_gatewaySigner`).
-        vault = new CollateralVault(address(settlement), address(usdc), _gatewaySigner(sequencer));
+        cfg.verifier = clock;
+        settlement = DarkPerpSettlement(_create("DarkPerpSettlement.sol:DarkPerpSettlement", abi.encode(cfg)));
+        // USDC is the collateral asset (6 decimals). MockUSDC ships an open faucet.
+        usdc = MockUSDC(_create("MockUSDC.sol:MockUSDC", ""));
+        vault = CollateralVault(
+            _create(
+                "CollateralVault.sol:CollateralVault",
+                abi.encode(address(settlement), address(usdc), _gatewaySigner(sequencer))
+            )
+        );
         settlement.setVault(address(vault));
+        clock.bindSettlement(IClockSettlement(address(settlement)));
 
-        // seed the deployer (sequencer) with 1,000,000 USDC so it can post the bond
-        // and the demo can fund accounts without an external faucet.
-        usdc.mint(sequencer, 1_000_000_000_000);
+        // seed the deployer (sequencer) so it can post the bond and fund demo accounts.
+        usdc.mint(sequencer, SEED_USDC + initialBond);
+        if (initialBond != 0) {
+            require(usdc.approve(address(settlement), initialBond), "Deploy: bond approve failed");
+            settlement.postBond(initialBond);
+        }
 
         vm.stopBroadcast();
+
+        _checkWiring(settlement, vault, clock, mock);
+    }
+
+    /// CREATE from the compiled artifact's creation code plus `args`, bubbling a
+    /// constructor revert. Loading the code through the cheatcode (instead of `new`)
+    /// keeps this script's own bytecode from embedding every contract it deploys.
+    function _create(string memory artifact, bytes memory args) internal returns (address addr) {
+        bytes memory code = abi.encodePacked(DeployCheats(address(vm)).getCode(artifact), args);
+        assembly {
+            addr := create(0, add(code, 0x20), mload(code))
+            if and(iszero(addr), gt(returndatasize(), 0)) {
+                let p := mload(0x40)
+                returndatacopy(p, 0, returndatasize())
+                revert(p, returndatasize())
+            }
+        }
+        require(addr != address(0), "Deploy: contract creation failed");
+    }
+
+    /// The settlement parameters (the verifier is filled in once the clock exists).
+    function _config(address sequencer) internal view returns (DarkPerpSettlement.Config memory c) {
+        bool local = block.chainid == LOCAL_CHAIN_ID;
+        c.sequencer = sequencer;
+        c.enclaveSigner = _requiredOffLocal("ENCLAVE_SIGNER", sequencer, local);
+        c.governance = _requiredOffLocal("GOVERNANCE", sequencer, local);
+        c.genesisRoot = bytes32(vm.envOr("GENESIS_ROOT", uint256(0)));
+        require(local || c.genesisRoot != bytes32(0), "Deploy: GENESIS_ROOT is required off the local anvil chain");
+        c.livenessTimeoutBlocks = vm.envOr("LIVENESS_BLOCKS", uint256(43_200));
+        c.challengeGraceBlocks = vm.envOr("CHALLENGE_GRACE_BLOCKS", uint256(3_600));
+        c.challengeBond = vm.envOr("CHALLENGE_BOND", uint256(0.01 ether));
+        c.inclusionDeadlineSecs = vm.envOr("INCLUSION_DEADLINE_SECS", uint256(3_600));
+        c.finalSettleGraceBlocks = vm.envOr("FINAL_SETTLE_GRACE_BLOCKS", uint256(300));
+        c.progressBatches = vm.envOr("PROGRESS_BATCHES", uint256(2));
+        c.slashPayoutCap = vm.envOr("SLASH_PAYOUT_CAP", uint256(1_000e6));
+    }
+
+    function _clockParams() internal view returns (uint64 maxWindowMs, uint64 clockSkewMs, uint64 anchorTimeoutMs) {
+        uint256 w = vm.envOr("MAX_WINDOW_MS", uint256(30_000));
+        uint256 k = vm.envOr("CLOCK_SKEW_MS", uint256(30_000));
+        uint256 t = vm.envOr("ANCHOR_TIMEOUT_MS", uint256(3_600_000));
+        require(
+            w >= MIN_CLOCK_PARAM && k >= MIN_CLOCK_PARAM && t >= MIN_CLOCK_PARAM,
+            "Deploy: clock parameters must be at least 400 ms"
+        );
+        require(
+            w <= type(uint64).max && k <= type(uint64).max && t <= type(uint64).max,
+            "Deploy: clock parameter exceeds uint64"
+        );
+        return (uint64(w), uint64(k), uint64(t));
+    }
+
+    /// This harness only ever wires its own clock over the mock. A real verifier goes
+    /// through the reviewed Python deploy kit instead.
+    function _refuseExternalVerifier() internal view {
+        require(
+            vm.envOr("VERIFIER", address(0)) == address(0) && vm.envOr("INNER_VERIFIER", address(0)) == address(0),
+            "Deploy: VERIFIER/INNER_VERIFIER are not supported here; deploy real verifiers with scripts/local-verification/deploy_clock_stack.py and check them with release_manifest.py observe-target"
+        );
+    }
+
+    /// Post-conditions: the verifier is this clock over this mock, the clock is bound to
+    /// the settlement, and the vault and settlement name each other.
+    function _checkWiring(
+        DarkPerpSettlement settlement,
+        CollateralVault vault,
+        ClockBoundVerifier clock,
+        IZkVerifier mock
+    ) internal view {
+        require(address(settlement.verifier()) == address(clock), "Deploy: settlement verifier is not the clock");
+        require(address(clock.settlement()) == address(settlement), "Deploy: clock is not bound to the settlement");
+        require(address(clock.innerVerifier()) == address(mock), "Deploy: clock inner verifier is not the mock");
+        require(clock.proofVersion() == 2, "Deploy: clock proof version");
+        require(
+            settlement.vault() == address(vault) && vault.settlement() == address(settlement),
+            "Deploy: vault and settlement are not paired"
+        );
+    }
+
+    /// An address that must be set explicitly off the local chain; locally it defaults.
+    function _requiredOffLocal(string memory name, address localDefault, bool local) internal view returns (address a) {
+        a = vm.envOr(name, address(0));
+        if (local) return a == address(0) ? localDefault : a;
+        require(a != address(0), string.concat("Deploy: ", name, " is required off the local anvil chain"));
     }
 
     /// The deployer (sequencer) key. Off the local anvil chain it must be set explicitly
@@ -121,7 +214,7 @@ contract Deploy {
         );
     }
 
-    /// The vault's deposit-authorization signer. Off the local anvil chain it must be set
+    /// The vault's deposit-permit signer. Off the local anvil chain it must be set
     /// explicitly and must not be a default anvil account (the gateway's demo key is #0).
     function _gatewaySigner(address sequencer) internal view returns (address signer) {
         signer = vm.envOr("GATEWAY_SIGNER", address(0));
