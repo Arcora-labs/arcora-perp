@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
-import type { RefundableDeposit, WithdrawalEntry } from "../domain/types";
+import type { RefundableDeposit, TrackedOrder, WithdrawalEntry } from "../domain/types";
 import { validateWithdrawal } from "../domain/withdrawal";
 import { validateRefund } from "../domain/refund";
 import {
@@ -13,6 +13,14 @@ import {
   serializeClaimBundles,
   type ClaimBundle,
 } from "../domain/claimBundle";
+import {
+  challengeKitFileName,
+  loadChallengeKits,
+  newChallengeKits,
+  rememberChallengeKits,
+  serializeChallengeKits,
+  type ChallengeKit,
+} from "../domain/challengeKit";
 import type { DarkPerpClient } from "../api/client";
 import {
   BASE_SEPOLIA_CHAIN_ID,
@@ -231,6 +239,7 @@ export function AccountPanel() {
 
       <WithdrawalsSection client={client} />
       <RefundsSection client={client} closeOnly={state.mode === "CloseOnly"} />
+      <ChallengeKitSection orders={state.orders} />
     </div>
   );
 }
@@ -761,8 +770,80 @@ export function RefundsSection({ client, closeOnly }: { client: DarkPerpClient; 
         Send the refund from the connected wallet, or run the copied{" "}
         <code>cast send</code> command from any funded wallet (replace{" "}
         <code>&lt;YOUR_KEY&gt;</code>). Anyone can send it; the funds always go to the
-        deposit's address.
+        deposit's address. Without the gateway,{" "}
+        <code>scripts/claim/refund_deposit.py</code> finds your deposits on-chain and
+        prints the same call.
       </p>
+    </div>
+  );
+}
+
+// ── L1 inclusion-challenge kits ───────────────────────────────────────────────
+
+/// Kits listed one by one; older ones are still in the export.
+const LISTED_KITS = 20;
+
+/// Accepted orders' L1 challenge kits, kept in this browser (the accept
+/// response's copy is stored by the client; this also keeps the kits of orders
+/// the gateway lists, e.g. ones placed elsewhere). With a kit the user can open
+/// `challengeInclusion` for an order no settled batch includes or rejects,
+/// without the operator. Hidden while there is none. Exported for tests.
+export function ChallengeKitSection({ orders }: { orders: TrackedOrder[] }) {
+  const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits());
+  // Order hashes already kept or tried, so a state push re-verifies nothing.
+  const seen = useRef<Set<string> | null>(null);
+  seen.current ??= new Set(kits.map((k) => k.orderHash.toLowerCase()));
+
+  useEffect(() => {
+    const fresh = newChallengeKits(orders.map((o) => o.receipt), seen.current!);
+    if (fresh.length === 0) return;
+    if (rememberChallengeKits(fresh)) setKits(loadChallengeKits());
+    else setKits((previous) => [...previous, ...fresh]); // storage denied: offer them for this session
+  }, [orders]);
+
+  if (kits.length === 0) return null;
+  const newest = [...kits].sort((a, b) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo);
+  const listed = newest.slice(0, LISTED_KITS);
+
+  return (
+    <div className="withdrawals" aria-label="Challenge kits">
+      <h3 className="card__title">Challenge kits</h3>
+      <p className="muted small">
+        If a settled batch never includes or rejects an accepted order, its kit lets you
+        open the on-chain inclusion challenge without the operator (check it with{" "}
+        <code>scripts/claim/challenge_inclusion.py</code>). Keep the files private:
+        opening a challenge publicly links your deposit address to the order.
+      </p>
+      <ul className="withdrawals__list">
+        {listed.map((k) => (
+          <li key={k.orderHash} className="withdrawals__item">
+            <div className="withdrawals__row muted small mono">
+              <span>order {shortHash(k.orderHash)}</span>
+              <span>receipt #{k.seqNo}</span>
+            </div>
+            <div className="row">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                aria-label={`Download challenge kit for order ${shortHash(k.orderHash)}`}
+                onClick={() => downloadText(challengeKitFileName(k), serializeChallengeKits([k]))}
+              >
+                Download challenge kit
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {newest.length > listed.length && (
+        <p className="muted small">{newest.length - listed.length} older kits are only in the export.</p>
+      )}
+      <button
+        type="button"
+        className="btn btn--ghost"
+        onClick={() => downloadText("arcora-challenge-kits.json", serializeChallengeKits(newest))}
+      >
+        Export all challenge kits ({kits.length})
+      </button>
     </div>
   );
 }

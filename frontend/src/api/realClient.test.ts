@@ -12,6 +12,8 @@ import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { x25519KeypairFromIkm, domainAad, unseal } from "./sealedBox";
+import { CHALLENGE_KIT_STORAGE_KEY } from "../domain/challengeKit";
+import { CHALLENGE_KIT_VECTORS as VECTORS } from "../testSupport/challengeKitVectors";
 import {
   RealDarkPerpClient,
   serializeOrderTerms,
@@ -169,6 +171,7 @@ let authorizeBody: unknown = null; // per-test override of the response body (nu
 const PERMIT_VALID_UNTIL = 1_760_001_800; // unix seconds; the gateway's permit expiry
 let stateResponse: unknown = wireState; // per-test override of the /api/state snapshot
 let v1OrdersResponse: unknown = { orders: [] }; // GET /v1/orders (own-account read)
+let orderPostResponse: unknown = null; // per-test override of the POST /v1/orders receipt
 let v1PositionsResponse: unknown = { positions: [] }; // GET /v1/positions (own-account read)
 let accountsStatus = 200; // per-test override: /v1 account registration failure
 // One-shot gate: parks the NEXT GET /v1/orders (payload captured at REQUEST
@@ -248,7 +251,7 @@ function installFetch() {
         return json({ owner: OWNER_HEX, ...meFields });
       }
       if (path === "/v1/orders" && method === "POST") {
-        return json({ orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
+        return json(orderPostResponse ?? { orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
       }
       // SEC-025-E1 own-account reads — authenticated per account, like the gateway.
       if ((path === "/v1/orders" || path === "/v1/positions") && method === "GET") {
@@ -394,6 +397,7 @@ beforeEach(() => {
   authorizeBody = null;
   stateResponse = wireState;
   v1OrdersResponse = { orders: [] };
+  orderPostResponse = null;
   v1PositionsResponse = { positions: [] };
   v1OrdersGate = null;
   accountsStatus = 200;
@@ -2199,6 +2203,64 @@ describe("clock admission status", () => {
     const client = await bootstrapClient();
     lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: { ...wireState, clockAdmission } }) });
     expect(client.getState().clockAdmission).toEqual(expected);
+    client.dispose();
+  });
+});
+
+// The user-held L1 challenge kit: kept from the accept response (the copy bound
+// to the beneficiary at acceptance) and parsed from stored /v1 receipts.
+describe("L1 challenge kits", () => {
+  const order = { marketId: 0, side: "Sell", size: 250_000_000n, limitPrice: 6_450_000_000_000n, tif: "Fok", reduceOnly: true } as const;
+  const savedKits = () => JSON.parse(localStorage.getItem(CHALLENGE_KIT_STORAGE_KEY) ?? "[]");
+
+  it("placeOrder keeps the accept response's kit in this browser and sends it nowhere", async () => {
+    orderPostResponse = VECTORS.acceptReceipt;
+    const client = await bootstrapClient();
+    const before = calls.length;
+    const receipt = await client.placeOrder(order);
+    expect(receipt.seqNo).toBe(0);
+    expect(savedKits()).toEqual([{ ...VECTORS.kit, createdAt: expect.any(String) }]);
+    const signature = VECTORS.kit.l1Challenge.signature;
+    for (const c of calls.slice(before)) expect(JSON.stringify(c)).not.toContain(signature.slice(2, 40));
+    client.dispose();
+  });
+
+  it("keeps nothing for an accept response without a verifiable authorization", async () => {
+    for (const response of [
+      { ...VECTORS.acceptReceipt, l1Challenge: null },
+      { ...VECTORS.acceptReceipt, seqNo: 1 },
+    ]) {
+      orderPostResponse = response;
+      const client = await bootstrapClient();
+      await client.placeOrder(order);
+      expect(savedKits()).toEqual([]);
+      client.dispose();
+    }
+  });
+
+  it("denied storage never fails an accepted order", async () => {
+    orderPostResponse = VECTORS.acceptReceipt;
+    const client = await bootstrapClient();
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("denied"); });
+    expect((await client.placeOrder(order)).seqNo).toBe(0);
+    client.dispose();
+  });
+
+  it("maps a stored receipt's l1Challenge, drops a malformed one and keeps an explicit null", async () => {
+    const withKit = (id: string, hex: string, l1Challenge: unknown) => ({
+      ...v1Order, orderId: id, orderHash: "0x" + hex.repeat(32),
+      receipt: { ...v1Order.receipt, orderHash: "0x" + hex.repeat(32), l1Challenge },
+    });
+    v1OrdersResponse = { orders: [
+      withKit("k1", "a1", { ...VECTORS.kit.l1Challenge, extra: 1 }),
+      withKit("k2", "a2", { ...VECTORS.kit.l1Challenge, chainId: "84532" }),
+      withKit("k3", "a3", null),
+    ] };
+    const client = await bootstrapClient();
+    const orders = await client.getOrders();
+    expect(orders[0].receipt.l1Challenge).toEqual(VECTORS.kit.l1Challenge);
+    expect("l1Challenge" in orders[1].receipt).toBe(false);
+    expect(orders[2].receipt.l1Challenge).toBeNull();
     client.dispose();
   });
 });

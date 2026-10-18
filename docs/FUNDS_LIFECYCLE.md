@@ -183,6 +183,63 @@ Python tests come from `cast`.
   close-only they are refunded from the vault (next section).
 - This is not a data-availability archive.
 
+## Challenge kit for an order the sequencer never settles
+
+An accepted order's receipt carries `l1Challenge`, the enclave's authorization to
+open `challengeInclusion` for that order (docs/API.md, § L1 inclusion challenges).
+If no settled batch ever includes or rejects the order, the user needs this
+authorization after the fact, possibly when the gateway no longer answers. The web
+client keeps it:
+
+- When `POST /v1/orders` accepts an order, the client stores the order's challenge
+  kit (`arcora.challenge-kit.v1`) in this browser's storage. The kit holds the
+  receipt fields `challengeInclusion` takes (`orderHash`, `seqNo`, `recvTimeMs`,
+  `batchIdHint`), the receipt's `enclaveSigner` and `l1Challenge` (`chainId`,
+  `settlement`, `beneficiary`, `signature`). The accept response's copy is kept
+  because it names the address bound at acceptance.
+- The account panel also keeps the kits of orders the gateway lists with an
+  authorization, for example orders placed from another browser. Kits are merged
+  by order hash, and the first copy is kept.
+- A kit is kept only when its signature recovers to the receipt's enclave signer.
+  Receipts without an authorization (`null` when the account has no bound deposit
+  address) produce no kit.
+- **Download challenge kit** saves one order's kit. **Export all challenge kits**
+  saves every kit kept so far, including orders the gateway no longer lists. Kits
+  are never sent anywhere. If browser storage is denied, the panel still offers
+  the kits of the orders it can see, for that session only.
+
+The kit file has the shape of a receipt, so the gateway-free tool reads it as is,
+one kit or the exported array:
+
+```sh
+python3 scripts/claim/challenge_inclusion.py arcora-challenge-84532-0-0c164689.json \
+  --rpc https://sepolia.base.org
+```
+
+The tool recomputes `challengeAuthDigest` and recovers the signer offline. With
+`--rpc` it reads the settlement (chain, `enclaveSigner()`, the on-chain digest,
+close-only, whether the order's challenge is open or resolved, `challengeBond()`
+and the ripeness time). It then prints the `cast send … challengeInclusion(…)
+--value <bond>` call, or the slash, release or claim call for a later stage, with a
+`<YOUR_SIGNER>` placeholder. It never signs or sends.
+
+`scripts/challenge/fixtures/challenge-kit-vectors.json` pins the browser format to
+the tool. `frontend/src/domain/challengeKit.test.ts` builds its `kit` from its
+`acceptReceipt`. `scripts/challenge/test_challenge_kit.py` runs that kit, and
+tampered copies of it, through `challenge_inclusion.py`. Authorization A in the
+fixture is the vector that `crates/gateway/src/challenge_auth.rs` and
+`contracts/test/CrossLayer.t.sol` pin.
+
+**Limits.**
+- A kit exists only for orders this browser placed, or saw in the account panel
+  while the gateway listed them. A browser that cleared its storage without a
+  download has nothing to recover.
+- Opening a challenge publishes the beneficiary next to the order hash on L1. Keep
+  the files private unless you intend to use them.
+- A challenge does not execute the order. Anyone may answer it by proving the
+  order's inclusion or rejection; if nobody does, the beneficiary is credited the
+  fine (docs/API.md, § L1 inclusion challenges, Outcomes).
+
 ## Refund of a deposit the settled state never consumed
 
 A deposit enters the vault's deposit chain when it lands on L1, but it becomes part
