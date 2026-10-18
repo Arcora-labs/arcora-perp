@@ -50,7 +50,7 @@ def sha(path):
 
 def reviewed_sources():
     release_manifest.verify_reviewed_guest(ROOT)
-    return {name: sha(ROOT / name) for name in clock.EXPECTED_GUEST_SOURCES}
+    return {name: sha(ROOT / name) for name in clock.REVIEWED_GUEST["sources"]}
 
 
 def normalized_args(args, root=ROOT, cwd=None):
@@ -143,7 +143,7 @@ def build(args):
     require(reviewed_sources() == sources, "source changed during build")
     elf = output / "target" / TARGET / "release/perp-core-guest"
     require(elf.is_file() and not elf.is_symlink(), "regular compiled ELF required")
-    require(sha(elf) == clock.EXPECTED_ELF, "compiled ELF differs from independently reviewed pin")
+    require(sha(elf) == clock.REVIEWED_GUEST["elf"], "compiled ELF differs from independently reviewed pin")
     invocations = [json.loads(line) for line in (output / "compiler-invocations.jsonl").read_text().splitlines()]
     require({row["crate"] for row in invocations} == set(METADATA),
             "missing reviewed workspace compiler invocation")

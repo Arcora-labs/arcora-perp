@@ -259,7 +259,7 @@ class ObserverTests(unittest.TestCase):
                        lambda m: m["compiled_contracts"].pop("oracle_wrapper"),
                        lambda m: m["source"].update(inventory_sha256="00" * 32),
                        lambda m: m["source"]["files_sha256"].update({observer.BUILDER: "00" * 32}),
-                       lambda m: m["program"].update(program_vkey=identity.legacy.clock.EXPECTED_VKEY)):
+                       lambda m: m["program"].update(program_vkey=identity.legacy.clock.REVIEWED_GUEST["vkey"])):
             self.manifest = copy.deepcopy(original)
             mutate(self.manifest)
             with self.subTest(mutation=mutate):

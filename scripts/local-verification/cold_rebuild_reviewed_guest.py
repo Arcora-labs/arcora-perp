@@ -254,7 +254,7 @@ def build(args):
         elf = output / 'target' / recipe.TARGET / 'release/perp-core-guest'
         require_regular(elf)
         result.update(elf_sha256=sha(elf), elf_bytes=elf.stat().st_size)
-        require(result['elf_sha256'] == recipe.clock.EXPECTED_ELF, 'compiled ELF differs from reviewed identity')
+        require(result['elf_sha256'] == recipe.clock.REVIEWED_GUEST['elf'], 'compiled ELF differs from reviewed identity')
         invocations = [json.loads(row) for row in invocation_log.read_text().splitlines()]
         require(set(recipe.METADATA) <= {row['crate'] for row in invocations}, 'reviewed compiler invocation missing')
         (output / 'guest.elf').write_bytes(elf.read_bytes())

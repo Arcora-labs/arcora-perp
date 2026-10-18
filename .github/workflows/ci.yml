@@ -113,10 +113,14 @@ jobs:
         run: cargo check --locked --manifest-path crates/prover-service/Cargo.toml
       # The four reviewed witnesses execute about 98 million guest cycles.
       # Optimize the host executor so debug-mode overhead does not dominate CI.
+      # clock-proof requires --elf and refuses an ELF whose SHA-256 is not the
+      # reviewed pin. vkey prints the setup key of the ELF given with --elf (or of
+      # the embedded build-script ELF, a stub here) and enforces no pin; compare its
+      # ELF_SHA256 line with REVIEWED_GUEST. Building both keeps them compiling.
       - name: Build optimized exact synthetic funds replay host (guest build skipped)
         env:
           CARGO_BUILD_JOBS: '2'
-        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds --bin replay-chainlink --bin replay-chainlink-lifecycle
+        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds --bin replay-chainlink --bin replay-chainlink-lifecycle --bin vkey --bin clock-proof
       - name: Reject incomplete or substituted normal-wallet witnesses
         run: |
           python3 scripts/local-verification/verify_funds_replay.py \

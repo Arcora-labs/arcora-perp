@@ -192,7 +192,7 @@ def verify_pins(root):
         for name in ("build.rs", ".cargo/config", ".cargo/config.toml", "rust-toolchain", "rust-toolchain.toml"):
             path = root / directory / name
             require(not path.exists() and not path.is_symlink(), "unreviewed candidate build input")
-    return {"reviewed_v2_sources_sha256": dict(legacy.clock.EXPECTED_GUEST_SOURCES),
+    return {"reviewed_v2_sources_sha256": dict(legacy.clock.HISTORICAL_V2_GUEST_SOURCES),
             "candidate_sources_sha256": dict(candidate.CANDIDATE_SOURCES),
             "candidate_auxiliary_test_sources_sha256": dict(AUXILIARY_TEST_SOURCES)}
 

@@ -24,14 +24,14 @@ class ReviewedGuestRecipeTests(unittest.TestCase):
 
     def source_copy(self):
         root = self.base / "checkout"
-        for name in recipe.clock.EXPECTED_GUEST_SOURCES:
+        for name in recipe.clock.REVIEWED_GUEST["sources"]:
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(recipe.ROOT / name, path)
         return root
 
     def test_current_reviewed_source_passes(self):
-        self.assertEqual(recipe.reviewed_sources(), recipe.clock.EXPECTED_GUEST_SOURCES)
+        self.assertEqual(recipe.reviewed_sources(), recipe.clock.REVIEWED_GUEST["sources"])
 
     def test_only_metadata_and_path_are_normalized(self):
         for name, metadata in recipe.METADATA.items():
