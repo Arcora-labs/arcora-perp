@@ -166,9 +166,25 @@ fn bind_transition_returns_the_derived_roots_and_the_bound_commitment() {
         bound.commitment,
         bind_commitment(roots.commitment::<Keccak256>(), clock.receipt())
     );
+    // Once `validate` has accepted the context, its own helper agrees.
     assert_eq!(bound.commitment, clock.commitment());
     // The public value is always the bound commitment, never the base commitment.
     assert_ne!(bound.commitment, roots.commitment::<Keccak256>());
+}
+
+/// `ClockContext::commitment` is a function of the context alone: it binds the
+/// base commitment the context carries to its receipt. Checking the context
+/// against a batch is `bind_transition`'s job, which refuses a context whose
+/// base commitment is not the batch's.
+#[test]
+fn the_context_helper_binds_the_base_commitment_it_carries() {
+    let mut parts = ordinary(&[10_000]);
+    parts.3.base_commitment = [0x99; 32];
+    assert_eq!(
+        parts.3.commitment(),
+        bind_commitment([0x99; 32], parts.3.receipt())
+    );
+    assert_eq!(bind(&parts).unwrap_err(), EngineError::ClockMismatch);
 }
 
 #[test]
@@ -242,7 +258,10 @@ fn bind_transition_binds_the_wind_down_phase() {
     let parts = (state, ops, manifest, clock);
     let bound = bind(&parts).unwrap();
     assert_eq!(bound.roots.wind_down_phase, 1);
-    assert_eq!(bound.commitment, clock.commitment());
+    assert_eq!(
+        bound.commitment,
+        bind_commitment(bound.roots.commitment::<Keccak256>(), clock.receipt())
+    );
 
     let mut wrong_phase = parts;
     wrong_phase.3.phase = 0;
@@ -275,6 +294,55 @@ fn clock_receipt_and_bound_commitment_match_the_solidity_vector() {
         hex(bind_commitment([0x44; 32], c.receipt())),
         "5b443bd8d8b1939c024bb51c33edcb759be76402d0a06b6ecd67f703261fb77b"
     );
+}
+
+/// The guest entrypoint itself (`crates/sp1-guest/src/main.rs`, which perp-core
+/// does not build) keeps the strict rule the `framing` tests restate: one strip
+/// of the exact magic, one `take_from_bytes` whose rest must be empty, the raw
+/// bytes dropped before the transition, one `bind_transition`, one commit of its
+/// commitment, and no other decode, root or commitment path.
+#[test]
+fn the_guest_entrypoint_decodes_strictly_and_runs_only_the_bound_transition() {
+    let source = include_str!("../../sp1-guest/src/main.rs");
+    // the code without its comments, and without whitespace, so the checks do
+    // not depend on formatting
+    let code: String = source
+        .lines()
+        .map(|line| line.find("//").map_or(line, |i| &line[..i]))
+        .flat_map(str::chars)
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    let count = |needle: &str| code.matches(needle).count();
+    for (needle, n) in [
+        ("sp1_zkvm::io::read_vec()", 1),
+        (".strip_prefix(perp_core::clock::WIRE_MAGIC)", 1),
+        ("strip_prefix", 1),
+        ("postcard::take_from_bytes(body)", 1),
+        ("from_bytes", 1),
+        ("assert!(rest.is_empty()", 1),
+        ("drop(bytes)", 1),
+        (
+            "perp_core::clock::bind_transition(&mutstate,&ops,&manifest,&clock)",
+            1,
+        ),
+        ("sp1_zkvm::io::commit_slice(&bound.commitment)", 1),
+        ("sp1_zkvm::io::commit", 1),
+    ] {
+        assert_eq!(count(needle), n, "{needle}");
+    }
+    for absent in [
+        "else",
+        "iflet",
+        "match",
+        "unwrap_or",
+        "derive_roots",
+        "run_transition",
+        ".commitment()",
+        "Witness=",
+    ] {
+        assert_eq!(count(absent), 0, "{absent}");
+    }
+    assert!(code.find("drop(bytes)") < code.find("bind_transition("));
 }
 
 #[cfg(feature = "serde")]
@@ -320,7 +388,10 @@ mod framing {
         assert_eq!(state.state_root(), parts.0.state_root());
         let bound = bind_transition(&mut state, &ops, &manifest, &clock).unwrap();
         assert_eq!(bound, bind(&parts).unwrap());
-        assert_eq!(bound.commitment, parts.3.commitment());
+        assert_eq!(
+            bound.commitment,
+            bind_commitment(bound.roots.commitment::<Keccak256>(), parts.3.receipt())
+        );
     }
 
     #[test]

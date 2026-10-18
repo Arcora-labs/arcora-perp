@@ -204,7 +204,10 @@ fn full_witness_round_trips_and_rederives_commitment() {
     let a = bind_transition(&mut s.clone(), &ops, &manifest, &clock).unwrap();
     let b = bind_transition(&mut s2, &ops2, &manifest2, &clock2).unwrap();
     assert_eq!(a, b, "decoded witness re-derives the identical transition");
-    assert_eq!(b.commitment, clock.commitment());
+    assert_eq!(
+        b.commitment,
+        perp_core::clock::bind_commitment(b.roots.commitment::<Keccak256>(), clock2.receipt())
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -813,6 +816,62 @@ mod binding {
 
     fn hex(bytes: &[u8]) -> String {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// The tree root and the nullifier digest of fixed histories, before and
+    /// after a wire round trip, pinned to the values the implementation gave
+    /// while the wire still carried the tree's empty-subtree roots and the
+    /// nullifier index and chain. Deriving those parts on decode left both
+    /// state-root words unchanged. The leaves and the nullifiers are not in
+    /// sorted order, so the pins also fix the insertion order.
+    #[test]
+    fn tree_root_and_nullifier_digest_of_fixed_histories_are_pinned() {
+        let words = |xs: &[u64]| xs.iter().map(|&x| word_u64(x)).collect::<Vec<Digest>>();
+        // (depth, leaves, nullifiers, tree root, nullifier digest)
+        let cases = [
+            (
+                TREE_DEPTH,
+                words(&[]),
+                words(&[]),
+                "1cf035bf647771ba3ff5913c160d41bf80e6358d91f9cf50b1f316bf7aafe618",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            ),
+            (
+                TREE_DEPTH,
+                words(&[9, 2, 7, 4, 1_000_003, 5]),
+                words(&[31, 4, 15, 9, 26]),
+                "3751513171d5f3887d517651ed12442ec8ac222b876322f03b1b30b76994ffe4",
+                "68a27cffd0ada8e87ae1c19edf84db54b400038401dbe20899c38363bcd4b3ad",
+            ),
+            // a full depth-3 tree
+            (
+                3,
+                words(&[8, 1, 6, 3, 5, 2, 7, 4]),
+                words(&[31, 4, 15, 9, 26]),
+                "30342cad3a6f51172ecfd6a0d6a74075d5a27ed7f38f25e5852172ad7341459f",
+                "68a27cffd0ada8e87ae1c19edf84db54b400038401dbe20899c38363bcd4b3ad",
+            ),
+        ];
+        for (depth, leaves, nullifiers, tree_root, nullifier_digest) in cases {
+            let mut s = DefaultState::new(depth);
+            for leaf in &leaves {
+                s.tree.append(*leaf).unwrap();
+            }
+            for nf in &nullifiers {
+                assert!(s.nullifiers.insert(*nf));
+            }
+            let back = decode(&postcard::to_allocvec(&s).unwrap()).expect("decode");
+            for state in [&s, &back] {
+                assert_eq!(hex(&state.tree.root()), tree_root, "depth {depth}");
+                assert_eq!(
+                    hex(&state.nullifiers.digest()),
+                    nullifier_digest,
+                    "depth {depth}"
+                );
+            }
+            assert_eq!(back.nullifiers.log(), &nullifiers[..]);
+            assert_eq!(back.state_root(), s.state_root());
+        }
     }
 
     /// The previous state layout, which also encoded the tree's empty-subtree

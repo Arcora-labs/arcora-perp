@@ -50,13 +50,18 @@ fn oracle_addr() -> [u8; 20] {
 
 /// A signed market-0 transcript at $100k, published at `now`.
 fn oracle(now: u64) -> OracleTranscript {
-    let confidence = INDEX / 10_000; // 0.01%
-    let d = oracle_digest(0, INDEX, now, confidence, INDEX);
+    oracle_at(INDEX, now)
+}
+
+/// A signed market-0 transcript at `price` (price-scaled), published at `now`.
+fn oracle_at(price: i128, now: u64) -> OracleTranscript {
+    let confidence = price / 10_000; // 0.01%
+    let d = oracle_digest(0, price, now, confidence, price);
     OracleTranscript {
-        price: INDEX,
+        price,
         publish_time_ms: now,
         confidence,
-        backup_twap: INDEX,
+        backup_twap: price,
         signature: OracleSig::sign(&oracle_key(), &d),
     }
 }
@@ -377,6 +382,152 @@ fn liquidation_reads_the_index_settled_to_its_own_time() {
     assert_eq!(index(&s), span(MAX, FUNDING_INTERVAL_MS, 0));
     assert_eq!(s.funding[&0].last_update_ms, T0 + 60 * MINUTE);
     assert!(s.conservation_holds());
+}
+
+/// The Unbind margin check reads the index settled up to its own time, so the
+/// funding a pause charged counts against the collateral that may leave. A long
+/// funded with its initial margin plus $100 owes $25 for 30 minutes at the clamp:
+/// it may then unbind $75, which leaves its equity exactly at initial margin,
+/// but not $90.
+#[test]
+fn an_unbind_after_a_pause_keeps_initial_margin_net_of_the_pause_funding() {
+    let mut s = state();
+    fund(&mut s, 1, usd(10_100));
+    fund(&mut s, 2, usd(50_000));
+    apply(&mut s, tick(PREMIUM, T0));
+    assert_eq!(s.funding[&0].rate, MAX);
+    apply(&mut s, fill(1, 2, Side::Buy, T0));
+    let m = s.markets[&0];
+    assert_eq!(pos(&s, 1).initial_required(&m, INDEX), Some(usd(10_000)));
+
+    let t1 = T0 + 30 * MINUTE;
+    let pause = span(MAX, 30 * MINUTE, 0);
+    assert_eq!(pause, usd(25));
+    assert_eq!(s.funding[&0].index_at(INDEX, t1), pause);
+    let unbind = |amount: i128| BatchOp::Unbind {
+        owner: owner_of(1),
+        market_id: 0,
+        amount,
+        blinding: [0x7A; 32],
+        oracle: oracle(t1),
+        now_ms: t1,
+    };
+
+    // $90 would leave $10,100 − $90 − $25 = $9,985 of equity: refused, and
+    // nothing changes, the funding state included
+    let funding = s.funding[&0];
+    let root = s.state_root();
+    assert_eq!(
+        s.apply_batch(&[unbind(usd(90))]),
+        Err(EngineError::Risk {
+            source: perp_core::RiskError::InsufficientMargin,
+            leg: None,
+        })
+    );
+    assert_eq!(s.funding[&0], funding);
+    assert_eq!(s.state_root(), root);
+
+    // $75 leaves exactly the initial margin
+    apply(&mut s, unbind(usd(75)));
+    assert_eq!(index(&s), pause);
+    assert_eq!(s.funding[&0].last_update_ms, t1);
+    let long = pos(&s, 1);
+    assert_eq!(long.collateral, usd(10_025));
+    assert_eq!(long.equity(INDEX, index(&s)), Some(usd(10_000)));
+    assert_eq!(long.check_initial_margin(&m, INDEX, index(&s)), Ok(()));
+    assert!(s.conservation_holds());
+}
+
+/// Auto-deleverage sizes each winner's haircut at the index settled up to the
+/// liquidation's own time. After a pause at a positive stored rate a long winner
+/// owes the pause's funding, which shrinks its headroom above maintenance; the
+/// haircut is exactly the clawable amount at the settled index, so the winner
+/// ends at maintenance margin, not below it. A later refused liquidation leaves
+/// the funding state unchanged.
+#[test]
+fn auto_deleverage_after_a_pause_sizes_each_haircut_at_the_settled_index() {
+    let px = 112_000 * PRICE_SCALE;
+    for pause_min in [30u64, 60] {
+        let mut s = state();
+        apply(&mut s, tick(PREMIUM, T0));
+        assert_eq!(s.funding[&0].rate, MAX);
+        let (l, w) = (owner_of(1), owner_of(2));
+        // L short 1 BTC from $100k with $11k; W long 1 BTC from $109k with $3k;
+        // both opened at the current index
+        for (owner, size, entry, collateral) in [
+            (l, -SIZE_SCALE, 100_000, usd(11_000)),
+            (w, SIZE_SCALE, 109_000, usd(3_000)),
+        ] {
+            s.positions.insert(
+                (owner, 0),
+                Position {
+                    owner,
+                    market_id: 0,
+                    size,
+                    entry_price: entry * PRICE_SCALE,
+                    collateral,
+                    funding_entry: 0,
+                },
+            );
+        }
+        s.external_in = s.internal_value().unwrap();
+        assert!(s.conservation_holds());
+        let m = s.markets[&0];
+
+        let now = T0 + pause_min * MINUTE;
+        let stored = s.funding[&0].cumulative_index;
+        let settled = s.funding[&0].index_at(px, now);
+        // $112k for the pause at the clamp: $28 per BTC for 30 minutes, $56 for 60
+        assert_eq!(settled - stored, usd(28) * pause_min as i128 / 30);
+        let winner = *s.position(&w, 0).unwrap();
+        assert!(!winner.is_liquidatable(&m, px, settled));
+        assert!(s.position(&l, 0).unwrap().is_liquidatable(&m, px, settled));
+        let clawable = winner.adl_clawable(&m, px, settled).unwrap();
+        assert_eq!(
+            clawable,
+            usd(400) - (settled - stored),
+            "the headroom above maintenance binds"
+        );
+        assert!(
+            winner.adl_clawable(&m, px, stored).unwrap() > clawable,
+            "the index before the pause would leave a larger clawable amount"
+        );
+
+        let haircuts = s.liquidate(&l, 0, &oracle_at(px, now), now).unwrap();
+        assert_eq!(index(&s), settled);
+        assert_eq!(s.funding[&0].last_update_ms, now);
+        assert_eq!(haircuts.len(), 1, "pause {pause_min} min");
+        assert_eq!(haircuts[0].owner, w);
+        assert_eq!(haircuts[0].clawed, clawable, "pause {pause_min} min");
+        let after = *s.position(&w, 0).unwrap();
+        assert_eq!(after.collateral, winner.collateral - clawable);
+        assert_eq!(
+            after.equity(px, settled),
+            after.maintenance_required(&m, px),
+            "the winner ends at maintenance margin"
+        );
+        assert!(!after.is_liquidatable(&m, px, settled));
+        assert!(s.conservation_holds());
+
+        // after a rise to $113k the winner is not liquidatable: the refusal
+        // leaves the funding state unchanged although the span moved on
+        let funding = s.funding[&0];
+        let root = s.state_root();
+        let later = now + 10_000;
+        let up = 113_000 * PRICE_SCALE;
+        assert_ne!(funding.index_at(up, later), funding.cumulative_index);
+        assert_eq!(
+            s.apply_batch(&[BatchOp::Liquidate {
+                owner: w,
+                market_id: 0,
+                oracle: oracle_at(up, later),
+                now_ms: later,
+            }]),
+            Err(EngineError::NotLiquidatable)
+        );
+        assert_eq!(s.funding[&0], funding);
+        assert_eq!(s.state_root(), root);
+    }
 }
 
 /// A refused fill or unbind leaves the market's funding state unchanged, even

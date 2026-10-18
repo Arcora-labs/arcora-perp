@@ -118,6 +118,12 @@ impl ClockContext {
             abi_u64(self.clock_skew_ms),
         ])
     }
+    /// `bind_commitment(self.base_commitment, self.receipt())`: this context's
+    /// own base commitment bound to its receipt. It derives no root and checks
+    /// nothing, so the value stands for a transition only once
+    /// [`Self::validate`] has accepted this context against that transition's
+    /// derived roots. [`bind_transition`] does both in one step and is the way
+    /// to produce a public commitment.
     pub fn commitment(&self) -> Digest {
         bind_commitment(self.base_commitment, self.receipt())
     }

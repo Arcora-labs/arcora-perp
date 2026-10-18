@@ -12,6 +12,10 @@
 //!   covers deficits before the insurance fund and the treasury do, and what the
 //!   three still hold leaves as one withdrawal to the wind-down recipient, with
 //!   the next withdrawal nonce.
+//! * A liquidation leaves its position's open interest with the clearing pool.
+//!   The pool's result on it reaches the recipient when the price moves in the
+//!   pool's favour, and is covered by the reserves and then the haircut when it
+//!   moves against it.
 //! * `SettleAll` creates no value (the value inside before it equals the value
 //!   inside after it plus the payout) and is atomic, and after it the phase-2
 //!   exits drain the vault exactly.
@@ -391,6 +395,126 @@ fn without_a_recipient_the_reserves_stay_and_no_leaf_is_emitted() {
     assert!(out.withdrawals.is_empty());
     assert_eq!(s.last_withdrawal_nonce, 0);
     assert_eq!(reserves(&s), (0, usd(15), usd(25)));
+    assert!(s.conservation_holds());
+}
+
+// --- exposure a liquidation leaves with the clearing pool -----------------------
+
+/// Long trader 1 with $10k against short trader 2 with $30k, 1 BTC from $100k,
+/// with no insurance and no treasury. Liquidating the long at $85k realizes its
+/// $15k loss into the clearing pool and leaves $5k of debt, which
+/// auto-deleverage takes from the short. The system stays open, and the pool is
+/// now the counterparty to the short's 1 BTC.
+fn short_left_against_the_pool() -> DefaultState {
+    let mut s = state_with(Market::conservative(0));
+    s.set_wind_down_recipient(RECIPIENT);
+    fund(&mut s, 1, usd(10_000));
+    fund(&mut s, 2, usd(30_000));
+    s.apply_op(&fill(1, 2, Side::Buy, SIZE_SCALE, 100_000, T0))
+        .unwrap();
+    let haircuts = s.liquidate(&owner_of(1), 0, &oracle(85_000, T0 + 1_000), T0 + 1_000);
+    assert_eq!(
+        haircuts.unwrap().iter().map(|h| h.clawed).sum::<i128>(),
+        usd(5_000)
+    );
+    assert_eq!(s.mode, Mode::Normal);
+    assert!(s.position(&owner_of(1), 0).is_none(), "the long is gone");
+    assert_eq!(collateral(&s, 2), usd(25_000));
+    assert_eq!(s.position(&owner_of(2), 0).unwrap().size, -SIZE_SCALE);
+    assert_eq!(reserves(&s), (usd(15_000), 0, 0));
+    assert!(s.conservation_holds());
+    s
+}
+
+/// Record `price_usd` as the market's settlement price with a funding tick in
+/// the next refresh epoch.
+fn record_price(s: &mut DefaultState, price_usd: i128) {
+    s.apply_op(&tick(price_usd, 0, T0 + PRICE_REFRESH_MS))
+        .unwrap();
+    assert_eq!(s.funding[&0].last_price, price_usd * PRICE_SCALE);
+}
+
+/// The price returns to $100k. The short settles at no gain and keeps its $25k;
+/// the pool's $15k, made of the long's lost $10k and the $5k auto-deleverage
+/// took from the short, leaves as the recipient's one leaf.
+#[test]
+fn a_move_back_in_the_pools_favour_reaches_the_recipient() {
+    let mut s = short_left_against_the_pool();
+    record_price(&mut s, 100_000);
+    let inside = s.internal_value().unwrap();
+    assert_eq!(inside, usd(40_000));
+
+    let out = s.apply_batch(&[BatchOp::SettleAll]).unwrap();
+
+    assert_eq!(collateral(&s, 2), usd(25_000));
+    assert_eq!(
+        out.withdrawals,
+        vec![WithdrawalOut {
+            to: RECIPIENT,
+            amount: usd(15_000),
+            nonce: 1,
+        }]
+    );
+    assert_eq!(reserves(&s), (0, 0, 0));
+    assert_eq!(s.internal_value().unwrap() + usd(15_000), inside);
+    assert!(s.conservation_holds());
+    let leaves = exit_all(&mut s, 2);
+    assert_eq!(leaves.len(), 1);
+    assert_eq!(leaves[0].amount, usd(25_000));
+    assert_drained(&s);
+}
+
+/// The price falls on to $75k, $10k past what the pool holds. A $4k insurance
+/// fund added after the liquidation covers the first $4k, the haircut takes the
+/// other $6k from the short's $50k, and no reserve is left to pay out.
+#[test]
+fn a_move_against_the_pool_is_covered_by_the_reserves_then_the_haircut() {
+    let mut s = short_left_against_the_pool();
+    let cm = deposit(&mut s, 3, usd(4_000));
+    s.apply_batch(&[BatchOp::FundInsurance {
+        note_commitment: cm,
+        spend_key: [3; 32],
+    }])
+    .unwrap();
+    record_price(&mut s, 75_000);
+    let inside = s.internal_value().unwrap();
+    assert_eq!(inside, usd(44_000));
+
+    let out = s.apply_batch(&[BatchOp::SettleAll]).unwrap();
+
+    assert!(out.withdrawals.is_empty());
+    assert_eq!(reserves(&s), (0, 0, 0));
+    assert_eq!(collateral(&s, 2), usd(44_000), "$50k less the $6k haircut");
+    assert_eq!(claims(&s), inside);
+    assert!(s.conservation_holds());
+    let leaves = exit_all(&mut s, 3);
+    assert_eq!(leaves.len(), 1);
+    assert_drained(&s);
+}
+
+/// A clearing pool one micro-dollar below zero, with no reserve to cover it, is
+/// absorbed by the haircut: the claim pays it, and nothing is left to pay out.
+#[test]
+fn negative_pool_dust_with_no_reserves_is_absorbed_by_the_haircut() {
+    let mut s = bare();
+    s.set_wind_down_recipient(RECIPIENT);
+    put(&mut s, 1, 0, 0, usd(1));
+    add_note(&mut s, 2, usd(1));
+    s.vault_pool = -1;
+    s.external_in = usd(2) - 1;
+    assert!(s.conservation_holds());
+
+    let out = s.apply_batch(&[BatchOp::SettleAll]).unwrap();
+
+    assert!(out.withdrawals.is_empty());
+    assert_eq!(reserves(&s), (0, 0, 0));
+    assert_eq!(claims(&s), usd(2) - 1);
+    assert_eq!(
+        collateral(&s, 1),
+        usd(1) - 1,
+        "the first claim takes the remainder"
+    );
+    assert_eq!(s.notes_value(), Some(usd(1)));
     assert!(s.conservation_holds());
 }
 

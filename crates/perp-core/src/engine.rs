@@ -183,6 +183,15 @@ pub enum BatchOp {
     ///    (`last_withdrawal_nonce + 1`). With no recipient set (tests and demos)
     ///    the reserves stay in place.
     ///
+    /// A liquidation closes its position against the clearing pool, so the pool
+    /// is the counterparty to the open interest that position leaves behind,
+    /// and its balance at step 1 includes its result on that exposure. A price
+    /// move after the liquidation in the pool's favour therefore reaches the
+    /// recipient at step 5, and that gain can include collateral that
+    /// auto-deleverage took from winners to cover the liquidation's shortfall.
+    /// A move against the pool is covered at steps 3 and 4: first by the
+    /// reserves, then by the haircut.
+    ///
     /// The system is then close-only, every remaining position is flat with
     /// positive collateral, and no value was created: the claims and reserves
     /// after the op plus the payout equal the claims and reserves before it. The
@@ -1419,9 +1428,11 @@ impl<H: Hasher> State<H> {
     /// caller then applies no haircut at all.
     ///
     /// This takes collateral rather than reducing position size, so a clawed
-    /// winner keeps its full exposure on a thinner margin above maintenance. The
-    /// burden is computed per liquidation, so across several bad-debt liquidations
-    /// in one batch the split follows op order.
+    /// winner keeps its full exposure on a thinner margin above maintenance,
+    /// and the liquidated position's exposure stays with the clearing pool (see
+    /// [`BatchOp::SettleAll`] for where the pool's result on it goes at wind-down).
+    /// The burden is computed per liquidation, so across several bad-debt
+    /// liquidations in one batch the split follows op order.
     fn auto_deleverage_plan(
         &self,
         market: &Market,
@@ -1908,20 +1919,6 @@ mod tests {
         }
     }
 
-    /// Resets the test-only hook even when the test panics.
-    struct KeepEmptyPositions;
-    impl KeepEmptyPositions {
-        fn set() -> Self {
-            super::KEEP_EMPTY_POSITIONS.with(|k| k.set(true));
-            KeepEmptyPositions
-        }
-    }
-    impl Drop for KeepEmptyPositions {
-        fn drop(&mut self) {
-            super::KEEP_EMPTY_POSITIONS.with(|k| k.set(false));
-        }
-    }
-
     #[test]
     fn repaying_a_flat_positions_debt_removes_the_entry() {
         let (mut s, owner, cm) = flat_debt_with_matching_note(7_000_000);
@@ -1938,6 +1935,22 @@ mod tests {
     #[test]
     #[should_panic(expected = "zero size and zero collateral was stored")]
     fn apply_op_postcondition_catches_a_stored_empty_entry() {
+        /// Resets the test-only hook even when the test panics. Declared here, in
+        /// the only test that sets the hook, so a build without debug assertions
+        /// (which compiles this test out) carries no unused item.
+        struct KeepEmptyPositions;
+        impl KeepEmptyPositions {
+            fn set() -> Self {
+                super::KEEP_EMPTY_POSITIONS.with(|k| k.set(true));
+                KeepEmptyPositions
+            }
+        }
+        impl Drop for KeepEmptyPositions {
+            fn drop(&mut self) {
+                super::KEEP_EMPTY_POSITIONS.with(|k| k.set(false));
+            }
+        }
+
         let (mut s, owner, cm) = flat_debt_with_matching_note(7_000_000);
         let _hook = KeepEmptyPositions::set();
         let _ = s.apply_op(&repay(owner, cm));

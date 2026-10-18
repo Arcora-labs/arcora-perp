@@ -2,8 +2,11 @@
 //! and invalid operations to the engine and asserts the core invariants survive
 //! EVERY step — most importantly collateral conservation. Because `apply_op` is
 //! atomic, conservation must hold whether an op succeeds or is rejected; the
-//! fuzzer hammers exactly that. No external crates: a small xorshift PRNG keeps
-//! the run deterministic and reproducible from the seed printed on failure.
+//! fuzzer hammers exactly that. Every session runs on a market with a real
+//! oracle key, so fills, funding ticks, liquidations and unbinds pass the
+//! signature gate, and it ends with the wind-down settlement and every phase-2
+//! exit. No external crates: a small xorshift PRNG keeps the run deterministic
+//! and reproducible from the seed printed on failure.
 
 use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
@@ -13,7 +16,8 @@ use perp_core::market::Market;
 use perp_core::note::owner_from_spend_key;
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
-use perp_core::{DefaultState, Note};
+use perp_core::state::Mode;
+use perp_core::{DefaultState, EngineError, Note};
 
 struct Rng(u64);
 impl Rng {
@@ -83,140 +87,635 @@ fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
     )
 }
 
-/// Run one randomized session from `seed`, asserting conservation after each op.
-fn run_session(seed: u64, steps: usize) {
-    const N_OWNERS: u64 = 4;
-    let mut s = DefaultState::new(20);
-    s.add_market(Market::conservative(0));
-    let mut rng = Rng(seed | 1);
-    let mut now = 1_000u64;
-    let mut price = 100_000i128;
-    // pre-fund every owner so fills have collateral to work with
-    for i in 0..N_OWNERS {
-        let o = owner(i);
-        let blind = [(i as u8) | 0x80; 32];
-        let amount = 50_000 * QUOTE_SCALE;
-        let cm = Note::new(o, 0, amount, blind).commitment::<Keccak256>();
-        s.apply_op(&BatchOp::Deposit {
-            owner: o,
-            asset_id: 0,
-            amount,
-            blinding: blind,
-            from: [i as u8; 20],
-            deposit_id: i,
-            deposit_blind: [0xDBu8; 32],
-        })
-        .unwrap();
-        s.apply_op(&BatchOp::FundPosition {
-            owner: o,
-            market_id: 0,
-            note_commitment: cm,
-            spend_key: [i as u8; 32],
-        })
-        .unwrap();
-        assert!(s.conservation_holds());
+/// The wind-down recipient every session binds at setup.
+const RECIPIENT: [u8; 20] = [0x5E; 20];
+const N_OWNERS: u64 = 4;
+const MINUTE: u64 = 60_000;
+
+fn spend_key(i: u64) -> [u8; 32] {
+    [i as u8; 32]
+}
+
+/// How often each kind of op succeeded (or, for the deposits in close-only, was
+/// refused as required) over all sessions. The fuzzer asserts a minimum for
+/// most of them, so it cannot pass while exercising nothing.
+#[derive(Debug, Default)]
+struct Counts {
+    fill: u64,
+    accrue: u64,
+    liquidate: u64,
+    adl_haircut: u64,
+    parked_debt: u64,
+    deposit: u64,
+    deposit_refused_in_close_only: u64,
+    fund: u64,
+    debt_top_up: u64,
+    unbind: u64,
+    withdraw: u64,
+    pruned: u64,
+    close_only_sessions: u64,
+    settle_all: u64,
+    settle_all_refused: u64,
+    payout: u64,
+    exits: u64,
+}
+
+/// One randomized session: a signed market, a wind-down recipient, four
+/// funded owners, then random ops with pauses and price gaps, and finally the
+/// wind-down settlement and every phase-2 exit.
+struct Session {
+    s: DefaultState,
+    rng: Rng,
+    now: u64,
+    /// Whole dollars.
+    price: i128,
+    /// The signed transcript at `price`, re-signed when the price moves or the
+    /// transcript gets old.
+    orc: OracleTranscript,
+    /// Counter that keeps every minted note's blinding unique.
+    blind: u64,
+    /// The highest withdrawal-leaf nonce emitted so far.
+    last_leaf_nonce: u64,
+    ctx: String,
+}
+
+impl Session {
+    fn new(seed: u64, market: Market) -> Self {
+        let mut s = DefaultState::new(20);
+        s.add_market(signed_market(market));
+        s.set_wind_down_recipient(RECIPIENT);
+        let now = 1_700_000_000_000u64;
+        let mut session = Session {
+            s,
+            rng: Rng(seed | 1),
+            now,
+            price: 100_000,
+            orc: oracle(100_000, now),
+            blind: 0,
+            last_leaf_nonce: 0,
+            ctx: format!("seed={seed}"),
+        };
+        // pre-fund every owner so fills have collateral to work with
+        for i in 0..N_OWNERS {
+            let amount = 50_000 * QUOTE_SCALE;
+            let (deposit, cm) = session.deposit(i, amount);
+            session
+                .s
+                .apply_batch(&[
+                    deposit,
+                    BatchOp::FundPosition {
+                        owner: owner(i),
+                        market_id: 0,
+                        note_commitment: cm,
+                        spend_key: spend_key(i),
+                    },
+                ])
+                .unwrap();
+        }
+        assert!(session.s.conservation_holds());
+        session
     }
 
-    for step in 0..steps {
-        now += 1 + rng.below(5);
-        // random walk the price within sane bounds
-        let delta = (rng.below(2001) as i128) - 1000; // ±$1000
-        price = (price + delta).clamp(40_000, 200_000);
-        let orc = oracle(price, now);
+    fn blinding(&mut self) -> [u8; 32] {
+        self.blind += 1;
+        let mut b = word_u64(self.blind);
+        b[31] = 0xB1;
+        b
+    }
 
-        let op = match rng.below(6) {
+    /// A deposit for owner `i` at the next L1 index, and its note's commitment.
+    fn deposit(&mut self, i: u64, amount: i128) -> (BatchOp, [u8; 32]) {
+        let blinding = self.blinding();
+        let cm = Note::new(owner(i), 0, amount, blinding).commitment::<Keccak256>();
+        let op = BatchOp::Deposit {
+            owner: owner(i),
+            asset_id: 0,
+            amount,
+            blinding,
+            from: [i as u8; 20],
+            deposit_id: self.s.consumed_deposit_count,
+            deposit_blind: [0xDB; 32],
+        };
+        (op, cm)
+    }
+
+    fn transcript(&mut self) -> OracleTranscript {
+        if self.orc.price != self.price * PRICE_SCALE || self.now - self.orc.publish_time_ms > 5_000
+        {
+            self.orc = oracle(self.price, self.now);
+        }
+        self.orc
+    }
+
+    /// An unspent note of an owner whose flat position carries debt, and the
+    /// index of that owner.
+    fn debt_note(&self) -> Option<([u8; 32], u64)> {
+        (0..N_OWNERS)
+            .filter(|&i| {
+                self.s
+                    .position(&owner(i), 0)
+                    .is_some_and(|p| p.size == 0 && p.collateral < 0)
+            })
+            .find_map(|i| {
+                self.s
+                    .notes
+                    .iter()
+                    .find(|(_, n)| n.owner == owner(i))
+                    .map(|(cm, _)| (*cm, i))
+            })
+    }
+
+    /// A random unspent note and the index of its owner.
+    fn some_note(&mut self) -> Option<([u8; 32], u64)> {
+        let notes: Vec<_> = self.s.notes.iter().map(|(cm, n)| (*cm, n.owner)).collect();
+        if notes.is_empty() {
+            return None;
+        }
+        let (cm, o) = notes[self.rng.below(notes.len() as u64) as usize];
+        (0..N_OWNERS).find(|&i| owner(i) == o).map(|i| (cm, i))
+    }
+
+    fn next_op(&mut self) -> BatchOp {
+        // time: up to 700 ms, sometimes a 30-minute or a 2-hour pause
+        self.now += match self.rng.below(150) {
+            0 => 30 * MINUTE,
+            1 => 120 * MINUTE,
+            _ => 1 + self.rng.below(700),
+        };
+        // price: a small walk on some steps, sometimes a 5-25% gap
+        match self.rng.below(40) {
             0 => {
-                // matched fill between two distinct owners
-                let a = rng.below(N_OWNERS);
-                let b = (a + 1 + rng.below(N_OWNERS - 1)) % N_OWNERS;
-                let size = (1 + rng.below(8)) as i128 * (SIZE_SCALE / 10);
-                let side = if rng.below(2) == 0 {
+                let gap = self.price * (5 + self.rng.below(21) as i128) / 100;
+                self.price += if self.rng.below(2) == 0 { gap } else { -gap };
+            }
+            1..=10 => self.price += self.rng.below(1001) as i128 - 500,
+            _ => {}
+        }
+        self.price = self.price.clamp(40_000, 200_000);
+        let orc = self.transcript();
+        let (now, px) = (self.now, orc.price);
+        let tick = |rng: &mut Rng| BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: if rng.below(3) == 0 {
+                px
+            } else {
+                px + px * (rng.below(21) as i128 - 10) / 10_000
+            },
+            oracle: orc,
+            now_ms: now,
+        };
+        let a = self.rng.below(N_OWNERS);
+        let b = (a + 1 + self.rng.below(N_OWNERS - 1)) % N_OWNERS;
+        match self.rng.below(100) {
+            0..=24 => BatchOp::Fill {
+                taker: owner(a),
+                maker: owner(b),
+                market_id: 0,
+                taker_side: if self.rng.below(2) == 0 {
                     Side::Buy
                 } else {
                     Side::Sell
-                };
-                BatchOp::Fill {
+                },
+                size: (1 + self.rng.below(30)) as i128 * (SIZE_SCALE / 10),
+                price: px + px * (self.rng.below(101) as i128 - 50) / 10_000,
+                oracle: orc,
+                now_ms: now,
+            },
+            // a full close of `a`'s position against `b`
+            25..=29 => match self.s.position(&owner(a), 0).filter(|p| p.is_open()) {
+                Some(p) => BatchOp::Fill {
                     taker: owner(a),
                     maker: owner(b),
                     market_id: 0,
-                    taker_side: side,
-                    size,
-                    price: price * PRICE_SCALE,
+                    taker_side: if p.size > 0 { Side::Sell } else { Side::Buy },
+                    size: p.size.abs(),
+                    price: px,
                     oracle: orc,
                     now_ms: now,
-                }
-            }
-            1 => BatchOp::AccrueFunding {
-                market_id: 0,
-                mark: (price + (rng.below(200) as i128) - 100) * PRICE_SCALE,
-                oracle: orc,
-                now_ms: now,
+                },
+                None => tick(&mut self.rng),
             },
-            2 => BatchOp::Liquidate {
-                owner: owner(rng.below(N_OWNERS)),
+            30..=44 => tick(&mut self.rng),
+            45..=54 => BatchOp::Liquidate {
+                owner: owner(a),
                 market_id: 0,
                 oracle: orc,
                 now_ms: now,
             },
-            3 => {
-                let i = rng.below(N_OWNERS);
-                let amount = (1 + rng.below(5000)) as i128 * QUOTE_SCALE;
-                // SEC-019: deposits must arrive in strict L1 order — feed the next
-                // unconsumed id so the fuzzer still exercises *successful* deposits
-                // (a hardcoded id would be rejected out-of-order after setup, still
-                // conservation-safe but never advancing the accumulator).
-                BatchOp::Deposit {
-                    owner: owner(i),
-                    asset_id: 0,
-                    amount,
-                    blinding: [(step as u8); 32],
-                    from: [i as u8; 20],
-                    deposit_id: s.consumed_deposit_count,
-                    deposit_blind: [(step as u8) ^ 0xFFu8; 32],
-                }
+            55..=62 => {
+                let amount = (1 + self.rng.below(5_000)) as i128 * QUOTE_SCALE;
+                self.deposit(a, amount).0
             }
-            4 => {
-                let i = rng.below(N_OWNERS);
-                let amount = (1 + rng.below(2000)) as i128 * QUOTE_SCALE;
-                BatchOp::Unbind {
+            // re-funds, and top-ups of a flat position's debt
+            63..=72 => match self
+                .debt_note()
+                .filter(|_| self.rng.below(2) == 0)
+                .or_else(|| self.some_note())
+            {
+                Some((cm, i)) => BatchOp::FundPosition {
                     owner: owner(i),
                     market_id: 0,
+                    note_commitment: cm,
+                    spend_key: spend_key(i),
+                },
+                None => tick(&mut self.rng),
+            },
+            73..=84 => {
+                let idx = self.s.funding[&0].index_at(px, now);
+                let m = self.s.markets[&0];
+                let pos = self.s.position(&owner(a), 0).copied();
+                let amount = match pos {
+                    // a full exit of a flat position's collateral
+                    Some(p) if !p.is_open() && self.rng.below(2) == 0 => p.collateral,
+                    // everything above initial margin, at the settled index or
+                    // at the index stored before the open span (which the
+                    // engine must refuse when the span charges this position)
+                    Some(p) if p.is_open() && self.rng.below(2) == 0 => {
+                        let at = if self.rng.below(2) == 0 {
+                            idx
+                        } else {
+                            self.s.funding[&0].cumulative_index
+                        };
+                        p.equity(px, at)
+                            .zip(p.initial_required(&m, px))
+                            .map_or(0, |(e, im)| e - im)
+                    }
+                    _ => (1 + self.rng.below(2_000)) as i128 * QUOTE_SCALE,
+                };
+                BatchOp::Unbind {
+                    owner: owner(a),
+                    market_id: 0,
                     amount,
-                    blinding: [0x40 | (step as u8); 32],
+                    blinding: self.blinding(),
                     oracle: orc,
                     now_ms: now,
                 }
             }
-            _ => BatchOp::EnterCloseOnly,
+            85..=96 => match self.some_note() {
+                Some((cm, i)) => {
+                    let last = self.s.last_withdrawal_nonce;
+                    let (to, nonce) = match self.rng.below(10) {
+                        0 => (None, 0),
+                        1 => (Some([i as u8; 20]), last),
+                        2 => (Some([i as u8; 20]), last + 1 + self.rng.below(1_000)),
+                        _ => (Some([i as u8; 20]), last + 1),
+                    };
+                    BatchOp::Withdraw {
+                        note_commitment: cm,
+                        spend_key: spend_key(i),
+                        to,
+                        nonce,
+                    }
+                }
+                None => tick(&mut self.rng),
+            },
+            97 if self.rng.below(8) == 0 => BatchOp::EnterCloseOnly,
+            _ => tick(&mut self.rng),
+        }
+    }
+
+    /// Apply `op` and check every per-op invariant.
+    fn apply_and_check(&mut self, op: &BatchOp, counts: &mut Counts) {
+        let ctx = format!("{} op={op:?}", self.ctx);
+        let root = self.s.state_root();
+        let mode = self.s.mode;
+        let m = self.s.markets[&0];
+        let positions = self.s.positions.clone();
+        // the index every op that carries an oracle must read and store
+        let index = match op {
+            BatchOp::Fill { oracle, now_ms, .. }
+            | BatchOp::AccrueFunding { oracle, now_ms, .. }
+            | BatchOp::Liquidate { oracle, now_ms, .. }
+            | BatchOp::Unbind { oracle, now_ms, .. } => Some((
+                oracle.price,
+                self.s.funding[&0].index_at(oracle.price, *now_ms),
+            )),
+            _ => None,
+        };
+        let result = match op {
+            // half of the liquidations go through the sequencer's entry point
+            BatchOp::Liquidate {
+                owner,
+                market_id,
+                oracle,
+                now_ms,
+            } if self.rng.below(2) == 0 => self
+                .s
+                .liquidate(owner, *market_id, oracle, *now_ms)
+                .map(|_| perp_core::engine::OpOutput::default()),
+            _ => self.s.apply_op(op),
         };
 
-        // apply; success or rejection, conservation MUST hold (atomicity).
-        let _ = s.apply_op(&op);
-        assert!(
-            s.conservation_holds(),
-            "conservation broken — seed={seed} step={step} op={op:?}"
-        );
-        // every funding state stays in range (rate within the clamp, carry inside
-        // ±FUNDING_DIVISOR), so the post-state passes the pre-state shape check
-        assert_eq!(
-            s.validate_witness_shape(),
-            Ok(()),
-            "seed={seed} step={step} op={op:?}"
-        );
-
-        // re-open from close-only occasionally so the session keeps exercising fills
-        if matches!(s.mode, perp_core::Mode::CloseOnly) && rng.below(4) == 0 {
-            s.mode = perp_core::Mode::Normal;
+        match &result {
+            Err(e) => {
+                assert_eq!(
+                    self.s.state_root(),
+                    root,
+                    "a refused op changes nothing: {ctx}"
+                );
+                if matches!(op, BatchOp::Deposit { .. }) && mode == Mode::CloseOnly {
+                    assert_eq!(*e, EngineError::CloseOnly, "{ctx}");
+                    counts.deposit_refused_in_close_only += 1;
+                }
+            }
+            Ok(out) => {
+                if let Some((_, idx)) = index {
+                    assert_eq!(
+                        self.s.funding[&0].cumulative_index, idx,
+                        "the stored index is the one settled to the op's time: {ctx}"
+                    );
+                }
+                match op {
+                    BatchOp::Fill { .. } => counts.fill += 1,
+                    BatchOp::AccrueFunding { .. } => counts.accrue += 1,
+                    BatchOp::Deposit { .. } => {
+                        assert_eq!(
+                            mode,
+                            Mode::Normal,
+                            "no deposit is credited in close-only: {ctx}"
+                        );
+                        counts.deposit += 1;
+                    }
+                    BatchOp::FundPosition { owner, .. } => {
+                        counts.fund += 1;
+                        if positions
+                            .get(&(*owner, 0))
+                            .is_some_and(|p| p.size == 0 && p.collateral < 0)
+                        {
+                            counts.debt_top_up += 1;
+                        }
+                    }
+                    BatchOp::Unbind { owner, .. } => {
+                        counts.unbind += 1;
+                        let (px, idx) = index.unwrap();
+                        if let Some(p) = self.s.position(owner, 0).filter(|p| p.is_open()) {
+                            assert_eq!(
+                                p.check_initial_margin(&m, px, idx),
+                                Ok(()),
+                                "an unbind keeps initial margin at the settled index: {ctx}"
+                            );
+                        }
+                    }
+                    BatchOp::Liquidate { owner, .. } => {
+                        counts.liquidate += 1;
+                        if self.s.position(owner, 0).is_some_and(|p| p.collateral < 0) {
+                            counts.parked_debt += 1;
+                        }
+                        let (px, idx) = index.unwrap();
+                        for (key, before) in &positions {
+                            if key.0 == *owner || !before.is_open() {
+                                continue;
+                            }
+                            let after = self.s.positions[key];
+                            assert_eq!(
+                                (after.size, after.entry_price, after.funding_entry),
+                                (before.size, before.entry_price, before.funding_entry),
+                                "{ctx}"
+                            );
+                            let clawed = before.collateral - after.collateral;
+                            let clawable = before.adl_clawable(&m, px, idx).unwrap_or(0);
+                            assert!(
+                                (0..=clawable).contains(&clawed),
+                                "a haircut of {clawed} exceeds the clawable {clawable}: {ctx}"
+                            );
+                            if clawed > 0 {
+                                counts.adl_haircut += 1;
+                            }
+                            if !before.is_liquidatable(&m, px, idx) {
+                                assert!(
+                                    !after.is_liquidatable(&m, px, idx),
+                                    "auto-deleverage made a position liquidatable: {ctx}"
+                                );
+                            }
+                        }
+                    }
+                    BatchOp::Withdraw { .. } => counts.withdraw += 1,
+                    _ => {}
+                }
+                if let Some(w) = out.withdrawal {
+                    assert!(
+                        w.nonce > self.last_leaf_nonce,
+                        "every withdrawal leaf has a new nonce: {ctx}"
+                    );
+                    self.last_leaf_nonce = w.nonce;
+                }
+                counts.pruned += positions
+                    .keys()
+                    .filter(|k| !self.s.positions.contains_key(k))
+                    .count() as u64;
+            }
         }
+        assert!(self.s.conservation_holds(), "conservation broken: {ctx}");
+        // every funding state stays in range, so the post-state passes the
+        // pre-state shape check
+        assert_eq!(self.s.validate_witness_shape(), Ok(()), "{ctx}");
+        assert!(
+            self.s.positions.values().all(|p| !p.is_empty()),
+            "no entry with zero size and zero collateral is stored: {ctx}"
+        );
+        if mode == Mode::CloseOnly {
+            assert_eq!(self.s.mode, Mode::CloseOnly, "close-only is final: {ctx}");
+        }
+    }
+
+    /// The wind-down settlement, then every phase-2 exit. Returns the final
+    /// state root.
+    fn finish(mut self, counts: &mut Counts) -> [u8; 32] {
+        let ctx = self.ctx.clone();
+        if self.s.mode == Mode::CloseOnly {
+            counts.close_only_sessions += 1;
+        }
+        let inside = self.s.internal_value().unwrap();
+        let last = self.s.last_withdrawal_nonce;
+        // The settlement succeeds whenever the value inside is not negative;
+        // otherwise its claims cannot cover its deficit, and it is refused and
+        // changes nothing.
+        if inside < 0 {
+            let root = self.s.state_root();
+            assert_eq!(
+                self.s.apply_batch(&[BatchOp::SettleAll]),
+                Err(EngineError::WindDownInsolvent),
+                "{ctx}"
+            );
+            assert_eq!(self.s.state_root(), root, "{ctx}");
+            counts.settle_all_refused += 1;
+            return root;
+        }
+        let out = self
+            .s
+            .apply_batch(&[BatchOp::SettleAll])
+            .unwrap_or_else(|e| panic!("settlement refused with {e:?}: {ctx}"));
+        counts.settle_all += 1;
+        assert!(out.withdrawals.len() <= 1, "{ctx}");
+        let payout: i128 = out.withdrawals.iter().map(|w| w.amount).sum();
+        if let Some(w) = out.withdrawals.first() {
+            assert_eq!((w.to, w.nonce), (RECIPIENT, last + 1), "{ctx}");
+            assert!(w.nonce > self.last_leaf_nonce, "{ctx}");
+            self.last_leaf_nonce = w.nonce;
+            counts.payout += 1;
+        }
+        let s = &mut self.s;
+        assert_eq!(
+            (s.vault_pool, s.insurance_fund, s.treasury),
+            (0, 0, 0),
+            "with a recipient set no reserve is left: {ctx}"
+        );
+        assert_eq!(
+            s.internal_value().unwrap() + payout,
+            inside,
+            "the settlement creates no value: {ctx}"
+        );
+        assert!(
+            s.positions
+                .values()
+                .all(|p| p.size == 0 && p.collateral > 0),
+            "{ctx}"
+        );
+        assert_eq!(s.mode, Mode::CloseOnly, "{ctx}");
+        assert!(s.conservation_holds(), "{ctx}");
+        // no deposit is credited after the settlement either
+        let (deposit, _) = self.deposit(0, 10 * QUOTE_SCALE);
+        let root = self.s.state_root();
+        assert_eq!(
+            self.s.apply_op(&deposit),
+            Err(EngineError::CloseOnly),
+            "{ctx}"
+        );
+        assert_eq!(self.s.state_root(), root, "{ctx}");
+
+        // phase 2: every claim leaves, one owner per batch
+        for i in 0..N_OWNERS {
+            let o = owner(i);
+            let mut nonce = self.s.last_withdrawal_nonce;
+            let mut ops = Vec::new();
+            if let Some(amount) = self.s.position(&o, 0).map(|p| p.collateral) {
+                let blinding = self.blinding();
+                ops.push(BatchOp::WindDownUnbind {
+                    owner: o,
+                    market_id: 0,
+                    amount,
+                    blinding,
+                });
+                nonce += 1;
+                ops.push(BatchOp::WindDownWithdraw {
+                    note_commitment: Note::new(o, 0, amount, blinding).commitment::<Keccak256>(),
+                    spend_key: spend_key(i),
+                    to: Some([i as u8; 20]),
+                    nonce,
+                });
+            }
+            for (cm, _) in self.s.notes.iter().filter(|(_, n)| n.owner == o) {
+                nonce += 1;
+                ops.push(BatchOp::WindDownWithdraw {
+                    note_commitment: *cm,
+                    spend_key: spend_key(i),
+                    to: Some([i as u8; 20]),
+                    nonce,
+                });
+            }
+            if ops.is_empty() {
+                continue;
+            }
+            let out = self
+                .s
+                .apply_batch(&ops)
+                .unwrap_or_else(|e| panic!("phase-2 exit refused with {e:?}: {ctx}"));
+            for w in out.withdrawals {
+                assert!(w.nonce > self.last_leaf_nonce, "{ctx}");
+                self.last_leaf_nonce = w.nonce;
+            }
+            counts.exits += 1;
+            assert!(self.s.conservation_holds(), "{ctx}");
+        }
+        let s = &self.s;
+        assert!(s.positions.is_empty() && s.notes.is_empty(), "{ctx}");
+        assert_eq!(s.internal_value(), Some(0), "{ctx}");
+        assert_eq!(
+            s.external_in, s.external_out,
+            "the exits drain the vault: {ctx}"
+        );
+        s.state_root()
     }
 }
 
+/// Run one randomized session from `seed` on `market`, checking the invariants
+/// after every op, and return its final state root.
+fn run_session(seed: u64, steps: usize, market: Market, counts: &mut Counts) -> [u8; 32] {
+    let mut session = Session::new(seed, market);
+    for step in 0..steps {
+        session.ctx = format!("seed={seed} step={step}");
+        let op = session.next_op();
+        session.apply_and_check(&op, counts);
+    }
+    session.finish(counts)
+}
+
+/// Random sessions on a fee-free market and on a market with fees and a
+/// treasury cut. After every op: a refused op changes nothing; conservation;
+/// the shape check; no empty position entry; no deposit credited in
+/// close-only; every op that carries an oracle stores the index settled to its
+/// own time, and an unbind keeps initial margin at that index; a liquidation's
+/// haircuts stay within each winner's clawable amount and make no position
+/// liquidatable; withdrawal leaves carry strictly increasing nonces. At the end
+/// of each session the settlement leaves no reserve and creates no value (or,
+/// when the value inside is negative, is refused and changes nothing), and the
+/// phase-2 exits drain the vault exactly.
 #[test]
 fn fuzz_conservation_holds_over_random_sessions() {
-    // many independent seeds × long sessions
-    for seed in 1..=200u64 {
-        run_session(seed.wrapping_mul(0x9E3779B97F4A7C15), 300);
+    let mut counts = Counts::default();
+    for seed in 1..=48u64 {
+        let market = if seed % 2 == 0 {
+            Market::conservative(0)
+        } else {
+            Market::with_fees_treasury(0, 10, 2, 6)
+        };
+        run_session(
+            seed.wrapping_mul(0x9E3779B97F4A7C15),
+            250,
+            market,
+            &mut counts,
+        );
     }
+    println!("{counts:?}");
+    let floors = [
+        ("fill", counts.fill, 300),
+        ("accrue", counts.accrue, 1_000),
+        ("liquidate", counts.liquidate, 20),
+        ("adl_haircut", counts.adl_haircut, 20),
+        ("parked_debt", counts.parked_debt, 5),
+        ("deposit", counts.deposit, 250),
+        (
+            "deposit_refused_in_close_only",
+            counts.deposit_refused_in_close_only,
+            50,
+        ),
+        ("fund", counts.fund, 200),
+        ("debt_top_up", counts.debt_top_up, 1),
+        ("unbind", counts.unbind, 250),
+        ("withdraw", counts.withdraw, 250),
+        ("pruned", counts.pruned, 50),
+        ("close_only_sessions", counts.close_only_sessions, 5),
+        ("settle_all", counts.settle_all, 40),
+        ("payout", counts.payout, 5),
+        ("exits", counts.exits, 40),
+    ];
+    for (name, got, floor) in floors {
+        assert!(got >= floor, "{name}: {got} < {floor} ({counts:?})");
+    }
+}
+
+/// The same seed gives the same session, op for op.
+#[test]
+fn fuzz_session_is_deterministic() {
+    let run = || {
+        run_session(
+            7,
+            120,
+            Market::with_fees_treasury(0, 10, 2, 6),
+            &mut Counts::default(),
+        )
+    };
+    assert_eq!(run(), run());
 }
 
 #[test]

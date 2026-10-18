@@ -9,8 +9,8 @@
 //! The only accepted input is `perp_core::clock::WIRE_MAGIC ‖
 //! postcard(perp_core::clock::ClockWitness)` with no trailing bytes. Any other input
 //! panics, so no proof exists for it. The committed value is
-//! `BoundTransition::commitment`, byte-identical to the native twin in
-//! `prover::public_from_witness` and to the commitment `ClockBoundVerifier` checks.
+//! `BoundTransition::commitment`, the commitment `ClockBoundVerifier` checks. A native
+//! entrypoint that stands in for this guest must apply the same strict rule.
 #![no_main]
 
 sp1_zkvm::entrypoint!(main);
