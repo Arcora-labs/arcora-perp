@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
-import type { RefundableDeposit, WithdrawalEntry } from "../domain/types";
+import type { RefundableDeposit, TrackedOrder, WithdrawalEntry } from "../domain/types";
 import { validateWithdrawal } from "../domain/withdrawal";
 import { validateRefund } from "../domain/refund";
 import {
@@ -13,6 +13,19 @@ import {
   serializeClaimBundles,
   type ClaimBundle,
 } from "../domain/claimBundle";
+import {
+  MAX_STORED_CHALLENGE_KITS,
+  challengeKitFileName,
+  loadChallengeKits,
+  mergeChallengeKits,
+  newChallengeKits,
+  rememberChallengeKits,
+  serializeChallengeKits,
+  settledOrderHashes,
+  unsettledOrderHashes,
+  type ChallengeKit,
+  type ChallengeKitStorage,
+} from "../domain/challengeKit";
 import type { DarkPerpClient } from "../api/client";
 import {
   BASE_SEPOLIA_CHAIN_ID,
@@ -231,6 +244,7 @@ export function AccountPanel() {
 
       <WithdrawalsSection client={client} />
       <RefundsSection client={client} closeOnly={state.mode === "CloseOnly"} />
+      <ChallengeKitSection orders={state.orders} />
     </div>
   );
 }
@@ -761,8 +775,133 @@ export function RefundsSection({ client, closeOnly }: { client: DarkPerpClient; 
         Send the refund from the connected wallet, or run the copied{" "}
         <code>cast send</code> command from any funded wallet (replace{" "}
         <code>&lt;YOUR_KEY&gt;</code>). Anyone can send it; the funds always go to the
-        deposit's address.
+        deposit's address. Without the gateway,{" "}
+        <code>scripts/claim/refund_deposit.py</code> finds your deposits on-chain and
+        prints the same call.
       </p>
+    </div>
+  );
+}
+
+// ── L1 inclusion-challenge kits ───────────────────────────────────────────────
+
+/// Kits listed one by one; older ones are still in the export.
+const LISTED_KITS = 20;
+
+/// Offered kits this browser did not store: how many, how many of them are not
+/// for an order the account lists now, and whether the store is at its bound.
+interface UnsavedKits {
+  count: number;
+  unlisted: number;
+  atBound: boolean;
+}
+
+/// Which of the kits not kept are not for an order the account lists now: the
+/// panel cannot offer them again after it closes.
+function unlistedNote({ count, unlisted }: UnsavedKits): string {
+  if (unlisted === 0) return "";
+  const subject = unlisted === count ? (count === 1 ? "It is" : "They are") : `${unlisted} of them ${unlisted === 1 ? "is" : "are"}`;
+  return ` ${subject} for ${unlisted === 1 ? "an order" : "orders"} this account does not list now` +
+    " (this account's older orders, or another account's in this browser).";
+}
+
+/// The L1 challenge kits of the account's listed orders, kept in this browser
+/// (bounded; see `rememberChallengeKits`). With a kit the user can open
+/// `challengeInclusion` for an order no settled batch includes or rejects,
+/// without the operator. A kit is dropped once the gateway lists its order as
+/// SETTLED. The section offers, past the storage bound too, the kit of every
+/// listed order that is not SETTLED and every kit stored or offered so far this
+/// session. When the browser does not store a kit (storage blocked or full, or
+/// the bound reached), the section still offers it for this session and says
+/// so, counting the ones that are not for an order the account lists now
+/// (older orders, or another account's in this browser). Hidden while there is
+/// none. `storage` defaults to this origin's localStorage. Exported for tests.
+export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[]; storage?: ChallengeKitStorage }) {
+  const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits(storage));
+  const [unsaved, setUnsaved] = useState<UnsavedKits>({ count: 0, unlisted: 0, atBound: false });
+  // The offered kits, for the effect (it alone changes them after the first render).
+  const offered = useRef(kits);
+  // Order hashes already kept or tried, so a state push re-verifies nothing.
+  const seen = useRef<Set<string> | null>(null);
+  seen.current ??= new Set(kits.map((k) => k.orderHash.toLowerCase()));
+
+  useEffect(() => {
+    const fresh = newChallengeKits(orders, seen.current!);
+    const settled = settledOrderHashes(orders);
+    const current = offered.current;
+    if (fresh.length === 0 && !current.some((k) => settled.has(k.orderHash.toLowerCase()))) return;
+    const listed = unsettledOrderHashes(orders);
+    // Stored before this write, including kits another tab stored since this
+    // panel opened: any of them the write evicts is offered (and counted) too.
+    const before = loadChallengeKits(storage);
+    // This session's unsaved kits go along, so they are stored once there is room.
+    rememberChallengeKits([...current, ...fresh], storage, settled, listed);
+    const stored = loadChallengeKits(storage);
+    const kept = new Set(stored.map((k) => k.orderHash.toLowerCase()));
+    // Not bounded: a kit the store evicted stays offered for this session.
+    const next = mergeChallengeKits([...stored, ...current, ...before], fresh, settled);
+    offered.current = next;
+    setKits(next);
+    const notKept = next.filter((k) => !kept.has(k.orderHash.toLowerCase()));
+    setUnsaved({
+      count: notKept.length,
+      unlisted: notKept.filter((k) => !listed.has(k.orderHash.toLowerCase())).length,
+      atBound: stored.length >= MAX_STORED_CHALLENGE_KITS,
+    });
+  }, [orders, storage]);
+
+  if (kits.length === 0) return null;
+  const newest = [...kits].sort((a, b) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo);
+  const listed = newest.slice(0, LISTED_KITS);
+
+  return (
+    <div className="withdrawals" aria-label="Challenge kits">
+      <h3 className="card__title">Challenge kits</h3>
+      <p className="muted small">
+        If a settled batch never includes or rejects an accepted order, its kit lets you
+        open the on-chain inclusion challenge without the operator (check it with{" "}
+        <code>scripts/claim/challenge_inclusion.py</code>). Keep the files private:
+        opening a challenge publicly links your deposit address to the order.
+      </p>
+      {unsaved.count > 0 && (
+        <p className="notice notice--warn" role="alert">
+          This browser did not keep{" "}
+          {unsaved.count < kits.length ? `${unsaved.count} of these kits` : kits.length === 1 ? "this kit" : "these kits"}{" "}
+          ({unsaved.atBound ? `it keeps at most ${MAX_STORED_CHALLENGE_KITS}` : "its storage is blocked or full"}).
+          {unlistedNote(unsaved)} Export now: once you leave this panel or reload the page, a kit it did not keep
+          is offered again only while the gateway still lists its order.
+        </p>
+      )}
+      <ul className="withdrawals__list">
+        {listed.map((k) => (
+          <li key={k.orderHash} className="withdrawals__item">
+            <div className="withdrawals__row muted small mono">
+              <span>order {shortHash(k.orderHash)}</span>
+              <span>receipt #{k.seqNo}</span>
+            </div>
+            <div className="row">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                aria-label={`Download challenge kit for order ${shortHash(k.orderHash)}`}
+                onClick={() => downloadText(challengeKitFileName(k), serializeChallengeKits([k]))}
+              >
+                Download challenge kit
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {newest.length > listed.length && (
+        <p className="muted small">{newest.length - listed.length} older kits are only in the export.</p>
+      )}
+      <button
+        type="button"
+        className="btn btn--ghost"
+        onClick={() => downloadText("arcora-challenge-kits.json", serializeChallengeKits(newest))}
+      >
+        Export all challenge kits ({kits.length})
+      </button>
     </div>
   );
 }

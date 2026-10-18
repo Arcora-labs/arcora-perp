@@ -1,0 +1,57 @@
+{
+  "_note": "Shared by frontend/src/domain/challengeKit.test.ts, frontend/src/components/AccountPanel.challengeKit.test.tsx and scripts/challenge/test_challenge_kit.py. Authorization A and B are the vectors pinned in crates/gateway/src/challenge_auth.rs and contracts/test/CrossLayer.t.sol (fixture enclave seed 0x07..07). Fix the code, never these values.",
+  "authTag": "0x69f32c88aac1254085ee4ba164b69f2f12fb02828e83d559eff228842bdcc42a",
+  "enclaveSigner": "0x4a62316623ad457f02cdc5d997ded67a383ec569",
+  "digestVectors": [
+    {
+      "name": "A",
+      "chainId": 84532,
+      "settlement": "0x2222222222222222222222222222222222222222",
+      "orderHash": "0x0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5",
+      "seqNo": 0,
+      "recvTimeMs": 1000,
+      "batchIdHint": 0,
+      "beneficiary": "0x3333333333333333333333333333333333333333",
+      "digest": "0xc97f5f187d95859ac2b5787fc5a2b4aaab47da927688f0b2038e0a03ff6f337d"
+    },
+    {
+      "name": "B",
+      "chainId": 84532,
+      "settlement": "0x2222222222222222222222222222222222222222",
+      "orderHash": "0x1212121212121212121212121212121212121212121212121212121212121212",
+      "seqNo": 7,
+      "recvTimeMs": 123456789,
+      "batchIdHint": 3,
+      "beneficiary": "0x3333333333333333333333333333333333333333",
+      "digest": "0x72e7483a96cc46922628812fa90ac8351fb95784c7883861a34836b14f882225"
+    }
+  ],
+  "acceptReceipt": {
+    "orderHash": "0x0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5",
+    "seqNo": 0,
+    "recvTimeMs": 1000,
+    "batchIdHint": 0,
+    "windowId": 0,
+    "enclaveSigner": "0x4a62316623ad457f02cdc5d997ded67a383ec569",
+    "l1Challenge": {
+      "chainId": 84532,
+      "settlement": "0x2222222222222222222222222222222222222222",
+      "beneficiary": "0x3333333333333333333333333333333333333333",
+      "signature": "0x490ce9b286399686afb9dfb81f58c2fa2622d492fb468f27682b22fc15ed81644c1c3b569abd8431ff2e339bb14d1022a5ef5d58dad371b6cfe314ad28e414821b"
+    }
+  },
+  "kit": {
+    "schema": "arcora.challenge-kit.v1",
+    "orderHash": "0x0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5",
+    "seqNo": 0,
+    "recvTimeMs": 1000,
+    "batchIdHint": 0,
+    "enclaveSigner": "0x4a62316623ad457f02cdc5d997ded67a383ec569",
+    "l1Challenge": {
+      "chainId": 84532,
+      "settlement": "0x2222222222222222222222222222222222222222",
+      "beneficiary": "0x3333333333333333333333333333333333333333",
+      "signature": "0x490ce9b286399686afb9dfb81f58c2fa2622d492fb468f27682b22fc15ed81644c1c3b569abd8431ff2e339bb14d1022a5ef5d58dad371b6cfe314ad28e414821b"
+    }
+  }
+}
