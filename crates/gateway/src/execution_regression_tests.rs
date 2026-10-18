@@ -75,18 +75,11 @@ mod execution_regressions {
 
     // Reproduce the v7 writer explicitly. Calling snapshot_plain() here would
     // produce v8 and stop testing the historical execution-only format.
-    fn v7_snapshot(gw: &Gw) -> Vec<u8> {
-        let prices: Vec<_> = gw
-            .mkts
-            .iter()
-            .map(|m| (m.id, m.reference_price, m.px, m.live))
-            .collect();
-        let mut bytes = execution::SNAPSHOT_V7.to_vec();
-        bytes.extend_from_slice(deposit_ingestion::SNAPSHOT_V6);
-        let deposits = deposit_ingestion::DepositStateV6::from_current(&gw.deposits);
-        bytes.extend_from_slice(&postcard::to_allocvec(&(gw, prices, &deposits)).unwrap());
-        execution::append_snapshot(gw, &mut bytes);
-        bytes
+    /// The current payload with the v10 header removed: the positional body and
+    /// both extensions, for assembling the earlier layouts this gateway refuses.
+    fn v10_body(gw: &Gw) -> Vec<u8> {
+        let plain = gw.snapshot_plain();
+        plain[snapshot::PAYLOAD_MAGIC.len() + 1..].to_vec()
     }
 
     #[test]
@@ -283,32 +276,6 @@ mod execution_regressions {
         assert_replay(&mut restored);
     }
     #[test]
-    fn v5_migration_preserves_accounts_but_marks_fabricated_history_unavailable() {
-        let (mut gw, maker, taker, _) = paired();
-        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 40, 0, "Ioc");
-        tick(&mut gw);
-        // Serialize the exact legacy positional prefix, without any execution trailer.
-        let markets: Vec<_> = gw
-            .mkts
-            .iter()
-            .map(|m| (m.id, m.reference_price, m.px, m.live))
-            .collect();
-        let legacy = postcard::to_allocvec(&(&gw, markets)).unwrap();
-        let root = gw.seq.state.state_root();
-        let restored = Gw::boot_restored(&legacy).unwrap();
-        assert_eq!(restored.seq.state.state_root(), root);
-        assert_eq!(
-            restored.accounts[&maker].wallet.owner,
-            gw.accounts[&maker].wallet.owner
-        );
-        assert_eq!(row(&restored, &maker)["execution"]["available"], false);
-        assert!(row(&restored, &maker)["filledSize"].is_null());
-        assert_eq!(
-            row(&restored, &maker)["execution"]["remainingSize"],
-            (3 * SIZE_SCALE / 40).to_string()
-        );
-    }
-    #[test]
     fn corrupt_execution_trailer_is_not_silently_ignored() {
         let (gw, _, _, _) = paired();
         let mut bytes = gw.snapshot_plain();
@@ -316,11 +283,14 @@ mod execution_regressions {
         assert!(Gw::boot_restored(&bytes).is_err());
     }
     #[test]
-    fn snapshot_envelope_has_one_way_v9_guard_and_accepts_v5() {
+    fn snapshot_envelope_is_v10_and_refuses_an_authenticated_v5_file() {
         let (gw, _, _, _) = paired();
         let seed = [42; 32];
         let current = snapshot::seal(&gw.snapshot_plain(), &seed);
-        assert_eq!(&current[..8], b"DPSNAP9\0");
+        assert_eq!(&current[..8], b"DPSNAP10");
+        assert!(Gw::boot_restored(&snapshot::open(&current, &seed).unwrap()).is_ok());
+        // A genuine v5 file: the old positional plaintext, sealed under the
+        // unversioned tag. Neither the envelope nor the payload is read.
         let markets: Vec<_> = gw
             .mkts
             .iter()
@@ -343,7 +313,8 @@ mod execution_regressions {
         let tag =
             <Keccak256 as perp_core::hash::Hasher>::hash_words(Domain::SnapshotSealMac, &words);
         sealed[40..72].copy_from_slice(&tag);
-        assert!(Gw::boot_restored(&snapshot::open(&sealed, &seed).unwrap()).is_ok());
+        assert!(snapshot::open(&sealed, &seed).is_err());
+        assert!(Gw::boot_restored(&old).is_err());
     }
     #[test]
     fn failed_window_retains_cancel_and_rebinds_intervening_fills() {
@@ -367,31 +338,15 @@ mod execution_regressions {
         assert_eq!(gw.seq.book(0).unwrap().resting_size(Side::Sell), 0);
     }
     #[test]
-    fn legacy_maker_finishing_remainder_is_not_actionable_or_fabricated() {
-        let (mut gw, maker, taker, _) = paired();
-        let markets: Vec<(u64, i128, i128, bool)> = gw
-            .mkts
-            .iter()
-            .map(|m| (m.id, m.reference_price, m.px, m.live))
-            .collect();
-        let old = postcard::to_allocvec(&(&gw, markets)).unwrap();
-        gw = Gw::boot_restored(&old).unwrap();
-        gw.window_settle_mode = true;
-        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 10, 0, "Ioc");
-        tick(&mut gw);
-        let order = row(&gw, &maker);
-        assert_eq!(order["execution"]["remainingSize"], "0");
-        assert_eq!(order["execution"]["available"], false);
-        assert!(order["filledSize"].is_null());
-        assert!(gw
-            .account_cancel(&maker, "o1")
-            .unwrap_err()
-            .contains("ORDER_NOT_LIVE"));
-    }
-    #[test]
-    fn changing_v8_to_a_legacy_header_does_not_bypass_authentication() {
+    fn changing_v10_to_an_earlier_header_does_not_bypass_authentication() {
         let seed = [42; 32];
-        for magic in [b"DPSNAP5\0", b"DPSNAP6\0", b"DPSNAP7\0"] {
+        for magic in [
+            b"DPSNAP5\0",
+            b"DPSNAP6\0",
+            b"DPSNAP7\0",
+            b"DPSNAP8\0",
+            b"DPSNAP9\0",
+        ] {
             let mut sealed = snapshot::seal(b"a new-format state", &seed);
             sealed[..8].copy_from_slice(magic);
             assert!(snapshot::open(&sealed, &seed).is_err());
@@ -450,73 +405,69 @@ mod execution_regressions {
     }
 
     #[test]
-    fn a05_v7_cannot_silently_drop_execution_extension() {
+    fn the_execution_extension_cannot_be_dropped() {
         let (gw, _, _, _) = paired();
-        let raw = v7_snapshot(&gw);
-        let payload = raw.strip_prefix(execution::SNAPSHOT_V7).unwrap()
-            .strip_prefix(deposit_ingestion::SNAPSHOT_V6).unwrap();
-        type LegacyPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositStateV6);
-        let (_, rest): (LegacyPart, _) = postcard::take_from_bytes(payload).unwrap();
-        assert!(!rest.is_empty());
-        assert!(Gw::boot_restored(&raw[..raw.len() - rest.len()]).is_err());
-        // Simply removing v7's prefix also leaves a forbidden v6 trailer.
-        assert!(Gw::boot_restored(raw.strip_prefix(execution::SNAPSHOT_V7).unwrap()).is_err());
+        let plain = gw.snapshot_plain();
+        let exec = plain.windows(8).position(|w| w == b"DPEXEC2\0").unwrap();
+        assert!(Gw::boot_restored(&plain[..exec]).is_err());
+        // Dropping only the execution extension leaves the recovery one in its place.
+        let recovery = plain.windows(8).rposition(|w| w == b"DPRECOV1").unwrap();
+        let mut skipped = plain[..exec].to_vec();
+        skipped.extend_from_slice(&plain[recovery..]);
+        assert!(Gw::boot_restored(&skipped).is_err());
     }
 
-    #[test]
-    fn a07_v7_migration_preserves_partial_execution_and_replay() {
-        let (mut gw, maker, taker, _) = paired();
-        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 40, 0, "Ioc");
-        tick(&mut gw);
-        gw.account_cancel(&maker, "o1").unwrap();
-        let before = row(&gw, &maker);
-        let old = v7_snapshot(&gw);
-        let mut restored = Gw::boot_restored(&old).unwrap();
-        assert_eq!(restored.seq.state.state_root(), gw.seq.state.state_root());
-        assert_eq!(row(&restored, &maker), before);
-        assert!(restored.accounts.values().all(|a| a.recovery_nonce == 0));
-        assert_eq!(v7_snapshot(&restored), old);
-        let upgraded = restored.snapshot_plain();
-        assert!(upgraded.starts_with(wind_down::SNAPSHOT_V9));
-        assert_eq!(Gw::boot_restored(&upgraded).unwrap().snapshot_plain(), upgraded);
-        assert_replay(&mut restored);
-    }
 
     #[test]
-    fn a07_v8_preserves_generation_and_rejects_truncation_or_downgrade() {
+    fn recovery_generation_round_trips_and_its_extension_cannot_be_dropped() {
         let (mut gw, maker, _, _) = paired();
         gw.accounts.get_mut(&maker).unwrap().recovery_nonce = 7;
         let current = gw.snapshot_plain();
-        let raw = wind_down::snapshot_payload(&current).unwrap().0;
-        let restored = Gw::boot_restored(raw).unwrap();
+        let restored = Gw::boot_restored(&current).unwrap();
         assert_eq!(restored.accounts[&maker].recovery_nonce, 7);
         assert_eq!(restored.snapshot_plain(), current);
-        let payload = raw
-            .strip_prefix(account_recovery::SNAPSHOT_V8)
-            .unwrap()
-            .strip_prefix(deposit_ingestion::SNAPSHOT_V7)
-            .unwrap();
-        type CurrentPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositState);
-        let (_, rest): (CurrentPart, _) = postcard::take_from_bytes(payload).unwrap();
-        assert!(!rest.is_empty());
-        assert!(Gw::boot_restored(&raw[..raw.len() - rest.len()]).is_err());
-        let legacy = v7_snapshot(&gw);
-        let mut no_recovery = account_recovery::SNAPSHOT_V8.to_vec();
-        no_recovery.extend_from_slice(legacy.strip_prefix(execution::SNAPSHOT_V7).unwrap());
-        assert!(Gw::boot_restored(&no_recovery).is_err());
-        let inner = raw.strip_prefix(account_recovery::SNAPSHOT_V8).unwrap();
-        assert!(Gw::boot_restored(inner).is_err());
-        let mut downgraded = execution::SNAPSHOT_V7.to_vec();
-        downgraded.extend_from_slice(inner);
-        assert!(Gw::boot_restored(&downgraded).is_err());
+        let recovery = current.windows(8).rposition(|w| w == b"DPRECOV1").unwrap();
+        assert!(Gw::boot_restored(&current[..recovery]).is_err());
+        assert!(Gw::boot_restored(&current[..current.len() - 1]).is_err());
     }
 
+    /// The payload layouts of v5-v9 (each historical header in front of the current
+    /// body) are refused: only the v10 header is read, so no earlier layout is ever
+    /// handed to the positional decoder.
     #[test]
-    fn a07_authenticated_v7_envelope_remains_readable() {
+    fn every_earlier_payload_layout_is_refused() {
         let (gw, _, _, _) = paired();
-        let old = v7_snapshot(&gw);
+        let body = v10_body(&gw);
+        let layouts: [(&str, &[&[u8]]); 5] = [
+            (
+                "v9",
+                &[b"\xffDP-WIND-DOWN-v9\0", &[0], b"\xffDPA07-SNAPSHOT-v8\0", b"\xffDPA01-SNAPSHOT-v7\0"],
+            ),
+            ("v8", &[b"\xffDPA07-SNAPSHOT-v8\0", b"\xffDPA01-SNAPSHOT-v7\0"]),
+            ("v7", &[b"\xffDPA05-SNAPSHOT-v7\0", b"\xffDPA01-SNAPSHOT-v6\0"]),
+            ("v6", &[b"\xffDPA01-SNAPSHOT-v6\0"]),
+            ("v5", &[]),
+        ];
+        for (version, prefix) in layouts {
+            let mut plain = prefix.concat();
+            plain.extend_from_slice(&body);
+            let error = Gw::boot_restored(&plain).err().unwrap();
+            assert!(error.contains("v10"), "{version}: {error}");
+        }
+        // A v10 header with an unknown flag, or over nothing, is refused too.
+        let mut bad_flag = snapshot::PAYLOAD_MAGIC.to_vec();
+        bad_flag.push(2);
+        bad_flag.extend_from_slice(&body);
+        assert!(Gw::boot_restored(&bad_flag).is_err());
+        assert!(Gw::boot_restored(snapshot::PAYLOAD_MAGIC).is_err());
+    }
+
+    /// An authenticated v7 file (versioned tag, v7 header) is refused at the envelope.
+    #[test]
+    fn an_authenticated_v7_file_is_refused() {
+        let (gw, _, _, _) = paired();
         let seed = [42; 32];
-        let mut sealed = snapshot::seal(&old, &seed);
+        let mut sealed = snapshot::seal(&gw.snapshot_plain(), &seed);
         let nonce: [u8; 32] = sealed[8..40].try_into().unwrap();
         let mut words = vec![
             seed,
@@ -536,11 +487,7 @@ mod execution_regressions {
         );
         sealed[..8].copy_from_slice(b"DPSNAP7\0");
         sealed[40..72].copy_from_slice(&tag);
-        let opened = snapshot::open(&sealed, &seed).unwrap();
-        assert_eq!(opened, old);
-        let restored = Gw::boot_restored(&opened).unwrap();
-        assert_eq!(v7_snapshot(&restored), old);
-        assert!(restored.snapshot_plain().starts_with(wind_down::SNAPSHOT_V9));
+        assert!(snapshot::open(&sealed, &seed).is_err());
     }
 
     #[test]

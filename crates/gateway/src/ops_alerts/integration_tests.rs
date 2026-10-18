@@ -518,6 +518,9 @@ fn alert_kinds_have_stable_names_and_active_lists_open_episodes() {
             "stale_anchor",
             "liveness_low",
             "permit_gc_stalled",
+            "engine_close_only",
+            "admission_cap_reached",
+            "withdraw_nonce_repaired",
         ]
     );
     let alerts = OpsAlerts::default();

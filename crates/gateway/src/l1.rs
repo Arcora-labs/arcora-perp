@@ -274,6 +274,8 @@ pub(crate) struct BootPosture {
     pub enclave_signer: [u8; 20],
     /// `sequencer()`: the only key that may register phase-0 anchors and settle.
     pub sequencer: [u8; 20],
+    /// `governance()`: the key that enters close-only and drives the wind-down.
+    pub governance: [u8; 20],
 }
 
 /// What this gateway is configured for and holds locally.
@@ -293,6 +295,8 @@ pub(crate) struct BootExpectation {
     pub local_consumed: u64,
     /// `DEPOSIT_PERMIT_TTL_SECS`.
     pub permit_ttl_secs: u64,
+    /// The wind-down recipient the local state binds (zero when none is bound).
+    pub wind_down_recipient: [u8; 20],
 }
 
 /// The smallest `anchorTimeoutMs` that cannot cancel an anchor whose honest proof
@@ -333,6 +337,23 @@ pub(crate) fn check_boot_posture(p: &BootPosture, e: &BootExpectation) -> Result
             crate::hex0x(&p.sequencer),
             crate::hex0x(&e.sequencer)
         ));
+    }
+    // The wind-down recipient is a cold address: never a key this deployment
+    // operates with. The local keys are compared before boot; these are the ones
+    // only the settlement names.
+    if e.wind_down_recipient != [0; 20] {
+        for (role, address) in [
+            ("sequencer()", p.sequencer),
+            ("governance()", p.governance),
+            ("enclaveSigner()", p.enclave_signer),
+        ] {
+            if e.wind_down_recipient == address {
+                return Err(format!(
+                    "the wind-down recipient bound in the local state is the settlement's \
+                     {role}; it must be a cold address independent of every operator key"
+                ));
+            }
+        }
     }
     if p.proof_version != 2 {
         return Err(format!(
@@ -1455,6 +1476,7 @@ impl L1 {
         live_root: Digest,
         local_consumed: u64,
         permit_ttl_secs: u64,
+        wind_down_recipient: [u8; 20],
     ) -> Result<BootExpectation, String> {
         Ok(BootExpectation {
             settlement: crate::parse_addr20_hex(&self.settlement)
@@ -1474,6 +1496,7 @@ impl L1 {
             live_root,
             local_consumed,
             permit_ttl_secs,
+            wind_down_recipient,
         })
     }
 
@@ -1848,6 +1871,7 @@ fn read_boot_posture(
         current_root: r.word(s, "currentStateRoot()", None)?,
         enclave_signer: abi_address(r.word(s, "enclaveSigner()", None)?, "enclaveSigner")?,
         sequencer: abi_address(r.word(s, "sequencer()", None)?, "sequencer")?,
+        governance: abi_address(r.word(s, "governance()", None)?, "governance")?,
     })
 }
 
@@ -2928,6 +2952,7 @@ mod tests {
             current_root: [3; 32],
             enclave_signer: [0x55; 20],
             sequencer: [0x44; 20],
+            governance: [0x46; 20],
         }
     }
     fn expectation() -> BootExpectation {
@@ -2942,6 +2967,7 @@ mod tests {
             live_root: [3; 32],
             local_consumed: 5,
             permit_ttl_secs: 1800,
+            wind_down_recipient: [0xC0; 20],
         }
     }
 
@@ -2986,6 +3012,31 @@ mod tests {
                     ..e.clone()
                 },
                 "sequencer()",
+            ),
+            // The wind-down recipient is never a key the settlement names.
+            (
+                p.clone(),
+                BootExpectation {
+                    wind_down_recipient: p.sequencer,
+                    ..e.clone()
+                },
+                "wind-down recipient bound in the local state is the settlement's sequencer()",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    wind_down_recipient: p.governance,
+                    ..e.clone()
+                },
+                "wind-down recipient bound in the local state is the settlement's governance()",
+            ),
+            (
+                p.clone(),
+                BootExpectation {
+                    wind_down_recipient: p.enclave_signer,
+                    ..e.clone()
+                },
+                "wind-down recipient bound in the local state is the settlement's enclaveSigner()",
             ),
             (
                 BootPosture {
@@ -3090,6 +3141,15 @@ mod tests {
             let error = check_boot_posture(&p, &e).unwrap_err();
             assert!(error.contains(reason), "{reason}: {error}");
         }
+        // A state with no recipient bound (tests and demos) has nothing to compare.
+        check_boot_posture(
+            &posture(),
+            &BootExpectation {
+                wind_down_recipient: [0; 20],
+                ..expectation()
+            },
+        )
+        .unwrap();
         // The limit itself is allowed: 10,800 s of a 86,400 s window, and the
         // launch TTL at the 7,200-block floor.
         check_boot_posture(

@@ -76,7 +76,7 @@ fn s3_execution_error_preserves_existing_state() {
     ];
     let mut trailer = b"DPEXEC2\0".to_vec();
     trailer.extend(postcard::to_allocvec(&rows).unwrap());
-    assert!(execution::restore_snapshot(&mut gw, &trailer).is_err());
+    assert!(execution::restore_snapshot_prefix(&mut gw, &trailer).is_err());
     assert_eq!(
         gw.snapshot_plain(),
         before,
@@ -177,196 +177,58 @@ fn frozen(version: &str, name: &str) -> Vec<u8> {
     .unwrap()
 }
 
-type MarketDynamics = Vec<(u64, i128, i128, bool)>;
-
-/// The frozen v6, v7 and v8 writers each left one pending deposit permit, signed
-/// for the vault ABI before permit deadlines, and this gateway refuses such state.
-/// This copy drops every outstanding permit (route and blind) and nothing else, so
-/// the rest of each historical migration is still exercised.
-fn without_outstanding_permits(plain: &[u8]) -> Vec<u8> {
-    let marker = crate::deposit_ingestion::SNAPSHOT_V6;
-    let at = plain
-        .windows(marker.len())
-        .position(|w| w == marker)
-        .expect("v6 deposit layer")
-        + marker.len();
-    type Part = (Gw, MarketDynamics, crate::deposit_ingestion::DepositStateV6);
-    let ((mut gw, prices, mut deposits), rest): (Part, _) =
-        postcard::take_from_bytes(&plain[at..]).unwrap();
-    deposits.clear_routes();
-    for account in gw.accounts.values_mut() {
-        account.deposit_authorizations.clear();
+/// The frozen files the v5-v8 writers produced are refused: the envelope reader
+/// accepts only DPSNAP10, so not even their authentication is attempted, and their
+/// payloads are no layout this gateway decodes.
+#[test]
+fn s3_historical_writers_are_refused() {
+    for (version, magic) in [
+        ("v5", b"DPSNAP5\0"),
+        ("v6", b"DPSNAP6\0"),
+        ("v7", b"DPSNAP7\0"),
+        ("v8", b"DPSNAP8\0"),
+    ] {
+        let sealed = frozen(version, "sealed.bin");
+        assert_eq!(
+            &sealed[..8],
+            magic,
+            "{version} is the genuine historical file"
+        );
+        let error = snapshot::open(&sealed, &[0xC3; 32]).unwrap_err();
+        assert!(error.contains("DPSNAP10"), "{version}: {error}");
+        // The same bytes under the current header fail authentication.
+        let mut relabelled = sealed.clone();
+        relabelled[..8].copy_from_slice(b"DPSNAP10");
+        assert!(
+            snapshot::open(&relabelled, &[0xC3; 32]).is_err(),
+            "{version}"
+        );
     }
-    let mut out = plain[..at].to_vec();
-    out.extend(postcard::to_allocvec(&(&gw, &prices, &deposits)).unwrap());
-    out.extend_from_slice(rest);
-    out
 }
 
-#[test]
-fn s3_historical_writers_preserve_state_authority_and_replay() {
-    for version in ["v5", "v6", "v7", "v8"] {
-        let sealed = frozen(version, "sealed.bin");
-        let mut plain = snapshot::open(&sealed, &[0xC3; 32]).unwrap();
-        if version != "v5" {
-            let error = Gw::boot_restored(&plain).err().unwrap();
-            assert!(
-                error.contains("outstanding deposit permits"),
-                "{version}: {error}"
-            );
-            plain = without_outstanding_permits(&plain);
-        }
-        let mut gw = Gw::boot_restored(&plain).unwrap_or_else(|e| panic!("{version}: {e}"));
-        let meta: serde_json::Value =
-            serde_json::from_slice(&frozen(version, "meta.json")).unwrap();
-        assert_eq!(
-            hex0x(&gw.seq.state.state_root()),
-            String::from_utf8(frozen(version, "root.txt")).unwrap(),
-            "{version} native root"
-        );
-        assert_eq!(
-            postcard::to_allocvec(&gw.seq.state).unwrap(),
-            frozen(version, "state.bin"),
-            "{version} full native state including nullifiers/notes"
-        );
-        let mut accounts: std::collections::BTreeMap<[u8; 32], Account> =
-            postcard::from_bytes(&frozen(version, "accounts.bin")).unwrap();
-        if version != "v5" {
-            for account in accounts.values_mut() {
-                account.deposit_authorizations.clear();
-            }
-        }
-        assert_eq!(
-            postcard::to_allocvec(&gw.accounts).unwrap(),
-            postcard::to_allocvec(&accounts).unwrap(),
-            "{version} legacy account fields and authority"
-        );
-        assert_eq!(
-            postcard::to_allocvec(&gw.pending_withdrawals).unwrap(),
-            frozen(version, "withdrawals.bin"),
-            "{version} pending withdrawals"
-        );
-        assert_eq!(
-            gw.pending_withdrawals.len(),
-            meta["pending_withdrawals"].as_u64().unwrap() as usize
-        );
-        assert!(!gw.seq.state.nullifiers.is_empty());
-        assert!(gw.accounts.values().any(|a| !a.orders.is_empty()));
-        if version == "v5" || version == "v6" {
-            assert!(
-                gw.accounts
-                    .values()
-                    .flat_map(|a| &a.orders)
-                    .filter(|o| o.sealed)
-                    .all(|o| !o.execution.as_ref().unwrap().known),
-                "{version}: history must stay unavailable"
-            );
-        }
-        if version != "v5" {
-            assert!(gw.deposits.routes.is_empty());
-            assert_eq!(gw.deposits.credits.len(), 1);
-            let mut expected: crate::deposit_ingestion::DepositStateV6 =
-                postcard::from_bytes(&frozen(version, "deposits.bin")).unwrap();
-            expected.clear_routes();
-            assert_eq!(
-                postcard::to_allocvec(&crate::deposit_ingestion::DepositStateV6::from_current(
-                    &gw.deposits
-                ))
-                .unwrap(),
-                postcard::to_allocvec(&expected).unwrap(),
-                "{version} consumed A01 routing"
-            );
-            assert!(gw
-                .deposits
-                .credits
-                .values()
-                .all(|c| c.route.valid_until == 0));
-        }
-        let upgrade = gw.snapshot_plain();
-        let mut upgraded = Gw::boot_restored(&upgrade).unwrap();
-        assert_eq!(
-            upgraded.snapshot_plain(),
-            upgrade,
-            "{version} -> v9 is stable"
-        );
-        let key = parse_hex32(meta["replay_key"].as_str().unwrap()).unwrap();
-        gw.account_cancel(&key, "o2").unwrap();
-        upgraded.account_cancel(&key, "o2").unwrap();
-        assert_eq!(
-            gw.seq.state.state_root(),
-            upgraded.seq.state.state_root(),
-            "{version} cancellation replay root"
-        );
-        assert_eq!(
-            postcard::to_allocvec(&gw.seq.state).unwrap(),
-            postcard::to_allocvec(&upgraded.seq.state).unwrap()
-        );
-        let withdraw_key = parse_hex32(meta["withdraw_key"].as_str().unwrap()).unwrap();
-        let owner = gw.accounts[&withdraw_key].wallet.owner;
-        // Apply the exact same authenticated engine operation to both migrated
-        // instances, including one fixed oracle timestamp/signature. This changes
-        // native collateral and unspent notes, rather than only comparing decode.
-        let now = now_ms();
-        let op = BatchOp::Unbind {
-            owner,
-            market_id: 0,
-            amount: 100 * QUOTE_SCALE,
-            blinding: [0xA8; 32],
-            oracle: oracle_of(gw.px_of(0), now, 0, &gw.oracle_signer),
-            now_ms: now,
-        };
-        gw.seq.apply(&op).unwrap();
-        upgraded.seq.apply(&op).unwrap();
-        assert_eq!(
-            gw.seq.state.state_root(),
-            upgraded.seq.state.state_root(),
-            "{version} collateral/note operation replay root"
-        );
-        assert_eq!(
-            postcard::to_allocvec(&gw.seq.state).unwrap(),
-            postcard::to_allocvec(&upgraded.seq.state).unwrap()
-        );
-        assert!(gw.seq.state.conservation_holds());
-        let witness = gw.seq.seal_window();
-        let replayed = perp_core::commitment::derive_roots(
-            &mut witness.pre_state.clone(),
-            &witness.ops,
-            &witness.manifest,
-        )
-        .unwrap();
-        assert_eq!(
-            replayed.new_state_root,
-            gw.seq.state.state_root(),
-            "{version} native proof-program replay"
-        );
-        let nonce = if version == "v8" { 7 } else { 0 };
-        assert_eq!(gw.accounts[&withdraw_key].recovery_nonce, nonce);
-        let sk = k256::ecdsa::SigningKey::from_slice(&[0x51; 32]).unwrap();
-        let d = digest(gw.chain_id, &gw.vault, &owner, nonce);
-        let (sig, recovery) = sk.sign_prehash_recoverable(&d).unwrap();
-        let mut signature = [0; 65];
-        signature[..64].copy_from_slice(&sig.to_bytes());
-        signature[64] = recovery.to_byte() + 27;
-        let new_key = gw.recover_account(owner, nonce, &signature).unwrap();
-        assert_eq!(gw.accounts[&new_key].recovery_nonce, nonce + 1);
-        assert!(!gw.accounts.contains_key(&withdraw_key));
-        let after = gw.snapshot_plain();
-        assert!(gw.recover_account(owner, nonce, &signature).is_err());
-        assert!(gw.snapshot_plain() == after);
-        assert_eq!(
-            Gw::boot_restored(&after).unwrap().accounts[&new_key].recovery_nonce,
-            nonce + 1
-        );
-        println!("S3_MIGRATION {version} state/root/accounts/withdrawals/replay/authority PASS");
+/// A v10 payload with orders, a deposit, a pending withdrawal, recovery
+/// generations and a resting order: every layer and extension is populated.
+fn rich() -> Vec<u8> {
+    let mut gw = with_order();
+    let (key, _) = gw.register_account(None);
+    gw.account_deposit(&key, 1, 2_000 * QUOTE_SCALE).unwrap();
+    for (i, a) in gw.accounts.values_mut().enumerate() {
+        a.recovery_nonce = 3 + i as u64;
     }
+    gw.pending_withdrawals.push(Withdrawal {
+        owner: [0x5a; 32],
+        to: [0x5b; 20],
+        amount: 7,
+        nonce: 9,
+    });
+    gw.snapshot_plain()
 }
 
 #[test]
 fn s3_authenticated_parser_mutation_budget() {
-    let plain = without_outstanding_permits(
-        &snapshot::open(&frozen("v8", "sealed.bin"), &[0xC3; 32]).unwrap(),
-    );
+    let plain = rich();
     let canonical = Gw::boot_restored(&plain).unwrap().snapshot_plain();
+    assert_eq!(canonical, plain);
     let mut inputs: Vec<(String, Vec<u8>, bool)> = Vec::new();
     let cut_step = (plain.len() / 128).max(1);
     for cut in (0..plain.len())
@@ -395,6 +257,15 @@ fn s3_authenticated_parser_mutation_budget() {
     let mut trailing = plain.clone();
     trailing.push(0);
     inputs.push(("trailing-byte".into(), trailing, true));
+    for at in 0..=snapshot::PAYLOAD_MAGIC.len() {
+        let mut header = plain.clone();
+        header[at] ^= if at == snapshot::PAYLOAD_MAGIC.len() {
+            0x02
+        } else {
+            0x01
+        };
+        inputs.push((format!("header-{at}"), header, true));
+    }
     let mut rng = 0xA07_20260927u64;
     for iteration in 0..512 {
         rng ^= rng << 13;
@@ -428,7 +299,7 @@ fn s3_authenticated_parser_mutation_budget() {
                 );
             }
         }
-        // Each malformed attempt must leave the previously established fixture
+        // Each malformed attempt must leave the previously established payload
         // independently loadable; boot returns ownership only after full success.
         assert_eq!(
             Gw::boot_restored(&plain).unwrap().snapshot_plain(),
@@ -450,7 +321,8 @@ fn s3_authenticated_parser_mutation_budget() {
 
 #[test]
 fn s3_envelope_mutations_wrong_seed_and_versions_are_rejected() {
-    let sealed = frozen("v8", "sealed.bin");
+    let sealed = snapshot::seal(&rich(), &[0xC3; 32]);
+    assert!(snapshot::open(&sealed, &[0xC3; 32]).is_ok());
     let mut tested = 0;
     for index in (0..sealed.len())
         .step_by((sealed.len() / 128).max(1))
@@ -469,9 +341,9 @@ fn s3_envelope_mutations_wrong_seed_and_versions_are_rejected() {
         tested += 1;
     }
     assert!(snapshot::open(&sealed, &[0xC4; 32]).is_err());
-    for version in *b"D45679" {
+    for version in [&b"9\0"[..], b"11", b"00", b"1\0", b"01"] {
         let mut input = sealed.clone();
-        input[6] = version;
+        input[6..8].copy_from_slice(version);
         assert!(snapshot::open(&input, &[0xC3; 32]).is_err());
         tested += 1;
     }

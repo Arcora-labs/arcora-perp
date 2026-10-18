@@ -4,13 +4,6 @@ use crate::deposit_rpc::{Block, Cursor, Domain as DepositDomain, Error, Event, P
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-// Prefix is authenticated inside the snapshot ciphertext, unlike the outer magic.
-/// The earlier deposit layout, without permit deadlines. Read only, and only when
-/// it holds no outstanding permit: those were signed for the earlier vault ABI.
-pub const SNAPSHOT_V6: &[u8] = b"\xffDPA01-SNAPSHOT-v6\0";
-/// The current deposit layout: every route carries its permit deadline.
-pub const SNAPSHOT_V7: &[u8] = b"\xffDPA01-SNAPSHOT-v7\0";
-
 /// A held permit is re-issued only while at least this many seconds remain before
 /// its deadline; otherwise a fresh permit is issued.
 pub const PERMIT_REUSE_MARGIN_SECS: u64 = 60;
@@ -33,8 +26,7 @@ pub struct Route {
     pub market: u64,
     pub purpose: Purpose,
     /// The permit deadline (unix seconds) the gateway signed. The vault refuses the
-    /// deposit in any block whose timestamp is later. 0 on credits restored from a
-    /// v6 snapshot, whose permits had no deadline.
+    /// deposit in any block whose timestamp is later.
     pub valid_until: u64,
 }
 impl Route {
@@ -98,113 +90,6 @@ pub struct DepositState {
 /// Finalized blocks (one hour of 2 s blocks) of headers that do not re-hash
 /// before `PermitGcStalled` is raised.
 pub const PERMIT_GC_STALL_BLOCKS: u64 = 1_800;
-
-/// The v6 route, without the permit deadline.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct RouteV6 {
-    key: [u8; 32],
-    from: [u8; 20],
-    amount: u128,
-    market: u64,
-    purpose: Purpose,
-}
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct CreditV6 {
-    route: RouteV6,
-    event: Event,
-}
-/// The v6 positional deposit layout (`DepositState` before permit deadlines).
-#[derive(Default, Serialize, Deserialize)]
-pub struct DepositStateV6 {
-    domain: Option<DepositDomain>,
-    legacy_prefix: Option<(u64, [u8; 32])>,
-    routes: BTreeMap<[u8; 32], RouteV6>,
-    credits: BTreeMap<u64, CreditV6>,
-    anchor: Option<Block>,
-    halt: Option<String>,
-}
-impl DepositStateV6 {
-    /// Upgrade to the current layout. Refused while any permit is outstanding: it
-    /// was signed without a deadline for the earlier vault ABI. Landed credits keep
-    /// their receipts, with deadline 0.
-    pub fn upgrade(self) -> Result<DepositState, String> {
-        if !self.routes.is_empty() {
-            return Err("v6 snapshot holds outstanding deposit permits signed for the earlier vault ABI; this gateway needs a fresh deployment".into());
-        }
-        let credits = self
-            .credits
-            .into_iter()
-            .map(|(id, c)| {
-                let RouteV6 {
-                    key,
-                    from,
-                    amount,
-                    market,
-                    purpose,
-                } = c.route;
-                (
-                    id,
-                    Credit {
-                        route: Route {
-                            key,
-                            from,
-                            amount,
-                            market,
-                            purpose,
-                            valid_until: 0,
-                        },
-                        event: c.event,
-                    },
-                )
-            })
-            .collect();
-        Ok(DepositState {
-            domain: self.domain,
-            legacy_prefix: self.legacy_prefix,
-            routes: BTreeMap::new(),
-            credits,
-            anchor: self.anchor,
-            halt: self.halt,
-            ..DepositState::default()
-        })
-    }
-    /// Drop every route, for fixtures that test the rest of a v6 migration.
-    #[cfg(test)]
-    pub fn clear_routes(&mut self) {
-        self.routes.clear();
-    }
-    /// The v6 encoding of `state`, for migration tests.
-    #[cfg(test)]
-    pub fn from_current(state: &DepositState) -> Self {
-        let route = |r: &Route| RouteV6 {
-            key: r.key,
-            from: r.from,
-            amount: r.amount,
-            market: r.market,
-            purpose: r.purpose,
-        };
-        Self {
-            domain: state.domain.clone(),
-            legacy_prefix: state.legacy_prefix,
-            routes: state.routes.iter().map(|(c, r)| (*c, route(r))).collect(),
-            credits: state
-                .credits
-                .iter()
-                .map(|(id, c)| {
-                    (
-                        *id,
-                        CreditV6 {
-                            route: route(&c.route),
-                            event: c.event.clone(),
-                        },
-                    )
-                })
-                .collect(),
-            anchor: state.anchor.clone(),
-            halt: state.halt.clone(),
-        }
-    }
-}
 
 /// How a credit stands against the settlement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -565,6 +450,11 @@ impl Gw {
         if self.deposits.l1_close_only {
             return Err(CLOSE_ONLY_INTAKE.into());
         }
+        if !page.events.is_empty() {
+            if let Some(refusal) = self.credit_refusal() {
+                return Err(refusal.into());
+            }
+        }
         if self.deposit_cursor() != page.start {
             return Err("stale deposit page; retry".into());
         }
@@ -840,6 +730,7 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         let mut gw = app.gw.lock().await;
         let first = !gw.deposits.l1_close_only;
         gw.deposits.l1_close_only = true;
+        gw.note_engine_close_only();
         // The fetch checked the consumed prefix against the finalized vault.
         gw.deposits.ready = true;
         gw.deposits.last_error = Some(CLOSE_ONLY_INTAKE.into());
@@ -851,6 +742,17 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
     }
     let applied = {
         let mut gw = app.gw.lock().await;
+        // The engine in close-only, or the hard admission cap: the page's deposits
+        // are not credited. The fetch verified the consumed prefix against the
+        // finalized vault, so trading and settlement continue; the deposits stay
+        // unconsumed on L1 for the vault to refund.
+        if !page.events.is_empty() {
+            if let Some(refusal) = gw.credit_refusal() {
+                gw.deposits.ready = true;
+                gw.deposits.last_error = Some(refusal.into());
+                return Err(refusal.into());
+            }
+        }
         match gw.apply_deposit_page(page) {
             Ok(n) => n,
             Err(e) => {

@@ -1,8 +1,13 @@
 //! Native gateway/HTTP/journal integration. The loopback peer uses host replay
 //! and CommitmentProver, NOT SP1, a real attestation service, or an L1 verifier.
 //! Chain observations below are explicit fixtures, never claimed RPC evidence.
+//! The remote prover accepts only clock-bound witnesses, so the HTTP client is
+//! driven through the clock route with a fixture clock context (no registration).
 use super::*;
-use crate::prover_client::{prove_and_prepare, HttpProverClient, ProverClient};
+use crate::prover_client::{
+    prove_and_prepare, HttpProverClient, ProverClient, ProverClientError, RemoteProveResp,
+};
+use perp_core::clock::{ClockContext, TimeBounds};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -316,6 +321,10 @@ fn peer(reply: Reply) -> (String, std::thread::JoinHandle<usize>) {
             let mut proof = native_prover(secret)
                 .prove_batch(&sealed)
                 .expect("request opens under its matching session secret");
+            assert!(
+                proof.public.clock_receipt.is_some(),
+                "the request carries the clock-bound witness"
+            );
             let wrong = if attempt == 0 { FRESH } else { STALE };
             assert_eq!(
                 native_prover(wrong).prove_batch(&sealed).unwrap_err(),
@@ -352,7 +361,51 @@ fn peer(reply: Reply) -> (String, std::thread::JoinHandle<usize>) {
     (url, thread)
 }
 
-fn client(url: &str) -> (HttpProverClient, Arc<AtomicUsize>) {
+/// The clock route in front of the real HTTP client, as `ClockProverClient`
+/// wires it in the gateway, with a fixture context in place of the chain
+/// registration.
+struct Clocked(HttpProverClient);
+impl ProverClient for Clocked {
+    fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+        self.0.prove(w)
+    }
+    fn clock_enabled(&self) -> bool {
+        true
+    }
+    fn clock_context(&self, w: &WindowWitness) -> Result<Option<ClockContext>, ProverClientError> {
+        Ok(Some(fixture_clock(w)))
+    }
+    fn prove_clocked(
+        &self,
+        w: &WindowWitness,
+        c: &ClockContext,
+    ) -> Result<RemoteProveResp, ProverClientError> {
+        self.0.prove_clocked(w, c)
+    }
+}
+
+fn fixture_clock(w: &WindowWitness) -> ClockContext {
+    let mut post = w.pre_state.clone();
+    let roots = perp_core::commitment::derive_roots(&mut post, &w.ops, &w.manifest).unwrap();
+    let bounds = TimeBounds::derive(&w.ops).unwrap();
+    ClockContext {
+        chain_id: 84532,
+        verifier: [1; 20],
+        settlement: [2; 20],
+        batch_id: w.batch_id,
+        previous_root: roots.prev_state_root,
+        base_commitment: roots.commitment::<Keccak256>(),
+        phase: roots.wind_down_phase,
+        first_ms: bounds.first_ms,
+        last_ms: bounds.last_ms,
+        timed_ops: bounds.count,
+        anchored_at_ms: bounds.last_ms,
+        max_window_ms: 3_600_000,
+        clock_skew_ms: 2_000,
+    }
+}
+
+fn client(url: &str) -> (Clocked, Arc<AtomicUsize>) {
     let count = Arc::new(AtomicUsize::new(0));
     let calls = count.clone();
     let client = HttpProverClient::from_env(url, false)
@@ -363,7 +416,7 @@ fn client(url: &str) -> (HttpProverClient, Arc<AtomicUsize>) {
             calls.fetch_add(1, Ordering::SeqCst);
             Ok(("fresh-session".into(), FRESH, u64::MAX))
         }));
-    (client, count)
+    (Clocked(client), count)
 }
 
 #[test]

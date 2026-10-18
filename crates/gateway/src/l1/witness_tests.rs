@@ -158,6 +158,7 @@ impl Rpc for Fixture {
                     ("inclusionDeadlineSecs()", U(3_600)),
                     ("enclaveSigner()", Addr),
                     ("sequencer()", Addr),
+                    ("governance()", Addr),
                 ];
                 let data = params[0]["data"].as_str().unwrap();
                 let (index, (_, value)) = words

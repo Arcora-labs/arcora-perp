@@ -1077,6 +1077,25 @@ fn real_deposit_window() -> (
     gw.begin_window_settle(bc).unwrap().expect("window sealed")
 }
 
+/// The candidate lane is frozen: a fully valid candidate configuration is
+/// refused at boot, while absent or disabled archive mode boots unchanged.
+#[test]
+fn candidate_mode_is_refused_at_boot() {
+    let (_t, configured) = binding("frozen-boot");
+    let refused = crate::admit_archive_boot_mode(Some(&configured)).unwrap_err();
+    assert!(refused.contains(crate::FROZEN_CANDIDATE_LANE), "{refused}");
+    assert!(refused.contains(super::MODE_ENV), "{refused}");
+    crate::admit_archive_boot_mode(None).unwrap();
+    assert!(
+        ArchiveBinding::configured(Some("disabled".into()), None, None)
+            .unwrap()
+            .is_none()
+    );
+    assert!(ArchiveBinding::configured(None, None, None)
+        .unwrap()
+        .is_none());
+}
+
 /// Consolidated review: partial candidate configuration must FAIL, never
 /// silently disable; the policy file must be bounded, regular, non-symlink
 /// public data.

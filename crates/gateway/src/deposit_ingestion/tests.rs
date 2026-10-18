@@ -214,8 +214,11 @@ fn a01_bootstrap_then_customer_prefix_and_rollback_proof_replay_agree() {
         3
     );
 }
+/// The genuine file an A01-era (v5) binary wrote is refused: its envelope is not
+/// DPSNAP10, and its bytes under the current header fail authentication. The
+/// current writer's output restores byte-for-byte.
 #[test]
-fn a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit() {
+fn a01_actual_frozen_v5_fixture_is_refused() {
     let encoded = include_str!("legacy-v5.hex").trim();
     let bytes: Vec<u8> = encoded
         .as_bytes()
@@ -225,33 +228,14 @@ fn a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit() {
         .map(|c| (hex_nibble(c[0]).unwrap() << 4) | hex_nibble(c[1]).unwrap())
         .collect();
     assert_eq!(&bytes[..8], b"DPSNAP5\0");
-    let plain = snapshot::open(&bytes, &[42; 32]).unwrap();
-    let gw = Gw::boot_restored(&plain).unwrap();
-    assert_eq!(gw.accounts.len(), 1);
-    let account = gw.accounts.values().next().unwrap();
-    assert_eq!(
-        (
-            account.last_signed_nonce,
-            account.last_sealed_nonce,
-            account.rebind_counter
-        ),
-        (17, 19, 3)
-    );
-    assert_eq!(account.deposit_counter, 1);
-    assert_eq!(account.deposit_authorizations.len(), 1);
-    assert!(gw.deposits.routes.is_empty());
-    assert!(gw.deposits.credits.is_empty());
-    assert_eq!(gw.seq.state.consumed_deposit_count, 1);
-    // Gw's old positional fields, all secrets, replay ops, notes and market prices
-    // serialize byte-for-byte to the genuine old binary's plaintext.
-    let prices: Vec<_> = gw
-        .mkts
-        .iter()
-        .map(|m| (m.id, m.reference_price, m.px, m.live))
-        .collect();
-    assert_eq!(postcard::to_allocvec(&(&gw, prices)).unwrap(), plain);
+    let error = snapshot::open(&bytes, &[42; 32]).unwrap_err();
+    assert!(error.contains("DPSNAP10"), "{error}");
+    let mut relabelled = bytes.clone();
+    relabelled[..8].copy_from_slice(b"DPSNAP10");
+    assert!(snapshot::open(&relabelled, &[42; 32]).is_err());
+    let gw = fresh();
     let new = snapshot::seal(&gw.snapshot_plain(), &[42; 32]);
-    assert_eq!(&new[..8], b"DPSNAP9\0");
+    assert_eq!(&new[..8], b"DPSNAP10");
     let restored = Gw::boot_restored(&snapshot::open(&new, &[42; 32]).unwrap()).unwrap();
     assert_eq!(gw.snapshot_plain(), restored.snapshot_plain());
 }
@@ -447,7 +431,7 @@ async fn a01_cancellation_at_ack_keeps_barrier_and_retry_never_recredits() {
     );
 }
 #[test]
-fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
+fn a01_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
     let mut gw = fresh();
     let (key, c) = permit(
         &mut gw,
@@ -479,13 +463,14 @@ fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
         deposit_id: 0,
     };
     gw.accounts.get_mut(&key).unwrap().deposit_counter = 1;
-    let prices: Vec<_> = gw
-        .mkts
-        .iter()
-        .map(|m| (m.id, m.reference_price, m.px, m.live))
-        .collect();
-    let legacy = postcard::to_allocvec(&(&gw, prices)).unwrap();
-    let mut gw = Gw::boot_restored(&legacy).unwrap();
+    // The half-transferred bootstrap consumed its deposit outside a receipt-
+    // recording page; the ledger carries it as its inherited prefix.
+    gw.deposits.legacy_prefix = Some((
+        gw.seq.state.consumed_deposit_count,
+        gw.seq.state.consumed_deposit_tip,
+    ));
+    gw.deposits.routes.clear();
+    let mut gw = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
     let p = Page {
         start: gw.deposit_cursor(),
         end: Block {
@@ -528,32 +513,21 @@ fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
     assert!(state.conservation_holds());
 }
 
-/// The v6 layout (no permit deadlines) is still readable when no permit is
-/// outstanding: its credits, secrets and replay bytes carry over, landed credits
-/// get deadline 0, and the next snapshot is written in the current layout.
+/// Credits, the consumed prefix and the replay op-log survive a v10 round trip;
+/// the same state behind the earlier deposit-layer header is refused.
 #[test]
-fn a05_a01_v6_migration_preserves_credits_secrets_and_replay_bytes() {
+fn credits_and_replay_survive_restore_and_the_v6_layout_is_refused() {
     let mut gw = fresh();
     let (_, credited) = permit(&mut gw, 5_000_000, Purpose::Collateral, 1);
     let block = page(&gw, &[credited]);
     gw.apply_deposit_page(block).unwrap();
-    let prices: Vec<_> = gw
-        .mkts
-        .iter()
-        .map(|m| (m.id, m.reference_price, m.px, m.live))
-        .collect();
-    let v6_of = |gw: &Gw| {
-        let legacy = DepositStateV6::from_current(&gw.deposits);
-        let mut v6 = SNAPSHOT_V6.to_vec();
-        v6.extend_from_slice(&postcard::to_allocvec(&(gw, &prices, &legacy)).unwrap());
-        v6
-    };
     let root = gw.seq.state.state_root();
     let prefix = (
         gw.seq.state.consumed_deposit_count,
         gw.seq.state.consumed_deposit_tip,
     );
-    let mut restored = Gw::boot_restored(&v6_of(&gw)).unwrap();
+    let current = gw.snapshot_plain();
+    let mut restored = Gw::boot_restored(&current).unwrap();
     assert_eq!(restored.seq.state.state_root(), root);
     assert_eq!(
         (
@@ -563,16 +537,8 @@ fn a05_a01_v6_migration_preserves_credits_secrets_and_replay_bytes() {
         prefix
     );
     assert_eq!(restored.deposits.credits.len(), 1);
-    let mut expected = gw.deposits.credits[&0].clone();
-    expected.route.valid_until = 0;
-    assert_eq!(restored.deposits.credits[&0], expected);
-    let current = restored.snapshot_plain();
-    assert!(current.starts_with(crate::wind_down::SNAPSHOT_V9));
-    assert!(current.windows(SNAPSHOT_V7.len()).any(|w| w == SNAPSHOT_V7));
-    assert_eq!(
-        Gw::boot_restored(&current).unwrap().snapshot_plain(),
-        current
-    );
+    assert_eq!(restored.deposits.credits[&0], gw.deposits.credits[&0]);
+    assert_eq!(restored.snapshot_plain(), current);
     let witness = restored.seq.seal_window();
     let mut replay = witness.pre_state.clone();
     let roots =
@@ -580,14 +546,9 @@ fn a05_a01_v6_migration_preserves_credits_secrets_and_replay_bytes() {
     assert_eq!(roots.new_state_root, restored.seq.state.state_root());
     assert_eq!(replay.consumed_deposit_tip, prefix.1);
 
-    // An outstanding permit was signed for the earlier vault ABI: refused.
-    let (_, _pending) = permit(&mut gw, 7_000_000, Purpose::Collateral, 0);
-    let error = Gw::boot_restored(&v6_of(&gw)).err().unwrap();
-    assert!(error.contains("outstanding deposit permits"), "{error}");
-    // So is a blind-only permit without a route.
-    gw.deposits.routes.clear();
-    let error = Gw::boot_restored(&v6_of(&gw)).err().unwrap();
-    assert!(error.contains("outstanding deposit permits"), "{error}");
+    let mut v6 = b"\xffDPA01-SNAPSHOT-v6\0".to_vec();
+    v6.extend_from_slice(&current[snapshot::PAYLOAD_MAGIC.len() + 1..]);
+    assert!(Gw::boot_restored(&v6).is_err());
 }
 
 #[test]

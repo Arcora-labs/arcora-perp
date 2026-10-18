@@ -491,11 +491,13 @@ fn roots_carry_legacy_clock_wire_receipts_and_journal_bodies_match_literal() {
                 .map(|b| format!("{b:02x}"))
                 .collect::<String>()
         );
-        assert_eq!(
-            seal_witness_with_clock(&w, &root, &measurement, None, clocked.then_some(&context))
-                .unwrap(),
-            expected
-        );
+        // Only a clock-bound witness is ever sealed for the remote prover.
+        if clocked {
+            assert_eq!(
+                seal_witness(&w, &root, &measurement, None, &context).unwrap(),
+                expected
+            );
+        }
         for (old_stage, new_stage) in [
             (None, None),
             (
@@ -511,8 +513,8 @@ fn roots_carry_legacy_clock_wire_receipts_and_journal_bodies_match_literal() {
             let old_v6 = bytes(&(old_journal, &env));
             assert_eq!(bytes(&(&new_journal, &env)), old_v6);
             for (magic, body, candidate) in [
-                (b"DPRBJL5\0".as_slice(), v5, false),
-                (b"DPRBJL6\0".as_slice(), old_v6, true),
+                (b"DPRBJL7\0".as_slice(), v5, false),
+                (b"DPRBJL8\0".as_slice(), old_v6, true),
             ] {
                 let plaintext = [magic, body.as_slice()].concat();
                 let sealed = crate::snapshot::seal(&plaintext, &[0x44; 32]);

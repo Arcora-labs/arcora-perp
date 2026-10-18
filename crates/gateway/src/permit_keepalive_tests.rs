@@ -119,7 +119,7 @@ mod permit_keepalive {
         .unwrap()
     }
     fn permit_request(key: &[u8; 32], reuse: Option<&str>) -> Request<Body> {
-        let mut body = serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "5000000",
+        let mut body = serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "10000000",
             "marketId": 0, "purpose": "collateral"});
         if let Some(reuse) = reuse {
             body["reuseOwnerCommit"] = serde_json::json!(reuse);
@@ -174,7 +174,7 @@ mod permit_keepalive {
         assert_eq!(
             recover_eth_address(
                 &app.gateway_signer
-                    .digest(&[0x42; 20], &commit, 5_000_000, until),
+                    .digest(&[0x42; 20], &commit, 10_000_000, until),
                 &sig
             ),
             Some(app.gateway_signer.address())
@@ -353,7 +353,7 @@ mod permit_keepalive {
         };
         let req = Request::builder().method("POST").uri("/v1/orders")
             .header("x-api-key", hex0x(&key)).header("content-type", "application/json")
-            .body(Body::from(serde_json::json!({"marketId":0,"side":"Buy","size":"1","limitPrice":"1","tif":"Gtc","reduceOnly":false}).to_string())).unwrap();
+            .body(Body::from(serde_json::json!({"marketId":0,"side":"Buy","size":"100000","limitPrice":"1","tif":"Gtc","reduceOnly":false}).to_string())).unwrap();
         let receipt = json_body(build_router(app.clone(), false).oneshot(req).await.unwrap()).await;
         assert_eq!(receipt["l1Challenge"]["beneficiary"], hex0x(&[0x42; 20]));
         let req = Request::builder()

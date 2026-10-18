@@ -1,7 +1,6 @@
 use super::*;
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
-pub(super) const SNAPSHOT_V8: &[u8] = b"\xffDPA07-SNAPSHOT-v8\0";
 pub(super) const EXT: &[u8; 8] = b"DPRECOV1";
 
 pub(super) fn digest(chain_id: u64, vault: &[u8; 20], owner: &PubKey, nonce: u64) -> [u8; 32] {
@@ -22,14 +21,11 @@ pub(super) fn append(gw: &Gw, bytes: &mut Vec<u8>) {
     bytes.extend_from_slice(EXT);
     bytes.extend_from_slice(&postcard::to_allocvec(&rows).expect("recovery snapshot encode"));
 }
+/// Restore the recovery extension, which every snapshot carries: an absent one is
+/// refused (it would reset every account's recovery generation).
 pub(super) fn restore(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
     if trailer.is_empty() {
-        // Genuine legacy decoding starts at the serde-skipped default (zero).
-        // Never let the same helper rewind an already established generation.
-        if gw.accounts.values().any(|a| a.recovery_nonce != 0) {
-            return Err("legacy recovery extension would downgrade nonce".into());
-        }
-        return Ok(());
+        return Err("snapshot is missing the recovery extension".into());
     }
     let payload = trailer
         .strip_prefix(EXT)

@@ -371,17 +371,13 @@ fn finite_native_prepared_wire_and_journal_bytes_match_immediate_baseline() {
                         .map(|b| format!("{b:02x}"))
                         .collect::<String>()
                 );
-                assert_eq!(
-                    seal_witness_with_clock(
-                        &w,
-                        &root,
-                        &measurement,
-                        None,
-                        clocked.then_some(&new.clock)
-                    )
-                    .unwrap(),
-                    expected_hex
-                );
+                // Only a clock-bound witness is ever sealed for the remote prover.
+                if clocked {
+                    assert_eq!(
+                        seal_witness(&w, &root, &measurement, None, &new.clock).unwrap(),
+                        expected_hex
+                    );
+                }
                 for (old_prepared, new_prepared) in [
                     (None, None),
                     (
@@ -403,7 +399,7 @@ fn finite_native_prepared_wire_and_journal_bytes_match_immediate_baseline() {
                         prepared: new_prepared,
                     };
                     assert_eq!(bytes(&old_j), bytes(&new_j));
-                    let plain = [b"DPRBJL5\0".as_slice(), bytes(&new_j).as_slice()].concat();
+                    let plain = [b"DPRBJL7\0".as_slice(), bytes(&new_j).as_slice()].concat();
                     let frame = crate::snapshot::seal(&plain, &[0x44; 32]);
                     match crate::rollback_journal::open_versioned(&frame, &[0x44; 32]).unwrap() {
                         OpenedJournal::Legacy(decoded) => {

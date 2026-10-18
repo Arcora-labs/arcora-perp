@@ -861,8 +861,7 @@ async fn settle(
         max_window_ms: CLOCK_WINDOW_MS,
         clock_skew_ms: CLOCK_SKEW_MS,
     };
-    let mut bytes = perp_core::clock::WIRE_MAGIC.to_vec();
-    bytes.extend(postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, clock)).unwrap());
+    let bytes = prover::encode_clock_witness(&w.pre_state, &w.ops, &w.manifest, &clock);
     let public = prover::public_from_witness(&bytes).unwrap();
     assert_eq!(public.commitment::<Keccak256>(), clock.commitment());
     // The adapter must reject a legacy (unbound) commitment, even though the
