@@ -103,8 +103,11 @@ Bir dakikadan uzun süren kesintiyi `gateway_unreachable` yakalar.
 - `python3 -m unittest discover -s scripts/ops -p 'test_*.py'` testleri:
   - yedekleme, izleyici ve bildirim davranışı (gerçek loopback HTTP ve rsync dahil),
   - izleyicinin L1 okumaları: eşik kenarları, `PATH`'e konan sahte `cast` ile
-    yalnız okuma çağrıları ve RPC URL'sinin argv'ye, günlüğe, durum dosyasına ve
-    alarm gövdesine girmemesi,
+    yalnız okuma çağrıları ve RPC URL'sinin argv'ye, durum dosyasına, alarm
+    gövdesine ve günlüğe girmemesi. Sahte `cast` de gerçeği gibi hata verirken
+    URL'yi stderr'e basar. Günlük denetimi yalnız Python'un `sys.stderr`'ine
+    değil, journald'ın okuduğu 1 ve 2 numaralı dosya tanımlayıcılarına da bakar.
+    İzleyici bu denetim için ayrı bir süreç olarak da çalıştırılır,
   - unit dosyalarının script'lerle ve argümanlarla tutarlılığı,
   - env şablonlarında değer bulunmaması.
 - Unit sözdizimi systemd 255'te `systemd-analyze verify` ile kontrol edildi.

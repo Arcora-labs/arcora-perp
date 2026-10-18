@@ -276,6 +276,8 @@ def cast_runner(rpc_url, environ):
         if not args or args[0] not in CAST_VERBS:
             raise ValueError("cast command outside the read-only allowlist")
         try:
+            # Capture both streams: an uncaptured one is the unit's journal, and
+            # cast's error text there would carry the URL with its key.
             result = subprocess.run(
                 ["cast", *args], env=env, cwd="/", stdin=subprocess.DEVNULL,
                 capture_output=True, timeout=timeout, check=False,

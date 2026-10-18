@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import stat
+import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
@@ -258,6 +260,32 @@ _FAKE = {}
 exec(compile(FAKE_CAST, "fake_cast", "exec"), _FAKE)
 
 
+@contextlib.contextmanager
+def inherited_output(path):
+    """Point this process's file descriptors 1 and 2 at `path` for the block.
+
+    contextlib.redirect_stderr swaps only Python's sys.stderr. A child such as
+    cast inherits the real descriptors, which systemd sends to the journal, so
+    a leak check has to look at those.
+    """
+    streams = [s for s in (sys.stdout, sys.stderr, sys.__stdout__, sys.__stderr__) if s is not None]
+    for stream in streams:
+        stream.flush()
+    saved = os.dup(1), os.dup(2)
+    try:
+        with open(path, "ab") as sink:
+            os.dup2(sink.fileno(), 1)
+            os.dup2(sink.fileno(), 2)
+        yield
+    finally:
+        for stream in streams:
+            stream.flush()
+        os.dup2(saved[0], 1)
+        os.dup2(saved[1], 2)
+        os.close(saved[0])
+        os.close(saved[1])
+
+
 def chain(head=1000, last=None, timeout=100, close_only=False, challenges=None, **extra):
     return dict(head=head, last=head if last is None else last, timeout=timeout, close_only=close_only,
                 challenges=dict(challenges or {}), **extra)
@@ -459,6 +487,9 @@ class L1EndToEnd(unittest.TestCase):
         self.collector = Collector()
         self.addCleanup(self.collector.close)
         self.stderr = io.StringIO()
+        # What the monitor's descriptors 1 and 2 (journald in production) received.
+        self.fd_output = self.tmp / "fd-output.log"
+        self.fd_output.touch()
 
     def set_chain(self, scenario):
         (self.bin / "scenario.json").write_text(json.dumps(scenario))
@@ -473,7 +504,7 @@ class L1EndToEnd(unittest.TestCase):
     def run_monitor(self, *extra, base="http://127.0.0.1:9", **env):
         argv = ["--base-url", base, "--state-file", str(self.tmp / "monitor.json"),
                 "--local-url", self.collector.url, *extra]
-        with contextlib.redirect_stderr(self.stderr):
+        with inherited_output(self.fd_output), contextlib.redirect_stderr(self.stderr):
             return gateway_monitor.main(argv, sleep=lambda _s: None, environ=self.environ(**env))
 
     def events(self):
@@ -487,10 +518,46 @@ class L1EndToEnd(unittest.TestCase):
         return (self.tmp / "monitor.json").read_text()
 
     def assert_no_leak(self):
-        for where, text in [("stderr", self.stderr.getvalue()), ("state", self.state_text()),
-                            ("alerts", json.dumps(self.collector.bodies))]:
+        for where, text in [("sys.stderr", self.stderr.getvalue()),
+                            ("fds 1 and 2", self.fd_output.read_text(errors="replace")),
+                            ("state", self.state_text()), ("alerts", json.dumps(self.collector.bodies))]:
             self.assertNotIn("fake-provider-key", text, where)
             self.assertNotIn("rpc.example", text, where)
+
+    def test_the_fake_cast_echoes_the_url_on_stderr_like_real_cast(self):
+        # Without this the leak checks below could pass against a quiet fake.
+        self.set_chain(chain(down=True))
+        result = subprocess.run([str(self.bin / "cast"), "block-number"], env=self.environ(ETH_RPC_URL=RPC),
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=60, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"fake-provider-key", result.stderr)
+
+    def test_cast_runner_keeps_a_failing_casts_output_off_the_inherited_descriptors(self):
+        self.set_chain(chain(down=True))
+        run = gateway_monitor.cast_runner(RPC, self.environ())
+        with inherited_output(self.fd_output):
+            self.assertIsNone(run(["block-number"], 60))
+            self.assertIsNone(run(["call", SETTLEMENT, "closeOnly()(bool)", "--block", "1"], 60))
+        self.assertEqual(len(self.cast_log()), 2, "the fake ran and wrote the URL to its stderr")
+        self.assertEqual(self.fd_output.read_bytes(), b"")
+
+    def test_the_monitor_process_never_writes_the_url_to_its_real_stdout_or_stderr(self):
+        # Run as systemd does: a separate interpreter whose fds 1 and 2 are the journal.
+        self.set_chain(chain(down=True))
+        script = Path(gateway_monitor.__file__).resolve()
+        argv = [sys.executable, "-B", "-W", "error::ResourceWarning", str(script),
+                "--base-url", "http://127.0.0.1:9", "--state-file", str(self.tmp / "monitor.json"),
+                "--local-url", self.collector.url, "--l1-failures", "1"]
+        result = subprocess.run(argv, env=self.environ(FIN_ALERT_NTFY_TOPIC=None), stdin=subprocess.DEVNULL,
+                                capture_output=True, timeout=120, check=False)
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output.decode(errors="replace"))
+        self.assertTrue(self.cast_log(), "the fake cast ran and wrote the URL to its stderr")
+        self.assertIn(b"L1 read failed", result.stderr)
+        self.assertNotIn(b"fake-provider-key", output)
+        self.assertNotIn(b"rpc.example", output)
+        self.assertIn(("l1_unreachable", "active", 1), self.events())
+        self.assertNotIn("fake-provider-key", self.state_text())
 
     def test_without_l1_settings_no_cast_runs_and_the_state_keeps_its_shape(self):
         self.assertEqual(self.run_monitor(DARKPERP_L1_RPC=None, DARKPERP_SETTLEMENT=None), 0)
