@@ -13,6 +13,7 @@ import textwrap
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import gateway_monitor
 import ops_notify
@@ -126,6 +127,20 @@ class FakeGateway:
         self.server.server_close()
 
 
+# A `cast` that records every call and fails; proof that no L1 read was attempted.
+CAST_TRIPWIRE = '#!/bin/sh\necho "$@" >> "$(dirname "$0")/cast.log"\nexit 1\n'
+
+
+def gateway_only_environ():
+    """An explicit environment for main() in tests that configure no L1 reads.
+
+    main() falls back to os.environ, so DARKPERP_L1_RPC and DARKPERP_SETTLEMENT
+    exported in the shell (ops.env sourced) would switch L1 reads on and run the
+    real `cast` against that provider. Only PATH is passed on.
+    """
+    return {"PATH": os.environ.get("PATH", os.defpath)}
+
+
 class EndToEnd(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -140,7 +155,7 @@ class EndToEnd(unittest.TestCase):
             "--base-url", base or self.gateway.url,
             "--state-file", str(self.tmp / "monitor.json"),
             "--local-url", self.collector.url,
-        ], sleep=lambda _s: None)
+        ], sleep=lambda _s: None, environ=gateway_only_environ())
 
     def events(self):
         return [(b["event"], b["transition"], b["episode"]) for b in self.collector.bodies]
@@ -184,6 +199,22 @@ class EndToEnd(unittest.TestCase):
         for base in ["http://user:pw@127.0.0.1:8080", "http://127.0.0.1:8080/?x=1", "ftp://127.0.0.1", "http://127.0.0.1:8080#f"]:
             with self.assertRaises(SystemExit, msg=base):
                 self.run_monitor(base=base)
+
+    def test_l1_settings_exported_in_the_shell_are_never_used(self):
+        # An operator who sourced ops.env must not make this suite call the
+        # configured provider: these tests configure no L1 reads at all.
+        trap = self.tmp / "trap"
+        trap.mkdir()
+        cast = trap / "cast"
+        cast.write_text(CAST_TRIPWIRE)
+        cast.chmod(cast.stat().st_mode | stat.S_IEXEC)
+        exported = {"PATH": f"{trap}{os.pathsep}{os.environ.get('PATH', os.defpath)}",
+                    gateway_monitor.RPC_ENV: RPC, gateway_monitor.SETTLEMENT_ENV: SETTLEMENT}
+        self.gateway.state = doc(health="HELD")
+        with mock.patch.dict(os.environ, exported):
+            self.assertEqual(self.run_monitor(), 0)
+        self.assertFalse((trap / "cast.log").exists(), "cast ran although no L1 reads were configured")
+        self.assertEqual(self.events(), [("settlement_held", "active", 1)])
 
 
 # --- direct L1 reads ---------------------------------------------------------

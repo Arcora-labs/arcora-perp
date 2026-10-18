@@ -80,8 +80,9 @@ boşsa davranış öncekiyle aynıdır. Yalnız biri ayarlıysa unit başarısı
 - Yalnız `cast block-number` ve `cast call` çalışır. Bir çalıştırmadaki bütün
   okumalar aynı bloğa sabitlenir (`--block`). İmza, anahtar ve `cast send` yoktur.
 - RPC URL'si sağlayıcı anahtarı taşıyabilir. `cast`'e komut satırından değil,
-  yalnız `ETH_RPC_URL` ortam değişkeniyle geçer. Çocuk sürece bundan başka
-  ortam değişkeni aktarılmaz. `cast`'in hata çıktısı URL'yi tekrarladığı için
+  yalnız `ETH_RPC_URL` ortam değişkeniyle geçer. Çocuk sürece yalnız `PATH`,
+  `ETH_RPC_URL`, `ETH_RPC_TIMEOUT` ve `FOUNDRY_DISABLE_NIGHTLY_WARNING` aktarılır;
+  ortamın geri kalanı geçmez. `cast`'in hata çıktısı URL'yi tekrarladığı için
   atılır; günlüğe yalnız `L1 read failed` yazılır.
 - Gateway'in `L1_RPC`'sinden farklı bir sağlayıcı seçin. Tek sağlayıcının
   kesintisi ikisini birden kör etmesin.
