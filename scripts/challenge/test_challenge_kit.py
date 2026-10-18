@@ -160,6 +160,59 @@ class BrowserKitThroughTheTool(unittest.TestCase):
                 self.assertIn("kit FAILED", out)
                 self.assertNotIn("cast send", out)
 
+    def test_every_removed_field_fails(self):
+        """Every field the challenge call or the signature check reads must be in the kit.
+
+        Without one the kit is refused offline and names the field, also when
+        another field was changed as well: with `enclaveSigner` gone the
+        signature would otherwise recover to some address that nothing is
+        compared with.
+        """
+        required = [[key] for key in KIT if key != "schema"] + [["l1Challenge", key] for key in AUTH]
+        self.assertEqual(sorted(".".join(path) for path in required), sorted([
+            "orderHash", "seqNo", "recvTimeMs", "batchIdHint", "enclaveSigner", "l1Challenge",
+            "l1Challenge.chainId", "l1Challenge.settlement", "l1Challenge.beneficiary", "l1Challenge.signature"]))
+
+        def remove(kit, path):
+            target = kit
+            for key in path[:-1]:
+                target = target[key]
+            del target[path[-1]]
+
+        sig = AUTH["signature"]
+        flipped = sig[:20] + ("0" if sig[20] != "0" else "1") + sig[21:]
+        tampered = {
+            "orderHash": (["orderHash"], "0x" + "12" * 32),
+            "seqNo": (["seqNo"], 1),
+            "recvTimeMs": (["recvTimeMs"], 1001),
+            "batchIdHint": (["batchIdHint"], 1),
+            "chainId": (["l1Challenge", "chainId"], 84533),
+            "settlement": (["l1Challenge", "settlement"], "0x" + "23" * 20),
+            "beneficiary": (["l1Challenge", "beneficiary"], "0x" + "34" * 20),
+            "signature": (["l1Challenge", "signature"], flipped),
+        }
+        cases = {}
+        for path in required:
+            cases[".".join(path) + " removed"] = ([path], [], ".".join(path) + " is missing")
+        for name, change in tampered.items():
+            cases[name + " tampered, enclaveSigner removed"] = ([["enclaveSigner"]], [change],
+                                                               "enclaveSigner is missing")
+        for name, (removed, changes, message) in cases.items():
+            kit = copy.deepcopy(KIT)
+            for path, value in changes:
+                target = kit
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = value
+            for path in removed:
+                remove(kit, path)
+            with self.subTest(case=name):
+                code, out = self.run_tool(kit)
+                self.assertEqual(code, 1, out)
+                self.assertIn("kit FAILED: " + message, out)
+                self.assertNotIn(" OK", out)
+                self.assertNotIn("cast send", out)
+
     def test_rpc_prints_the_open_call_with_the_stake(self):
         code, out = self.run_tool(KIT, "--rpc", RPC_LABEL)
         self.assertEqual(code, 0, out)
