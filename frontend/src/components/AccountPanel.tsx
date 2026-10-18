@@ -14,6 +14,7 @@ import {
   type ClaimBundle,
 } from "../domain/claimBundle";
 import {
+  MAX_STORED_CHALLENGE_KITS,
   challengeKitFileName,
   loadChallengeKits,
   mergeChallengeKits,
@@ -21,6 +22,7 @@ import {
   rememberChallengeKits,
   serializeChallengeKits,
   settledOrderHashes,
+  unsettledOrderHashes,
   type ChallengeKit,
   type ChallengeKitStorage,
 } from "../domain/challengeKit";
@@ -786,17 +788,37 @@ export function RefundsSection({ client, closeOnly }: { client: DarkPerpClient; 
 /// Kits listed one by one; older ones are still in the export.
 const LISTED_KITS = 20;
 
+/// Offered kits this browser did not store: how many, how many of them are not
+/// for an order the account lists now, and whether the store is at its bound.
+interface UnsavedKits {
+  count: number;
+  unlisted: number;
+  atBound: boolean;
+}
+
+/// Which of the kits not kept are not for an order the account lists now: the
+/// panel cannot offer them again after it closes.
+function unlistedNote({ count, unlisted }: UnsavedKits): string {
+  if (unlisted === 0) return "";
+  const subject = unlisted === count ? (count === 1 ? "It is" : "They are") : `${unlisted} of them ${unlisted === 1 ? "is" : "are"}`;
+  return ` ${subject} for ${unlisted === 1 ? "an order" : "orders"} this account does not list now` +
+    " (this account's older orders, or another account's in this browser).";
+}
+
 /// The L1 challenge kits of the account's listed orders, kept in this browser
 /// (bounded; see `rememberChallengeKits`). With a kit the user can open
 /// `challengeInclusion` for an order no settled batch includes or rejects,
 /// without the operator. A kit is dropped once the gateway lists its order as
-/// SETTLED. When the browser does not keep a kit (storage blocked or full), the
-/// section still offers it for this session and says so. Hidden while there is
+/// SETTLED. The section offers, past the storage bound too, the kit of every
+/// listed order that is not SETTLED and every kit stored or offered so far this
+/// session. When the browser does not store a kit (storage blocked or full, or
+/// the bound reached), the section still offers it for this session and says
+/// so, counting the ones that are not for an order the account lists now
+/// (older orders, or another account's in this browser). Hidden while there is
 /// none. `storage` defaults to this origin's localStorage. Exported for tests.
 export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[]; storage?: ChallengeKitStorage }) {
   const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits(storage));
-  // Offered kits this browser did not keep.
-  const [unsaved, setUnsaved] = useState(0);
+  const [unsaved, setUnsaved] = useState<UnsavedKits>({ count: 0, unlisted: 0, atBound: false });
   // The offered kits, for the effect (it alone changes them after the first render).
   const offered = useRef(kits);
   // Order hashes already kept or tried, so a state push re-verifies nothing.
@@ -808,14 +830,24 @@ export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[
     const settled = settledOrderHashes(orders);
     const current = offered.current;
     if (fresh.length === 0 && !current.some((k) => settled.has(k.orderHash.toLowerCase()))) return;
+    const listed = unsettledOrderHashes(orders);
+    // Stored before this write, including kits another tab stored since this
+    // panel opened: any of them the write evicts is offered (and counted) too.
+    const before = loadChallengeKits(storage);
     // This session's unsaved kits go along, so they are stored once there is room.
-    rememberChallengeKits([...current, ...fresh], storage, settled);
+    rememberChallengeKits([...current, ...fresh], storage, settled, listed);
     const stored = loadChallengeKits(storage);
     const kept = new Set(stored.map((k) => k.orderHash.toLowerCase()));
-    const next = mergeChallengeKits([...stored, ...current], fresh, settled);
+    // Not bounded: a kit the store evicted stays offered for this session.
+    const next = mergeChallengeKits([...stored, ...current, ...before], fresh, settled);
     offered.current = next;
     setKits(next);
-    setUnsaved(next.filter((k) => !kept.has(k.orderHash.toLowerCase())).length);
+    const notKept = next.filter((k) => !kept.has(k.orderHash.toLowerCase()));
+    setUnsaved({
+      count: notKept.length,
+      unlisted: notKept.filter((k) => !listed.has(k.orderHash.toLowerCase())).length,
+      atBound: stored.length >= MAX_STORED_CHALLENGE_KITS,
+    });
   }, [orders, storage]);
 
   if (kits.length === 0) return null;
@@ -831,11 +863,13 @@ export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[
         <code>scripts/claim/challenge_inclusion.py</code>). Keep the files private:
         opening a challenge publicly links your deposit address to the order.
       </p>
-      {unsaved > 0 && (
+      {unsaved.count > 0 && (
         <p className="notice notice--warn" role="alert">
           This browser did not keep{" "}
-          {unsaved < kits.length ? `${unsaved} of these kits` : kits.length === 1 ? "this kit" : "these kits"} (its
-          storage is blocked or full). Export now: what it did not keep is gone when this page closes.
+          {unsaved.count < kits.length ? `${unsaved.count} of these kits` : kits.length === 1 ? "this kit" : "these kits"}{" "}
+          ({unsaved.atBound ? `it keeps at most ${MAX_STORED_CHALLENGE_KITS}` : "its storage is blocked or full"}).
+          {unlistedNote(unsaved)} Export now: once you leave this panel or reload the page, a kit it did not keep
+          is offered again only while the gateway still lists its order.
         </p>
       )}
       <ul className="withdrawals__list">

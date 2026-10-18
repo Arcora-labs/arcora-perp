@@ -19,6 +19,7 @@ import {
   rememberChallengeKits,
   serializeChallengeKits,
   settledOrderHashes,
+  unsettledOrderHashes,
   withL1Challenge,
   type ChallengeKit,
   type ReceiptWithChallenge,
@@ -223,6 +224,14 @@ describe("newChallengeKits", () => {
     expect(settledOrderHashes([listed(upper, "SETTLED"), listed(receipt(), "ACCEPTED"), listed(null, "SETTLED")]))
       .toEqual(new Set(["0x" + "ab".repeat(32)]));
   });
+
+  it("names the listed orders that are not settled by lowercase hash", () => {
+    const upper = { ...receipt(), orderHash: "0x" + "AB".repeat(32) };
+    const unbound = { ...receipt(), orderHash: "0x" + "cd".repeat(32), l1Challenge: null };
+    expect(unsettledOrderHashes([
+      listed(upper, "MATCHED"), listed(receipt(), "SETTLED"), listed(unbound, "ACCEPTED"), listed(null, "ACCEPTED"),
+    ])).toEqual(new Set(["0x" + "ab".repeat(32), "0x" + "cd".repeat(32)]));
+  });
 });
 
 describe("challenge kit storage", () => {
@@ -265,14 +274,60 @@ describe("challenge kit storage", () => {
     expect(loadChallengeKits(storage).map(seqOf)).toEqual([4, 3, 1]);
   });
 
-  it("keeps at most MAX_STORED_CHALLENGE_KITS, evicting the oldest", () => {
+  it("keeps at most MAX_STORED_CHALLENGE_KITS, evicting the oldest, and reports that not every kit is stored", () => {
     const storage = memoryStorage();
     const kits = Array.from({ length: MAX_STORED_CHALLENGE_KITS + 20 }, (_, i) => kitN(i + 1));
-    expect(rememberChallengeKits(kits, storage)).toBe(true);
+    expect(rememberChallengeKits(kits, storage)).toBe(false); // 20 kits are not stored
     const kept = loadChallengeKits(storage).map(seqOf);
     expect(kept).toHaveLength(MAX_STORED_CHALLENGE_KITS);
     expect(kept[0]).toBe(MAX_STORED_CHALLENGE_KITS + 20); // newest first
     expect(Math.min(...kept)).toBe(21); // kits 1..20, the oldest, went
+    // Exactly the bound is every kit.
+    expect(rememberChallengeKits(kits.slice(0, MAX_STORED_CHALLENGE_KITS), memoryStorage())).toBe(true);
+  });
+
+  it("past the bound, evicts kits of orders no longer listed before kits of listed ones", () => {
+    const storage = memoryStorage();
+    // Stored earlier: newer kits whose orders this account no longer lists (or
+    // another account's).
+    const unlisted = Array.from({ length: MAX_STORED_CHALLENGE_KITS }, (_, i) => kitN(1_000 + i));
+    expect(rememberChallengeKits(unlisted, storage)).toBe(true);
+    // Listed, not settled, and older than every stored kit.
+    const listedKits = [kitN(1), kitN(2), kitN(3)];
+    const listed = new Set(listedKits.map((k) => k.orderHash.toLowerCase()));
+    expect(rememberChallengeKits(listedKits, storage, new Set(), listed)).toBe(false);
+    const kept = loadChallengeKits(storage).map(seqOf);
+    expect(kept).toHaveLength(MAX_STORED_CHALLENGE_KITS);
+    expect(kept.slice(0, 3)).toEqual([3, 2, 1]); // listed first, newest first
+    // The three oldest unlisted kits went.
+    expect(kept).not.toContain(1_000);
+    expect(kept).not.toContain(1_002);
+    expect(kept).toContain(1_003);
+    // Among listed kits, the oldest goes first.
+    const many = Array.from({ length: MAX_STORED_CHALLENGE_KITS + 1 }, (_, i) => kitN(i + 1));
+    expect(rememberChallengeKits(many, storage, new Set(), new Set(many.map((k) => k.orderHash.toLowerCase())))).toBe(false);
+    const after = loadChallengeKits(storage).map(seqOf);
+    expect(after).toHaveLength(MAX_STORED_CHALLENGE_KITS);
+    expect(after).not.toContain(1);
+    expect(after.every((n) => n <= MAX_STORED_CHALLENGE_KITS + 1)).toBe(true); // no unlisted kit left
+  });
+
+  it("on a refused write, also evicts kits of orders no longer listed first", () => {
+    const storage = quotaStorage(4_000);
+    // The quota holds only the newest of these kits, whose orders are no longer listed.
+    expect(rememberChallengeKits(Array.from({ length: 30 }, (_, i) => kitN(200 + i)), storage)).toBe(false);
+    // Two listed orders, older than every stored kit.
+    const older = [kitN(1), kitN(2)];
+    const listed = new Set(older.map((k) => k.orderHash.toLowerCase()));
+    expect(rememberChallengeKits(older, storage, new Set(), listed)).toBe(false);
+    const kept = loadChallengeKits(storage).map(seqOf);
+    expect(kept.slice(0, 2)).toEqual([2, 1]);
+    expect(kept.slice(2)).toEqual(Array.from({ length: kept.length - 2 }, (_, i) => 229 - i)); // then the newest
+  });
+
+  it("merges every kit, past the storage bound too (the session offer is not bounded)", () => {
+    const kits = Array.from({ length: MAX_STORED_CHALLENGE_KITS + 20 }, (_, i) => kitN(i + 1));
+    expect(mergeChallengeKits([], kits)).toHaveLength(MAX_STORED_CHALLENGE_KITS + 20);
   });
 
   it("merges by order hash: the first copy wins, settled and malformed kits are left out", () => {
@@ -304,10 +359,11 @@ describe("challenge kit storage", () => {
     const storage = quotaStorage(QUOTA);
     for (let batch = 0; batch < 90; batch++) {
       const kits = Array.from({ length: 100 }, (_, i) => kitN(batch * 100 + i + 1));
-      expect(rememberChallengeKits(kits, storage), `batch ${batch}`).toBe(true);
+      // Past the bound the oldest kits go, and the caller is told.
+      expect(rememberChallengeKits(kits, storage), `batch ${batch}`).toBe((batch + 1) * 100 <= MAX_STORED_CHALLENGE_KITS);
     }
     const newest = kitN(9_001);
-    expect(rememberChallengeKits([newest], storage)).toBe(true);
+    expect(rememberChallengeKits([newest], storage)).toBe(false);
     const kept = loadChallengeKits(storage);
     expect(kept).toHaveLength(MAX_STORED_CHALLENGE_KITS);
     expect(kept[0]).toEqual(newest);

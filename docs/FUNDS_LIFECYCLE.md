@@ -208,15 +208,27 @@ client keeps it:
   be answered at once and the stake lost.
 - The store is bounded so it never crowds out the deposit journal, claim bundles
   or the credential record, which share the origin's storage quota. It holds at
-  most 500 kits (the gateway's per-account order history) in a compact form of
-  about 370 characters each, so under 190,000 characters. Past 500 kits the
-  oldest goes. When the browser refuses a write for quota, the oldest kits are
-  evicted until the rest fits, so a new order's kit is the last to go.
+  most 500 kits, for all accounts used in this browser, in a compact form of
+  about 370 characters each, so under 190,000 characters. The bound is the
+  browser's, not the gateway's: an order that never gets a settled fill (never
+  filled, or cancelled first) stays listed as `ACCEPTED`, so one account can
+  list more than 500 orders with a kit. When the store cannot hold every kit
+  (past 500, or when the browser refuses a write for quota), it keeps first the
+  kits of the orders the account lists now that are not `SETTLED`, newest first,
+  then the other kits (orders no longer listed, or another account's), newest
+  first. Kits are evicted from the end of that order: those of orders no longer
+  listed first, then the oldest.
 - **Download challenge kit** saves one order's kit. **Export all challenge kits**
-  saves every kit kept so far, including orders the gateway no longer lists. Kits
-  are never sent anywhere. If browser storage is denied or full, the panel still
-  offers the kits it could not keep, for that session only, and warns that they
-  are not kept. It stores them with the next kit once a write fits.
+  saves every kit the panel offers: the kits stored so far, including orders the
+  gateway no longer lists, and the kit of every listed order that is not
+  `SETTLED`, past the bound too. Kits are never sent anywhere.
+- Whenever the browser does not store a kit the panel offers (storage denied or
+  full, or the bound reached), the panel still offers it for that session and
+  warns how many kits are not kept, and how many of those are not for an order
+  the account lists now (its older orders, or another account's in this
+  browser). Export them then: once the panel closes, a kit that is not stored
+  comes back only while the gateway still lists its order for this account. The
+  panel stores this session's unsaved kits with the next kit once a write fits.
 
 The kit file has the shape of a receipt, so the gateway-free tool reads it as is,
 one kit or the exported array:
@@ -244,9 +256,9 @@ fixture is the vector that `crates/gateway/src/challenge_auth.rs` and
 - A kit exists only for orders this browser saw in the account panel while the
   gateway listed them with an authorization. If the gateway stops answering
   between accepting an order and listing it, that order has no kit. A browser that
-  cleared its storage, or dropped a kit to stay within its bound, without a
-  download has nothing to recover. Export the kits of orders you may need to
-  challenge.
+  cleared its storage, or evicted a kit to stay within its bound or quota, without
+  an export has nothing to recover. Export the kits of orders you may need to
+  challenge, and export again when the panel warns that it did not keep a kit.
 - The panel takes the gateway's word that an order is `SETTLED` when it drops
   that order's kit. Keep an exported copy if you want to check settlement
   yourself.

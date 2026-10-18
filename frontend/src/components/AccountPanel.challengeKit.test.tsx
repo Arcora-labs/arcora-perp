@@ -19,6 +19,7 @@ import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex } from "@noble/hashes/utils";
 import {
   CHALLENGE_KIT_STORAGE_KEY,
+  MAX_STORED_CHALLENGE_KITS,
   challengeAuthDigest,
   loadChallengeKits,
   rememberChallengeKits,
@@ -47,14 +48,29 @@ const withKit = order("o1", ACCEPTED);
 const unbound = order("o2", { ...ACCEPTED, orderHash: "0x" + "ab".repeat(32), l1Challenge: null });
 const tampered = order("o3", { ...ACCEPTED, orderHash: "0x" + "cd".repeat(32) });
 /// Another accepted order whose authorization verifies: the fixture holds one
-/// signed vector, so this one is signed by a test enclave key.
-function signedReceipt(hashByte: string, seqNo: number): ReceiptWithChallenge {
-  const key = new Uint8Array(32).fill(9);
-  const enclaveSigner = "0x" + bytesToHex(keccak_256(secp256k1.getPublicKey(key, false).subarray(1)).subarray(12));
-  const fields = { ...ACCEPTED, orderHash: "0x" + hashByte.repeat(32), seqNo, recvTimeMs: ACCEPTED.recvTimeMs + seqNo, enclaveSigner };
+/// signed vector, so this one is signed by a test enclave key. It is newer than
+/// the fixture order by `seqNo` milliseconds.
+const TEST_ENCLAVE_KEY = new Uint8Array(32).fill(9);
+const TEST_ENCLAVE_SIGNER = "0x" + bytesToHex(keccak_256(secp256k1.getPublicKey(TEST_ENCLAVE_KEY, false).subarray(1)).subarray(12));
+function signedReceiptFor(orderHash: string, seqNo: number): ReceiptWithChallenge {
+  const fields = { ...ACCEPTED, orderHash, seqNo, recvTimeMs: ACCEPTED.recvTimeMs + seqNo, enclaveSigner: TEST_ENCLAVE_SIGNER };
   const auth = ACCEPTED.l1Challenge!;
-  const sig = secp256k1.sign(challengeAuthDigest({ ...auth, ...fields }), key);
+  const sig = secp256k1.sign(challengeAuthDigest({ ...auth, ...fields }), TEST_ENCLAVE_KEY);
   return { ...fields, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } };
+}
+const signedReceipt = (hashByte: string, seqNo: number) => signedReceiptFor("0x" + hashByte.repeat(32), seqNo);
+const hashN = (n: number) => "0x" + (0x5000 + n).toString(16).padStart(64, "0");
+/// `n` listed ACCEPTED orders with verifying authorizations, seqNo 1..n (signed once per file).
+const signedListed: TrackedOrder[] = [];
+function listedOrders(n: number): TrackedOrder[] {
+  for (let i = signedListed.length + 1; i <= n; i++) signedListed.push(order(`l${i}`, signedReceiptFor(hashN(i), i)));
+  return signedListed.slice(0, n);
+}
+/// The kit the panel builds from a listed order's receipt (no re-verification:
+/// storage never re-verifies).
+function kitOf(o: TrackedOrder): ChallengeKit {
+  const { orderHash, seqNo, recvTimeMs, batchIdHint, enclaveSigner, l1Challenge } = o.receipt as ReceiptWithChallenge;
+  return { schema: KIT.schema, orderHash, seqNo, recvTimeMs, batchIdHint, enclaveSigner: enclaveSigner!, l1Challenge: l1Challenge! };
 }
 /// A stored kit for an order the gateway no longer lists.
 const earlier: ChallengeKit = { ...KIT, orderHash: "0x" + "ef".repeat(32), seqNo: 9, recvTimeMs: 500 };
@@ -84,6 +100,20 @@ function fullStorage(seed: ChallengeKit[] = []) {
   expect(rememberChallengeKits(seed, storage)).toBe(true);
   state.full = true;
   return { storage, state };
+}
+
+/// Storage that accepts every write (no quota), holding `seed`.
+function memoryStorage(seed: ChallengeKit[] = []) {
+  const map = new Map<string, string>();
+  const storage: ChallengeKitStorage = { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => { map.set(k, v); } };
+  rememberChallengeKits(seed, storage);
+  expect(loadChallengeKits(storage)).toHaveLength(seed.length);
+  return storage;
+}
+
+async function exportedKits(count: number): Promise<ChallengeKit[]> {
+  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`export all challenge kits \\(${count}\\)`, "i") }));
+  return JSON.parse(await downloads[downloads.length - 1].blob.text()) as ChallengeKit[];
 }
 
 let downloads: Array<{ name: string; blob: Blob }>;
@@ -195,6 +225,100 @@ describe("ChallengeKitSection", () => {
     await waitFor(() => expect(loadChallengeKits()).toEqual([]));
     expect(screen.queryByText(/challenge kits/i)).toBeNull();
   });
+});
+
+describe("ChallengeKitSection past the browser's kit bound", () => {
+  // An order that never gets a settled fill (unfilled, cancelled) stays listed
+  // as ACCEPTED, so an account can list more kits than this browser keeps.
+  it("offers and exports the kit of every listed order that is not settled, and warns about the ones it did not keep", async () => {
+    const orders = listedOrders(MAX_STORED_CHALLENGE_KITS + 20);
+    const storage = memoryStorage();
+    render(<ChallengeKitSection orders={orders} storage={storage} />);
+    const body = await exportedKits(MAX_STORED_CHALLENGE_KITS + 20);
+    expect(body.map((k) => k.seqNo).sort((a, b) => a - b))
+      .toEqual(Array.from({ length: MAX_STORED_CHALLENGE_KITS + 20 }, (_, i) => i + 1));
+    // The browser keeps its bound, newest first...
+    const stored = loadChallengeKits(storage).map((k) => k.seqNo);
+    expect(stored).toHaveLength(MAX_STORED_CHALLENGE_KITS);
+    expect(Math.min(...stored)).toBe(21);
+    // ...and says what it did not keep, and why.
+    expect(screen.getByRole("alert").textContent)
+      .toMatch(new RegExp(`did not keep 20 of these kits \\(it keeps at most ${MAX_STORED_CHALLENGE_KITS}\\)`, "i"));
+    expect(screen.getByRole("alert").textContent).toMatch(/export now/i);
+  }, 30_000);
+
+  it("warns when another account's stored kit must go to keep this account's new one", async () => {
+    const other = otherAccountKits();
+    const storage = memoryStorage(other);
+    render(<ChallengeKitSection orders={[withKit]} storage={storage} />);
+    await expectOtherAccountKitEvicted(storage, other);
+  }, 30_000);
+
+  it("also warns when the kit that must go was stored by another tab after the panel opened", async () => {
+    const other = otherAccountKits();
+    const storage = memoryStorage();
+    const { rerender } = render(<ChallengeKitSection orders={[unbound]} storage={storage} />);
+    expect(rememberChallengeKits(other, storage)).toBe(true); // another tab, another account
+    rerender(<ChallengeKitSection orders={[withKit]} storage={storage} />);
+    await expectOtherAccountKitEvicted(storage, other);
+  }, 30_000);
+
+  /// Kits another account placed in this browser: a different beneficiary, all
+  /// older than this account's order, none of them listed here.
+  function otherAccountKits(): ChallengeKit[] {
+    return Array.from({ length: MAX_STORED_CHALLENGE_KITS }, (_, i): ChallengeKit => ({
+      ...KIT, orderHash: hashN(10_000 + i), seqNo: 100 + i, recvTimeMs: 1 + i,
+      l1Challenge: { ...KIT.l1Challenge, beneficiary: "0x" + "77".repeat(20) },
+    }));
+  }
+
+  async function expectOtherAccountKitEvicted(storage: ChallengeKitStorage, other: ChallengeKit[]) {
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(new RegExp(`did not keep 1 of these kits \\(it keeps at most ${MAX_STORED_CHALLENGE_KITS}\\)`, "i"));
+    expect(alert.textContent).toMatch(/another account/i);
+    // This account's kit is stored; the other account's oldest is the one that
+    // went, and it is still in this session's export.
+    const stored = loadChallengeKits(storage).map((k) => k.orderHash);
+    expect(stored).toHaveLength(MAX_STORED_CHALLENGE_KITS);
+    expect(stored).toContain(KIT.orderHash);
+    expect(stored).not.toContain(other[0].orderHash);
+    const body = await exportedKits(MAX_STORED_CHALLENGE_KITS + 1);
+    expect(body.map((k) => k.orderHash)).toContain(other[0].orderHash);
+    expect(body.map((k) => k.orderHash)).toContain(KIT.orderHash);
+  }
+
+  it("offers and exports a listed order whose authorization arrives after the store is full of newer kits", async () => {
+    const newer = listedOrders(MAX_STORED_CHALLENGE_KITS);
+    const storage = memoryStorage(newer.map(kitOf));
+    // Listed before the account bound a deposit address: no authorization yet.
+    const late = order("late", { ...ACCEPTED, l1Challenge: null });
+    const { rerender } = render(<ChallengeKitSection orders={[...newer, late]} storage={storage} />);
+    await screen.findByRole("button", { name: new RegExp(`export all challenge kits \\(${MAX_STORED_CHALLENGE_KITS}\\)`, "i") });
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The authorization arrives; the order is older than every stored kit.
+    rerender(<ChallengeKitSection orders={[...newer, withKit]} storage={storage} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(new RegExp(`did not keep 1 of these kits \\(it keeps at most ${MAX_STORED_CHALLENGE_KITS}\\)`, "i"));
+    expect(alert.textContent).not.toMatch(/another account/i); // it is this account's listed order
+    const body = await exportedKits(MAX_STORED_CHALLENGE_KITS + 1);
+    expect(body.find((k) => k.orderHash === KIT.orderHash)).toEqual(KIT);
+  }, 30_000);
+
+  it("stores a late listed order's kit ahead of newer kits of orders it no longer lists, and says one of those went", async () => {
+    const unlisted = listedOrders(MAX_STORED_CHALLENGE_KITS).map(kitOf);
+    const storage = memoryStorage(unlisted);
+    const { rerender } = render(<ChallengeKitSection orders={[order("late", { ...ACCEPTED, l1Challenge: null })]} storage={storage} />);
+    await screen.findByRole("button", { name: new RegExp(`export all challenge kits \\(${MAX_STORED_CHALLENGE_KITS}\\)`, "i") });
+    rerender(<ChallengeKitSection orders={[withKit]} storage={storage} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/did not keep 1 of these kits/i);
+    expect(alert.textContent).toMatch(/another account/i);
+    const stored = loadChallengeKits(storage).map((k) => k.orderHash);
+    expect(stored).toHaveLength(MAX_STORED_CHALLENGE_KITS);
+    expect(stored).toContain(KIT.orderHash);
+    expect(stored).not.toContain(unlisted[0].orderHash); // the oldest kit of an order no longer listed went
+    expect((await exportedKits(MAX_STORED_CHALLENGE_KITS + 1)).map((k) => k.orderHash)).toContain(unlisted[0].orderHash);
+  }, 30_000);
 });
 
 describe("AccountPanel challenge kits", () => {

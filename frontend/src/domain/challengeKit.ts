@@ -14,10 +14,14 @@ import type { Receipt } from "./types";
 
 export const CHALLENGE_KIT_SCHEMA = "arcora.challenge-kit.v1";
 export const CHALLENGE_KIT_STORAGE_KEY = "arcora.challengeKits.v1";
-/// Kits kept in this browser at most: the gateway's per-account order history
-/// (MAX_ACCOUNT_ORDER_HISTORY), so every order it can list fits. A stored kit
+/// Kits this browser stores at most, for all accounts used in it. A stored kit
 /// is about 370 characters, so the store stays under 190,000 of the origin's
-/// shared localStorage quota (typically 5,000,000).
+/// shared localStorage quota (typically 5,000,000). The bound is this
+/// browser's, not the gateway's: an order that never gets a settled fill (never
+/// filled, or cancelled first) stays listed as ACCEPTED, so one account can list
+/// more kits than this, and other accounts' kits share the store. Past the
+/// bound the account panel still offers every listed order's kit for the
+/// session and warns about each kit it did not store: the user should export.
 export const MAX_STORED_CHALLENGE_KITS = 500;
 
 /// The enclave's authorization to open `DarkPerpSettlement.challengeInclusion`
@@ -207,6 +211,18 @@ export function settledOrderHashes(orders: readonly ChallengeKitOrder[]): Set<st
   return settled;
 }
 
+/// Lowercase hashes of the listed orders the gateway does not report SETTLED:
+/// orders the user may still need to challenge. Their kits are stored ahead of
+/// every other kit (see `rememberChallengeKits`).
+export function unsettledOrderHashes(orders: readonly ChallengeKitOrder[]): Set<string> {
+  const listed = new Set<string>();
+  for (const o of orders) {
+    const key = o.finality === "SETTLED" ? null : orderHashOf(o.receipt);
+    if (key) listed.add(key);
+  }
+  return listed;
+}
+
 export function challengeKitFileName(k: ChallengeKit): string {
   return `arcora-challenge-${k.l1Challenge.chainId}-${k.seqNo}-${k.orderHash.slice(2, 10).toLowerCase()}.json`;
 }
@@ -285,14 +301,14 @@ export function loadChallengeKits(storage: ChallengeKitStorage | undefined = def
 
 const hashKey = (k: ChallengeKit) => k.orderHash.toLowerCase();
 
-/// Newest first (by the enclave-signed receive time): the order the store keeps
-/// kits in, and evicts them from the end of.
+/// Newest first (by the enclave-signed receive time): the order kits are
+/// offered in, and, within listed and other kits, stored in.
 const newestFirst = (a: ChallengeKit, b: ChallengeKit) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo;
 
 /// The kits to keep: `existing`, then `added`, merged by order hash (the first
 /// copy wins), without the kits of orders in `settled` (lowercase hashes),
-/// newest first and at most MAX_STORED_CHALLENGE_KITS. Malformed entries are
-/// skipped.
+/// newest first. Not bounded: this is also the session's offer, which must hold
+/// every listed order's kit. Malformed entries are skipped.
 export function mergeChallengeKits(
   existing: readonly unknown[],
   added: readonly unknown[],
@@ -303,26 +319,33 @@ export function mergeChallengeKits(
     const kit = normalizeKit(value);
     if (kit && !byHash.has(hashKey(kit)) && !settled.has(hashKey(kit))) byHash.set(hashKey(kit), kit);
   }
-  return [...byHash.values()].sort(newestFirst).slice(0, MAX_STORED_CHALLENGE_KITS);
+  return [...byHash.values()].sort(newestFirst);
 }
 
 /// Keep `kits` in this browser, merged with the stored ones as
 /// `mergeChallengeKits` does: the kits of orders in `settled` (orders the
 /// gateway lists as SETTLED, which a settled batch includes or rejects) are
-/// dropped, and past MAX_STORED_CHALLENGE_KITS the oldest go. The quota is
-/// shared with claim bundles, the deposit journal and the credential record:
-/// when the browser refuses the write, the oldest kits are evicted until the
-/// rest fits, so a new order's kit is the last to go. Returns true only when
-/// every kit to keep is stored, false when storage is unavailable or kept only
-/// some of them. Never throws.
+/// dropped. The store holds at most MAX_STORED_CHALLENGE_KITS, and its quota is
+/// shared with claim bundles, the deposit journal and the credential record.
+/// When not every kit fits (the bound, or a write the browser refuses), kits
+/// are kept in this order and evicted from its end: the kits of orders in
+/// `listed` (lowercase hashes of the orders the gateway lists and does not
+/// report SETTLED) newest first, then every other kit (orders no longer
+/// listed, or another account's) newest first. Returns true only when every
+/// kit to keep is stored; false when storage is unavailable or any kit was
+/// evicted, so the caller can warn. Never throws.
 export function rememberChallengeKits(
   kits: readonly ChallengeKit[],
   storage: ChallengeKitStorage | undefined = defaultStorage(),
   settled: ReadonlySet<string> = new Set(),
+  listed: ReadonlySet<string> = new Set(),
 ): boolean {
   if (!storage) return false;
   try {
-    const keep = mergeChallengeKits(parseStored(storage.getItem(CHALLENGE_KIT_STORAGE_KEY)), kits, settled); // a denied read throws
+    const merged = mergeChallengeKits(parseStored(storage.getItem(CHALLENGE_KIT_STORAGE_KEY)), kits, settled); // a denied read throws
+    const isListed = (k: ChallengeKit) => listed.has(hashKey(k));
+    const keep = [...merged.filter(isListed), ...merged.filter((k) => !isListed(k))];
+    const bound = Math.min(keep.length, MAX_STORED_CHALLENGE_KITS);
     const write = (n: number): boolean => {
       try {
         storage.setItem(CHALLENGE_KIT_STORAGE_KEY, JSON.stringify(keep.slice(0, n).map(toStored)));
@@ -331,10 +354,10 @@ export function rememberChallengeKits(
         return false; // refused: the stored value is unchanged
       }
     };
-    if (write(keep.length)) return true;
-    // Refused (quota): store the longest newest-first prefix that fits.
+    if (write(bound)) return bound === keep.length;
+    // Refused (quota): store the longest prefix, in that order, that fits.
     let fits = 0;
-    let refused = keep.length;
+    let refused = bound;
     while (refused - fits > 1) {
       const mid = Math.floor((fits + refused) / 2);
       if (write(mid)) fits = mid;
