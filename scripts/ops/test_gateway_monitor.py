@@ -532,6 +532,12 @@ class ReadL1(unittest.TestCase):
         self.assertEqual(obs["opened"], {})
         self.assertTrue(obs["challenge_read_failed"])
 
+    def test_a_listed_challenge_opened_at_the_pinned_head_is_read(self):
+        runner = FakeRunner(chain(head=2000, challenges={H1: 2000}))
+        obs = self.read(runner)
+        self.assertEqual(obs["opened"], {H1: 2000})
+        self.assertFalse(obs["challenge_read_failed"])
+
     def test_a_failed_detail_read_defers_the_remaining_ones_to_the_next_run(self):
         runner = FakeRunner(chain(head=2000, challenges={H1: 1000, H2: 1500}, closed=[H1]))
         obs = self.read(runner)
@@ -787,6 +793,7 @@ class L1EndToEnd(unittest.TestCase):
         self.set_chain(chain(head=5100, close_only=True, challenges={H1: 1000}))
         self.assertEqual(self.run_monitor(), 0)
         self.assertEqual(self.events()[4:], [("l1_unreachable", "recovered", 1)])
+        self.assert_no_leak()
 
     def test_a_different_settlement_closes_the_old_contracts_l1_episodes_without_a_recovered(self):
         other = "0x" + "7a" * 20
@@ -803,6 +810,7 @@ class L1EndToEnd(unittest.TestCase):
         self.set_chain(chain(head=5010, close_only=True))
         self.assertEqual(self.run_monitor(DARKPERP_SETTLEMENT=other), 0)
         self.assertEqual(self.events()[3:], [("l1_close_only", "active", 2)])
+        self.assert_no_leak()
 
     def test_l1_settings_removed_then_set_to_a_different_settlement(self):
         self.set_chain(chain(head=5000, close_only=True))
@@ -811,6 +819,20 @@ class L1EndToEnd(unittest.TestCase):
         self.set_chain(chain(head=5000))
         self.assertEqual(self.run_monitor(DARKPERP_SETTLEMENT="0x" + "7a" * 20), 0)
         self.assertEqual(self.events(), [("gateway_unreachable", "active", 1), ("l1_close_only", "active", 1)])
+        self.assert_no_leak()
+
+    def test_removing_the_l1_settings_leaves_liveness_low_to_the_gateway(self):
+        # liveness_low is shared with the gateway's own report, so it is not carried
+        # over: with L1 reads off and the gateway down nothing raises it any more.
+        self.set_chain(chain(head=1050, last=1000, timeout=100))
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.run_monitor(DARKPERP_L1_RPC=None, DARKPERP_SETTLEMENT=None), 0)
+        self.assertEqual(self.events(), [
+            ("gateway_unreachable", "active", 1),
+            ("liveness_low", "active", 1),
+            ("liveness_low", "recovered", 1),
+        ])
+        self.assert_no_leak()
 
     def test_close_only_alerts_once_and_replaces_liveness_low(self):
         self.set_chain(chain(head=5000, last=1000, timeout=100, close_only=True))
