@@ -253,7 +253,7 @@ FAKE_CAST = textwrap.dedent(r"""
             return 2, "", "unsupported\n"
         sig = args[2]
         if sig in scenario.get("fail", []):
-            return 1, "", "Error: server returned an error response\n"
+            return 1, "", "Error: server returned an error response (" + os.environ.get("ETH_RPC_URL", "") + ")\n"
         challenges = scenario.get("challenges", {})
         if sig == "closeOnly()(bool)":
             out = "true" if scenario.get("close_only") else "false"
@@ -268,8 +268,11 @@ FAKE_CAST = textwrap.dedent(r"""
             out = "[" + ", ".join(list(challenges)[start:start + size]) + "]"
         elif sig == CHALLENGE:
             opened = challenges.get(args[3])
+            # "closed": listed by openChallenges() but reported closed, which a
+            # provider consistent with the pinned block never does.
+            still_open = opened is not None and args[3] not in scenario.get("closed", [])
             fields = ["0x90F79bf6EB2c4f870365E785982E1f101E93b906", "0", big(opened or 0), "3",
-                      "10000000000000000 [1e16]", "true" if opened is not None else "false"]
+                      "10000000000000000 [1e16]", "true" if still_open else "false"]
             out = "\n".join(fields)
         else:
             return 2, "", "unknown signature\n"
@@ -338,11 +341,11 @@ class FakeRunner:
         return [c[2] for c in self.calls if c[0] == "call"]
 
 
-def observation(head=1000, last=None, timeout=100, close_only=False, opened=None):
+def observation(head=1000, last=None, timeout=100, close_only=False, opened=None, count=None):
     opened = dict(opened or {})
     return {"head": head, "last_progress_block": head if last is None else last,
             "liveness_timeout_blocks": timeout, "close_only": close_only,
-            "open_challenges": len(opened), "opened": opened}
+            "open_challenges": len(opened) if count is None else count, "opened": opened}
 
 
 def policy(**overrides):
@@ -417,6 +420,54 @@ class EvaluateL1(unittest.TestCase):
         _, track = self.run_eval(None, track)
         self.assertEqual(track["opened"], {H1: 900})
 
+    def test_an_open_challenge_of_unknown_age_is_aged_from_the_first_reading_that_listed_it(self):
+        # One open challenge whose opening block could not be read: it was open at
+        # head 1000, so at head 1900 it has been open for at least 900 blocks.
+        active, track = self.run_eval(observation(head=1000, count=1))
+        self.assertEqual(active, set())
+        self.assertEqual(track["unknown_since"], 1000)
+        active, track = self.run_eval(observation(head=1899, count=1), track)
+        self.assertEqual(active, set())
+        active, track = self.run_eval(observation(head=1900, count=1), track)
+        self.assertEqual(active, {"challenge_unanswered"})
+        self.assertEqual(track["unknown_since"], 1000)
+
+    def test_a_read_age_replaces_the_unknown_age_clock(self):
+        _, track = self.run_eval(observation(head=1000, count=1))
+        active, track = self.run_eval(observation(head=1890, opened={H1: 1880}), track)
+        self.assertEqual(active, set(), "the read age (10 blocks) decides, not the clock")
+        self.assertIsNone(track["unknown_since"])
+        active, track = self.run_eval(observation(head=1950, opened={H1: 1880}, count=2), track)
+        self.assertEqual(active, set())
+        self.assertEqual(track["unknown_since"], 1950, "a new unknown age starts a new clock")
+
+    def test_a_failed_reading_keeps_the_unknown_age_clock(self):
+        _, track = self.run_eval(observation(head=1000, count=1))
+        active, track = self.run_eval(None, track)
+        self.assertEqual(active, set())
+        self.assertEqual(track["unknown_since"], 1000)
+        active, _ = self.run_eval(observation(head=1900, count=1), track)
+        self.assertEqual(active, {"challenge_unanswered"})
+
+    def test_challenges_past_the_first_page_have_an_unknown_age(self):
+        def page(first, opened_block):
+            return {"0x" + format(first + i, "064x"): opened_block for i in range(gateway_monitor.CHALLENGE_PAGE)}
+        over = gateway_monitor.CHALLENGE_PAGE + 1
+        _, track = self.run_eval(observation(head=1000, opened=page(0, 1000), count=over))
+        # Every listed challenge is young (10 blocks); one past the page is not listed.
+        active, _ = self.run_eval(observation(head=1900, opened=page(10_000, 1890), count=over), track)
+        self.assertEqual(active, {"challenge_unanswered"})
+
+    def test_zero_age_alerts_on_an_open_challenge_of_unknown_age(self):
+        active, _ = self.run_eval(observation(count=1), terms=policy(challenge_age_blocks=0))
+        self.assertEqual(active, {"challenge_unanswered"})
+
+    def test_a_malformed_unknown_age_clock_starts_again(self):
+        for bad in ["1000", -1, 1.5, True, None]:
+            with self.subTest(bad):
+                _, track = self.run_eval(observation(head=5000, count=1), {"unknown_since": bad})
+                self.assertEqual(track["unknown_since"], 5000)
+
     def test_every_l1_condition_is_a_known_redacted_event(self):
         for name in gateway_monitor.L1_EVENTS:
             ops_notify.event_body(name, "active", 1)
@@ -432,7 +483,8 @@ class ReadL1(unittest.TestCase):
         runner = FakeRunner(chain(head=50_000, last=40_000, timeout=43_200, challenges={H1: 45_000, H2: 49_999}))
         obs = self.read(runner)
         self.assertEqual(obs, {"head": 50_000, "last_progress_block": 40_000, "liveness_timeout_blocks": 43_200,
-                               "close_only": False, "open_challenges": 2, "opened": {H1: 45_000, H2: 49_999}})
+                               "close_only": False, "open_challenges": 2, "opened": {H1: 45_000, H2: 49_999},
+                               "challenge_read_failed": False})
         self.assertEqual(runner.calls[0], ["block-number"])
         for call in runner.calls[1:]:
             self.assertEqual(call[:2], ["call", SETTLEMENT])
@@ -464,6 +516,32 @@ class ReadL1(unittest.TestCase):
                                   fail=["challenges(bytes32)(address,uint64,uint256,uint256,uint256,bool)"]))
         obs = self.read(runner)
         self.assertEqual((obs["open_challenges"], obs["opened"]), (1, {}))
+        self.assertTrue(obs["challenge_read_failed"])
+
+    def test_a_listed_challenge_reported_closed_is_a_failed_detail_read(self):
+        # openChallenges() and challenges() are read at the same pinned block, where
+        # every listed hash is open; a provider saying otherwise is not believed.
+        runner = FakeRunner(chain(head=2000, challenges={H1: 1000}, closed=[H1]))
+        obs = self.read(runner)
+        self.assertEqual(obs["opened"], {})
+        self.assertTrue(obs["challenge_read_failed"])
+
+    def test_a_listed_challenge_opened_after_the_pinned_head_is_a_failed_detail_read(self):
+        runner = FakeRunner(chain(head=2000, challenges={H1: 2001}))
+        obs = self.read(runner)
+        self.assertEqual(obs["opened"], {})
+        self.assertTrue(obs["challenge_read_failed"])
+
+    def test_a_failed_detail_read_defers_the_remaining_ones_to_the_next_run(self):
+        runner = FakeRunner(chain(head=2000, challenges={H1: 1000, H2: 1500}, closed=[H1]))
+        obs = self.read(runner)
+        details = [c[3] for c in runner.calls if c[0] == "call" and c[2].startswith("challenges(")]
+        self.assertEqual((details, obs["opened"]), ([H1], {}))
+
+    def test_deferred_detail_reads_are_not_failures(self):
+        many = {"0x" + format(i, "064x"): 100 + i for i in range(gateway_monitor.MAX_CHALLENGE_READS + 5)}
+        obs = self.read(FakeRunner(chain(head=5000, challenges=many)))
+        self.assertFalse(obs["challenge_read_failed"])
 
     def test_any_failed_or_malformed_core_read_fails_the_whole_reading(self):
         for sig in ["closeOnly()(bool)", "lastProgressBlock()(uint256)", "livenessTimeoutBlocks()(uint256)",
@@ -650,6 +728,89 @@ class L1EndToEnd(unittest.TestCase):
         self.run_monitor(DARKPERP_SETTLEMENT="0x" + "7a" * 20)
         details = [e for e in self.cast_log() if e["argv"][0] == "call" and e["argv"][2].startswith("challenges(")]
         self.assertEqual([e["argv"][1] for e in details], [SETTLEMENT, "0x" + "7a" * 20])
+
+    def detail_failures_logged(self):
+        return self.stderr.getvalue().count("[ops-monitor] L1 challenge detail read failed\n")
+
+    def test_a_transient_challenge_detail_failure_is_logged_and_raises_nothing(self):
+        failing = [gateway_monitor.CHALLENGE_GETTER]
+        self.set_chain(chain(head=2000, challenges={H1: 1990}, fail=failing))
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.detail_failures_logged(), 1)
+        self.set_chain(chain(head=2030, challenges={H1: 1990}))
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.detail_failures_logged(), 1, "one line per failing run")
+        self.assertEqual(self.events(), [("gateway_unreachable", "active", 1)])
+        self.assertNotIn("L1 read failed", self.stderr.getvalue(), "the core reading stood")
+        self.assertEqual(json.loads(self.state_text())["l1"]["opened"], {H1: 1990})
+        self.assert_no_leak()
+
+    def test_a_persistent_challenge_detail_failure_raises_challenge_unanswered(self):
+        # H1 opened at block 1000; its opening block can never be read. From the
+        # first run that lists it (head 1500) it is open for at least head - 1500.
+        failing = [gateway_monitor.CHALLENGE_GETTER]
+        for head in (1500, 2000, 2399):
+            self.set_chain(chain(head=head, challenges={H1: 1000}, fail=failing))
+            self.assertEqual(self.run_monitor(), 0)
+        self.assertNotIn("challenge_unanswered", [e[0] for e in self.events()])
+        self.set_chain(chain(head=2400, challenges={H1: 1000}, fail=failing))
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.detail_failures_logged(), 4)
+        self.assertIn(("challenge_unanswered", "active", 1), self.events())
+        # Readable again: its real age (1430 blocks) keeps the same episode open.
+        self.set_chain(chain(head=2430, challenges={H1: 1000}))
+        self.assertEqual(self.run_monitor(), 0)
+        self.set_chain(chain(head=2460))
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual([e for e in self.events() if e[0] == "challenge_unanswered"], [
+            ("challenge_unanswered", "active", 1),
+            ("challenge_unanswered", "recovered", 1),
+        ])
+        self.assertEqual(self.detail_failures_logged(), 4)
+        self.assert_no_leak()
+
+    def test_removing_the_l1_settings_keeps_every_l1_episode_without_a_recovered(self):
+        self.set_chain(chain(head=5000, close_only=True, challenges={H1: 1000}))
+        self.assertEqual(self.run_monitor(), 0)
+        self.set_chain(chain(down=True))
+        self.assertEqual(self.run_monitor("--l1-failures", "1"), 0)
+        for _ in range(2):
+            self.assertEqual(self.run_monitor(DARKPERP_L1_RPC=None, DARKPERP_SETTLEMENT=None), 0)
+        self.assertEqual(self.events(), [
+            ("challenge_unanswered", "active", 1),
+            ("gateway_unreachable", "active", 1),
+            ("l1_close_only", "active", 1),
+            ("l1_unreachable", "active", 1),
+        ])
+        # Back on the same contract: the same episodes continue, and only what
+        # really changed (L1 is readable again) is reported.
+        self.set_chain(chain(head=5100, close_only=True, challenges={H1: 1000}))
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.events()[4:], [("l1_unreachable", "recovered", 1)])
+
+    def test_a_different_settlement_closes_the_old_contracts_l1_episodes_without_a_recovered(self):
+        other = "0x" + "7a" * 20
+        self.set_chain(chain(head=5000, close_only=True, challenges={H1: 1000}))
+        self.assertEqual(self.run_monitor(), 0)
+        self.set_chain(chain(head=5000))
+        self.assertEqual(self.run_monitor(DARKPERP_SETTLEMENT=other), 0)
+        self.assertEqual(self.events(), [
+            ("challenge_unanswered", "active", 1),
+            ("gateway_unreachable", "active", 1),
+            ("l1_close_only", "active", 1),
+        ])
+        # The new contract's own close-only is a new episode.
+        self.set_chain(chain(head=5010, close_only=True))
+        self.assertEqual(self.run_monitor(DARKPERP_SETTLEMENT=other), 0)
+        self.assertEqual(self.events()[3:], [("l1_close_only", "active", 2)])
+
+    def test_l1_settings_removed_then_set_to_a_different_settlement(self):
+        self.set_chain(chain(head=5000, close_only=True))
+        self.assertEqual(self.run_monitor(), 0)
+        self.assertEqual(self.run_monitor(DARKPERP_L1_RPC=None, DARKPERP_SETTLEMENT=None), 0)
+        self.set_chain(chain(head=5000))
+        self.assertEqual(self.run_monitor(DARKPERP_SETTLEMENT="0x" + "7a" * 20), 0)
+        self.assertEqual(self.events(), [("gateway_unreachable", "active", 1), ("l1_close_only", "active", 1)])
 
     def test_close_only_alerts_once_and_replaces_liveness_low(self):
         self.set_chain(chain(head=5000, last=1000, timeout=100, close_only=True))
