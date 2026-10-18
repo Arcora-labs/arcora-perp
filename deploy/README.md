@@ -83,7 +83,8 @@ boşsa davranış öncekiyle aynıdır. Yalnız biri ayarlıysa unit başarısı
   yalnız `ETH_RPC_URL` ortam değişkeniyle geçer. Çocuk sürece yalnız `PATH`,
   `ETH_RPC_URL`, `ETH_RPC_TIMEOUT` ve `FOUNDRY_DISABLE_NIGHTLY_WARNING` aktarılır;
   ortamın geri kalanı geçmez. `cast`'in hata çıktısı URL'yi tekrarladığı için
-  atılır; günlüğe yalnız `L1 read failed` yazılır.
+  atılır; günlüğe yalnız sabit satırlar (`L1 read failed`,
+  `L1 challenge detail read failed`) yazılır.
 - Gateway'in `L1_RPC`'sinden farklı bir sağlayıcı seçin. Tek sağlayıcının
   kesintisi ikisini birden kör etmesin.
 - `cast` `/usr/local/bin` altında olmalıdır (`ProtectHome=yes`).
@@ -92,8 +93,33 @@ boşsa davranış öncekiyle aynıdır. Yalnız biri ayarlıysa unit başarısı
 |---|---|---|
 | `liveness_low` | `lastProgressBlock()`'tan beri geçen blok sayısı `livenessTimeoutBlocks()`'un `--liveness-low-percent` yüzdesine ulaştı. Close-only'de verilmez. Ad ve yuvarlama gateway'in `LivenessLow` alarmıyla aynıdır (50'de `idle >= timeout / 2`, tamsayı). Gateway'den gelen `liveness_low` ile aynı epizodu paylaşır. | `--liveness-low-percent 50` |
 | `l1_close_only` | `closeOnly()` true. Close-only geri dönüşsüz olduğu için olay açık kalır. | yok |
-| `challenge_unanswered` | `openChallenges()` içindeki bir inclusion challenge'ı, `challenges(h)` açılış bloğundan beri `--challenge-age-blocks` blok açık. Her challenge'ın açılış bloğu bir kez okunur ve açık kaldıkça hatırlanır (çalıştırma başına en çok 16 yeni okuma). | `--challenge-age-blocks 900` (2 s blokla ~30 dk) |
+| `challenge_unanswered` | `openChallenges()` içindeki bir inclusion challenge'ı, `challenges(h)` açılış bloğundan beri `--challenge-age-blocks` blok açık. Her challenge'ın açılış bloğu bir kez okunur ve açık kaldıkça hatırlanır (çalıştırma başına en çok 16 yeni okuma). Açılış bloğu okunamayanlar için aşağıya bakın. | `--challenge-age-blocks 900` (2 s blokla ~30 dk) |
 | `l1_unreachable` | Art arda `--l1-failures` çalıştırmada L1 okunamadı. Okuma düzelene kadar diğer L1 olayları son okunan hâlini korur. | `--l1-failures 3` (~3 dk) |
+
+**Açılış bloğu okunamayan challenge.** `challenges(h)` okuması başarısız olursa
+ya da listeyle çelişen bir yanıt dönerse (aynı blokta kapalı veya head'den sonra
+açılmış görünürse), günlüğe tek bir sabit satır yazılır:
+`L1 challenge detail read failed`. Çekirdek okuma geçerli kalır, kalan
+challenge'lar bir sonraki çalıştırmada okunur. Açılış bloğu bilinmeyen açık bir
+challenge olduğu sürece (okuma başarısız oldu, sıraya kaldı ya da challenge
+512'lik ilk sayfanın dışında) bunların yaşı, bu durumun ilk görüldüğü head'den
+sayılır. Challenge o head'de açık olduğundan gerçek yaşı en az bu kadardır. Bu
+yaş `--challenge-age-blocks`'a ulaşınca `challenge_unanswered` verilir; açılış
+bloğu okununca saat sıfırlanır. Yaşı bilinmeyen challenge'lar zamanla değişirse
+alarm erken gelebilir. Açık kalan ve okunamayan bir challenge ise kaçmaz; alarm
+en çok, açılışıyla onu ilk listeleyen çalıştırma arasındaki blok sayısı kadar
+gecikir.
+
+**L1 ayarları kaldırılınca veya settlement değişince.** `DARKPERP_L1_RPC` ve
+`DARKPERP_SETTLEMENT` boşaltılırsa L1 hiç okunmaz. Bu yüzden yalnız L1
+okumalarının verdiği epizodlar (`l1_close_only`, `challenge_unanswered`,
+`l1_unreachable`) ve L1 izi durum dosyasında olduğu gibi kalır: ne yeni olay ne
+`recovered` gönderilir. Ayarlar aynı kontratla geri gelince aynı epizodlar sürer
+ve yalnız gerçekten değişen durum bildirilir. `DARKPERP_SETTLEMENT` başka bir
+adrese çevrilirse eski kontratın açık L1 epizodları olaysız kapanır (hiçbiri
+toparlanmadı) ve yeni kontratın durumları yeni epizod numarasıyla başlar.
+`liveness_low` gateway'in bildirimiyle paylaşıldığı için bu kurala girmez: L1
+okumaları kapalıyken yalnız gateway'in `opsAlerts` alanını izler.
 
 Teslim edilemeyen bir izleyici olayı kaydedilmez ve bir sonraki çalıştırmada
 yeniden gönderilir. Tek bir çökme ve başarılı yeniden başlatma alarm üretmez.
@@ -109,6 +135,10 @@ Bir dakikadan uzun süren kesintiyi `gateway_unreachable` yakalar.
     URL'yi stderr'e basar. Günlük denetimi yalnız Python'un `sys.stderr`'ine
     değil, journald'ın okuduğu 1 ve 2 numaralı dosya tanımlayıcılarına da bakar.
     İzleyici bu denetim için ayrı bir süreç olarak da çalıştırılır,
+  - açılış bloğu okunamayan challenge'ın geçici (alarm yok) ve kalıcı
+    (`challenge_unanswered`) hâli, listeyle çelişen ayrıntı yanıtları, L1
+    ayarları kaldırılınca veya settlement değişince L1 epizodları için
+    `recovered` gönderilmemesi,
   - unit dosyalarının script'lerle ve argümanlarla tutarlılığı,
   - env şablonlarında değer bulunmaması.
 - Unit sözdizimi systemd 255'te `systemd-analyze verify` ile kontrol edildi.

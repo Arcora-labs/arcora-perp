@@ -30,9 +30,18 @@ all pinned to one block, so these fire while the gateway is down:
   active.
 * challenge_unanswered: an inclusion challenge in openChallenges() has been
   open for --challenge-age-blocks blocks (challenges(h).openedBlock). Each
-  challenge is read once and remembered while it stays open.
+  challenge is read once and remembered while it stays open. While some open
+  challenge has no known opening block (its read failed or disagreed with the
+  list, was deferred, or it lies past the first page), those are aged from the
+  first head that showed this: early at worst, never missed. A failed detail
+  read logs one fixed line.
 * l1_unreachable: --l1-failures runs in a row could not read L1. Until reads
   succeed again the other L1 conditions keep their last reading.
+
+Without L1 settings nothing about L1 is observed, so the saved L1-only episodes
+(l1_close_only, challenge_unanswered, l1_unreachable) and L1 state are kept as
+they were, without an event. A different settlement address ends the old
+contract's L1-only episodes without an event; the new contract starts new ones.
 
 The RPC URL may carry a provider key: it reaches cast only through the
 ETH_RPC_URL variable of a minimal child environment, never argv, and cast's
@@ -65,6 +74,8 @@ RPC_ENV = "DARKPERP_L1_RPC"
 SETTLEMENT_ENV = "DARKPERP_SETTLEMENT"
 L1_ENV = (RPC_ENV, SETTLEMENT_ENV)
 L1_EVENTS = ("liveness_low", "l1_close_only", "challenge_unanswered", "l1_unreachable")
+# Raised only by the L1 reads (liveness_low is shared with the gateway's report).
+L1_ONLY_EVENTS = ("l1_close_only", "challenge_unanswered", "l1_unreachable")
 CAST_VERBS = frozenset({"block-number", "call"})
 CAST_TIMEOUT_SECONDS = 15
 CAST_RPC_TIMEOUT_SECONDS = 10
@@ -125,6 +136,7 @@ def evaluate_l1(observation, track, policy):
     `observation` is a read_l1() result, or None when L1 could not be read.
     """
     known = _known_opened(track.get("opened"))
+    unknown_since = _block(track.get("unknown_since"))
     if observation is None:
         failures = _count(track.get("failures")) + 1
         previous = track.get("active") if isinstance(track.get("active"), list) else []
@@ -132,7 +144,8 @@ def evaluate_l1(observation, track, policy):
         active = set(held)
         if failures >= policy.failures:
             active.add("l1_unreachable")
-        return active, {"failures": failures, "active": sorted(held), "opened": known}
+        return active, {"failures": failures, "active": sorted(held), "opened": known,
+                        "unknown_since": unknown_since}
 
     head = observation["head"]
     active = set()
@@ -144,13 +157,29 @@ def evaluate_l1(observation, track, policy):
         if idle >= observation["liveness_timeout_blocks"] * policy.liveness_low_percent // 100:
             active.add("liveness_low")
     opened = dict(observation["opened"])
-    if any(head - block >= policy.challenge_age_blocks for block in opened.values()):
+    ages = [head - block for block in opened.values()]
+    if observation["open_challenges"] > len(opened):
+        # Some open challenge has no known opening block: its read failed or was
+        # deferred, or it lies past the first page. It was open at the first head
+        # that showed this, so its age is at least head - unknown_since. While the
+        # condition lasts the clock keeps running; it may fire early if the
+        # challenges without a known age change, but cannot miss one that stays.
+        if unknown_since is None:
+            unknown_since = head
+        ages.append(head - unknown_since)
+    else:
+        unknown_since = None
+    if any(age >= policy.challenge_age_blocks for age in ages):
         active.add("challenge_unanswered")
-    return active, {"failures": 0, "active": sorted(active), "opened": opened}
+    return active, {"failures": 0, "active": sorted(active), "opened": opened, "unknown_since": unknown_since}
 
 
 def _count(value):
     return value if type(value) is int and value >= 0 else 0
+
+
+def _block(value):
+    return value if type(value) is int and value >= 0 else None
 
 
 def _known_opened(value):
@@ -238,18 +267,25 @@ def read_l1(run, settlement, known, clock=time.monotonic):
 
     opened = {h: known[h] for h in hashes if h in known}
     reads = 0
+    challenge_read_failed = False
     for h in hashes:
         if h in opened:
             continue
         if reads >= MAX_CHALLENGE_READS:
-            break
+            break  # Deferred, not failed: the rest follow next run.
         reads += 1
         try:
             block, still_open = _challenge(view(CHALLENGE_GETTER, h))
+            # Read at the same pinned block as the list, a listed challenge is open
+            # and opened at or before the head. Anything else is not believed.
+            if not still_open or block > head:
+                raise L1ReadError
         except L1ReadError:
-            break  # Judge the rest next run; the core reading stands.
-        if still_open and block <= head:
-            opened[h] = block
+            # The core reading stands; this age stays unknown (see evaluate_l1)
+            # and the rest are judged next run.
+            challenge_read_failed = True
+            break
+        opened[h] = block
     return {
         "head": head,
         "last_progress_block": last_progress,
@@ -257,6 +293,7 @@ def read_l1(run, settlement, known, clock=time.monotonic):
         "close_only": close_only,
         "open_challenges": count,
         "opened": opened,
+        "challenge_read_failed": challenge_read_failed,
     }
 
 
@@ -374,6 +411,18 @@ def build_parser():
     return parser
 
 
+def _episode_active(value):
+    return isinstance(value, list) and len(value) == 2 and value[1] is True
+
+
+def _end_silently(episodes, names):
+    """`episodes` with the named active ones marked inactive; episode numbers stay."""
+    return {
+        name: [value[0], False] if name in names and _episode_active(value) else value
+        for name, value in episodes.items()
+    }
+
+
 def main(argv=None, sleep=time.sleep, now=time.time, environ=None):
     environ = os.environ if environ is None else environ
     parser = build_parser()
@@ -397,14 +446,27 @@ def main(argv=None, sleep=time.sleep, now=time.time, environ=None):
     status_doc = fetch_json(base, "/v1/system/status") if state_doc is not None else None
     active, track = evaluate(state_doc, status_doc, saved.get("track", {}), now(), args.stall_seconds)
     new_state = {"track": track}
-    if l1 is not None:
+    saved_l1 = saved.get("l1") if isinstance(saved.get("l1"), dict) else None
+    if l1 is None:
+        # L1 reads are off, so nothing about L1 was observed: its episodes and
+        # track stay exactly as saved (no event), ready for when they are back on.
+        active |= {name for name in L1_ONLY_EVENTS if _episode_active(previous.get(name))}
+        if saved_l1 is not None:
+            new_state["l1"] = saved_l1
+    else:
         settlement, rpc = l1
-        l1_track = saved.get("l1")
-        if not isinstance(l1_track, dict) or l1_track.get("settlement") != settlement:
-            l1_track = {}  # A different contract: nothing earlier applies.
+        l1_track = saved_l1
+        if l1_track is None or l1_track.get("settlement") != settlement:
+            # A different (or unknown) contract: nothing earlier applies. Its open
+            # L1-only episodes end without an event, since nothing recovered; the
+            # new contract's conditions start new episodes.
+            l1_track = {}
+            previous = _end_silently(previous, L1_ONLY_EVENTS)
         observation = read_l1(cast_runner(rpc, environ), settlement, _known_opened(l1_track.get("opened")))
         if observation is None:
             print("[ops-monitor] L1 read failed", file=sys.stderr)
+        elif observation["challenge_read_failed"]:
+            print("[ops-monitor] L1 challenge detail read failed", file=sys.stderr)
         policy = L1Policy(args.liveness_low_percent, args.challenge_age_blocks, args.l1_failures)
         l1_active, l1_track = evaluate_l1(observation, l1_track, policy)
         active |= l1_active
