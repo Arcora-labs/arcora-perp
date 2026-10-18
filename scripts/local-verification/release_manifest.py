@@ -5,6 +5,12 @@ Manifest create/validate are offline. observe-target checks finalized runtime
 and contract links, without submitting transactions. Neither operation builds an
 ELF, verifies a new proof, or attests a running prover. Manifest integrity is
 relative to a trusted script and release manifest, not a release signature.
+
+Every manifest records `real_proof`: verify_clock_proof.proof_status(), read from
+the committed proof files. `create` requires PROVEN. While the status is not
+PROVEN, validate and observe-target accept only an owned test chain (the
+deploy_clock_stack rule: an Anvil client, or an operator-declared
+--owned-test-chain that is not a public Base chain id).
 """
 import argparse
 import datetime
@@ -26,7 +32,6 @@ import read_deployment as deployment_reader
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "arcora-clock-release/v1"
-FIXTURE = "contracts/integration/fixtures/clock-v2-verified"
 CONTRACTS = {
     "settlement": ("out/DarkPerpSettlement.sol/DarkPerpSettlement.json", "DarkPerpSettlement", "0.8.24+commit.e11b9ed9"),
     "vault": ("out/CollateralVault.sol/CollateralVault.json", "CollateralVault", "0.8.24+commit.e11b9ed9"),
@@ -40,6 +45,11 @@ ENV_ADDRESSES = {
     "CLOCK_BOUND_VERIFIER": "clock_verifier",
 }
 ADDRESS_ROLES = set(CONTRACTS) | {"token"}
+# Public Base networks: never an owned test chain unless the client is Anvil.
+PUBLIC_BASE_CHAINS = frozenset({8453, 84532})
+# observe-target asks the client name only to decide ownership while the real
+# proof status is not PROVEN; every other read is the deployment reader's.
+READ_METHODS = deployment_reader.READ_METHODS | {"web3_clientVersion"}
 # Public gateway settings bound into the release config (never keys or URLs).
 GATEWAY_KEYS = set(ENV_ADDRESSES) | {"L1_CHAIN_ID", "L1_ALLOW_MOCK_PROOF", "DEPOSIT_PERMIT_TTL_SECS"}
 # The settlement ABI generation this kit deploys and observes (`ABI_VERSION()`).
@@ -168,7 +178,7 @@ def public_config(value):
     require(all(int(address, 16) != 0 for address in addresses.values()), "zero contract address")
     require(len(set(addresses.values())) == len(addresses), "contract roles must use distinct addresses")
     key = normalized_hex(value["program_vkey"], 32, "program_vkey")
-    require(key == clock.EXPECTED_VKEY, "program_vkey does not match reviewed clock guest")
+    require(key == clock.REVIEWED_GUEST["vkey"], "program_vkey does not match reviewed clock guest")
     exact_keys(value["clock"], CLOCK_POLICY, "clock policy")
     for number in value["clock"].values():
         require(type(number) is int and 400 <= number < 2**64, "clock policy cannot satisfy gateway cadence")
@@ -187,10 +197,10 @@ def public_config(value):
     exact_keys(value["prover"], {"program_vkey", "guest_elf_sha256"}, "public prover config")
     prover_key = normalized_hex(value["prover"]["program_vkey"], 32, "prover program_vkey")
     require(prover_key == key, "prover program_vkey mismatch")
-    require(value["prover"]["guest_elf_sha256"] == clock.EXPECTED_ELF, "prover guest ELF mismatch")
+    require(value["prover"]["guest_elf_sha256"] == clock.REVIEWED_GUEST["elf"], "prover guest ELF mismatch")
     result = {"chain_id": value["chain_id"], "addresses": addresses, "program_vkey": key,
               "clock": dict(value["clock"]), "gateway": gateway,
-              "prover": {"program_vkey": prover_key, "guest_elf_sha256": clock.EXPECTED_ELF}}
+              "prover": {"program_vkey": prover_key, "guest_elf_sha256": clock.REVIEWED_GUEST["elf"]}}
     if "operator_policy" in value:
         result["operator_policy"] = operator_policy(value["operator_policy"])
     return result
@@ -206,7 +216,8 @@ def check_environment(config, env):
 
 
 def verify_reviewed_guest(root):
-    expected = set(clock.EXPECTED_GUEST_SOURCES)
+    sources = clock.REVIEWED_GUEST["sources"]
+    expected = set(sources)
     # Existing pins cover file contents, but a new build.rs, module or Cargo
     # config can change the program without modifying any previously pinned file.
     for directory in ("crates/perp-core/src", "crates/sp1-guest/src"):
@@ -219,7 +230,7 @@ def verify_reviewed_guest(root):
             path = root / directory / name
             require(not path.exists() and not path.is_symlink(),
                     "unreviewed guest build input; rebuild and reprove: " + str(path.relative_to(root)))
-    for name, expected_hash in clock.EXPECTED_GUEST_SOURCES.items():
+    for name, expected_hash in sources.items():
         require(identity(root, name)["sha256"] == expected_hash, "guest source changed; rebuild and reprove: " + name)
 
 
@@ -288,6 +299,17 @@ def compiled_contract(root, role):
     return result
 
 
+def real_proof(root):
+    """The committed proof's status (from disk) and both identities it is judged by."""
+    proof = clock.PROOF_FIXTURE
+    return {"status": clock.proof_status(root),
+            "proof": {"dir": proof["dir"], "kind": proof["kind"], "guest_elf_sha256": proof["elf"],
+                      "program_vkey": proof["vkey"], "public_commitment": proof["commitment"],
+                      "proof_sha256": proof["proof_sha256"]},
+            "reviewed": {"guest_elf_sha256": clock.REVIEWED_GUEST["elf"],
+                         "program_vkey": clock.REVIEWED_GUEST["vkey"]}}
+
+
 def build_manifest(root, config):
     config = public_config(config)
     # The reviewed ELF and key are pinned independently of caller-supplied JSON.
@@ -295,10 +317,12 @@ def build_manifest(root, config):
     require(release["passed"], "SP1 dependency/provenance release guard failed")
     verify_reviewed_guest(root)
     sources = source_inventory(root)
-    artifacts = {name: identity(root, FIXTURE + "/" + name) for name in ("guest.elf", "program-vkey.bin")}
-    require(regular(root, FIXTURE + "/guest.elf").read_bytes().startswith(b"\x7fELF"), "actual guest ELF required")
-    require(artifacts["guest.elf"]["sha256"] == clock.EXPECTED_ELF, "wrong reviewed guest ELF")
-    require("0x" + regular(root, FIXTURE + "/program-vkey.bin").read_bytes().hex() == clock.EXPECTED_VKEY,
+    reviewed = clock.REVIEWED_GUEST
+    identity_dir = reviewed["identity_dir"]
+    artifacts = {name: identity(root, identity_dir + "/" + name) for name in ("guest.elf", "program-vkey.bin")}
+    require(regular(root, identity_dir + "/guest.elf").read_bytes().startswith(b"\x7fELF"), "actual guest ELF required")
+    require(artifacts["guest.elf"]["sha256"] == reviewed["elf"], "wrong reviewed guest ELF")
+    require("0x" + regular(root, identity_dir + "/program-vkey.bin").read_bytes().hex() == reviewed["vkey"],
             "wrong reviewed setup key")
     contracts = {role: compiled_contract(root, role) for role in CONTRACTS}
     require(source_inventory(root) == sources, "source changed while generating manifest")
@@ -307,14 +331,38 @@ def build_manifest(root, config):
     return {"schema": SCHEMA, "source": {"commit": commit, "files_sha256": sources,
             "inventory_sha256": digest(canonical(sources))},
             "guest": {"elf": artifacts["guest.elf"], "setup_key": artifacts["program-vkey.bin"],
-                      "program_vkey": clock.EXPECTED_VKEY, "sp1_version": check_sp1_release.RELEASE,
+                      "program_vkey": reviewed["vkey"], "sp1_version": check_sp1_release.RELEASE,
                       "provenance": "PR31 reviewed clock guest identity; this command does not rebuild or reprove it."},
+            "real_proof": real_proof(root),
             "compiled_contracts": contracts, "public_config": config,
             "public_config_sha256": digest(canonical(config)), "scope": dict(SCOPE)}
 
 
-def validate_manifest(root, manifest, config, env=None):
+def create_manifest(root, config):
+    """`create`: a release manifest exists only for a guest with a matching real proof."""
+    manifest = build_manifest(root, config)
+    status = manifest["real_proof"]["status"]
+    require(status == clock.PROVEN,
+            "real proof status is " + str(status) + "; create requires a committed proof of the reviewed guest")
+    return manifest
+
+
+def target_owned(chain_id, anvil, owned_test_chain):
+    """deploy_clock_stack's rule: an Anvil client, or a declared non-Base test chain."""
+    return anvil is True or (owned_test_chain is True and chain_id not in PUBLIC_BASE_CHAINS)
+
+
+def require_release_target(manifest, owned, action):
+    """Until the real proof matches the reviewed guest, only owned test chains pass."""
+    status = (manifest.get("real_proof") or {}).get("status")
+    require(status == clock.PROVEN or owned,
+            action + " refused: real proof status is " + str(status)
+            + "; only an owned test chain (Anvil, or --owned-test-chain off public Base) is accepted")
+
+
+def validate_manifest(root, manifest, config, env=None, *, owned_test_chain=False, check_target=True):
     require(isinstance(manifest, dict) and manifest.get("schema") == SCHEMA, "unsupported release manifest")
+    require(type(owned_test_chain) is bool, "invalid owned test chain declaration")
     expected = build_manifest(root, config)
     # Rebuild the full expected object: deleting source/contract/config fields or
     # inventing a PASS claim must not weaken validation.
@@ -322,6 +370,10 @@ def validate_manifest(root, manifest, config, env=None):
     # False == 0. Canonical serialized comparison preserves that distinction.
     require(canonical(manifest) == canonical(expected),
             "release manifest mismatch (source, artifact, configuration or scope changed)")
+    if check_target:
+        # Offline: the client is unknown, so only a declaration can mark ownership.
+        chain = expected["public_config"]["chain_id"]
+        require_release_target(expected, target_owned(chain, False, owned_test_chain), "validate")
     if env is not None:
         check_environment(expected["public_config"], env)
     return expected
@@ -334,7 +386,7 @@ def check_deployment_config(deployment):
     """
     contracts = deployment["contracts"]
     key = normalized_hex(contracts["SP1ZkVerifier"]["programVKey"], 32, "deployment programVKey")
-    require(key == clock.EXPECTED_VKEY, "deployment programVKey does not match reviewed clock guest")
+    require(key == clock.REVIEWED_GUEST["vkey"], "deployment programVKey does not match reviewed clock guest")
     require("ClockBoundVerifier" in contracts, "deployment has no clock verifier")
     require(type(deployment["chainId"]) is int and 0 < deployment["chainId"] < 2**64, "invalid deployment chainId")
     for name in ("DarkPerpSettlement", "CollateralVault", "SP1ZkVerifier", "ClockBoundVerifier"):
@@ -356,7 +408,7 @@ class TargetRPC:
         self.opener = urllib.request.build_opener(NoRedirect)
 
     def __call__(self, method, params):
-        require(method in deployment_reader.READ_METHODS, "RPC method outside read-only allowlist")
+        require(method in READ_METHODS, "RPC method outside read-only allowlist")
         self.sequence += 1
         request = urllib.request.Request(self.url, data=canonical({
             "jsonrpc": "2.0", "id": self.sequence, "method": method, "params": params,
@@ -416,11 +468,13 @@ def runtime_identity(artifact, deployed, role):
             "runtime_matches_compiler_template": True}
 
 
-def observe_target(root, manifest, config, rpc, *, require_operator_policy=False):
+def observe_target(root, manifest, config, rpc, *, require_operator_policy=False, owned_test_chain=False):
     """Observe the complete clock stack at a single finalized, hash-pinned block.
 
     `rpc` is injectable for deterministic failure tests. The CLI always uses the
     read-only TargetRPC; this function never deploys or repairs contract state.
+    Unless the manifest's real proof status is PROVEN, the target must be an owned
+    test chain (checked through web3_clientVersion before any contract read).
     """
     result = {"status": "BLOCKED", "observed_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "manifest_sha256": digest(canonical(manifest)), "contracts": {}, "bindings": [],
@@ -432,11 +486,14 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
                               "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
                               "No proof is generated or submitted; no service identity, state migration or release readiness is established."]}
     try:
-        validated = validate_manifest(root, manifest, config)
+        validated = validate_manifest(root, manifest, config, check_target=False)
         result["scope"]["local_identity_checked"] = True
         public = validated["public_config"]
         addresses = public["addresses"]
         require(type(require_operator_policy) is bool, "invalid operator policy requirement")
+        require(type(owned_test_chain) is bool, "invalid owned test chain declaration")
+        status = (validated.get("real_proof") or {}).get("status")
+        result["real_proof_status"] = status
         policy = public.get("operator_policy")
         require(not require_operator_policy or policy is not None, "explicit operator policy required")
         if policy is not None:
@@ -446,6 +503,11 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
             result["rpc_origin"] = rpc.origin
         chain = deployment_reader.quantity(rpc("eth_chainId", []))
         require(chain == public["chain_id"], "target chain_id mismatch")
+        if status != clock.PROVEN:
+            client = rpc("web3_clientVersion", [])
+            anvil = isinstance(client, str) and client.lower().startswith("anvil")
+            result["target_owned"] = target_owned(chain, anvil, owned_test_chain)
+            require_release_target(validated, result["target_owned"], "observe-target")
         height, block_hash = deployment_reader.header(rpc("eth_getBlockByNumber", ["finalized", False]))
         result.update(chain_id=chain, block_number=height, block_hash=block_hash)
         pin = {"blockHash": block_hash, "requireCanonical": True}
@@ -512,7 +574,7 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
                 "finalized block changed during observation")
         require(deployment_reader.quantity(rpc("eth_chainId", [])) == chain, "chain changed during observation")
         # Source/artifacts/config must still be the validated release at completion.
-        validate_manifest(root, manifest, config)
+        validate_manifest(root, manifest, config, check_target=False)
         result["status"] = "VERIFIED_AT_FINALIZED_BLOCK"
         result["scope"].update(target_chain_observed=True, runtime_bytecode_verified=True,
                                operator_and_settlement_policy_matches=policy is not None)
@@ -532,6 +594,8 @@ def main():
     validate.add_argument("--manifest", type=Path, required=True)
     validate.add_argument("--config", type=Path, required=True)
     validate.add_argument("--check-process-env", action="store_true", help="compare allowlisted gateway variables before startup")
+    validate.add_argument("--owned-test-chain", action="store_true",
+                          help="declare a disposable non-Base test chain you own (needed while the real proof is not PROVEN)")
     deployment = commands.add_parser("check-deployment", help="check recorded deployment key only, without RPC")
     deployment.add_argument("--deployment", type=Path, required=True)
     target = commands.add_parser("observe-target", help="read-only finalized clock-stack runtime and binding verification; release remains HOLD")
@@ -541,26 +605,30 @@ def main():
     target.add_argument("--output", type=Path, required=True)
     target.add_argument("--require-operator-policy", action="store_true",
                         help="refuse before RPC unless a complete expected operator/settlement policy is bound")
+    target.add_argument("--owned-test-chain", action="store_true",
+                        help="declare a disposable non-Base test chain you own (an Anvil client needs no declaration)")
     args = parser.parse_args()
     if args.command == "check-deployment":
         check_deployment_config(read_json(args.deployment))
         print(json.dumps({"status": "PASS", "scope": "recorded key and address shape only; no RPC or runtime verification"}))
     elif args.command == "observe-target":
         result = observe_target(ROOT, read_json(args.manifest), read_json(args.config), TargetRPC(args.rpc),
-                                require_operator_policy=args.require_operator_policy)
+                                require_operator_policy=args.require_operator_policy,
+                                owned_test_chain=args.owned_test_chain)
         with args.output.open("x") as output:
             output.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
         print(json.dumps({key: result[key] for key in ("status", "scope", "blocker") if key in result}))
         if result["status"] != "VERIFIED_AT_FINALIZED_BLOCK":
             sys.exit(1)
     elif args.command == "create":
-        result = build_manifest(ROOT, read_json(args.config))
+        result = create_manifest(ROOT, read_json(args.config))
         with args.output.open("x") as output:
             output.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
         print(json.dumps({"status": "PASS", "scope": SCOPE}))
     else:
         validate_manifest(ROOT, read_json(args.manifest), read_json(args.config),
-                          os.environ if args.check_process_env else None)
+                          os.environ if args.check_process_env else None,
+                          owned_test_chain=args.owned_test_chain)
         print(json.dumps({"status": "PASS", "scope": SCOPE}))
 
 

@@ -26,7 +26,10 @@ Before any transaction the config is checked against the constructor rules
 target is an owned test chain, against the Base launch floors in BASE_FLOORS.
 An owned test chain is an Anvil client (a local chain or a local fork) or a
 chain the operator marks with --owned-test-chain; a public Base chain id is
-never accepted as one unless its client is Anvil.
+never accepted as one unless its client is Anvil. A target that is not an owned
+test chain is also refused unless the real proof status
+(`verify_clock_proof.proof_status()`, read from the committed proof files and
+shared with `release_manifest.py`) is PROVEN.
 
     deploy_clock_stack.py --config deploy.json --rpc http://127.0.0.1:8545 \
         --output public-config.json -- --unlocked --from 0x…
@@ -72,7 +75,7 @@ PUBLIC_DEV_ADDRESSES = frozenset({
 TOKEN_ARTIFACT = "out/MockUSDC.sol/MockUSDC.json"
 CONFIG_KEYS = {"chain_id", "genesis_root", "sp1_gateway", "clock", "operator_policy", "deposit_permit_ttl_secs"}
 # Public Base networks: never treated as an owned test chain unless the client is Anvil.
-PUBLIC_BASE_CHAINS = frozenset({8453, 84532})
+PUBLIC_BASE_CHAINS = release.PUBLIC_BASE_CHAINS
 # Base launch floors (2 s blocks). Each entry: (policy section, key, minimum).
 BASE_FLOORS = (
     ("settlement", "liveness_timeout_blocks", 7_200),
@@ -195,8 +198,12 @@ def check_chain(config, rpc, allow_public, owned_test_chain=False):
     # secret key, never one of the published default accounts.
     if not anvil and config["operator_policy"]["vault"]["gateway_signer"].lower() in PUBLIC_DEV_ADDRESSES:
         raise DeployError("vault gateway_signer is a public default Anvil account; refusing off Anvil")
-    owned = anvil or owned_test_chain
+    owned = release.target_owned(config["chain_id"], anvil, owned_test_chain is True)
     if not owned:
+        status = release.clock.proof_status()
+        if status != release.clock.PROVEN:
+            raise DeployError(f"real proof status is {status}: until the reviewed guest has a committed real proof, "
+                              "only an owned test chain (Anvil, or --owned-test-chain) may be deployed to")
         check_base_floors(config)
     return client, owned
 
@@ -238,7 +245,7 @@ def deploy_stack(config, deployer):
         deployer.create("sp1_verifier")
         deployer.create("sp1_gateway", p["sp1_gateway"]["owner"])
         deployer.call("sp1_gateway.addRoute", a["sp1_gateway"], "addRoute(address)", a["sp1_verifier"])
-    deployer.create("sp1_adapter", a["sp1_gateway"], release.clock.EXPECTED_VKEY)
+    deployer.create("sp1_adapter", a["sp1_gateway"], release.clock.REVIEWED_GUEST["vkey"])
     c = config["clock"]
     deployer.create("clock_verifier", a["sp1_adapter"], c["max_window_ms"], c["clock_skew_ms"], c["anchor_timeout_ms"])
     deployer.create("settlement", *settlement_words(config, a["clock_verifier"]))
@@ -261,10 +268,11 @@ def public_config(config, addresses):
     gateway = {env: addresses[role] for env, role in release.ENV_ADDRESSES.items()}
     gateway.update(L1_CHAIN_ID=str(config["chain_id"]), L1_ALLOW_MOCK_PROOF="0",
                    DEPOSIT_PERMIT_TTL_SECS=str(config["deposit_permit_ttl_secs"]))
+    reviewed = release.clock.REVIEWED_GUEST
     return release.public_config({
-        "chain_id": config["chain_id"], "addresses": addresses, "program_vkey": release.clock.EXPECTED_VKEY,
+        "chain_id": config["chain_id"], "addresses": addresses, "program_vkey": reviewed["vkey"],
         "clock": config["clock"], "gateway": gateway,
-        "prover": {"program_vkey": release.clock.EXPECTED_VKEY, "guest_elf_sha256": release.clock.EXPECTED_ELF},
+        "prover": {"program_vkey": reviewed["vkey"], "guest_elf_sha256": reviewed["elf"]},
         "operator_policy": config["operator_policy"],
     })
 

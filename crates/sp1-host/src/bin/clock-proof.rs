@@ -1,5 +1,12 @@
 //! Real local SP1 execution and optional Groth16 proof for clock-envelope v2.
 //! Uses only synthetic data and public fixture keys; never submits transactions.
+//!
+//! The guest is the explicit `--elf` artifact, refused unless its SHA-256 equals
+//! the reviewed guest pin; no build-script ELF is embedded. Modes:
+//! - default: execute the fixture and its negatives, then derive the setup key;
+//! - `--no-prove`: execution only, on the execute-only light client: no proving
+//!   stack is built, no setup is run and no key file is written;
+//! - `--prove`: as default, then generate and verify a Groth16 proof.
 use perp_core::{
     clock::{ClockContext, TimeBounds, WIRE_MAGIC},
     engine::BatchOp,
@@ -7,26 +14,128 @@ use perp_core::{
     hash::Keccak256,
     oracle::{oracle_digest, OracleSig, OracleTranscript},
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use sp1_host::{hex, normal_witness, sha256};
 use sp1_sdk::{
-    include_elf, Elf, HashableKey, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin,
-    StatusCode,
+    Elf, HashableKey, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin, StatusCode,
 };
-const ELF: Elf = include_elf!("perp-core-guest");
+use std::{fs::File, io::Read, path::Path};
+
+/// REVIEWED_GUEST["elf"] in scripts/local-verification/verify_clock_proof.py.
+const REVIEWED_ELF: &str = "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5";
+const MAX_ELF_BYTES: u64 = 16 * 1024 * 1024;
+const USAGE: &str =
+    "usage: clock-proof --elf REVIEWED_ELF NEW_OUTPUT_DIRECTORY [--prove | --no-prove]";
+
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    Setup,
+    ExecuteOnly,
+    Prove,
+}
+
 fn encode(w: &sp1_host::Witness, c: ClockContext) -> Vec<u8> {
     let mut bytes = WIRE_MAGIC.to_vec();
     bytes.extend(postcard::to_allocvec(&(&w.0, &w.1, &w.2, c)).unwrap());
     bytes
 }
+
+/// Read a bounded regular (non-symlink) file and refuse any program but the reviewed one.
+fn reviewed_elf(path: &Path) -> Result<Vec<u8>, String> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|e| format!("guest ELF: {e}"))?;
+    if !metadata.file_type().is_file() {
+        return Err("guest ELF must be a regular non-symlink file".into());
+    }
+    let mut bytes = Vec::new();
+    File::open(path)
+        .and_then(|file| file.take(MAX_ELF_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|e| format!("guest ELF: {e}"))?;
+    if bytes.len() as u64 > MAX_ELF_BYTES || !bytes.starts_with(b"\x7fELF") {
+        return Err("guest ELF input is not a bounded ELF file".into());
+    }
+    if sha256(&bytes) != REVIEWED_ELF {
+        return Err("guest ELF differs from the reviewed guest pin".into());
+    }
+    Ok(bytes)
+}
+
+/// Execute the fixture witness `bytes` (it must succeed and commit `expected`) and
+/// each clock negative of `w` and `c` (each must be rejected with no public values)
+/// on `client`. Returns the fixture's cycle count and the negatives' evidence.
+async fn execute_fixture<P: Prover>(
+    client: &P,
+    elf: &Elf,
+    (w, c): (&sp1_host::Witness, ClockContext),
+    bytes: &[u8],
+    expected: &[u8],
+) -> (u64, Vec<Value>) {
+    let mut stdin = SP1Stdin::new();
+    stdin.write_vec(bytes.to_vec());
+    let (values, report) = client
+        .execute(elf.clone(), stdin)
+        .expected_exit_code(StatusCode::SUCCESS)
+        .await
+        .expect("clock guest execution");
+    assert_eq!(values.as_slice(), expected);
+    let mut negatives = Vec::new();
+    for name in [
+        "wrong-bounds",
+        "wrong-count",
+        "wrong-batch",
+        "wrong-base",
+        "backdated",
+    ] {
+        let mut bad = c;
+        match name {
+            "wrong-bounds" => bad.first_ms += 1,
+            "wrong-count" => bad.timed_ops -= 1,
+            "wrong-batch" => bad.batch_id += 1,
+            "wrong-base" => bad.base_commitment[0] ^= 1,
+            _ => bad.anchored_at_ms += 20_000,
+        };
+        let bytes = encode(w, bad);
+        assert!(prover::public_from_witness(&bytes).is_err());
+        let mut input = SP1Stdin::new();
+        input.write_vec(bytes.clone());
+        let (v, r) = client
+            .execute(elf.clone(), input)
+            .expected_exit_code(StatusCode::PANIC)
+            .await
+            .expect("actual guest rejects malformed clock");
+        assert_eq!(r.exit_code, 1);
+        assert!(v.as_slice().is_empty());
+        negatives.push(json!({"name":name,"guest_exit":r.exit_code,"public_bytes":v.as_slice().len(),"witness_sha256":sha256(&bytes)}));
+    }
+    let cycles = report.total_instruction_count();
+    println!("CLOCK_NATIVE_GUEST_PARITY_PASS cycles={cycles}");
+    (cycles, negatives)
+}
+
+fn parse_args(args: &[String]) -> Result<(String, String, Mode), String> {
+    let (mut elf, mut dir, mut mode) = (None, None, None);
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--elf" if elf.is_none() => elf = Some(rest.next().ok_or(USAGE)?.clone()),
+            "--prove" if mode.is_none() => mode = Some(Mode::Prove),
+            "--no-prove" if mode.is_none() => mode = Some(Mode::ExecuteOnly),
+            other if !other.starts_with("--") && dir.is_none() => dir = Some(other.to_string()),
+            _ => return Err(USAGE.into()),
+        }
+    }
+    match (elf, dir) {
+        (Some(elf), Some(dir)) => Ok((elf, dir, mode.unwrap_or(Mode::Setup))),
+        _ => Err(USAGE.into()),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    assert!(
-        args.len() == 1 || (args.len() == 2 && args[1] == "--prove"),
-        "usage: clock-proof NEW_OUTPUT_DIRECTORY [--prove]"
-    );
-    if args.len() == 2 {
+    let (elf_path, dir, mode) = parse_args(&args).unwrap_or_else(|e| panic!("{e}"));
+    let elf_bytes = reviewed_elf(Path::new(&elf_path)).unwrap_or_else(|e| panic!("{e}"));
+    let elf = Elf::from(elf_bytes.clone());
+    if mode == Mode::Prove {
         let base = std::env::var_os("SP1_GROTH16_CIRCUIT_PATH")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -36,7 +145,7 @@ async fn main() {
         sp1_host::check_groth16_prerequisites(&base.join("v6.1.0"))
             .expect("install complete official SP1 6.1.0 circuit artifacts before --prove; a partial archive is not sufficient");
     }
-    let dir = std::path::PathBuf::from(&args[0]);
+    let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir(&dir).expect("fresh output directory");
     let mut w = normal_witness();
     let key = k256::ecdsa::SigningKey::from_slice(&[7; 32]).unwrap();
@@ -82,62 +191,40 @@ async fn main() {
     let public = prover::public_from_witness(&bytes).unwrap();
     let expected = public.commitment::<Keccak256>();
     std::fs::write(dir.join("clock.witness.bin"), &bytes).unwrap();
-    std::fs::write(dir.join("guest.elf"), &*ELF).unwrap();
-    let client = ProverClient::builder().cpu().build().await;
-    let mut stdin = SP1Stdin::new();
-    stdin.write_vec(bytes.clone());
-    let (values, report) = client
-        .execute(ELF, stdin)
-        .expected_exit_code(StatusCode::SUCCESS)
-        .await
-        .expect("clock guest execution");
-    assert_eq!(values.as_slice(), expected.as_slice());
-    let mut negatives = Vec::new();
-    for name in [
-        "wrong-bounds",
-        "wrong-count",
-        "wrong-batch",
-        "wrong-base",
-        "backdated",
-    ] {
-        let mut bad = c;
-        match name {
-            "wrong-bounds" => bad.first_ms += 1,
-            "wrong-count" => bad.timed_ops -= 1,
-            "wrong-batch" => bad.batch_id += 1,
-            "wrong-base" => bad.base_commitment[0] ^= 1,
-            _ => bad.anchored_at_ms += 20_000,
-        };
-        let bytes = encode(&w, bad);
-        assert!(prover::public_from_witness(&bytes).is_err());
-        let mut input = SP1Stdin::new();
-        input.write_vec(bytes.clone());
-        let (v, r) = client
-            .execute(ELF, input)
-            .expected_exit_code(StatusCode::PANIC)
-            .await
-            .expect("actual guest rejects malformed clock");
-        assert_eq!(r.exit_code, 1);
-        assert!(v.as_slice().is_empty());
-        negatives.push(json!({"name":name,"guest_exit":r.exit_code,"public_bytes":v.as_slice().len(),"witness_sha256":sha256(&bytes)}));
+    std::fs::write(dir.join("guest.elf"), &elf_bytes).unwrap();
+    let evidence = |cycles: u64, negatives: Vec<Value>| {
+        json!({"kind":"clock-v2-native-guest","sdk_version":"6.1.0",
+            "elf_sha256":sha256(&elf_bytes),"witness_sha256":sha256(&bytes),
+            "native_guest_equal":true,"cycles":cycles,"negatives":negatives,
+            "commitment":format!("0x{}",hex(&expected)),"proof_generated":false,"target_contract_verified":false})
+    };
+    if mode == Mode::ExecuteOnly {
+        // Execution only: the light client executes without building the CPU
+        // proving stack, and no setup runs, so no setup key is derived or recorded.
+        let client = ProverClient::builder().light().build().await;
+        let (cycles, negatives) = execute_fixture(&client, &elf, (&w, c), &bytes, &expected).await;
+        let mut evidence = evidence(cycles, negatives);
+        evidence["setup_performed"] = json!(false);
+        std::fs::write(
+            dir.join("execution.json"),
+            serde_json::to_vec_pretty(&evidence).unwrap(),
+        )
+        .unwrap();
+        return;
     }
-    println!(
-        "CLOCK_NATIVE_GUEST_PARITY_PASS cycles={}",
-        report.total_instruction_count()
-    );
-    let pk = client.setup(ELF).await.expect("real setup");
+    let client = ProverClient::builder().cpu().build().await;
+    let (cycles, negatives) = execute_fixture(&client, &elf, (&w, c), &bytes, &expected).await;
+    let mut evidence = evidence(cycles, negatives);
+    let pk = client.setup(elf).await.expect("real setup");
     let vkey = pk.verifying_key().bytes32_raw();
     std::fs::write(dir.join("program-vkey.bin"), vkey).unwrap();
-    let mut evidence = json!({"kind":"clock-v2-native-guest","sdk_version":"6.1.0",
-        "elf_sha256":sha256(&ELF),"witness_sha256":sha256(&bytes),"program_vkey":format!("0x{}",hex(&vkey)),
-        "native_guest_equal":true,"cycles":report.total_instruction_count(),"negatives":negatives,
-        "commitment":format!("0x{}",hex(&expected)),"proof_generated":false,"target_contract_verified":false});
+    evidence["program_vkey"] = json!(format!("0x{}", hex(&vkey)));
     std::fs::write(
         dir.join("execution.json"),
         serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();
-    if args.len() == 2 {
+    if mode == Mode::Prove {
         println!("CLOCK_GROTH16_START local CPU");
         let mut input = SP1Stdin::new();
         input.write_vec(bytes);

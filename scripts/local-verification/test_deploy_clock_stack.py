@@ -262,6 +262,47 @@ class BaseFloors(CastFixture):
         self.assertEqual(len(self.sends()), before)
 
 
+class ProofStatusGate(CastFixture):
+    """A target that is not an owned test chain needs the real proof status PROVEN."""
+
+    def pending(self):
+        # A reviewed guest the committed proof files do not belong to: read from
+        # disk, the status is PENDING_REPROOF.
+        patcher = unittest.mock.patch.dict(release.clock.REVIEWED_GUEST,
+                                           {"elf": "cd" * 32, "vkey": "0x" + "ab" * 32})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.assertEqual(release.clock.proof_status(), release.clock.PENDING_REPROOF)
+
+    def test_status_is_proven_today(self):
+        self.assertEqual(release.clock.proof_status(), release.clock.PROVEN)
+
+    def test_non_owned_target_is_refused_until_proven(self):
+        self.pending()
+        self.write_config(**launch_config())
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 2)
+        self.write_config(chain_id=900)
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"],
+                                      env={"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}), 2)
+        self.assertEqual(self.sends(), [])
+        self.assertFalse(self.output.exists())
+
+    def test_owned_targets_deploy_while_pending(self):
+        self.pending()
+        cases = [({}, [], 31337),
+                 # The candidate harness and the fork dry run use Anvil with chain id 84532.
+                 ({"FAKE_CHAIN": "84532"}, [], 84532),
+                 ({"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}, ["--allow-public-chain", "--owned-test-chain"], 900)]
+        for env, extra, chain_id in cases:
+            with self.subTest(chain_id=chain_id):
+                self.write_config(chain_id=chain_id)
+                self.assertEqual(self.run_cli(extra=list(extra), env=env), 0)
+                public = json.loads(self.output.read_text())
+                self.assertEqual(public["program_vkey"], "0x" + "ab" * 32)
+                self.assertTrue(json.loads(self.output.with_suffix(".deployment.json").read_text())["owned_test_chain"])
+                self.output.unlink()
+
+
 class Order(CastFixture):
     def test_fresh_stack_deploys_in_dependency_order(self):
         self.write_config()
@@ -320,7 +361,7 @@ class Order(CastFixture):
         self.write_config()
         self.run_cli()
         public = json.loads(self.output.read_text())
-        self.assertEqual(release.public_config(public)["program_vkey"], release.clock.EXPECTED_VKEY)
+        self.assertEqual(release.public_config(public)["program_vkey"], release.clock.REVIEWED_GUEST["vkey"])
         self.assertEqual(public["gateway"]["L1_SETTLEMENT"], public["addresses"]["settlement"])
         self.assertEqual(public["gateway"]["L1_ALLOW_MOCK_PROOF"], "0")
         self.assertEqual(public["gateway"]["DEPOSIT_PERMIT_TTL_SECS"], "1800")

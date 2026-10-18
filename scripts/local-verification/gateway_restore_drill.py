@@ -17,6 +17,7 @@ import tempfile
 import time
 
 from gateway_ack_crash_drill import ok, request, sign
+import gateway_formats
 
 ROOT = Path(__file__).resolve().parents[2]
 ACCOUNT_FIELDS = ('owner', 'settledBalance', 'positions', 'nextNonce',
@@ -200,7 +201,8 @@ def run(binary, out):
                 require(expected_order['execution']['status'] == 'CANCELLED', 'cancelled checkpoint baseline')
                 owned.stop(child)
                 latest = state.read_bytes()
-                require(latest.startswith(b'DPSNAP9\0') and older != latest, 'distinct authenticated checkpoint generations')
+                require(latest.startswith(gateway_formats.snapshot_magic()) and older != latest,
+                        'distinct authenticated checkpoint generations')
                 latest_hash = sha(latest)
                 result['checkpoint_sha256'] = latest_hash
                 result['older_checkpoint_sha256'] = sha(older)

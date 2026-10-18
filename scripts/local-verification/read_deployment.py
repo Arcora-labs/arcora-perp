@@ -18,7 +18,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from verify_clock_proof import EXPECTED_VKEY
+from verify_clock_proof import REVIEWED_GUEST
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "contracts/deployments/base-sepolia.json"
@@ -224,7 +224,7 @@ def observe(config, witness_url=None, config_path=None):
         key = result["contracts"]["SP1ZkVerifier"]["calls"]["programVKey()"].get("result")
         # Compare to the independently reviewed clock guest, not a historical
         # pre-clock build log. This observation still does not prove a deployment.
-        local_key = EXPECTED_VKEY
+        local_key = REVIEWED_GUEST["vkey"]
 
         def address_result(name, signature):
             value = result["contracts"][name]["calls"][signature].get("result")
@@ -268,7 +268,9 @@ def observe(config, witness_url=None, config_path=None):
                        for name, item in result["contracts"].items()
                        for signature, call in item["calls"].items() if "error" in call]
         result.update(status="PARTIAL" if call_errors else "OBSERVED",
+                      # The existing label is kept as recorded; the record it now reads is named beside it.
                       local_guest_reference="reviewed clock-v2 guest (verify_clock_proof.EXPECTED_VKEY)",
+                      local_guest_record="verify_clock_proof.REVIEWED_GUEST[\"vkey\"]",
                       local_guest_vkey=local_key, deployed_vkey=key,
                       vkey_matches_local=key == local_key,
                       bindings=bindings, configured_bindings_match=all(v["matches"] for v in bindings),
