@@ -16,10 +16,13 @@ import {
 import {
   challengeKitFileName,
   loadChallengeKits,
+  mergeChallengeKits,
   newChallengeKits,
   rememberChallengeKits,
   serializeChallengeKits,
+  settledOrderHashes,
   type ChallengeKit,
+  type ChallengeKitStorage,
 } from "../domain/challengeKit";
 import type { DarkPerpClient } from "../api/client";
 import {
@@ -783,23 +786,37 @@ export function RefundsSection({ client, closeOnly }: { client: DarkPerpClient; 
 /// Kits listed one by one; older ones are still in the export.
 const LISTED_KITS = 20;
 
-/// Accepted orders' L1 challenge kits, kept in this browser (the accept
-/// response's copy is stored by the client; this also keeps the kits of orders
-/// the gateway lists, e.g. ones placed elsewhere). With a kit the user can open
+/// The L1 challenge kits of the account's listed orders, kept in this browser
+/// (bounded; see `rememberChallengeKits`). With a kit the user can open
 /// `challengeInclusion` for an order no settled batch includes or rejects,
-/// without the operator. Hidden while there is none. Exported for tests.
-export function ChallengeKitSection({ orders }: { orders: TrackedOrder[] }) {
-  const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits());
+/// without the operator. A kit is dropped once the gateway lists its order as
+/// SETTLED. When the browser does not keep a kit (storage blocked or full), the
+/// section still offers it for this session and says so. Hidden while there is
+/// none. `storage` defaults to this origin's localStorage. Exported for tests.
+export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[]; storage?: ChallengeKitStorage }) {
+  const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits(storage));
+  // Offered kits this browser did not keep.
+  const [unsaved, setUnsaved] = useState(0);
+  // The offered kits, for the effect (it alone changes them after the first render).
+  const offered = useRef(kits);
   // Order hashes already kept or tried, so a state push re-verifies nothing.
   const seen = useRef<Set<string> | null>(null);
   seen.current ??= new Set(kits.map((k) => k.orderHash.toLowerCase()));
 
   useEffect(() => {
-    const fresh = newChallengeKits(orders.map((o) => o.receipt), seen.current!);
-    if (fresh.length === 0) return;
-    if (rememberChallengeKits(fresh)) setKits(loadChallengeKits());
-    else setKits((previous) => [...previous, ...fresh]); // storage denied: offer them for this session
-  }, [orders]);
+    const fresh = newChallengeKits(orders, seen.current!);
+    const settled = settledOrderHashes(orders);
+    const current = offered.current;
+    if (fresh.length === 0 && !current.some((k) => settled.has(k.orderHash.toLowerCase()))) return;
+    // This session's unsaved kits go along, so they are stored once there is room.
+    rememberChallengeKits([...current, ...fresh], storage, settled);
+    const stored = loadChallengeKits(storage);
+    const kept = new Set(stored.map((k) => k.orderHash.toLowerCase()));
+    const next = mergeChallengeKits([...stored, ...current], fresh, settled);
+    offered.current = next;
+    setKits(next);
+    setUnsaved(next.filter((k) => !kept.has(k.orderHash.toLowerCase())).length);
+  }, [orders, storage]);
 
   if (kits.length === 0) return null;
   const newest = [...kits].sort((a, b) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo);
@@ -814,6 +831,13 @@ export function ChallengeKitSection({ orders }: { orders: TrackedOrder[] }) {
         <code>scripts/claim/challenge_inclusion.py</code>). Keep the files private:
         opening a challenge publicly links your deposit address to the order.
       </p>
+      {unsaved > 0 && (
+        <p className="notice notice--warn" role="alert">
+          This browser did not keep{" "}
+          {unsaved < kits.length ? `${unsaved} of these kits` : kits.length === 1 ? "this kit" : "these kits"} (its
+          storage is blocked or full). Export now: what it did not keep is gone when this page closes.
+        </p>
+      )}
       <ul className="withdrawals__list">
         {listed.map((k) => (
           <li key={k.orderHash} className="withdrawals__item">

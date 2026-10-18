@@ -99,16 +99,6 @@ export interface OrderInput {
   reduceOnly: boolean;
 }
 
-/// The enclave's authorization to open `DarkPerpSettlement.challengeInclusion`
-/// for one order on one chain and settlement, paying any fine to `beneficiary`.
-export interface L1Challenge {
-  chainId: number;
-  settlement: string;
-  beneficiary: string;
-  /// 65-byte r||s||v over `challengeAuthDigest`.
-  signature: string;
-}
-
 export interface Receipt {
   /// Optional for old gateways and demos. 65-byte r||s||v, with v = 27 or 28.
   signature?: string;
@@ -117,8 +107,6 @@ export interface Receipt {
   seqNo: number;
   recvTimeMs: number;
   batchIdHint: number;
-  /// Absent from old gateways and demos; null without a bound deposit address.
-  l1Challenge?: L1Challenge | null;
 }
 
 /// An order as tracked in the UI, with its evolving finality.

@@ -33,7 +33,7 @@ import { cancellationCapability } from "../domain/cancellation";
 import { parseExecution } from "../domain/execution";
 import { isWithdrawalAddress, parseWithdrawal } from "../domain/withdrawal";
 import { parseRefundableDeposit } from "../domain/refund";
-import { parseL1Challenge, rememberReceiptChallengeKit } from "../domain/challengeKit";
+import { withL1Challenge } from "../domain/challengeKit";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
@@ -146,15 +146,13 @@ function pAccount(a: WireState["account"]): AccountState {
  */
 function pV1Order(o: WireV1Order): TrackedOrder {
   const r = o.receipt;
-  const l1Challenge = parseL1Challenge(r?.l1Challenge);
   const receipt: Receipt =
     r && typeof r.orderHash === "string" && typeof r.seqNo === "number" &&
     typeof r.recvTimeMs === "number" && typeof r.batchIdHint === "number"
-      ? { orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint,
+      ? withL1Challenge({ orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint,
           ...(typeof r.signature === "string" && /^0x[0-9a-fA-F]{130}$/.test(r.signature) &&
               typeof r.enclaveSigner === "string" && /^0x[0-9a-fA-F]{40}$/.test(r.enclaveSigner)
-            ? { signature: r.signature, enclaveSigner: r.enclaveSigner } : {}),
-          ...(l1Challenge === undefined ? {} : { l1Challenge }) }
+            ? { signature: r.signature, enclaveSigner: r.enclaveSigner } : {}) }, r.l1Challenge)
       : { orderHash: o.orderHash, seqNo: 0, recvTimeMs: o.createdMs, batchIdHint: 0 };
   return {
     ...cancellationCapability(o.cancellable),
@@ -1298,10 +1296,6 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { epochId: epoch.epochId, sealed: "0x" + bytesToHex(sealed) },
       { "X-Api-Key": acct.apiKey },
     );
-    // The accept response's L1 challenge kit is the copy bound to the
-    // beneficiary at acceptance: keep it in this browser before anything else
-    // can fail (it never leaves the browser; storage errors are swallowed).
-    rememberReceiptChallengeKit(receipt);
     assertCurrent();
     // SEC-025-E1: the accepted order lands in the account's /v1 order list —
     // refresh the own-account view now instead of waiting for the /v1/ws

@@ -1,5 +1,5 @@
 {
-  "_note": "Shared by frontend/src/domain/challengeKit.test.ts and scripts/challenge/test_challenge_kit.py. Authorization A and B are the vectors pinned in crates/gateway/src/challenge_auth.rs and contracts/test/CrossLayer.t.sol (fixture enclave seed 0x07..07). Fix the code, never these values.",
+  "_note": "Shared by frontend/src/domain/challengeKit.test.ts, frontend/src/components/AccountPanel.challengeKit.test.tsx and scripts/challenge/test_challenge_kit.py. Authorization A and B are the vectors pinned in crates/gateway/src/challenge_auth.rs and contracts/test/CrossLayer.t.sol (fixture enclave seed 0x07..07). Fix the code, never these values.",
   "authTag": "0x69f32c88aac1254085ee4ba164b69f2f12fb02828e83d559eff228842bdcc42a",
   "enclaveSigner": "0x4a62316623ad457f02cdc5d997ded67a383ec569",
   "digestVectors": [
@@ -52,7 +52,6 @@
       "settlement": "0x2222222222222222222222222222222222222222",
       "beneficiary": "0x3333333333333333333333333333333333333333",
       "signature": "0x490ce9b286399686afb9dfb81f58c2fa2622d492fb468f27682b22fc15ed81644c1c3b569abd8431ff2e339bb14d1022a5ef5d58dad371b6cfe314ad28e414821b"
-    },
-    "createdAt": "2026-10-18T00:00:00.000Z"
+    }
   }
 }

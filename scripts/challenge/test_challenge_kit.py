@@ -83,11 +83,13 @@ class Vectors(unittest.TestCase):
         digest = bytes.fromhex(A["digest"][2:])
         self.assertEqual(ci.recover(digest, bytes.fromhex(AUTH["signature"][2:])), ENCLAVE)
 
-    def test_the_kit_is_the_accept_receipt_plus_schema_and_time(self):
+    def test_the_kit_is_the_accept_receipt_plus_schema(self):
         receipt = VECTORS["acceptReceipt"]
-        for key in ("orderHash", "seqNo", "recvTimeMs", "batchIdHint", "enclaveSigner", "l1Challenge"):
+        fields = ("orderHash", "seqNo", "recvTimeMs", "batchIdHint", "enclaveSigner", "l1Challenge")
+        for key in fields:
             self.assertEqual(KIT[key], receipt[key], key)
         self.assertEqual(KIT["schema"], "arcora.challenge-kit.v1")
+        self.assertEqual(set(KIT), {"schema", *fields})
 
 
 class BrowserKitThroughTheTool(unittest.TestCase):
