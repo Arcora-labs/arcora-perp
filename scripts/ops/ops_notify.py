@@ -33,12 +33,16 @@ GATEWAY_ALERTS = (
     "liveness_low",
     "permit_gc_stalled",
 )
-# Monitor conditions (episodic) and one-shot unit failures.
+# Monitor conditions (episodic) and one-shot unit failures. The monitor's own L1
+# reads also raise liveness_low (the gateway's name for the same condition).
 EVENTS = (
     "gateway_unreachable",
     "settlement_held",
     "deposit_halted",
     "settle_stall",
+    "l1_unreachable",
+    "l1_close_only",
+    "challenge_unanswered",
     "gateway_service_failed",
     "backup_failed",
     "monitor_failed",
