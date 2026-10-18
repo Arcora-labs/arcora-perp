@@ -1,5 +1,6 @@
-//! Real local SP1 execution and optional Groth16 proof for clock-envelope v2.
-//! Uses only synthetic data and public fixture keys; never submits transactions.
+//! Real local SP1 execution and optional Groth16 proof of the clock-bound normal
+//! fixture. Uses only synthetic data and public fixture keys; never submits
+//! transactions.
 //!
 //! The guest is the explicit `--elf` artifact, refused unless its SHA-256 equals
 //! the reviewed guest pin; no build-script ELF is embedded. Modes:
@@ -7,15 +8,14 @@
 //! - `--no-prove`: execution only, on the execute-only light client: no proving
 //!   stack is built, no setup is run and no key file is written;
 //! - `--prove`: as default, then generate and verify a Groth16 proof.
-use perp_core::{
-    clock::{ClockContext, TimeBounds, WIRE_MAGIC},
-    engine::BatchOp,
-    fixed::PRICE_SCALE,
-    hash::Keccak256,
-    oracle::{oracle_digest, OracleSig, OracleTranscript},
-};
+//!
+//! The fixture and every negative are encoded by `sp1_host::encode_clock_witness`.
+use perp_core::hash::Keccak256;
 use serde_json::{json, Value};
-use sp1_host::{hex, normal_witness, sha256};
+use sp1_host::{
+    clock_negative_cases, framing_negative_cases, hex, normal_witness, sha256, witness_bytes,
+    NegativeCase,
+};
 use sp1_sdk::{
     Elf, HashableKey, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin, StatusCode,
 };
@@ -32,12 +32,6 @@ enum Mode {
     Setup,
     ExecuteOnly,
     Prove,
-}
-
-fn encode(w: &sp1_host::Witness, c: ClockContext) -> Vec<u8> {
-    let mut bytes = WIRE_MAGIC.to_vec();
-    bytes.extend(postcard::to_allocvec(&(&w.0, &w.1, &w.2, c)).unwrap());
-    bytes
 }
 
 /// Read a bounded regular (non-symlink) file and refuse any program but the reviewed one.
@@ -60,14 +54,15 @@ fn reviewed_elf(path: &Path) -> Result<Vec<u8>, String> {
 }
 
 /// Execute the fixture witness `bytes` (it must succeed and commit `expected`) and
-/// each clock negative of `w` and `c` (each must be rejected with no public values)
-/// on `client`. Returns the fixture's cycle count and the negatives' evidence.
+/// each negative (natively refused with its expected error, and in the guest a
+/// panic with no public values) on `client`. Returns the fixture's cycle count and
+/// the negatives' evidence.
 async fn execute_fixture<P: Prover>(
     client: &P,
     elf: &Elf,
-    (w, c): (&sp1_host::Witness, ClockContext),
     bytes: &[u8],
     expected: &[u8],
+    negatives: &[NegativeCase],
 ) -> (u64, Vec<Value>) {
     let mut stdin = SP1Stdin::new();
     stdin.write_vec(bytes.to_vec());
@@ -77,38 +72,29 @@ async fn execute_fixture<P: Prover>(
         .await
         .expect("clock guest execution");
     assert_eq!(values.as_slice(), expected);
-    let mut negatives = Vec::new();
-    for name in [
-        "wrong-bounds",
-        "wrong-count",
-        "wrong-batch",
-        "wrong-base",
-        "backdated",
-    ] {
-        let mut bad = c;
-        match name {
-            "wrong-bounds" => bad.first_ms += 1,
-            "wrong-count" => bad.timed_ops -= 1,
-            "wrong-batch" => bad.batch_id += 1,
-            "wrong-base" => bad.base_commitment[0] ^= 1,
-            _ => bad.anchored_at_ms += 20_000,
-        };
-        let bytes = encode(w, bad);
-        assert!(prover::public_from_witness(&bytes).is_err());
+    let mut evidence = Vec::new();
+    for case in negatives {
+        assert_eq!(
+            prover::public_from_witness(&case.bytes),
+            Err(case.expected_error),
+            "{}",
+            case.name
+        );
         let mut input = SP1Stdin::new();
-        input.write_vec(bytes.clone());
+        input.write_vec(case.bytes.clone());
         let (v, r) = client
             .execute(elf.clone(), input)
             .expected_exit_code(StatusCode::PANIC)
             .await
-            .expect("actual guest rejects malformed clock");
+            .expect("actual guest rejects the negative witness");
         assert_eq!(r.exit_code, 1);
         assert!(v.as_slice().is_empty());
-        negatives.push(json!({"name":name,"guest_exit":r.exit_code,"public_bytes":v.as_slice().len(),"witness_sha256":sha256(&bytes)}));
+        evidence.push(json!({"name":case.name,"guest_exit":r.exit_code,"public_bytes":v.as_slice().len(),
+            "witness_sha256":sha256(&case.bytes),"native_error":format!("{:?}", case.expected_error)}));
     }
     let cycles = report.total_instruction_count();
     println!("CLOCK_NATIVE_GUEST_PARITY_PASS cycles={cycles}");
-    (cycles, negatives)
+    (cycles, evidence)
 }
 
 fn parse_args(args: &[String]) -> Result<(String, String, Mode), String> {
@@ -147,53 +133,24 @@ async fn main() {
     }
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir(&dir).expect("fresh output directory");
-    let mut w = normal_witness();
-    let key = k256::ecdsa::SigningKey::from_slice(&[7; 32]).unwrap();
-    let d = oracle_digest(0, 1000 * PRICE_SCALE, 100_000, 0, 1000 * PRICE_SCALE);
-    let sig = OracleSig::sign(&key, &d);
-    w.0.markets.get_mut(&0).unwrap().oracle_pubkey = sig.recover(&d).unwrap();
-    for (now, mark) in [(100_000, 1001), (100_700, 999)] {
-        let price = 1000 * PRICE_SCALE;
-        let oracle = OracleTranscript {
-            price,
-            publish_time_ms: now,
-            confidence: 0,
-            backup_twap: price,
-            signature: OracleSig::sign(&key, &oracle_digest(0, price, now, 0, price)),
-        };
-        w.1.push(BatchOp::AccrueFunding {
-            market_id: 0,
-            mark: mark * PRICE_SCALE,
-            oracle,
-            now_ms: now,
-        });
-    }
-    w.2.previous_state_root = w.0.state_root();
-    w.2.batch_time_ms = 100_700;
-    let roots = perp_core::commitment::derive_roots(&mut w.0.clone(), &w.1, &w.2).unwrap();
-    let bounds = TimeBounds::derive(&w.1).unwrap();
-    let c = ClockContext {
-        chain_id: 84532,
-        verifier: [0x11; 20],
-        settlement: [0x22; 20],
-        batch_id: w.2.batch_id,
-        previous_root: roots.prev_state_root,
-        base_commitment: roots.commitment::<Keccak256>(),
-        phase: 0,
-        first_ms: bounds.first_ms,
-        last_ms: bounds.last_ms,
-        timed_ops: bounds.count,
-        anchored_at_ms: 101_000,
-        max_window_ms: 10_000,
-        clock_skew_ms: 2_000,
-    };
-    let bytes = encode(&w, c);
+    let w = normal_witness();
+    let bytes = witness_bytes(&w);
     let public = prover::public_from_witness(&bytes).unwrap();
     let expected = public.commitment::<Keccak256>();
+    assert_eq!(
+        expected,
+        w.3.commitment(),
+        "native twin binds the fixture clock"
+    );
+    // The five clock negatives first, then every framing the guest refuses.
+    let negative_cases: Vec<NegativeCase> = clock_negative_cases(&w)
+        .into_iter()
+        .chain(framing_negative_cases(&w))
+        .collect();
     std::fs::write(dir.join("clock.witness.bin"), &bytes).unwrap();
     std::fs::write(dir.join("guest.elf"), &elf_bytes).unwrap();
     let evidence = |cycles: u64, negatives: Vec<Value>| {
-        json!({"kind":"clock-v2-native-guest","sdk_version":"6.1.0",
+        json!({"kind":"clock-pkg3-native-guest","sdk_version":"6.1.0",
             "elf_sha256":sha256(&elf_bytes),"witness_sha256":sha256(&bytes),
             "native_guest_equal":true,"cycles":cycles,"negatives":negatives,
             "commitment":format!("0x{}",hex(&expected)),"proof_generated":false,"target_contract_verified":false})
@@ -202,7 +159,8 @@ async fn main() {
         // Execution only: the light client executes without building the CPU
         // proving stack, and no setup runs, so no setup key is derived or recorded.
         let client = ProverClient::builder().light().build().await;
-        let (cycles, negatives) = execute_fixture(&client, &elf, (&w, c), &bytes, &expected).await;
+        let (cycles, negatives) =
+            execute_fixture(&client, &elf, &bytes, &expected, &negative_cases).await;
         let mut evidence = evidence(cycles, negatives);
         evidence["setup_performed"] = json!(false);
         std::fs::write(
@@ -213,7 +171,8 @@ async fn main() {
         return;
     }
     let client = ProverClient::builder().cpu().build().await;
-    let (cycles, negatives) = execute_fixture(&client, &elf, (&w, c), &bytes, &expected).await;
+    let (cycles, negatives) =
+        execute_fixture(&client, &elf, &bytes, &expected, &negative_cases).await;
     let mut evidence = evidence(cycles, negatives);
     let pk = client.setup(elf).await.expect("real setup");
     let vkey = pk.verifying_key().bytes32_raw();

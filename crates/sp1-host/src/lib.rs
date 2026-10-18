@@ -1,11 +1,20 @@
-//! Synthetic ordinary deposit/withdraw witness and reproducible artifacts.
-//! Never constructs wind-down operations or sends chain transactions.
+//! Synthetic clock-bound ordinary witness, its negative controls and reproducible
+//! artifacts. Never constructs wind-down operations or sends chain transactions.
+//!
+//! Every witness here is the one encoding the guest accepts, produced by the one
+//! helper [`encode_clock_witness`] and decoded by its strict counterpart
+//! [`decode_clock_witness`] (both from `prover`, the guest's native twin).
 
-use perp_core::commitment::{derive_roots, DerivedRoots};
+pub use perp_core::clock::ClockWitness;
+pub use prover::{decode_clock_witness, encode_clock_witness, ProverError};
+
+use perp_core::clock::{bind_transition, BoundTransition, ClockContext, TimeBounds, WIRE_MAGIC};
 use perp_core::engine::BatchOp;
+use perp_core::fixed::PRICE_SCALE;
 use perp_core::hash::Keccak256;
 use perp_core::market::Market;
 use perp_core::note::{owner_from_spend_key, Note};
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::BatchManifest;
 use perp_core::{DefaultState, EngineError};
 use serde_json::{json, Map, Value};
@@ -14,8 +23,6 @@ use sp1_sdk::{SP1Proof, SP1ProofWithPublicValues};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
-
-pub type Witness = (DefaultState, Vec<BatchOp>, BatchManifest);
 
 /// Fail before expensive proving when an interrupted SDK download left a directory
 /// that exists but has no usable circuit files. This is a prerequisite check, not
@@ -47,16 +54,30 @@ pub fn check_groth16_prerequisites(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn normal_witness() -> Witness {
-    // Public test values. This deposit is NOT an observed L1 event.
+/// The public synthetic oracle signing key of the normal fixture. It is a test
+/// value, never a deployment key.
+const FIXTURE_ORACLE_KEY: [u8; 32] = [7; 32];
+
+/// The normal fixture: one deposit of 1,000,000 (deposit id 0, payer address(0)),
+/// a withdrawal of that note to `0xAB…AB` with nonce 1, and two funding ticks at
+/// 100,000 ms and 100,700 ms, bound to chain 84532, verifier `0x11…11`, settlement
+/// `0x22…22`, anchored at 101,000 ms with a 10,000 ms window and 2,000 ms skew.
+/// Public test values only: the deposit is NOT an observed L1 event.
+pub fn normal_witness() -> ClockWitness {
     let spend_key = [3u8; 32];
     let owner = owner_from_spend_key::<Keccak256>(&spend_key);
     let blind = [9u8; 32];
     let amount = 1_000_000i128;
     let mut state = DefaultState::new(16);
     state.add_market(Market::conservative(0));
+    let key = k256::ecdsa::SigningKey::from_slice(&FIXTURE_ORACLE_KEY).expect("fixture key");
+    let price = 1000 * PRICE_SCALE;
+    let probe = oracle_digest(0, price, 100_000, 0, price);
+    state.markets.get_mut(&0).expect("market 0").oracle_pubkey = OracleSig::sign(&key, &probe)
+        .recover(&probe)
+        .expect("fixture key recovers");
     let cm = Note::new(owner, 0, amount, blind).commitment::<Keccak256>();
-    let ops = vec![
+    let mut ops = vec![
         BatchOp::Deposit {
             owner,
             asset_id: 0,
@@ -73,10 +94,25 @@ pub fn normal_witness() -> Witness {
             nonce: 1,
         },
     ];
+    for (now_ms, mark) in [(100_000, 1001), (100_700, 999)] {
+        let oracle = OracleTranscript {
+            price,
+            publish_time_ms: now_ms,
+            confidence: 0,
+            backup_twap: price,
+            signature: OracleSig::sign(&key, &oracle_digest(0, price, now_ms, 0, price)),
+        };
+        ops.push(BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: mark * PRICE_SCALE,
+            oracle,
+            now_ms,
+        });
+    }
     let manifest = BatchManifest {
         previous_state_root: state.state_root(),
         batch_id: state.next_batch_id,
-        batch_time_ms: 0,
+        batch_time_ms: perp_core::commitment::batch_time_ms(&ops),
         ordered: vec![],
         rejected: vec![],
         oracle_updates: vec![],
@@ -84,29 +120,54 @@ pub fn normal_witness() -> Witness {
         enclave_measurement: [0u8; 32],
         sequencer_pubkey_epoch: 0,
     };
-    (state, ops, manifest)
+    let roots = perp_core::commitment::derive_roots(&mut state.clone(), &ops, &manifest)
+        .expect("valid normal transition");
+    let bounds = TimeBounds::derive(&ops).expect("ordered fixture times");
+    let clock = ClockContext {
+        chain_id: 84532,
+        verifier: [0x11; 20],
+        settlement: [0x22; 20],
+        batch_id: manifest.batch_id,
+        previous_root: roots.prev_state_root,
+        base_commitment: roots.commitment::<Keccak256>(),
+        phase: roots.wind_down_phase,
+        first_ms: bounds.first_ms,
+        last_ms: bounds.last_ms,
+        timed_ops: bounds.count,
+        anchored_at_ms: 101_000,
+        max_window_ms: 10_000,
+        clock_skew_ms: 2_000,
+    };
+    (state, ops, manifest, clock)
 }
 
-pub fn witness_bytes(witness: &Witness) -> Vec<u8> {
-    postcard::to_allocvec(witness).expect("synthetic witness encodes")
+/// The exact bytes given to the guest for `witness`.
+pub fn witness_bytes(witness: &ClockWitness) -> Vec<u8> {
+    encode_clock_witness(&witness.0, &witness.1, &witness.2, &witness.3)
 }
 
-/// Derive the native result from the exact bytes given to SP1.
-pub fn native_from_bytes(bytes: &[u8]) -> Result<(DerivedRoots, u64), EngineError> {
-    let (mut state, ops, manifest): Witness =
-        postcard::from_bytes(bytes).expect("locally encoded witness decodes");
-    let roots = derive_roots(&mut state, &ops, &manifest)?;
-    assert_eq!(roots.wind_down_phase, 0, "this harness is ordinary-only");
-    Ok((roots, state.consumed_deposit_count))
+/// Derive the native result from the exact bytes given to SP1, exactly as the
+/// guest does: the strict decode, then `bind_transition`. Returns the bound
+/// transition (its `commitment` is the guest's public value) and the post-batch
+/// deposit count.
+pub fn native_from_bytes(bytes: &[u8]) -> Result<(BoundTransition, u64), ProverError> {
+    let (mut state, ops, manifest, clock) = decode_clock_witness(bytes)?;
+    let bound = bind_transition(&mut state, &ops, &manifest, &clock)?;
+    assert_eq!(
+        bound.roots.wind_down_phase, 0,
+        "this harness is ordinary-only"
+    );
+    Ok((bound, state.consumed_deposit_count))
 }
 
 pub struct NegativeCase {
     pub name: &'static str,
     pub bytes: Vec<u8>,
-    pub expected_error: EngineError,
+    pub expected_error: ProverError,
 }
 
-pub fn normal_negative_cases() -> [NegativeCase; 3] {
+/// Engine refusals of a well-framed witness whose clock context is the honest one.
+pub fn normal_negative_cases() -> Vec<NegativeCase> {
     let mut bad_manifest = normal_witness();
     bad_manifest.2.previous_state_root[0] ^= 1;
     let mut bad_spend = normal_witness();
@@ -116,25 +177,98 @@ pub fn normal_negative_cases() -> [NegativeCase; 3] {
     }
     // 2026-10-08 review: a witness state whose in-map Market.id disagrees with its
     // map key must be rejected even though the state root hashes only the key.
-    // (The ClockMismatch case needs a signed oracle transcript; it is covered in
-    // perp-core's `rejects_op_clock_disagreeing_with_manifest_time`.)
     let mut bad_market_id = normal_witness();
     bad_market_id.0.markets.get_mut(&0).expect("market 0").id = 99;
-    [
+    vec![
         NegativeCase {
             name: "bad-manifest",
             bytes: witness_bytes(&bad_manifest),
-            expected_error: EngineError::ManifestMismatch,
+            expected_error: ProverError::Transition(EngineError::ManifestMismatch),
         },
         NegativeCase {
             name: "unauthorized-withdrawal",
             bytes: witness_bytes(&bad_spend),
-            expected_error: EngineError::BadSpendKey,
+            expected_error: ProverError::Transition(EngineError::BadSpendKey),
         },
         NegativeCase {
             name: "market-id-not-map-key",
             bytes: witness_bytes(&bad_market_id),
-            expected_error: EngineError::MarketIdMismatch,
+            expected_error: ProverError::Transition(EngineError::MarketIdMismatch),
+        },
+    ]
+}
+
+/// The clock negatives: an honest batch under a clock context that misstates its
+/// bounds, timed-op count, batch, base commitment or anchor time.
+pub fn clock_negative_cases(witness: &ClockWitness) -> Vec<NegativeCase> {
+    [
+        "wrong-bounds",
+        "wrong-count",
+        "wrong-batch",
+        "wrong-base",
+        "backdated",
+    ]
+    .into_iter()
+    .map(|name| {
+        let mut bad = witness.3;
+        match name {
+            "wrong-bounds" => bad.first_ms += 1,
+            "wrong-count" => bad.timed_ops -= 1,
+            "wrong-batch" => bad.batch_id += 1,
+            "wrong-base" => bad.base_commitment[0] ^= 1,
+            _ => bad.anchored_at_ms += 20_000,
+        }
+        NegativeCase {
+            name,
+            bytes: encode_clock_witness(&witness.0, &witness.1, &witness.2, &bad),
+            expected_error: ProverError::Transition(EngineError::ClockMismatch),
+        }
+    })
+    .collect()
+}
+
+/// The framing negatives: every input that is not exactly `WIRE_MAGIC ‖
+/// postcard(ClockWitness)`. The guest refuses each; natively, input without the
+/// magic is `UnboundWitness` and a framed body that does not decode exactly is
+/// `WitnessDecode`.
+pub fn framing_negative_cases(witness: &ClockWitness) -> Vec<NegativeCase> {
+    let bytes = witness_bytes(witness);
+    let body = &bytes[WIRE_MAGIC.len()..];
+    let reframed = |magic: &[u8]| [magic, body].concat();
+    let legacy = postcard::to_allocvec(&(&witness.0, &witness.1, &witness.2))
+        .expect("unframed tuple encodes");
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    vec![
+        NegativeCase {
+            name: "legacy-tuple",
+            bytes: legacy,
+            expected_error: ProverError::UnboundWitness,
+        },
+        NegativeCase {
+            name: "empty-input",
+            bytes: Vec::new(),
+            expected_error: ProverError::UnboundWitness,
+        },
+        NegativeCase {
+            name: "seven-byte-magic",
+            bytes: WIRE_MAGIC[..7].to_vec(),
+            expected_error: ProverError::UnboundWitness,
+        },
+        NegativeCase {
+            name: "dpclk2-magic",
+            bytes: reframed(b"DPCLK2\0\0"),
+            expected_error: ProverError::UnboundWitness,
+        },
+        NegativeCase {
+            name: "dpclk3-magic",
+            bytes: reframed(b"DPCLK3\0\0"),
+            expected_error: ProverError::UnboundWitness,
+        },
+        NegativeCase {
+            name: "trailing-byte",
+            bytes: trailing,
+            expected_error: ProverError::WitnessDecode,
         },
     ]
 }
@@ -166,7 +300,10 @@ pub fn groth16_payload_for_verification(
     Ok(bytes)
 }
 
-pub fn roots_json(roots: &DerivedRoots, deposit_count: u64) -> Value {
+/// The derived roots, the base commitment, the clock receipt and the bound
+/// commitment (the guest's public value) of `bound`.
+pub fn roots_json(bound: &BoundTransition, deposit_count: u64) -> Value {
+    let roots = &bound.roots;
     json!({
         "prev_root": format!("0x{}", hex(&roots.prev_state_root)),
         "manifest_hash": format!("0x{}", hex(&roots.manifest_hash)),
@@ -177,7 +314,9 @@ pub fn roots_json(roots: &DerivedRoots, deposit_count: u64) -> Value {
         "deposits_root": format!("0x{}", hex(&roots.deposits_root)),
         "new_deposit_count": deposit_count,
         "wind_down_phase": roots.wind_down_phase,
-        "commitment": format!("0x{}", hex(&roots.commitment::<Keccak256>()))
+        "base_commitment": format!("0x{}", hex(&roots.commitment::<Keccak256>())),
+        "clock_receipt": format!("0x{}", hex(&bound.receipt)),
+        "commitment": format!("0x{}", hex(&bound.commitment))
     })
 }
 
@@ -260,36 +399,80 @@ impl Artifacts {
 mod tests {
     use super::*;
 
+    /// KAT, recomputed from the current perp-core sources (not from a reviewed
+    /// ELF): the normal fixture's base commitment, receipt and bound commitment.
     #[test]
     fn normal_reference_consumes_exact_serialized_witness() {
-        let bytes = witness_bytes(&normal_witness());
-        let decoded: Witness = postcard::from_bytes(&bytes).unwrap();
+        let witness = normal_witness();
+        let bytes = witness_bytes(&witness);
+        assert!(bytes.starts_with(WIRE_MAGIC));
+        let decoded = decode_clock_witness(&bytes).unwrap();
         assert_eq!(witness_bytes(&decoded), bytes);
-        let (roots, count) = native_from_bytes(&bytes).unwrap();
+        let (bound, count) = native_from_bytes(&bytes).unwrap();
         assert_eq!(count, 1);
+        assert_eq!(bound.receipt, witness.3.receipt());
+        assert_eq!(bound.commitment, witness.3.commitment());
         assert_eq!(
-            hex(&roots.commitment::<Keccak256>()),
-            "acae55ada5a17dbe4d154d2ac84570cca242bb50839122a4bc90438d161b2245"
+            prover::public_from_witness(&bytes)
+                .unwrap()
+                .commitment::<Keccak256>(),
+            bound.commitment
         );
-        let fields = roots_json(&roots, count);
+        assert_eq!((witness.3.first_ms, witness.3.last_ms), (100_000, 100_700));
+        assert_eq!(witness.3.timed_ops, 2);
+        assert_eq!(
+            hex(&bound.roots.commitment::<Keccak256>()),
+            "3efc04212dc8c482a8b97947a263fba11c0c709a07d0098b0f4e03dd8214bd0b"
+        );
+        assert_eq!(
+            hex(&bound.receipt),
+            "c4a510e728ce65635fbd1a726edadbf25bdacb8029b7138e12e206bef7fd2500"
+        );
+        assert_eq!(
+            hex(&bound.commitment),
+            "5fcffb067d2ac6b7d605b42cdc9882e0d4a6f1361bbe60197f018db5738f57c6"
+        );
+        let fields = roots_json(&bound, count);
         assert_eq!(fields["new_deposit_count"], 1);
         assert_eq!(
             fields["deposits_root"],
-            format!("0x{}", hex(&roots.deposits_root))
+            format!("0x{}", hex(&bound.roots.deposits_root))
         );
-        assert_eq!(fields.as_object().unwrap().len(), 10);
+        assert_eq!(
+            fields["commitment"],
+            format!("0x{}", hex(&bound.commitment))
+        );
+        assert_eq!(fields.as_object().unwrap().len(), 12);
     }
 
     #[test]
     fn normal_negative_controls_reject_for_the_intended_reasons() {
-        for case in normal_negative_cases() {
+        let witness = normal_witness();
+        let honest = witness_bytes(&witness);
+        let cases = normal_negative_cases()
+            .into_iter()
+            .chain(clock_negative_cases(&witness))
+            .chain(framing_negative_cases(&witness))
+            .collect::<Vec<_>>();
+        assert_eq!(cases.len(), 14);
+        let mut names = cases.iter().map(|case| case.name).collect::<Vec<_>>();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), cases.len(), "negative names are unique");
+        for case in &cases {
             assert_eq!(
                 native_from_bytes(&case.bytes).unwrap_err(),
                 case.expected_error,
                 "{}",
                 case.name
             );
-            assert_ne!(case.bytes, witness_bytes(&normal_witness()));
+            assert_eq!(
+                prover::public_from_witness(&case.bytes).unwrap_err(),
+                case.expected_error,
+                "{}",
+                case.name
+            );
+            assert_ne!(case.bytes, honest, "{}", case.name);
         }
     }
 

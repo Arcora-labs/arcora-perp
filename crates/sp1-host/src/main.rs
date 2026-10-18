@@ -1,11 +1,10 @@
-//! Execute the ordinary synthetic deposit/withdraw witness in native code and SP1.
+//! Execute the synthetic clock-bound ordinary witness in native code and SP1.
 //! Optional: --check-negatives --output-dir NEW_DIRECTORY. No proof or chain writes.
 
-use perp_core::hash::Keccak256;
 use serde_json::json;
 use sp1_host::{
-    hex, native_from_bytes, normal_negative_cases, normal_witness, options, roots_json, sha256,
-    witness_bytes, Artifacts,
+    clock_negative_cases, framing_negative_cases, hex, native_from_bytes, normal_negative_cases,
+    normal_witness, options, roots_json, sha256, witness_bytes, Artifacts,
 };
 use sp1_sdk::{include_elf, Elf, Prover, ProverClient, SP1Stdin, StatusCode};
 
@@ -14,9 +13,10 @@ const ELF: Elf = include_elf!("perp-core-guest");
 #[tokio::main]
 async fn main() {
     let options = options(std::env::args().skip(1), true).expect("valid CLI arguments");
-    let bytes = witness_bytes(&normal_witness());
-    let (roots, deposit_count) = native_from_bytes(&bytes).expect("valid normal native transition");
-    let native_commit = roots.commitment::<Keccak256>();
+    let witness = normal_witness();
+    let bytes = witness_bytes(&witness);
+    let (bound, deposit_count) = native_from_bytes(&bytes).expect("valid normal native transition");
+    let native_commit = bound.commitment;
     let mut artifacts = options
         .output_dir
         .as_deref()
@@ -55,7 +55,11 @@ async fn main() {
 
     let mut negatives = Vec::new();
     if options.check_negatives {
-        for case in normal_negative_cases() {
+        let cases = normal_negative_cases()
+            .into_iter()
+            .chain(clock_negative_cases(&witness))
+            .chain(framing_negative_cases(&witness));
+        for case in cases {
             assert_eq!(
                 native_from_bytes(&case.bytes).unwrap_err(),
                 case.expected_error
@@ -96,13 +100,13 @@ async fn main() {
             .write("normal.public-values.bin", public_values.as_slice())
             .unwrap();
         output.finish(json!({
-            "kind": "ordinary-native-guest-execution", "sdk_version": "6.1.0",
+            "kind": "clock-bound-ordinary-native-guest-execution", "sdk_version": "6.1.0",
             "witness_sha256": sha256(&bytes), "native_deserialized_same_witness": true,
             "native_guest_equal": true, "guest_exit_code": report.exit_code,
-            "cycles": report.total_instruction_count(), "roots": roots_json(&roots, deposit_count),
+            "cycles": report.total_instruction_count(), "roots": roots_json(&bound, deposit_count),
             "negative_checks_requested": options.check_negatives, "negatives": negatives,
             "proof_generated": false, "a06_executed": false,
-            "scope": "Synthetic ordinary deposit/withdraw only; no observed L1 deposit, proof or token lifecycle. Does not close combined S5-02."
+            "scope": "Synthetic clock-bound ordinary deposit, withdrawal and funding ticks only; no observed L1 deposit, proof or token lifecycle. Does not close combined S5-02."
         })).unwrap();
     }
 }

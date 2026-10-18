@@ -1,5 +1,5 @@
-//! Versioned witness/native-guest constraint tests. No real Groth16 proof claim.
-use perp_core::clock::{ClockContext, ClockWitness, TimeBounds, WIRE_MAGIC};
+//! Clock-bound witness and native-twin constraint tests. No real Groth16 proof claim.
+use perp_core::clock::{bind_transition, ClockContext, ClockWitness, TimeBounds, WIRE_MAGIC};
 use perp_core::commitment::derive_roots;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::PRICE_SCALE;
@@ -8,6 +8,9 @@ use perp_core::market::Market;
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::BatchManifest;
 use perp_core::{DefaultState, EngineError};
+use prover::{AttestedProver, ProverError, PublicInputs, SealedWitness, SoftwareSealProvider};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 fn fixture() -> ClockWitness {
     let key = k256::ecdsa::SigningKey::from_slice(&[7; 32]).unwrap();
     let price = 100_000 * PRICE_SCALE;
@@ -59,22 +62,30 @@ fn fixture() -> ClockWitness {
     (state, ops, manifest, c)
 }
 fn encode(w: &ClockWitness) -> Vec<u8> {
-    let mut b = WIRE_MAGIC.to_vec();
-    b.extend(postcard::to_allocvec(w).unwrap());
-    b
+    prover::encode_clock_witness(&w.0, &w.1, &w.2, &w.3)
 }
 #[test]
-fn clock_wire_native_derives_bound_commitment_and_keeps_legacy_distinct() {
+fn clock_wire_is_the_magic_then_the_postcard_tuple() {
+    let w = fixture();
+    let mut framed = b"DPCLK4\0\0".to_vec();
+    framed.extend(postcard::to_allocvec(&w).unwrap());
+    assert_eq!(WIRE_MAGIC, b"DPCLK4\0\0");
+    assert_eq!(encode(&w), framed);
+}
+#[test]
+fn clock_wire_native_derives_bound_commitment_and_refuses_legacy() {
     let w = fixture();
     let public = prover::public_from_witness(&encode(&w)).unwrap();
     assert_eq!(public.commitment::<Keccak256>(), w.3.commitment());
     assert_eq!(public.clock_receipt, Some(w.3.receipt()));
+    let bound = bind_transition(&mut w.0.clone(), &w.1, &w.2, &w.3).unwrap();
+    assert_eq!(public, PublicInputs::from(&bound));
+    assert_eq!(public.commitment::<Keccak256>(), bound.commitment);
+    // The unframed tuple has no clock receipt to bind; it is refused before decode.
     let legacy = postcard::to_allocvec(&(&w.0, &w.1, &w.2)).unwrap();
-    assert_ne!(
-        prover::public_from_witness(&legacy)
-            .unwrap()
-            .commitment::<Keccak256>(),
-        public.commitment::<Keccak256>()
+    assert_eq!(
+        prover::public_from_witness(&legacy),
+        Err(ProverError::UnboundWitness)
     );
 }
 #[test]
@@ -120,13 +131,94 @@ fn clock_wire_rejects_trailing_truncated_and_misversioned_payloads() {
     let b = encode(&fixture());
     let mut trailing = b.clone();
     trailing.push(0);
-    assert!(prover::public_from_witness(&trailing).is_err());
-    for end in [0, 1, 8, 9, b.len() - 1] {
-        assert!(prover::public_from_witness(&b[..end]).is_err());
+    assert_eq!(
+        prover::public_from_witness(&trailing),
+        Err(ProverError::WitnessDecode)
+    );
+    // Shorter than the magic: refused before any decode.
+    for end in [0, 1, 7] {
+        assert_eq!(
+            prover::public_from_witness(&b[..end]),
+            Err(ProverError::UnboundWitness),
+            "prefix of {end} bytes"
+        );
     }
-    let mut bad = b;
-    bad[5] = b'3';
-    assert!(prover::public_from_witness(&bad).is_err());
+    // The magic with a missing or cut body.
+    for end in [8, 9, b.len() - 1] {
+        assert_eq!(
+            prover::public_from_witness(&b[..end]),
+            Err(ProverError::WitnessDecode),
+            "prefix of {end} bytes"
+        );
+    }
+    // Earlier framings, and the candidate framing, never fall through to a decode.
+    for &version in b"23" {
+        let mut bad = b.clone();
+        bad[5] = version;
+        assert_eq!(
+            prover::public_from_witness(&bad),
+            Err(ProverError::UnboundWitness)
+        );
+    }
+}
+/// A backend that only counts how often it is asked to prove.
+struct CountingBackend(Arc<AtomicUsize>);
+impl prover::Prover for CountingBackend {
+    fn measurement(&self) -> [u8; 32] {
+        [0xAB; 32]
+    }
+    fn prove(&self, _: &PublicInputs, _: &[u8]) -> Vec<u8> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        vec![0; 32]
+    }
+}
+#[test]
+fn prove_batch_refuses_every_unbound_body_before_the_backend_runs() {
+    let (m, root) = ([0xAB; 32], [0x5E; 32]);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let prover = AttestedProver::new(
+        CountingBackend(calls.clone()),
+        SoftwareSealProvider::new(root, m),
+    );
+    let w = fixture();
+    let bytes = encode(&w);
+    let reframed = |magic: &[u8; 8]| [&magic[..], &bytes[WIRE_MAGIC.len()..]].concat();
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    for (name, body, expected) in [
+        (
+            "legacy tuple",
+            postcard::to_allocvec(&(&w.0, &w.1, &w.2)).unwrap(),
+            ProverError::UnboundWitness,
+        ),
+        ("empty", Vec::new(), ProverError::UnboundWitness),
+        (
+            "DPCLK2",
+            reframed(b"DPCLK2\0\0"),
+            ProverError::UnboundWitness,
+        ),
+        (
+            "DPCLK3",
+            reframed(b"DPCLK3\0\0"),
+            ProverError::UnboundWitness,
+        ),
+        ("one trailing byte", trailing, ProverError::WitnessDecode),
+    ] {
+        let sealed =
+            SealedWitness::seal(&body, &SoftwareSealProvider::new(root, m), m, [0x11; 32]).unwrap();
+        assert_eq!(prover.prove_batch(&sealed), Err(expected), "{name}");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "{name} reached the backend"
+        );
+    }
+    // The exact clock-bound body is proven, once, under its bound commitment.
+    let sealed =
+        SealedWitness::seal(&bytes, &SoftwareSealProvider::new(root, m), m, [0x12; 32]).unwrap();
+    let proof = prover.prove_batch(&sealed).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(proof.public.commitment::<Keccak256>(), w.3.commitment());
 }
 #[test]
 fn clock_bounds_reject_backward_order_without_rewriting_inputs() {
@@ -190,5 +282,18 @@ fn clock_receipt_matches_solidity_v2_vector() {
     assert_eq!(
         hex(c.commitment()),
         "5b443bd8d8b1939c024bb51c33edcb759be76402d0a06b6ecd67f703261fb77b"
+    );
+}
+#[test]
+fn the_historical_proof_fixture_witness_is_refused_before_decode() {
+    // The committed proof fixture predates the current framing. Its witness is kept
+    // as history and is never accepted by the native twin.
+    let historical = include_bytes!(
+        "../../../contracts/integration/fixtures/clock-v2-verified/clock.witness.bin"
+    );
+    assert!(historical.starts_with(b"DPCLK2\0\0"));
+    assert_eq!(
+        prover::public_from_witness(historical),
+        Err(ProverError::UnboundWitness)
     );
 }

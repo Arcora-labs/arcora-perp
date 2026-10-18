@@ -7,6 +7,13 @@ use axum::{
 use serde_json::{json, Value};
 use std::time::Duration;
 
+/// The one witness domain `/prove` accepts: the clock-bound framing magic
+/// `perp_core::clock::WIRE_MAGIC` without its NUL padding (the service's tests
+/// check the two agree). Every other body, including the unframed tuple and
+/// earlier framings, is refused before proving. A literal, so this file builds
+/// without perp-core.
+pub(crate) const WITNESS_DOMAIN: &str = "DPCLK4";
+
 /// This byte slice is the actual embedded ELF in production. Router tests inject
 /// an existing reviewed fixture explicitly, without booting a loaded service.
 pub(crate) fn program_descriptor(elf: &[u8], vkey: &str) -> Value {
@@ -15,7 +22,7 @@ pub(crate) fn program_descriptor(elf: &[u8], vkey: &str) -> Value {
         "elf_sha256": crate::service_identity::sha256(elf),
         "elf_bytes": elf.len(),
         "program_vkey": vkey,
-        "supported_witness_domains": ["legacy", "DPCLK2"]
+        "supported_witness_domains": [WITNESS_DOMAIN]
     })
 }
 

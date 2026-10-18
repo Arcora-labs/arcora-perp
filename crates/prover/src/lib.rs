@@ -4,10 +4,12 @@
 //!
 //! 1. **The public-input binding** every batch proof commits to — the seven roots
 //!    `(prev_state_root, batch_manifest_hash, new_state_root, ordered_root,
-//!    withdrawals_root, rejected_root, deposits_root)`, all now DERIVED by [`run_transition`] (via
-//!    `perp_core::commitment::derive_roots`) and hashed under `Domain::StateRoot`
-//!    into the single commitment the L1 verifier checks (Faz 2), independent of
-//!    which proving backend produces it.
+//!    withdrawals_root, rejected_root, deposits_root)`, all DERIVED by executing the
+//!    batch (`perp_core::commitment::derive_roots`) and hashed under
+//!    `Domain::StateRoot` into the base commitment, which is then bound to the
+//!    batch's clock receipt (`perp_core::clock::bind_commitment`). The bound value is
+//!    the single commitment the L1 verifier checks, independent of which proving
+//!    backend produces it.
 //!
 //! 2. **The §10b confidential-proving boundary.** A ZK proof hides the witness
 //!    from the *verifier*, never from the *prover* — a bare prover farm would see
@@ -20,14 +22,18 @@
 //!
 //! ## The guest program
 //!
-//! The thing being proven is `perp_core`'s engine, unchanged — see
-//! [`run_transition`]. Because that core is `no_std` and deterministic, the same
-//! function compiles into an SP1 / Risc0 guest. The [`Prover`] here is a
-//! **commitment-based stand-in** (`CommitmentProver`) that produces the right
-//! *interface* and *binding* but **not** cryptographic soundness; swapping in a
-//! real zkVM backend is a backend change, not an architecture change. See
-//! `docs/PROVING.md`.
+//! The thing being proven is `perp_core`'s engine, unchanged. The guest accepts one
+//! input encoding, `perp_core::clock::WIRE_MAGIC ‖ postcard(ClockWitness)` with no
+//! trailing bytes, and runs `perp_core::clock::bind_transition` on it.
+//! [`public_from_witness`] is its native twin: the same framing check, the same
+//! decode, the same transition. [`encode_clock_witness`] produces that encoding.
+//! The [`Prover`] here is a **commitment-based stand-in** (`CommitmentProver`) that
+//! produces the right *interface* and *binding* but **not** cryptographic
+//! soundness; swapping in a real zkVM backend is a backend change, not an
+//! architecture change. See `docs/PROVING.md`.
 
+use perp_core::clock::{BoundTransition, ClockContext, ClockWitness, WIRE_MAGIC};
+use perp_core::commitment::DerivedRoots;
 use perp_core::engine::BatchOp;
 use perp_core::hash::{Digest, Domain, Hasher, Keccak256};
 use perp_core::order::BatchManifest;
@@ -41,7 +47,7 @@ pub use seal_root::{resolve_seal_root, SealRootError};
 
 /// The public inputs a batch proof commits to and the L1 verifier checks.
 ///
-/// All seven roots are now DERIVED by `run_transition` (via
+/// All seven roots are DERIVED by executing the batch (via
 /// `perp_core::commitment::derive_roots`): `withdrawals_root` from the batch's burned
 /// notes (a prover cannot invent a withdrawal without a real burn — audit F2), and
 /// `ordered_root`/`rejected_root` by merklizing the manifest's committed order-hash
@@ -67,19 +73,39 @@ pub struct PublicInputs {
     /// `perp_core::commitment::DerivedRoots`.
     pub deposits_root: Digest,
     /// A06: 0 ordinary, 1 one-shot SettleAll, 2 post-wind-down exits. Ordinary
-    /// commitments remain byte-for-byte legacy-compatible; only nonzero phases
-    /// append this word to the commitment.
+    /// commitments hash the seven roots; only nonzero phases append this word to
+    /// the base commitment.
     pub wind_down_phase: u8,
-    /// Version-2 receipt; None is the explicit legacy commitment path.
+    /// The clock receipt the base commitment is bound to. [`public_from_witness`],
+    /// the guest's native twin, always sets it. `None` is the unbound base
+    /// commitment of [`run_transition`]: the guest never commits it, and the L1
+    /// verifier accepts only bound commitments.
     pub clock_receipt: Option<Digest>,
 }
 
 impl PublicInputs {
+    fn from_roots(d: &DerivedRoots, clock_receipt: Option<Digest>) -> Self {
+        Self {
+            prev_state_root: d.prev_state_root,
+            batch_manifest_hash: d.manifest_hash,
+            new_state_root: d.new_state_root,
+            ordered_root: d.ordered_root,
+            withdrawals_root: d.withdrawals_root,
+            rejected_root: d.rejected_root,
+            deposits_root: d.deposits_root,
+            wind_down_phase: d.wind_down_phase,
+            clock_receipt,
+        }
+    }
+
     /// Canonical commitment over the public inputs (the proof's public digest).
-    /// MUST match `DarkPerpSettlement.publicCommitment` — and must stay byte-for-byte
-    /// identical to `perp_core::commitment::DerivedRoots::commitment()`, which is the
-    /// canonical implementation of this same seven-word hash. `commitment_matches_
-    /// perp_core_derived_roots` below is the anti-drift guard tying the two together.
+    /// The base MUST match `DarkPerpSettlement.publicCommitment` — and must stay
+    /// byte-for-byte identical to `perp_core::commitment::DerivedRoots::commitment()`,
+    /// which is the canonical implementation of this same seven-word hash.
+    /// `commitment_matches_perp_core_derived_roots` below is the anti-drift guard
+    /// tying the two together. With a receipt, the result is
+    /// `perp_core::clock::bind_commitment(base, receipt)`, the value
+    /// `ClockBoundVerifier` checks.
     pub fn commitment<H: Hasher>(&self) -> Digest {
         let ordinary = [
             self.prev_state_root,
@@ -102,58 +128,67 @@ impl PublicInputs {
     }
 }
 
-/// Run the batch state transition and DERIVE the public inputs — **this is the zkVM
-/// guest program's host-side twin**. Delegates to `perp_core::commitment::derive_roots`
-/// so the prover, the guest, and the host compute byte-identical roots.
+impl From<&BoundTransition> for PublicInputs {
+    /// The public inputs of a clock-bound transition. Their
+    /// `commitment::<Keccak256>()` equals `bound.commitment`.
+    fn from(bound: &BoundTransition) -> Self {
+        Self::from_roots(&bound.roots, Some(bound.receipt))
+    }
+}
+
+/// Run the batch state transition and derive its UNBOUND base public inputs
+/// (`clock_receipt: None`). This is not the guest's twin: the guest accepts only
+/// clock-bound witnesses (see [`public_from_witness`]) and never commits this
+/// value. It serves in-process stand-ins and tests. Delegates to
+/// `perp_core::commitment::derive_roots`, so its roots are the guest's roots.
 pub fn run_transition(
     state: &mut DefaultState,
     ops: &[BatchOp],
     manifest: &BatchManifest,
 ) -> Result<PublicInputs, EngineError> {
     let d = perp_core::commitment::derive_roots(state, ops, manifest)?;
-    Ok(PublicInputs {
-        clock_receipt: None,
-        prev_state_root: d.prev_state_root,
-        batch_manifest_hash: d.manifest_hash,
-        new_state_root: d.new_state_root,
-        ordered_root: d.ordered_root,
-        withdrawals_root: d.withdrawals_root,
-        rejected_root: d.rejected_root,
-        deposits_root: d.deposits_root,
-        wind_down_phase: d.wind_down_phase,
-    })
+    Ok(PublicInputs::from_roots(&d, None))
 }
 
-/// Native twin of the guest's versioned wire decoder. Reject trailing bytes;
-/// malformed v2 never falls back to legacy. Original operation times are retained.
-pub fn public_from_witness(bytes: &[u8]) -> Result<PublicInputs, ProverError> {
-    if let Some(body) = bytes.strip_prefix(perp_core::clock::WIRE_MAGIC) {
-        let ((mut state, ops, manifest, clock), rest): (perp_core::clock::ClockWitness, _) =
-            postcard::take_from_bytes(body).map_err(|_| ProverError::WitnessDecode)?;
-        if !rest.is_empty() {
-            return Err(ProverError::WitnessDecode);
-        }
-        let roots = perp_core::commitment::derive_roots(&mut state, &ops, &manifest)?;
-        clock.validate(manifest.batch_id, &roots, &ops)?;
-        Ok(PublicInputs {
-            prev_state_root: roots.prev_state_root,
-            batch_manifest_hash: roots.manifest_hash,
-            new_state_root: roots.new_state_root,
-            ordered_root: roots.ordered_root,
-            withdrawals_root: roots.withdrawals_root,
-            rejected_root: roots.rejected_root,
-            deposits_root: roots.deposits_root,
-            wind_down_phase: roots.wind_down_phase,
-            clock_receipt: Some(clock.receipt()),
-        })
-    } else {
-        let ((mut state, ops, manifest), rest): ((DefaultState, Vec<BatchOp>, BatchManifest), _) =
-            postcard::take_from_bytes(bytes).map_err(|_| ProverError::WitnessDecode)?;
-        if !rest.is_empty() {
-            return Err(ProverError::WitnessDecode);
-        }
-        run_transition(&mut state, &ops, &manifest).map_err(Into::into)
+/// Encode a clock-bound witness exactly as the guest reads it:
+/// `WIRE_MAGIC ‖ postcard((state, ops, manifest, clock))`. This is the only
+/// encoding [`decode_clock_witness`], [`public_from_witness`] and the guest accept.
+pub fn encode_clock_witness(
+    state: &DefaultState,
+    ops: &[BatchOp],
+    manifest: &BatchManifest,
+    clock: &ClockContext,
+) -> Vec<u8> {
+    // Every value of these types has a postcard encoding (all sequences and maps
+    // report their length), so serialization cannot fail.
+    postcard::to_extend(&(state, ops, manifest, clock), WIRE_MAGIC.to_vec())
+        .expect("a clock witness always encodes")
+}
+
+/// Decode a clock-bound witness the way the guest does. Input that does not start
+/// with `WIRE_MAGIC` is refused with [`ProverError::UnboundWitness`] before any
+/// decode; a framed body that does not decode as `ClockWitness`, or is followed by
+/// any further byte, is refused with [`ProverError::WitnessDecode`].
+pub fn decode_clock_witness(bytes: &[u8]) -> Result<ClockWitness, ProverError> {
+    let body = bytes
+        .strip_prefix(WIRE_MAGIC)
+        .ok_or(ProverError::UnboundWitness)?;
+    let (witness, rest): (ClockWitness, _) =
+        postcard::take_from_bytes(body).map_err(|_| ProverError::WitnessDecode)?;
+    if !rest.is_empty() {
+        return Err(ProverError::WitnessDecode);
     }
+    Ok(witness)
+}
+
+/// Native twin of the guest. Decodes `bytes` exactly as the guest does
+/// ([`decode_clock_witness`]) and runs the same `perp_core::clock::bind_transition`,
+/// so the returned inputs always carry the clock receipt and their commitment is
+/// the value the guest commits. Original operation times are retained.
+pub fn public_from_witness(bytes: &[u8]) -> Result<PublicInputs, ProverError> {
+    let (mut state, ops, manifest, clock) = decode_clock_witness(bytes)?;
+    let bound = perp_core::clock::bind_transition(&mut state, &ops, &manifest, &clock)?;
+    Ok(PublicInputs::from(&bound))
 }
 
 /// A produced proof: the public inputs, opaque proof bytes, and the measurement
@@ -175,11 +210,16 @@ pub enum ProverError {
     /// The sealed witness failed authentication: the ciphertext was tampered with,
     /// or the seal key is wrong. Encrypt-then-MAC catches this before decryption.
     SealAuthFailed,
-    /// The transition itself was rejected by the engine.
+    /// The transition itself was rejected by the engine, or its clock context does
+    /// not match the batch.
     Transition(EngineError),
-    /// The opened witness did not decode as the postcard `(DefaultState, Vec<BatchOp>,
-    /// BatchManifest)` tuple the guest reads (a malformed or wrong-format witness).
+    /// The opened witness starts with `perp_core::clock::WIRE_MAGIC` but its body
+    /// did not decode as `perp_core::clock::ClockWitness`, or bytes followed it.
     WitnessDecode,
+    /// The opened witness does not start with `perp_core::clock::WIRE_MAGIC`: an
+    /// unframed tuple, another framing, or input shorter than the magic. Refused
+    /// before any decode; the guest refuses the same input.
+    UnboundWitness,
     /// A diagnostic output setting could persist private witness/trace data.
     /// Refused before the seal provider releases a key or the witness is opened.
     UnsafeEnvironment(Sp1PrivacyError),
@@ -533,7 +573,10 @@ impl<P: Prover> AttestedProver<P> {
 
     /// Open a sealed witness, DERIVE its public inputs from the batch itself (F2-safe:
     /// the prover derives the roots, never trusts an external claim), prove, and zeroize.
-    /// The witness is postcard `(DefaultState, Vec<BatchOp>, BatchManifest)`.
+    /// The opened witness must be the guest's encoding ([`encode_clock_witness`]).
+    /// The native twin ([`public_from_witness`]) runs first, so any other input is
+    /// refused (`UnboundWitness`, `WitnessDecode` or `Transition`) before the
+    /// backend is called; the returned inputs always carry the clock receipt.
     pub fn prove_batch(&self, sealed: &SealedWitness) -> Result<BatchProof, ProverError> {
         validate_sp1_environment().map_err(ProverError::UnsafeEnvironment)?;
         let mut witness = self.open(sealed)?;
@@ -805,7 +848,15 @@ mod tests {
         assert!(CommitmentProver::new(M).verify(&proof));
         assert!(witness.iter().all(|byte| *byte == 0));
 
-        let mut malformed = b"not a witness".to_vec();
+        // Both refusals of the native twin wipe the buffer: an unframed body and a
+        // framed body that does not decode.
+        let mut unframed = b"not a witness".to_vec();
+        assert_eq!(
+            prover.prove_opened(&mut unframed, None),
+            Err(ProverError::UnboundWitness)
+        );
+        assert!(unframed.iter().all(|byte| *byte == 0));
+        let mut malformed = [&WIRE_MAGIC[..], b"not a witness"].concat();
         assert_eq!(
             prover.prove_opened(&mut malformed, None),
             Err(ProverError::WitnessDecode)
@@ -991,28 +1042,138 @@ mod tests {
         assert_eq!(err, EngineError::UnknownOrSpentNote);
     }
 
-    use perp_core::order::BatchManifest;
+    /// A clock context binding `ops` over the pre-state `s`: the derived base
+    /// commitment, phase and op-time bounds, with a non-zero policy.
+    fn bound_context(s: &DefaultState, ops: &[BatchOp], manifest: &BatchManifest) -> ClockContext {
+        let roots = perp_core::commitment::derive_roots(&mut s.clone(), ops, manifest).unwrap();
+        let bounds = perp_core::clock::TimeBounds::derive(ops).unwrap();
+        ClockContext {
+            chain_id: 84532,
+            verifier: [0x11; 20],
+            settlement: [0x22; 20],
+            batch_id: manifest.batch_id,
+            previous_root: roots.prev_state_root,
+            base_commitment: roots.commitment::<Keccak256>(),
+            phase: roots.wind_down_phase,
+            first_ms: bounds.first_ms,
+            last_ms: bounds.last_ms,
+            timed_ops: bounds.count,
+            anchored_at_ms: bounds.last_ms,
+            max_window_ms: 10_000,
+            clock_skew_ms: 2_000,
+        }
+    }
+
+    /// The deposit-and-fund batch as the guest reads it, with its clock context.
+    fn clock_test_witness() -> (DefaultState, Vec<BatchOp>, BatchManifest, ClockContext) {
+        let (s, ops) = state_with_deposit();
+        let manifest = empty_manifest(&s);
+        let clock = bound_context(&s, &ops, &manifest);
+        (s, ops, manifest, clock)
+    }
 
     fn sealed_test_witness(m: Digest, root: [u8; 32]) -> (SealedWitness, PublicInputs) {
-        let (s, ops) = state_with_deposit();
-        let manifest = BatchManifest {
-            previous_state_root: s.state_root(),
-            batch_id: s.next_batch_id,
-            batch_time_ms: 0,
-            ordered: vec![],
-            rejected: vec![],
-            oracle_updates: vec![],
-            matching_rule_version: 0,
-            enclave_measurement: [0u8; 32],
-            sequencer_pubkey_epoch: 0,
+        let (s, ops, manifest, clock) = clock_test_witness();
+        // Expected independently of the twin: the unbound base inputs plus the receipt.
+        let base = run_transition(&mut s.clone(), &ops, &manifest).unwrap();
+        let expected = PublicInputs {
+            clock_receipt: Some(clock.receipt()),
+            ..base
         };
-        let expected = run_transition(&mut s.clone(), &ops, &manifest).unwrap();
-        let witness = (s, ops, manifest);
-        let bytes = postcard::to_allocvec(&witness).unwrap();
+        let bytes = encode_clock_witness(&s, &ops, &manifest, &clock);
         let sealed =
             SealedWitness::seal(&bytes, &SoftwareSealProvider::new(root, m), m, [0x01u8; 32])
                 .unwrap();
         (sealed, expected)
+    }
+
+    #[test]
+    fn clock_witness_encoding_is_the_guest_framing_and_round_trips() {
+        let (s, ops, manifest, clock) = clock_test_witness();
+        let bytes = encode_clock_witness(&s, &ops, &manifest, &clock);
+        let framed = [
+            &WIRE_MAGIC[..],
+            &postcard::to_allocvec(&(&s, &ops, &manifest, &clock)).unwrap(),
+        ]
+        .concat();
+        assert_eq!(bytes, framed);
+        let (s2, ops2, manifest2, clock2) = decode_clock_witness(&bytes).unwrap();
+        assert_eq!(encode_clock_witness(&s2, &ops2, &manifest2, &clock2), bytes);
+        assert_eq!(s2.state_root(), s.state_root());
+        assert_eq!(clock2, clock);
+    }
+
+    #[test]
+    fn native_twin_returns_the_bound_transition_and_its_receipt() {
+        let (s, ops, manifest, clock) = clock_test_witness();
+        let bytes = encode_clock_witness(&s, &ops, &manifest, &clock);
+        let public = public_from_witness(&bytes).unwrap();
+        let mut post = s.clone();
+        let bound = perp_core::clock::bind_transition(&mut post, &ops, &manifest, &clock).unwrap();
+        assert_eq!(public, PublicInputs::from(&bound));
+        assert_eq!(public.clock_receipt, Some(clock.receipt()));
+        assert_eq!(public.commitment::<Keccak256>(), bound.commitment);
+        assert_eq!(public.commitment::<Keccak256>(), clock.commitment());
+        assert_eq!(public.new_state_root, post.state_root());
+        // The unbound base commitment of the same batch is a different value.
+        let base = run_transition(&mut s.clone(), &ops, &manifest).unwrap();
+        assert_eq!(base.clock_receipt, None);
+        assert_eq!(base.commitment::<Keccak256>(), clock.base_commitment);
+        assert_ne!(base.commitment::<Keccak256>(), bound.commitment);
+    }
+
+    #[test]
+    fn native_twin_refuses_every_input_but_the_exact_framing() {
+        let (s, ops, manifest, clock) = clock_test_witness();
+        let bytes = encode_clock_witness(&s, &ops, &manifest, &clock);
+        let legacy = postcard::to_allocvec(&(&s, &ops, &manifest)).unwrap();
+        let reframed = |magic: &[u8; 8]| [&magic[..], &bytes[WIRE_MAGIC.len()..]].concat();
+        let mut trailing = bytes.clone();
+        trailing.push(0);
+        for (name, input, expected) in [
+            ("legacy tuple", legacy, ProverError::UnboundWitness),
+            ("empty input", Vec::new(), ProverError::UnboundWitness),
+            (
+                "7-byte magic",
+                WIRE_MAGIC[..7].to_vec(),
+                ProverError::UnboundWitness,
+            ),
+            (
+                "DPCLK2",
+                reframed(b"DPCLK2\0\0"),
+                ProverError::UnboundWitness,
+            ),
+            (
+                "DPCLK3",
+                reframed(b"DPCLK3\0\0"),
+                ProverError::UnboundWitness,
+            ),
+            (
+                "magic only",
+                WIRE_MAGIC.to_vec(),
+                ProverError::WitnessDecode,
+            ),
+            (
+                "truncated body",
+                bytes[..bytes.len() - 1].to_vec(),
+                ProverError::WitnessDecode,
+            ),
+            ("one trailing byte", trailing, ProverError::WitnessDecode),
+        ] {
+            assert_eq!(public_from_witness(&input), Err(expected), "{name}");
+            assert_eq!(
+                decode_clock_witness(&input).map(|_| ()),
+                Err(expected),
+                "{name}"
+            );
+        }
+        // A well-framed witness whose clock context does not match is a transition error.
+        let mut wrong = clock;
+        wrong.batch_id += 1;
+        assert_eq!(
+            public_from_witness(&encode_clock_witness(&s, &ops, &manifest, &wrong)),
+            Err(ProverError::Transition(EngineError::ClockMismatch))
+        );
     }
 
     #[test]
@@ -1023,7 +1184,8 @@ mod tests {
         let prover =
             AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
         let bp = prover.prove_batch(&sealed).unwrap();
-        // the derived public inputs match run_transition — prover derived, not trusted
+        // the derived public inputs are the bound inputs — prover derived, not trusted
+        assert_eq!(bp.public, expected);
         assert_eq!(
             bp.public.commitment::<Keccak256>(),
             expected.commitment::<Keccak256>(),
@@ -1052,20 +1214,28 @@ mod tests {
     }
 
     #[test]
-    fn prove_batch_garbage_witness_is_witness_decode() {
-        // seal random non-postcard bytes → opens fine (right key) but decode fails
+    fn prove_batch_refuses_unframed_and_undecodable_witnesses() {
+        // Both open fine (right key); the native twin refuses them before proving.
         let m = [0xAB; 32];
         let root = [0x5E; 32];
-        let sealed = SealedWitness::seal(
-            b"not a witness",
-            &SoftwareSealProvider::new(root, m),
-            m,
-            [0x02u8; 32],
-        )
-        .unwrap();
         let prover =
             AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
-        assert_eq!(prover.prove_batch(&sealed), Err(ProverError::WitnessDecode));
+        for (plaintext, expected) in [
+            (b"not a witness".to_vec(), ProverError::UnboundWitness),
+            (
+                [&WIRE_MAGIC[..], b"not a witness"].concat(),
+                ProverError::WitnessDecode,
+            ),
+        ] {
+            let sealed = SealedWitness::seal(
+                &plaintext,
+                &SoftwareSealProvider::new(root, m),
+                m,
+                [0x02u8; 32],
+            )
+            .unwrap();
+            assert_eq!(prover.prove_batch(&sealed), Err(expected));
+        }
     }
 
     // The prover service sends a `SealedWitness` over HTTP as postcard bytes

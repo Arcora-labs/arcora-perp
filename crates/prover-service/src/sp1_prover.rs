@@ -60,14 +60,21 @@ impl Prover for Sp1GnarkProver {
         self.measurement
     }
 
-    /// Generate a real Groth16 proof. `witness` is the explicit legacy tuple or
-    /// DPCLK2-prefixed clock-context tuple. The guest derives the roots and validates
-    /// the clock context, so public values equal `public.commitment()`. Call inside a
-    /// blocking task — see the service).
+    /// Generate a real Groth16 proof. `witness` is the clock-bound encoding
+    /// (`WIRE_MAGIC ‖ postcard(ClockWitness)`), the only input the guest accepts. The
+    /// guest derives the roots and validates the clock context, so public values
+    /// equal `public.commitment()`. Call inside a blocking task — see the service).
     fn prove(&self, public: &PublicInputs, witness: &[u8]) -> Vec<u8> {
         // Also protect direct backend callers before the first SDK-owned copy.
         // The sealed entrypoint has already refused before opening its witness.
         prover::validate_sp1_environment().expect("private SP1 proving environment");
+        // `prove_batch` has already refused every other body natively. A direct
+        // caller passing an unframed witness or unbound public inputs is a
+        // programming error: refuse before any SDK copy or proving work.
+        assert!(
+            public.clock_receipt.is_some() && witness.starts_with(perp_core::clock::WIRE_MAGIC),
+            "only clock-bound witnesses are proven"
+        );
         let mut stdin = SP1Stdin::new();
         stdin.write_vec(witness.to_vec());
         let client = self.client.clone();

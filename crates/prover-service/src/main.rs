@@ -1,7 +1,10 @@
 //! Attested prover HTTP service (§10b). Holds one `AttestedProver<Sp1GnarkProver>` and a
 //! `SoftwareSealProvider` stand-in (P3 replaces the SealKeyProvider with real TDX/Nitro
 //! key-release). `POST /prove` takes a sealed witness, opens+derives+proves+zeroizes, and
-//! returns the 6 roots, the commitment, and the real Groth16 proof.
+//! returns the 6 roots, the commitment, and the real Groth16 proof. The opened witness
+//! must be the one supported domain, the clock-bound `DPCLK4` framing
+//! (`prover::encode_clock_witness`); the native twin refuses any other body with 422
+//! before the backend runs.
 mod admission;
 #[path = "../../service-transport/curl.rs"]
 mod curl_transport;
@@ -12,6 +15,31 @@ mod identity_tests;
 mod service_identity;
 #[cfg(all(test, unix))]
 mod shutdown_tests;
+#[cfg(test)]
+mod prove_refusal_tests {
+    use super::*;
+
+    #[test]
+    fn the_advertised_domain_is_the_guest_framing_magic() {
+        let mut magic = identity::WITNESS_DOMAIN.as_bytes().to_vec();
+        magic.resize(perp_core::clock::WIRE_MAGIC.len(), 0);
+        assert_eq!(magic, perp_core::clock::WIRE_MAGIC);
+    }
+
+    #[test]
+    fn every_witness_refusal_is_unprocessable_and_names_the_supported_domain() {
+        let (status, body) = prove_refusal(ProverError::UnboundWitness);
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body, "UnboundWitness: only DPCLK4 witnesses are accepted");
+        for error in [
+            ProverError::WitnessDecode,
+            ProverError::Transition(perp_core::EngineError::ClockMismatch),
+            ProverError::SealAuthFailed,
+        ] {
+            assert_eq!(prove_refusal(error).0, StatusCode::UNPROCESSABLE_ENTITY);
+        }
+    }
+}
 mod sp1_prover;
 
 use admission::{Gate, Limits, ProofAdmission};
@@ -33,7 +61,8 @@ use dark_perp_attestation::{
 };
 use perp_core::hash::Digest;
 use prover::{
-    AttestedProver, AttestedSealProvider, SealKeyProvider, SealedWitness, SoftwareSealProvider,
+    AttestedProver, AttestedSealProvider, ProverError, SealKeyProvider, SealedWitness,
+    SoftwareSealProvider,
 };
 use serde::{Deserialize, Serialize};
 use sp1_prover::Sp1GnarkProver;
@@ -73,7 +102,7 @@ struct App {
 
 #[derive(Deserialize)]
 struct ProveReq {
-    /// hex postcard-encoded `SealedWitness`.
+    /// hex postcard-encoded `SealedWitness` of a clock-bound (`DPCLK4`) witness.
     sealed: String,
 }
 
@@ -91,6 +120,21 @@ struct ProveResp {
 
 fn hx(b: &[u8]) -> String {
     format!("0x{}", hex::encode(b))
+}
+
+/// The response to a refused `prove_batch`. Every witness refusal happens before
+/// the backend runs and is unprocessable input (422): a body outside the one
+/// supported domain (`UnboundWitness`: an unframed tuple or another framing), a
+/// framed body that does not decode, or a transition the guest also rejects.
+fn prove_refusal(error: ProverError) -> (StatusCode, String) {
+    let detail = match error {
+        ProverError::UnboundWitness => format!(
+            "UnboundWitness: only {} witnesses are accepted",
+            identity::WITNESS_DOMAIN
+        ),
+        other => format!("{other:?}"),
+    };
+    (StatusCode::UNPROCESSABLE_ENTITY, detail)
 }
 
 impl FromRef<Arc<App>> for identity::PublicIdentity {
@@ -131,8 +175,8 @@ async fn prove(
         .await
         // A panicked/cancelled blocking task is a server fault: 500.
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        // A rejected witness / prove failure is unprocessable input: 422.
-        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, format!("{e:?}")))?;
+        // A refused witness is unprocessable input, refused before proving: 422.
+        .map_err(prove_refusal)?;
     let p = &bp.public;
     Ok(Json(ProveResp {
         prev_root: hx(&p.prev_state_root),

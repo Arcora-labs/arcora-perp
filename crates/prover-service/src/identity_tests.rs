@@ -53,12 +53,12 @@ fn assert_closed_scope(value: &Value) {
     assert_eq!(value["scope"]["release_gate"], "HOLD");
     assert_eq!(
         value["program"]["supported_witness_domains"],
-        json!(["legacy", "DPCLK2"])
+        json!(["DPCLK4"])
     );
 }
 
 #[test]
-fn injected_reviewed_fixture_descriptor_binds_exact_bytes_and_existing_domains() {
+fn injected_reviewed_fixture_descriptor_binds_exact_bytes_and_clock_domain() {
     // Existing fixture bytes only. No setup, key derivation, SDK client or proof.
     assert_eq!(FIXTURE_ELF.len(), 525_824);
     assert_eq!(
@@ -78,10 +78,7 @@ fn injected_reviewed_fixture_descriptor_binds_exact_bytes_and_existing_domains()
     );
     assert_eq!(first["sdk_version"], "6.1.0");
     assert_eq!(first["program_vkey"], key);
-    assert_eq!(
-        first["supported_witness_domains"],
-        json!(["legacy", "DPCLK2"])
-    );
+    assert_eq!(first["supported_witness_domains"], json!(["DPCLK4"]));
     assert_eq!(first.as_object().unwrap().len(), 5);
     let second = program_descriptor(b"different injected fixture bytes", "0x99");
     assert_ne!(first["elf_sha256"], second["elf_sha256"]);
