@@ -44,6 +44,7 @@ use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
 
 mod account_recovery;
+mod answer_lane;
 mod bootstrap;
 #[cfg(test)]
 mod candidate_bridge;
@@ -10909,18 +10910,14 @@ async fn main() {
                     }
                     // Answers are sent off this loop, so a long answer round never makes
                     // the open-set read stale (which would hold settlement). One round at
-                    // a time: the next read still lists answers that have not mined yet.
+                    // a time; answers still in flight on the answer lane are not resent.
                     if sending.as_ref().is_some_and(|h| !h.is_finished()) {
                         println!("[l1] {open} open challenge(s); previous answer round still sending");
                         continue;
                     }
                     let send_l1 = l1a.clone();
                     sending = Some(tokio::task::spawn_blocking(move || {
-                        let (answered, error) = challenge_scan::send_answers(plan.sends, |batch, answers| {
-                            let tx = send_l1.answer_challenges(batch, answers)?;
-                            println!("[l1] answered {} inclusion challenge(s) from batch {batch} tx {tx}", answers.len());
-                            Ok(tx)
-                        });
+                        let (answered, error) = send_l1.answer_round(plan.sends);
                         if let Some(e) = error {
                             eprintln!("[l1] some challenge answers will retry: {e}");
                         }
