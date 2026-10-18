@@ -10,6 +10,7 @@ import copy
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 
@@ -42,6 +43,8 @@ def word(value):
 class FakeSettlement:
     def __init__(self):
         self.head, self.timestamp = 500, 1_800_000_000
+        self.chain_id = 84532
+        self.enclave = ENCLAVE
         self.abi_version = 3
         self.close_only = False
         self.resolved = False
@@ -56,6 +59,7 @@ class FakeSettlement:
         self.pending_usdc = {}
         self.pending_eth = {}
         self.calls = []
+        self.methods = []
 
     def revert(self, name):
         raise chain.Reverted(chain.selector(name + "()"))
@@ -85,8 +89,9 @@ class FakeSettlement:
         return ""
 
     def __call__(self, method, params):
+        self.methods.append(method)
         if method == "eth_chainId":
-            return hex(84532)
+            return hex(self.chain_id)
         if method == "eth_getBlockByNumber":
             return {"number": hex(self.head), "timestamp": hex(self.timestamp)}
         assert method == "eth_call", method
@@ -99,7 +104,7 @@ class FakeSettlement:
         c = self.challenge or {}
         table = {
             "ABI_VERSION()": lambda: word(self.abi_version),
-            "enclaveSigner()": lambda: word(ENCLAVE),
+            "enclaveSigner()": lambda: word(self.enclave),
             "challengeAuthDigest(bytes32,uint64,uint64,uint64,address)": self.digest,
             "closeOnly()": lambda: word(self.close_only),
             "challengeResolved(bytes32)": lambda: word(self.resolved),
@@ -185,7 +190,9 @@ class Offline(unittest.TestCase):
 
     def test_missing_or_malformed_kits(self):
         cases = [(lambda r: r.update(l1Challenge=None), "no bound deposit address"),
-                 (lambda r: r.pop("l1Challenge"), "no l1Challenge field"),
+                 (lambda r: r.pop("l1Challenge"), "^l1Challenge is missing"),
+                 (lambda r: r.update(enclaveSigner=None), "^enclaveSigner must be a 20-byte 0x address"),
+                 (lambda r: r.update(enclaveSigner="0x12"), "^enclaveSigner must be a 20-byte 0x address"),
                  (lambda r: r["l1Challenge"].update(beneficiary="0x" + "00" * 20), "beneficiary is zero"),
                  (lambda r: r["l1Challenge"].update(signature="0x12"), "65-byte"),
                  (lambda r: r.update(seqNo=-1), "seqNo"),
@@ -197,6 +204,27 @@ class Offline(unittest.TestCase):
             mutate(raw)
             with self.subTest(text=text), self.assertRaisesRegex(ci.KitError, text):
                 ci.parse_kit(raw)
+
+    def test_every_field_the_challenge_or_the_signature_check_reads_is_required(self):
+        for path in (["orderHash"], ["seqNo"], ["recvTimeMs"], ["batchIdHint"], ["enclaveSigner"],
+                     ["l1Challenge", "chainId"], ["l1Challenge", "settlement"], ["l1Challenge", "beneficiary"],
+                     ["l1Challenge", "signature"]):
+            for form, wrap in (("receipt", lambda r: r), ("tracked order", lambda r: {"id": "o1", "receipt": r})):
+                raw = receipt()
+                target = raw
+                for key in path[:-1]:
+                    target = target[key]
+                del target[path[-1]]
+                with self.subTest(field=".".join(path), form=form), \
+                        self.assertRaisesRegex(ci.KitError, "^" + re.escape(".".join(path)) + " is missing"):
+                    ci.parse_kit(wrap(raw))
+
+    def test_the_signature_is_checked_against_the_receipts_enclave_signer(self):
+        raw = receipt()
+        raw["enclaveSigner"] = STAKER
+        problems, _, signer = ci.check_kit(ci.parse_kit(raw))
+        self.assertEqual(signer, ENCLAVE)
+        self.assertEqual(problems, ["the authorization is not signed by the receipt's enclave signer"])
 
     def test_challenge_calldata_tail_is_the_signature(self):
         k = ci.parse_kit(receipt())
@@ -229,6 +257,8 @@ class Cli(unittest.TestCase):
         self.assertIn(f"kit OK: order {ORDER} authorized by {ENCLAVE} for beneficiary {BENEFICIARY}", out)
         self.assertIn(f'cast send {SETTLEMENT} "{ci.CHALLENGE_SIGNATURE}" {ORDER} 0 1000 0 {BENEFICIARY} '
                       f"{AUTH_A_SIG} --value <challengeBond()>", out)
+        self.assertIn(f"offline check: signed by the kit's enclaveSigner {ENCLAVE}; --rpc also checks that it is "
+                      "the settlement's enclaveSigner()", out)
         self.assertEqual(self.chain.calls, [])
 
     def test_ripe_challenge_is_simulated_with_the_stake_and_printed(self):
@@ -247,24 +277,34 @@ class Cli(unittest.TestCase):
         self.assertIn("not ripe yet: it can be opened from unix time 3601 (601 s from now)", out)
 
     def test_chain_mismatches_fail(self):
-        for attribute, value, text in (("abi_version", 2, "ABI_VERSION is 2"),):
+        for attribute, value, text in (
+                ("abi_version", 2, "ABI_VERSION is 2"),
+                ("chain_id", 8453, "the RPC serves chain 8453, the kit is for chain 84532"),
+                ("enclave", STAKER, "the settlement's enclaveSigner did not sign this authorization")):
+            self.chain = FakeSettlement()
             setattr(self.chain, attribute, value)
-            code, out = self.run_tool(receipt())
-            self.assertEqual(code, 1)
-            self.assertIn(text, out)
-        self.chain.abi_version = 3
-        raw = receipt()
-        raw["l1Challenge"]["chainId"] = 8453
-        raw.pop("enclaveSigner")
-        code, out = self.run_tool(raw)
-        self.assertEqual(code, 1)
-        self.assertIn("the RPC serves chain 84532, the kit is for chain 8453", out)
-        raw = receipt()
-        raw["l1Challenge"]["beneficiary"] = STAKER
-        raw.pop("enclaveSigner")
-        code, out = self.run_tool(raw)
-        self.assertEqual(code, 1)
-        self.assertIn("enclaveSigner did not sign", out)
+            with self.subTest(attribute=attribute):
+                code, out = self.run_tool(receipt())
+                self.assertEqual(code, 1, out)
+                self.assertIn(text, out)
+                self.assertNotIn("cast send", out)
+
+    def test_a_kit_without_its_enclave_signer_is_refused_before_any_chain_read(self):
+        # The signature then recovers to some address; offline nothing would compare it.
+        for rpc in (False, True):
+            for field, value in (("seqNo", 1), ("beneficiary", STAKER), (None, None)):
+                raw = receipt()
+                raw.pop("enclaveSigner")
+                if field == "beneficiary":
+                    raw["l1Challenge"][field] = value
+                elif field:
+                    raw[field] = value
+                self.chain = FakeSettlement()
+                with self.subTest(rpc=rpc, field=field):
+                    code, out = self.run_tool(raw, rpc=rpc)
+                    self.assertEqual(code, 1, out)
+                    self.assertEqual(out, "kit FAILED: enclaveSigner is missing\n")
+                    self.assertEqual(self.chain.methods, [])
 
     def test_close_only_and_resolved_states(self):
         self.chain.close_only = True
@@ -319,6 +359,11 @@ class Cli(unittest.TestCase):
         code, out = self.run_tool(receipt())
         self.assertIn("slashUnanswered", out)
         self.assertNotIn("releaseStaleChallenge", out)
+
+    def test_an_empty_array_is_not_a_verified_kit(self):
+        code, out = self.run_tool([], rpc=False)
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "FAILED: the file holds no kits\n")
 
     def test_array_input_reports_each_entry(self):
         bad = copy.deepcopy(receipt())

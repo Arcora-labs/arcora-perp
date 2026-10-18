@@ -90,6 +90,33 @@ class Units(unittest.TestCase):
                 self.assertIn(service[0], units(), name)
 
 
+class MonitorL1Settings(unittest.TestCase):
+    def test_monitor_takes_l1_settings_from_ops_env_and_thresholds_from_its_command(self):
+        s = unit("darkperp-monitor.service")
+        self.assertEqual(values(s, "Service", "EnvironmentFile"), ["-/etc/darkperp/ops.env"])
+        argv = shlex.split(values(s, "Service", "ExecStart")[0])
+        for flag, value in [("--liveness-low-percent", "50"), ("--challenge-age-blocks", "900"),
+                            ("--l1-failures", "3")]:
+            self.assertIn(flag, argv)
+            self.assertEqual(argv[argv.index(flag) + 1], value, flag)
+        # Addresses and URLs are host values: they live in ops.env, not in the unit.
+        self.assertNotIn("--settlement", argv)
+        self.assertEqual([a for a in argv if a.startswith("http")], ["http://127.0.0.1:8080"])
+
+    def test_the_rpc_url_can_only_come_from_the_environment(self):
+        # It may carry a provider key, so it must never sit on a command line.
+        import gateway_monitor
+        options = {o for action in gateway_monitor.build_parser()._actions for o in action.option_strings}
+        self.assertEqual([o for o in options if "rpc" in o.lower()], [])
+
+    def test_ops_env_template_names_every_monitor_l1_variable(self):
+        import gateway_monitor
+        names = {line.split("=", 1)[0] for line in (DEPLOY / "env" / "ops.env.example").read_text().splitlines()
+                 if line and not line.startswith("#")}
+        self.assertEqual(set(gateway_monitor.L1_ENV), {"DARKPERP_L1_RPC", "DARKPERP_SETTLEMENT"})
+        self.assertLessEqual(set(gateway_monitor.L1_ENV), names)
+
+
 class Templates(unittest.TestCase):
     def test_env_templates_carry_names_only(self):
         for path in sorted((DEPLOY / "env").iterdir()):

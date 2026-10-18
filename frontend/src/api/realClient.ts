@@ -33,6 +33,7 @@ import { cancellationCapability } from "../domain/cancellation";
 import { parseExecution } from "../domain/execution";
 import { isWithdrawalAddress, parseWithdrawal } from "../domain/withdrawal";
 import { parseRefundableDeposit } from "../domain/refund";
+import { withL1Challenge } from "../domain/challengeKit";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
@@ -80,7 +81,7 @@ interface WireL1 {
   settledRoot: string; batchCount: number; lastTx: string; bondUsdc: string; withdrawalsRoot: string;
 }
 /// The gateway's WReceipt wire shape — the domain `Receipt` plus `windowId`.
-interface WireV1Receipt { signature?: string; enclaveSigner?: string; orderHash: string; seqNo: number; recvTimeMs: number; batchIdHint: number; windowId: number }
+interface WireV1Receipt { signature?: string; enclaveSigner?: string; orderHash: string; seqNo: number; recvTimeMs: number; batchIdHint: number; windowId: number; l1Challenge?: unknown }
 /// One order in the FLAT `GET /v1/orders` shape (`v1_orders_json`) — unlike the
 /// legacy /api/state entries there is no nested `input` object.
 interface WireV1Order {
@@ -136,7 +137,9 @@ function pAccount(a: WireState["account"]): AccountState {
  * `windowId`, and the explicit map keeps the domain type the contract instead
  * of silently carrying whatever extra keys the wire grows. An older gateway
  * that omits the field degrades to a synthesized stub (hash from the flat
- * `orderHash`, zero seq/batch) — degrade, never throw.
+ * `orderHash`, zero seq/batch) — degrade, never throw. `l1Challenge` (the L1
+ * challenge authorization) is kept when well-formed, null when the gateway
+ * issued none, and omitted when absent or malformed.
  *
  * Execution is separate native metadata. An upgraded gateway preserves exact
  * applied-fill quantities; a migrated legacy order can explicitly lack history.
@@ -146,10 +149,10 @@ function pV1Order(o: WireV1Order): TrackedOrder {
   const receipt: Receipt =
     r && typeof r.orderHash === "string" && typeof r.seqNo === "number" &&
     typeof r.recvTimeMs === "number" && typeof r.batchIdHint === "number"
-      ? { orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint,
+      ? withL1Challenge({ orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint,
           ...(typeof r.signature === "string" && /^0x[0-9a-fA-F]{130}$/.test(r.signature) &&
               typeof r.enclaveSigner === "string" && /^0x[0-9a-fA-F]{40}$/.test(r.enclaveSigner)
-            ? { signature: r.signature, enclaveSigner: r.enclaveSigner } : {}) }
+            ? { signature: r.signature, enclaveSigner: r.enclaveSigner } : {}) }, r.l1Challenge)
       : { orderHash: o.orderHash, seqNo: 0, recvTimeMs: o.createdMs, batchIdHint: 0 };
   return {
     ...cancellationCapability(o.cancellable),

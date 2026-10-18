@@ -1,4 +1,7 @@
 # External health check of the gateway's public surfaces (gateway_monitor.py).
+# With DARKPERP_L1_RPC and DARKPERP_SETTLEMENT in /etc/darkperp/ops.env it also
+# reads the settlement contract directly (read-only `cast`), so it alerts while
+# the gateway is down. Needs `cast` in /usr/local/bin (ProtectHome=yes).
 [Unit]
 Description=Arcora gateway health monitor
 OnFailure=darkperp-notify@monitor_failed.service
@@ -8,7 +11,7 @@ Type=oneshot
 User=darkperp-ops
 Group=darkperp-ops
 EnvironmentFile=-/etc/darkperp/ops.env
-ExecStart=/usr/local/lib/darkperp-ops/gateway_monitor.py --base-url http://127.0.0.1:8080 --state-file /var/lib/darkperp-ops/monitor.json --stall-seconds 900
+ExecStart=/usr/local/lib/darkperp-ops/gateway_monitor.py --base-url http://127.0.0.1:8080 --state-file /var/lib/darkperp-ops/monitor.json --stall-seconds 900 --liveness-low-percent 50 --challenge-age-blocks 900 --l1-failures 3
 StateDirectory=darkperp-ops
 StateDirectoryMode=0700
 TimeoutStartSec=120

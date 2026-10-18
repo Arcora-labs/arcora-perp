@@ -4,12 +4,18 @@
 The gateway's order receipt carries `l1Challenge {chainId, settlement,
 beneficiary, signature}`: the enclave's authorization to open an L1 inclusion
 challenge for that order on one settlement, paying any fine to `beneficiary`
-(the account's bound deposit address). This tool needs no gateway:
+(the account's bound deposit address). The browser's challenge kit
+(`arcora.challenge-kit.v1`) has the same shape. This tool needs no gateway:
 
+* requires every field the challenge call or the signature check reads: the
+  receipt's `orderHash`, `seqNo`, `recvTimeMs`, `batchIdHint` and
+  `enclaveSigner`, and `l1Challenge` with all four of its fields; a kit missing
+  one, or with one malformed, is refused and no call is printed;
 * recomputes `challengeAuthDigest` = keccak256(abi.encode(tag, chainId,
   settlement, orderHash, seqNo, recvTimeMs, batchIdHint, beneficiary)), checks
   the signature is canonical (65 bytes `r||s||v`, low `s`, `v` 27/28) and
-  recovers the signer;
+  recovers the signer, which must be the kit's `enclaveSigner`; offline that is
+  all it can check, and `--rpc` also checks the settlement's `enclaveSigner()`;
 * with `--rpc`, reads (never writes) the settlement: chain, `ABI_VERSION`,
   `enclaveSigner`, the on-chain digest, close-only, the challenge state, the
   stake (`challengeBond`) and the ripeness time
@@ -28,7 +34,8 @@ order hash on L1.
 
     python3 scripts/claim/challenge_inclusion.py my-order.json --rpc https://sepolia.base.org
 
-Exit status 0 when every kit verifies (and, with --rpc, matches the chain); 1 otherwise.
+Exit status 0 when every kit verifies (and, with --rpc, matches the chain); 1 otherwise,
+including for a file that holds no kit.
 """
 import argparse
 import json
@@ -122,47 +129,64 @@ def auth_digest(chain_id, settlement, order_hash, seq_no, recv_time_ms, batch_id
         chain_id, settlement, order_hash, seq_no, recv_time_ms, batch_id_hint, beneficiary))))
 
 
+def _field(obj, key, name, valid, shape):
+    """`obj[key]` when present and `valid`, else a KitError naming the field."""
+    if key not in obj:
+        raise KitError(f"{name} is missing")
+    if not valid(obj[key]):
+        raise KitError(f"{name} must be {shape}")
+    return obj[key]
+
+
+def _u64(value):
+    return type(value) is int and 0 <= value < _U64
+
+
+def _address(value):
+    return isinstance(value, str) and chain.ADDRESS.fullmatch(value) is not None
+
+
 def parse_kit(raw):
-    """Normalize a receipt (or a tracked order holding one) with its `l1Challenge`."""
+    """Normalize a receipt (or a tracked order holding one) with its `l1Challenge`.
+
+    Every field the challenge call or the signature check reads is required:
+    the receipt's `orderHash`, `seqNo`, `recvTimeMs`, `batchIdHint` and
+    `enclaveSigner`, and `l1Challenge` with `chainId`, `settlement`,
+    `beneficiary` and `signature`. A missing or malformed one is a KitError.
+    """
     if isinstance(raw, dict) and isinstance(raw.get("receipt"), dict):
         raw = raw["receipt"]
     if not isinstance(raw, dict):
         raise KitError("not an order receipt object")
-    order_hash = raw.get("orderHash")
-    if not isinstance(order_hash, str) or not chain.DIGEST.fullmatch(order_hash):
-        raise KitError("orderHash must be a 32-byte 0x hex value")
+    order_hash = _field(raw, "orderHash", "orderHash",
+                        lambda v: isinstance(v, str) and chain.DIGEST.fullmatch(v), "a 32-byte 0x hex value")
     for key in ("seqNo", "recvTimeMs", "batchIdHint"):
-        if type(raw.get(key)) is not int or not 0 <= raw[key] < _U64:
-            raise KitError(f"{key} must be an unsigned 64-bit integer")
+        _field(raw, key, key, _u64, "an unsigned 64-bit integer")
+    enclave = _field(raw, "enclaveSigner", "enclaveSigner", _address, "a 20-byte 0x address")
     if "l1Challenge" not in raw:
-        raise KitError("the receipt has no l1Challenge field (issued before L1 challenge kits)")
+        raise KitError("l1Challenge is missing (a receipt issued before L1 challenge kits has none)")
     kit = raw["l1Challenge"]
     if kit is None:
         raise KitError("no L1 challenge authorization: the account had no bound deposit address")
     if not isinstance(kit, dict):
         raise KitError("l1Challenge must be an object")
-    if type(kit.get("chainId")) is not int or not 0 < kit["chainId"] < _U64:
-        raise KitError("l1Challenge.chainId must be a positive integer")
+    _field(kit, "chainId", "l1Challenge.chainId", lambda v: _u64(v) and v > 0, "a positive integer")
     for key in ("settlement", "beneficiary"):
-        if not isinstance(kit.get(key), str) or not chain.ADDRESS.fullmatch(kit[key]):
-            raise KitError(f"l1Challenge.{key} must be a 20-byte 0x address")
+        _field(kit, key, f"l1Challenge.{key}", _address, "a 20-byte 0x address")
     if int(kit["beneficiary"], 16) == 0:
         raise KitError("l1Challenge.beneficiary is zero")
-    if not isinstance(kit.get("signature"), str) or not _SIG.fullmatch(kit["signature"]):
-        raise KitError("l1Challenge.signature must be a 65-byte 0x hex value")
-    enclave = raw.get("enclaveSigner")
-    if enclave is not None and (not isinstance(enclave, str) or not chain.ADDRESS.fullmatch(enclave)):
-        raise KitError("enclaveSigner must be a 20-byte 0x address")
+    _field(kit, "signature", "l1Challenge.signature",
+           lambda v: isinstance(v, str) and _SIG.fullmatch(v), "a 65-byte 0x hex value")
     return {
         "orderHash": order_hash.lower(), "seqNo": raw["seqNo"], "recvTimeMs": raw["recvTimeMs"],
         "batchIdHint": raw["batchIdHint"], "chainId": kit["chainId"], "settlement": kit["settlement"].lower(),
         "beneficiary": kit["beneficiary"].lower(), "signature": kit["signature"].lower(),
-        "enclaveSigner": enclave.lower() if enclave else None,
+        "enclaveSigner": enclave.lower(),
     }
 
 
 def check_kit(k):
-    """(problems, digest, signer) from offline checks."""
+    """(problems, digest, signer) from offline checks: the signature must recover to `enclaveSigner`."""
     digest = auth_digest(k["chainId"], k["settlement"], k["orderHash"], k["seqNo"], k["recvTimeMs"],
                          k["batchIdHint"], k["beneficiary"])
     signature = bytes.fromhex(k["signature"][2:])
@@ -173,7 +197,7 @@ def check_kit(k):
     signer = recover(digest, signature)
     if signer is None:
         problems.append("the signature does not recover to an address")
-    elif k["enclaveSigner"] and signer != k["enclaveSigner"]:
+    elif signer != k["enclaveSigner"]:
         problems.append("the authorization is not signed by the receipt's enclave signer")
     return problems, digest, signer
 
@@ -318,6 +342,9 @@ def main(argv=None, rpc_factory=chain.HttpRPC):
     with open(args.kit) as stream:
         raw = json.load(stream)
     entries = raw if isinstance(raw, list) else [raw]
+    if not entries:
+        print("FAILED: the file holds no kits")
+        return 1
     rpc = rpc_factory(args.rpc) if args.rpc else None
     ok = True
     for index, entry in enumerate(entries):
@@ -328,6 +355,8 @@ def main(argv=None, rpc_factory=chain.HttpRPC):
             if not problems:
                 print(f"{label} OK: order {k['orderHash']} authorized by {signer} for beneficiary {k['beneficiary']}")
                 if rpc is None:
+                    print(f"  offline check: signed by the kit's enclaveSigner {signer}; --rpc also checks that it "
+                          "is the settlement's enclaveSigner()")
                     print("  " + chain.cast_send(k["settlement"], CHALLENGE_SIGNATURE, challenge_args(k),
                                                  "<RPC_URL>", value="<challengeBond()>"))
                 else:

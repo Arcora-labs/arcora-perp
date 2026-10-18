@@ -200,6 +200,91 @@ Python tests come from `cast`.
   so its Merkle proof is empty; `claim_withdrawal.py` accepts a bundle with an empty
   proof (`docs/FINAL_SETTLE_RUNBOOK.md`).
 
+## Challenge kit for an order the sequencer never settles
+
+An accepted order's receipt carries `l1Challenge`, the enclave's authorization to
+open `challengeInclusion` for that order (docs/API.md, § L1 inclusion challenges).
+If no settled batch ever includes or rejects the order, the user needs this
+authorization after the fact, possibly when the gateway no longer answers. The web
+client keeps it:
+
+- The account panel keeps a challenge kit (`arcora.challenge-kit.v1`) in this
+  browser's storage for each order that `GET /v1/orders` lists with an
+  authorization. The client refreshes that list right after `POST /v1/orders`
+  accepts an order, so a new order's kit is kept within moments. Orders placed
+  from another browser get a kit too. The kit holds the receipt fields
+  `challengeInclusion` takes (`orderHash`, `seqNo`, `recvTimeMs`, `batchIdHint`),
+  the receipt's `enclaveSigner` and `l1Challenge` (`chainId`, `settlement`,
+  `beneficiary`, `signature`). Kits are merged by order hash, and the first copy
+  is kept.
+- A kit is kept only when its signature recovers to the receipt's enclave signer.
+  Receipts without an authorization (`null` when the account has no bound deposit
+  address) produce no kit. An order the gateway lists as `SETTLED` gets no kit,
+  and a kit already kept is dropped once the gateway lists its order as
+  `SETTLED`: a settled batch includes or rejects the order, so a challenge would
+  be answered at once and the stake lost.
+- The store is bounded so it never crowds out the deposit journal, claim bundles
+  or the credential record, which share the origin's storage quota. It holds at
+  most 500 kits, for all accounts used in this browser, in a compact form of
+  about 370 characters each, so under 190,000 characters. The bound is the
+  browser's, not the gateway's: an order that never gets a settled fill (never
+  filled, or cancelled first) stays listed as `ACCEPTED`, so one account can
+  list more than 500 orders with a kit. When the store cannot hold every kit
+  (past 500, or when the browser refuses a write for quota), it keeps first the
+  kits of the orders the account lists now that are not `SETTLED`, newest first,
+  then the other kits (orders no longer listed, or another account's), newest
+  first. Kits are evicted from the end of that order: those of orders no longer
+  listed first, then the oldest.
+- **Download challenge kit** saves one order's kit. **Export all challenge kits**
+  saves every kit the panel offers: the kits stored so far, including orders the
+  gateway no longer lists, and the kit of every listed order that is not
+  `SETTLED`, past the bound too. Kits are never sent anywhere.
+- Whenever the browser does not store a kit the panel offers (storage denied or
+  full, or the bound reached), the panel still offers it for that session and
+  warns how many kits are not kept, and how many of those are not for an order
+  the account lists now (its older orders, or another account's in this
+  browser). Export them then: once the panel closes, a kit that is not stored
+  comes back only while the gateway still lists its order for this account. The
+  panel stores this session's unsaved kits with the next kit once a write fits.
+
+The kit file has the shape of a receipt, so the gateway-free tool reads it as is,
+one kit or the exported array:
+
+```sh
+python3 scripts/claim/challenge_inclusion.py arcora-challenge-84532-0-0c164689.json \
+  --rpc https://sepolia.base.org
+```
+
+The tool recomputes `challengeAuthDigest` and recovers the signer offline. With
+`--rpc` it reads the settlement (chain, `enclaveSigner()`, the on-chain digest,
+close-only, whether the order's challenge is open or resolved, `challengeBond()`
+and the ripeness time). It then prints the `cast send … challengeInclusion(…)
+--value <bond>` call, or the slash, release or claim call for a later stage, with a
+`<YOUR_SIGNER>` placeholder. It never signs or sends.
+
+`scripts/challenge/fixtures/challenge-kit-vectors.json` pins the browser format to
+the tool. `frontend/src/domain/challengeKit.test.ts` builds its `kit` from its
+`acceptReceipt`. `scripts/challenge/test_challenge_kit.py` runs that kit, and
+tampered copies of it, through `challenge_inclusion.py`. Authorization A in the
+fixture is the vector that `crates/gateway/src/challenge_auth.rs` and
+`contracts/test/CrossLayer.t.sol` pin.
+
+**Limits.**
+- A kit exists only for orders this browser saw in the account panel while the
+  gateway listed them with an authorization. If the gateway stops answering
+  between accepting an order and listing it, that order has no kit. A browser that
+  cleared its storage, or evicted a kit to stay within its bound or quota, without
+  an export has nothing to recover. Export the kits of orders you may need to
+  challenge, and export again when the panel warns that it did not keep a kit.
+- The panel takes the gateway's word that an order is `SETTLED` when it drops
+  that order's kit. Keep an exported copy if you want to check settlement
+  yourself.
+- Opening a challenge publishes the beneficiary next to the order hash on L1. Keep
+  the files private unless you intend to use them.
+- A challenge does not execute the order. Anyone may answer it by proving the
+  order's inclusion or rejection; if nobody does, the beneficiary is credited the
+  fine (docs/API.md, § L1 inclusion challenges, Outcomes).
+
 ## Refund of a deposit the settled state never consumed
 
 A deposit enters the vault's deposit chain when it lands on L1, but it becomes part
