@@ -25,6 +25,7 @@ use sha3::{Digest as _, Keccak256 as RawKeccak};
 
 use matcher::{Match, MatchingEngine, OrderRemoval, SubmitStatus};
 use perp_core::engine::BatchOp;
+use perp_core::fixed::{notional_quote, QUOTE_SCALE, RATE_SCALE};
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::note::PubKey;
@@ -257,6 +258,104 @@ pub fn adl_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
         Domain::Adl,
         &[*tag_key, word_u64(market_id), word_u64(batch_id)],
     )
+}
+
+/// The smallest notional, quote-scaled ($10), of an order the sequencer admits
+/// when the order adds exposure: it opens, grows or flips its owner's position and
+/// is not reduce-only. The notional is the order's full size at the validated
+/// oracle price, the price the pre-trade margin check uses. This is admission
+/// policy, not an engine rule, so it can change without a new program key: an
+/// order that only reduces a position is exempt, and a resting remainder that a
+/// partial fill left below the minimum keeps matching (the book never re-checks
+/// it). A refused order is recorded as [`RejectReason::BelowMinimumSize`].
+pub const MIN_ORDER_NOTIONAL: i128 = 10 * QUOTE_SCALE;
+
+/// The notional, quote-scaled ($1,000), at which the funding mark takes its impact
+/// prices: the average price at which this much would fill against each side of
+/// the book. A side holding less than this gives no impact price, and the mark
+/// falls back to the oracle index (see [`Sequencer::run_maintenance`]).
+pub const FUNDING_IMPACT_NOTIONAL: i128 = 1_000 * QUOTE_SCALE;
+
+/// Whether the minimum order size ([`MIN_ORDER_NOTIONAL`]) refuses `order` against
+/// its owner's current `position` (an empty one when the owner holds none), at the
+/// validated oracle price `mark`. Reduce-only orders and orders that do not increase
+/// the position's exposure are never refused; neither is an order with a
+/// non-positive size (the matcher refuses it as malformed). An order whose notional
+/// overflows is far above the minimum.
+pub fn below_minimum_order_notional(position: &Position, order: &Order, mark: i128) -> bool {
+    if order.reduce_only || order.size <= 0 || !position.increases_exposure(order.signed_size()) {
+        return false;
+    }
+    notional_quote(order.size, mark).is_some_and(|notional| notional < MIN_ORDER_NOTIONAL)
+}
+
+/// The widest funding premium, in price units, that `AccrueFunding` accepts for
+/// `market` at the validated `index`: the market's mark band
+/// (`max_mark_deviation_ratio`), rounded down so a mark of `index ± band` always
+/// passes the engine's check. 0 if the product overflows, which pins the mark to
+/// the index.
+fn mark_band(market: &Market, index: i128) -> i128 {
+    market
+        .max_mark_deviation_ratio
+        .checked_mul(index)
+        .map_or(0, |v| v / RATE_SCALE)
+        .max(0)
+}
+
+/// The running time average of one market's funding premium over the open settle
+/// window (see [`Sequencer::run_maintenance`]).
+///
+/// The premium is the impact-notional book mid minus the validated oracle index,
+/// sampled once per tick and treated as in force from its tick until the next one.
+/// Averaging the premium rather than the mid itself keeps a move of the index
+/// during the window from reading as a premium. Each sample is clamped to the
+/// market's mark band, so no single tick can outweigh its share of the window.
+///
+/// Off-chain sequencer state only: it decides the marks the sequencer puts into
+/// future `AccrueFunding` ops, and every emitted op carries its own mark, so
+/// replaying a sealed window never reads it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct FundingMarkWindow {
+    /// Σ premium · dt over the samples whose span has closed, price units × ms.
+    weighted: i128,
+    /// Σ dt over the same spans, ms.
+    elapsed: u64,
+    /// The newest sample, `(time, premium)`, in force from its time onwards. Its
+    /// span closes when the next sample is taken.
+    last: Option<(u64, i128)>,
+}
+
+impl FundingMarkWindow {
+    /// Take the sample `premium` at `now_ms`: close the span of the previous
+    /// sample up to `now_ms`, then make `premium` the sample in force. A second
+    /// sample at the same time only replaces the first, and a time before the
+    /// newest sample closes no span.
+    fn observe(&mut self, now_ms: u64, premium: i128) {
+        let at = match self.last {
+            Some((t, p)) if now_ms > t => {
+                let dt = now_ms - t;
+                self.weighted = self
+                    .weighted
+                    .saturating_add(p.saturating_mul(i128::from(dt)));
+                self.elapsed = self.elapsed.saturating_add(dt);
+                now_ms
+            }
+            Some((t, _)) => t,
+            None => now_ms,
+        };
+        self.last = Some((at, premium));
+    }
+
+    /// The time-weighted average premium over the closed spans, rounded toward
+    /// zero; 0 while no span has closed. A sample counts only once time has passed
+    /// with it in force, so the sample taken at a tick never moves that tick's mark.
+    fn average(&self) -> i128 {
+        if self.elapsed == 0 {
+            0
+        } else {
+            self.weighted / i128::from(self.elapsed)
+        }
+    }
 }
 
 /// Why an order was rejected at settlement, mapped from an engine error.
@@ -560,6 +659,13 @@ pub struct Sequencer {
     /// which any known-pubkey observer could recompute. Derived from the enclave key,
     /// refreshed on `set_enclave`. Off-chain only (tags are not in the proof).
     liq_fallback_salt: Digest,
+    /// Per-market running average of the funding premium over the open settle
+    /// window, from which `run_maintenance` takes each `AccrueFunding` mark. Reset
+    /// when a window is sealed. Persisted with the rest of the sequencer so a
+    /// restart mid-window keeps the window's average; it is never part of a
+    /// witness (each op carries the mark it was given).
+    #[serde(default)]
+    funding_marks: BTreeMap<MarketId, FundingMarkWindow>,
 }
 
 impl Sequencer {
@@ -586,6 +692,7 @@ impl Sequencer {
             liq_tag_keys: BTreeMap::new(),
             adl_tag_keys: BTreeMap::new(),
             liq_fallback_salt,
+            funding_marks: BTreeMap::new(),
         }
     }
 
@@ -639,6 +746,28 @@ impl Sequencer {
             self.window_ops.is_empty(),
             "add_market must run before any window ops (markets are setup config, not mid-window)"
         );
+        self.window_start_state = self.state.clone();
+    }
+
+    /// Set the L1 address the wind-down pays the protocol's remaining reserves to
+    /// ([`perp_core::State::set_wind_down_recipient`]). Like [`Sequencer::add_market`]
+    /// this is setup config with no `BatchOp`, so it re-captures the window
+    /// baseline and must run before any window op: a recapture over accumulated ops
+    /// would put them in both the witness pre-state and its op-log. The recipient is
+    /// a state-root word, so it is set before the genesis root is taken and never
+    /// changes afterwards.
+    ///
+    /// # Panics
+    ///
+    /// If the open window already holds ops. Unlike `add_market`'s debug-only
+    /// check this holds in release builds too: the call is boot-time only, and a
+    /// late call would silently corrupt the next window witness.
+    pub fn set_wind_down_recipient(&mut self, recipient: [u8; 20]) {
+        assert!(
+            self.window_ops.is_empty(),
+            "set_wind_down_recipient must run before any window ops (the recipient is setup config)"
+        );
+        self.state.set_wind_down_recipient(recipient);
         self.window_start_state = self.state.clone();
     }
 
@@ -853,6 +982,15 @@ impl Sequencer {
     /// oracle mark, leave the trader above initial margin? Reducing/closing
     /// orders always pass. Rejecting here — *before* matching — guarantees no fill
     /// can match-but-fail-to-settle, so `ordered`/`rejected` stay honest (§2).
+    ///
+    /// The funding index is read through [`perp_core::funding::FundingState::index_at`]
+    /// at `now_ms`: a fill first commits the market's open funding span up to its
+    /// own time, so after a pause the trader's equity already carries the pause's
+    /// funding, and this check must see the same index the fill will.
+    ///
+    /// An order that adds exposure must also reach [`MIN_ORDER_NOTIONAL`]
+    /// ([`below_minimum_order_notional`]); otherwise it is refused with
+    /// [`RejectReason::BelowMinimumSize`].
     pub fn pre_trade_check(&self, order: &Order, now_ms: u64) -> Result<(), RejectReason> {
         let Some(market) = self.state.markets.get(&order.market_id) else {
             // audit Tier-3: an unknown market is not a reduce-only violation.
@@ -864,12 +1002,7 @@ impl Sequencer {
         let mark = oracle
             .validate(market, now_ms)
             .map_err(|_| RejectReason::OracleUnavailable)?;
-        let funding_index = self
-            .state
-            .funding
-            .get(&order.market_id)
-            .map(|f| f.cumulative_index)
-            .unwrap_or(0);
+        let funding_index = self.funding_index_at(order.market_id, mark, now_ms);
         let base = self
             .state
             .position(&order.owner, order.market_id)
@@ -882,6 +1015,9 @@ impl Sequencer {
         if order.reduce_only && base.increases_exposure(order.signed_size()) {
             return Err(RejectReason::ReduceOnlyViolation);
         }
+        if below_minimum_order_notional(&base, order, mark) {
+            return Err(RejectReason::BelowMinimumSize);
+        }
         if base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
             Ok(())
         } else {
@@ -889,26 +1025,103 @@ impl Sequencer {
         }
     }
 
-    /// Best book mid as the perp mark price; falls back to the oracle index if a
-    /// side is empty. Used as the funding mark (§8).
-    fn mark_price(&self, market_id: MarketId) -> Option<i128> {
+    /// The funding index an op on `market_id` at `now_ms` reads, with the validated
+    /// oracle `index_price`: the stored index with the open span committed up to
+    /// `now_ms` ([`perp_core::funding::FundingState::index_at`]), exactly what the
+    /// engine's `Fill`, `Liquidate` and `Unbind` compute. 0 for a market with no
+    /// funding state (the engine refuses such a market).
+    fn funding_index_at(&self, market_id: MarketId, index_price: i128, now_ms: u64) -> i128 {
+        self.state
+            .funding
+            .get(&market_id)
+            .map_or(0, |f| f.index_at(index_price, now_ms))
+    }
+
+    /// The impact-notional book mid of `market_id` at `now_ms`: the midpoint of the
+    /// average prices at which [`FUNDING_IMPACT_NOTIONAL`] would fill against the
+    /// bids and against the asks. `None` when either side holds less than that.
+    pub fn impact_mid(&self, market_id: MarketId, now_ms: u64) -> Option<i128> {
         let book = self.matcher.book(market_id)?;
-        match (book.best_bid(), book.best_ask()) {
-            (Some(bid), Some(ask)) => Some(book_mid(bid, ask)),
-            _ => self.oracles.get(&market_id).map(|o| o.price),
+        let bid = book.impact_price(Side::Buy, FUNDING_IMPACT_NOTIONAL, now_ms)?;
+        let ask = book.impact_price(Side::Sell, FUNDING_IMPACT_NOTIONAL, now_ms)?;
+        Some(book_mid(bid, ask))
+    }
+
+    /// This tick's funding-premium sample for `market`: the impact mid minus the
+    /// validated oracle index, clamped to the market's mark band. 0 (the index
+    /// itself) when either side of the book lacks the impact depth or the oracle
+    /// does not validate at `now_ms`.
+    fn funding_premium_sample(
+        &self,
+        market: &Market,
+        oracle: &OracleTranscript,
+        now_ms: u64,
+    ) -> i128 {
+        let Ok(index) = oracle.validate(market, now_ms) else {
+            return 0;
+        };
+        let band = mark_band(market, index);
+        self.impact_mid(market.id, now_ms)
+            .map_or(0, |mid| mid.saturating_sub(index).clamp(-band, band))
+    }
+
+    /// Take this tick's funding-premium sample for every market with an oracle,
+    /// closing the span of each market's previous sample. Calling it again at the
+    /// same `now_ms` replaces the samples, so the sample in force until the next
+    /// tick reflects the book as it rests after the whole tick.
+    fn sample_funding_premiums(&mut self, now_ms: u64) {
+        let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
+        for mid in market_ids {
+            let (Some(market), Some(oracle)) = (
+                self.state.markets.get(&mid).copied(),
+                self.oracles.get(&mid).copied(),
+            ) else {
+                continue;
+            };
+            let premium = self.funding_premium_sample(&market, &oracle, now_ms);
+            self.funding_marks
+                .entry(mid)
+                .or_default()
+                .observe(now_ms, premium);
         }
     }
 
-    /// Per-batch maintenance (§5, §8): accrue funding from the mark-vs-index
-    /// premium, then liquidate every position that is underwater at the oracle
-    /// price. Runs regardless of user liveness — the enclave holds positions, so
-    /// an offline user is still liquidated. Returns the liquidated owners and any
-    /// auto-deleverage haircuts the cascade applied (audit Q2/Q7).
+    /// The funding mark for `market` at the validated oracle `index`: the index
+    /// plus the window's time-averaged funding premium, kept inside the market's
+    /// mark band so the `AccrueFunding` op is always admissible. With no closed
+    /// span yet in the window (its first tick) the mark is the index itself.
+    fn funding_mark(&self, market: &Market, index: i128) -> i128 {
+        let band = mark_band(market, index);
+        let premium = self
+            .funding_marks
+            .get(&market.id)
+            .map_or(0, FundingMarkWindow::average)
+            .clamp(-band, band);
+        index.saturating_add(premium)
+    }
+
+    /// Per-batch maintenance (§5, §8): accrue funding, then liquidate every
+    /// position that is underwater at the oracle price. Runs regardless of user
+    /// liveness — the enclave holds positions, so an offline user is still
+    /// liquidated. Returns the liquidated owners and any auto-deleverage haircuts
+    /// the cascade applied (audit Q2/Q7).
+    ///
+    /// **Funding mark.** Each tick samples, per market, the premium of the
+    /// impact-notional book mid ([`Sequencer::impact_mid`]) over the validated
+    /// oracle index, or 0 when either side lacks [`FUNDING_IMPACT_NOTIONAL`] of
+    /// depth. A sample is in force until the next tick. The `AccrueFunding` mark is
+    /// the index plus the time-weighted average of the samples in force since the
+    /// open window began (reset by [`Sequencer::seal_window`]), so moving it takes
+    /// real depth held over time: a quote that rests for one tick moves the mark
+    /// by at most its share of the window, and the quote seen at a tick never
+    /// moves that tick's own mark. The engine still bounds the mark to the market's
+    /// mark band and the rate to its clamp.
     pub fn run_maintenance(&mut self, now_ms: u64) -> MaintenanceOutcome {
-        // reap good-till-time makers that have expired before reading the book as
-        // the funding mark — an expired order must not anchor `best_bid`/`best_ask`
-        // (§8), and matching already refuses to trade against it.
+        // reap good-till-time makers that have expired before reading the book for
+        // the funding mark — an expired order must not count as depth (§8), and
+        // matching already refuses to trade against it.
         let removals = self.matcher.reap_expired_with_events(now_ms);
+        self.sample_funding_premiums(now_ms);
         let mut liquidated = Vec::new();
         let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
         // The replayable op-log for this maintenance pass: every AccrueFunding/Liquidate
@@ -922,30 +1135,27 @@ impl Sequencer {
             let Some(oracle) = self.oracles.get(&mid).copied() else {
                 continue;
             };
-            // funding accrual (best-effort; skip if oracle is out of bounds)
-            let mark = self.mark_price(mid).unwrap_or(oracle.price);
+            let Some(market) = self.state.markets.get(&mid).copied() else {
+                continue;
+            };
+            // Neither funding nor liquidation runs on an oracle that does not
+            // validate now; the engine would refuse both ops.
+            let Ok(price) = oracle.validate(&market, now_ms) else {
+                continue;
+            };
+            // funding accrual (best-effort: a refused op is not logged)
             let funding_op = BatchOp::AccrueFunding {
                 market_id: mid,
-                mark,
+                mark: self.funding_mark(&market, price),
                 oracle,
                 now_ms,
             };
             if self.state.apply_op(&funding_op).is_ok() {
                 ops.push(funding_op);
             }
-            // liquidation pass at the oracle price
-            let Some(market) = self.state.markets.get(&mid).copied() else {
-                continue;
-            };
-            let Ok(price) = oracle.validate(&market, now_ms) else {
-                continue;
-            };
-            let funding_index = self
-                .state
-                .funding
-                .get(&mid)
-                .map(|f| f.cumulative_index)
-                .unwrap_or(0);
+            // liquidation pass at the oracle price, against the index the engine's
+            // Liquidate reads (the open span committed up to now)
+            let funding_index = self.funding_index_at(mid, price, now_ms);
             let candidates: Vec<PubKey> = self
                 .state
                 .positions
@@ -1172,6 +1382,12 @@ impl Sequencer {
         for (owner, _market) in &liquidations {
             removals.extend(self.matcher.cancel_owner_with_events(owner));
         }
+        // The funding-mark sample in force until the next tick is the book as it
+        // rests now, after the liquidated owners' orders are gone. Re-sampling at
+        // the same time only replaces this tick's sample; it moves no mark.
+        if !liquidations.is_empty() {
+            self.sample_funding_premiums(now_ms);
+        }
 
         removals.extend(
             stream
@@ -1357,6 +1573,8 @@ impl Sequencer {
         self.window_rejected.clear();
         // Re-open the window from the full boot state (== the deployed genesis).
         self.window_start_state = self.state.clone();
+        // The funding-mark average runs over the open window, which opens here.
+        self.funding_marks.clear();
     }
 
     /// SEC-025-B break 4: does the open window carry manifest content that must be
@@ -1480,6 +1698,10 @@ impl Sequencer {
         let ops = core::mem::take(&mut self.window_ops);
         self.window_ordered.clear();
         self.window_rejected.clear();
+        // The next window's funding marks average only what that window observes:
+        // no sample carries over, so the time the stack spends sealing and proving
+        // (when nothing can trade against the book) never weighs in a mark.
+        self.funding_marks.clear();
         WindowWitness {
             batch_id,
             pre_state,
@@ -1703,10 +1925,11 @@ fn dedup_in_order(hashes: Vec<Digest>) -> Vec<Digest> {
     hashes.into_iter().filter(|h| seen.insert(*h)).collect()
 }
 
-/// Overflow-safe book midpoint used as the funding mark. Halving each side before
-/// summing keeps the mid from overflowing `i128` when an unvalidated resting price
-/// sits near the type bound (audit DP-008): a plain `(bid + ask) / 2` panics in a
-/// debug build and wraps in release. At most one unit of precision is lost.
+/// Overflow-safe midpoint of the two impact prices behind the funding mark. Halving
+/// each side before summing keeps the mid from overflowing `i128` when an
+/// unvalidated resting price sits near the type bound (audit DP-008): a plain
+/// `(bid + ask) / 2` panics in a debug build and wraps in release. At most one unit
+/// of precision is lost.
 fn book_mid(bid: i128, ask: i128) -> i128 {
     (bid / 2).saturating_add(ask / 2)
 }
@@ -1758,6 +1981,98 @@ mod tests {
             backup_twap,
             signature: OracleSig::sign(&oracle_key(), &d),
         }
+    }
+
+    /// The window average weighs each sample by the time it was in force, counts a
+    /// sample only once its span has closed, lets a same-time sample replace the
+    /// previous one, and never closes a span backwards in time.
+    #[test]
+    fn funding_mark_window_is_a_time_weighted_average_of_closed_spans() {
+        let mut w = FundingMarkWindow::default();
+        assert_eq!(w.average(), 0, "no sample yet");
+        w.observe(1_000, 300);
+        assert_eq!(w.average(), 0, "the first sample has no closed span");
+        w.observe(1_000, 600);
+        assert_eq!(w.average(), 0, "a same-time sample only replaces the first");
+        w.observe(2_000, -900);
+        assert_eq!(w.average(), 600, "600 in force for 1,000 ms");
+        w.observe(5_000, 0);
+        // 600 · 1,000 − 900 · 3,000 over 4,000 ms
+        assert_eq!(w.average(), (600_000 - 2_700_000) / 4_000);
+        let before = w;
+        w.observe(4_000, 77);
+        assert_eq!(
+            (w.weighted, w.elapsed),
+            (before.weighted, before.elapsed),
+            "a time before the newest sample closes no span"
+        );
+        assert_eq!(w.last, Some((5_000, 77)));
+        w.observe(6_000, 0);
+        assert_eq!(w.weighted, before.weighted + 77 * 1_000);
+    }
+
+    #[test]
+    fn mark_band_matches_the_engine_bound_and_fails_toward_the_index() {
+        let m = Market::conservative(0);
+        let index = 100_000 * PRICE_SCALE;
+        let band = mark_band(&m, index);
+        assert_eq!(band, 5_000 * PRICE_SCALE, "5% of the index");
+        // the engine's own check: |mark − index| · RATE_SCALE <= ratio · index
+        assert!(band * RATE_SCALE <= m.max_mark_deviation_ratio * index);
+        assert!((band + 1) * RATE_SCALE > m.max_mark_deviation_ratio * index);
+        assert_eq!(
+            mark_band(&m, i128::MAX),
+            0,
+            "an overflow pins the mark to the index"
+        );
+    }
+
+    /// The wind-down recipient is setup config: it lands in the window baseline,
+    /// so the first window's witness pre-state binds it and replays.
+    #[test]
+    fn wind_down_recipient_is_part_of_the_window_baseline() {
+        let mut seq = Sequencer::new(EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]), 20);
+        seq.add_market(test_market(0));
+        let unset = seq.state.state_root();
+        seq.set_wind_down_recipient([0x5Au8; 20]);
+        assert_eq!(seq.state.wind_down_recipient, [0x5Au8; 20]);
+        assert_ne!(
+            seq.state.state_root(),
+            unset,
+            "the recipient is a root word"
+        );
+        assert_eq!(
+            seq.window_baseline().state_root(),
+            seq.state.state_root(),
+            "the baseline is re-captured with the recipient"
+        );
+        seq.seal_genesis_baseline();
+        let genesis = seq.state.state_root();
+        seq.set_oracle(
+            0,
+            signed_oracle(
+                0,
+                100_000 * PRICE_SCALE,
+                now(),
+                10 * PRICE_SCALE,
+                100_000 * PRICE_SCALE,
+            ),
+        );
+        fund(&mut seq, 1, 1_000, 0x11);
+        let w = seq.seal_window();
+        assert_eq!(w.pre_state.wind_down_recipient, [0x5Au8; 20]);
+        assert_eq!(w.manifest.previous_state_root, genesis);
+        let derived =
+            perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
+                .expect("the first window replays from the recipient-bound genesis");
+        assert_eq!(derived.new_state_root, seq.state.state_root());
+    }
+
+    #[test]
+    #[should_panic(expected = "set_wind_down_recipient must run before any window ops")]
+    fn wind_down_recipient_cannot_be_set_mid_window() {
+        let mut seq = test_sequencer(); // has funded two accounts in the open window
+        seq.set_wind_down_recipient([0x5Au8; 20]);
     }
 
     // audit DP-008: an unvalidated resting price near the i128 bound must not overflow
@@ -1825,6 +2140,26 @@ mod tests {
                 leg: None,
             }),
             None,
+        );
+    }
+
+    /// The witness-shape and withdrawal-nonce errors have no specific manifest
+    /// code: they are recorded under the honest catch-all, and none names a leg.
+    #[test]
+    fn shape_and_nonce_errors_map_to_the_catch_all() {
+        for e in [
+            EngineError::FundingStateInvalid,
+            EngineError::PositionKeyMismatch,
+            EngineError::WithdrawalNonceNotIncreasing,
+            EngineError::InternalBurnNonceNotZero,
+        ] {
+            assert_eq!(settlement_reason(&e), RejectReason::InvalidOrder, "{e:?}");
+            assert_eq!(offending_leg(&e), None, "{e:?}");
+        }
+        // a deposit refused in close-only reads as close-only
+        assert_eq!(
+            settlement_reason(&EngineError::CloseOnly),
+            RejectReason::MarketCloseOnly
         );
     }
 

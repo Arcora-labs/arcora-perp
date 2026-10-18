@@ -10,6 +10,7 @@
 
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::vec::Vec;
+use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::Digest;
 use perp_core::market::MarketId;
 use perp_core::note::PubKey;
@@ -141,6 +142,66 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             .flat_map(|q| q.iter())
             .map(|r| r.remaining)
             .sum()
+    }
+
+    /// The average price at which `notional` (quote-scaled, micro-USD) would fill
+    /// against the resting `side` — the bids for [`Side::Buy`], the asks for
+    /// [`Side::Sell`] — walking it best price first, as a taker sweeping that side
+    /// would. Makers expired at `now_ms` are skipped, as matching skips them.
+    ///
+    /// `None` when `notional` is not positive, when the side holds less than
+    /// `notional` at positive prices, or on arithmetic overflow. It is an internal
+    /// aggregate for the sequencer's funding mark, not a public depth view.
+    ///
+    /// Integer arithmetic only, exact up to one final division: the walk counts
+    /// value in raw `size · price` units, so the level the remaining notional
+    /// exhausts gives the fractional base it needs, and the result is the
+    /// notional divided by the base consumed, in price scale, rounded down.
+    pub fn impact_price(&self, side: Side, notional: i128, now_ms: u64) -> Option<i128> {
+        if notional <= 0 {
+            return None;
+        }
+        match side {
+            Side::Buy => Self::sweep_average(self.bids.iter().rev(), notional, now_ms),
+            Side::Sell => Self::sweep_average(self.asks.iter(), notional, now_ms),
+        }
+    }
+
+    /// [`Self::impact_price`] over `levels`, given best price first.
+    fn sweep_average<'a>(
+        levels: impl Iterator<Item = (&'a i128, &'a VecDeque<Resting>)>,
+        notional: i128,
+        now_ms: u64,
+    ) -> Option<i128> {
+        // `size · price` carries this much scale beyond QUOTE_SCALE (see
+        // `perp_core::fixed::notional_quote`).
+        const NOTIONAL_DIVISOR: i128 = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
+        let target = notional.checked_mul(NOTIONAL_DIVISOR)?;
+        let mut left = target;
+        // base taken from the levels already used up, size-scaled
+        let mut base: i128 = 0;
+        for (&price, queue) in levels {
+            if price <= 0 {
+                return None;
+            }
+            let size = queue
+                .iter()
+                .filter(|r| !resting_expired(r, now_ms) && r.remaining > 0)
+                .try_fold(0i128, |acc, r| acc.checked_add(r.remaining))?;
+            if size == 0 {
+                continue;
+            }
+            let value = size.checked_mul(price)?;
+            if value >= left {
+                // This level gives `left / price` more base, so the average is
+                // target / (base + left / price) = target · price / (base · price + left).
+                let denominator = base.checked_mul(price)?.checked_add(left)?;
+                return target.checked_mul(price)?.checked_div(denominator);
+            }
+            base = base.checked_add(size)?;
+            left -= value;
+        }
+        None
     }
 
     /// Internal execution lookup. Public depth remains undisclosed.

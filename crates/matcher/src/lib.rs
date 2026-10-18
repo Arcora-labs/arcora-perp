@@ -865,6 +865,146 @@ mod tests {
 }
 
 #[cfg(test)]
+mod impact_price_tests {
+    use super::*;
+    use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
+    use perp_core::hash::word_u64;
+    use perp_core::order::{Side, TimeInForce};
+
+    const THOUSAND: i128 = 1_000 * QUOTE_SCALE;
+
+    fn rest(book: &mut OrderBook<Keccak256>, n: u64, side: Side, size: i128, price: i128) {
+        rest_until(book, n, side, size, price, 0);
+    }
+
+    fn rest_until(
+        book: &mut OrderBook<Keccak256>,
+        n: u64,
+        side: Side,
+        size: i128,
+        price: i128,
+        expiry_ms: u64,
+    ) {
+        let order = Order {
+            owner: word_u64(n),
+            market_id: 0,
+            side,
+            size,
+            limit_price: price,
+            tif: TimeInForce::Gtc,
+            reduce_only: false,
+            nonce: n,
+            expiry_ms,
+            ciphertext_commit: word_u64(n.wrapping_mul(31)),
+        };
+        let out = book.submit(&order, n, 0);
+        assert_eq!(out.status, SubmitStatus::Resting, "fixture order must rest");
+    }
+
+    #[test]
+    fn one_deep_level_prices_at_that_level() {
+        let mut book = OrderBook::<Keccak256>::new(0);
+        rest(&mut book, 1, Side::Buy, SIZE_SCALE, 99_000 * PRICE_SCALE);
+        rest(&mut book, 2, Side::Sell, SIZE_SCALE, 101_000 * PRICE_SCALE);
+        assert_eq!(
+            book.impact_price(Side::Buy, THOUSAND, 0),
+            Some(99_000 * PRICE_SCALE)
+        );
+        assert_eq!(
+            book.impact_price(Side::Sell, THOUSAND, 0),
+            Some(101_000 * PRICE_SCALE)
+        );
+    }
+
+    /// $400 at $100 and $600 at $50 buy 4 + 12 = 16 base units, an average of
+    /// $62.50 — walked from the best price on each side.
+    #[test]
+    fn the_average_weighs_each_level_by_the_base_it_gives() {
+        let mut bids = OrderBook::<Keccak256>::new(0);
+        rest(&mut bids, 1, Side::Buy, 4 * SIZE_SCALE, 100 * PRICE_SCALE);
+        rest(&mut bids, 2, Side::Buy, 100 * SIZE_SCALE, 50 * PRICE_SCALE);
+        assert_eq!(
+            bids.impact_price(Side::Buy, THOUSAND, 0),
+            Some(625 * PRICE_SCALE / 10)
+        );
+        let mut asks = OrderBook::<Keccak256>::new(0);
+        rest(&mut asks, 1, Side::Sell, 12 * SIZE_SCALE, 50 * PRICE_SCALE);
+        rest(
+            &mut asks,
+            2,
+            Side::Sell,
+            100 * SIZE_SCALE,
+            100 * PRICE_SCALE,
+        );
+        assert_eq!(
+            asks.impact_price(Side::Sell, THOUSAND, 0),
+            Some(625 * PRICE_SCALE / 10)
+        );
+    }
+
+    #[test]
+    fn a_side_without_the_notional_has_no_impact_price() {
+        let mut book = OrderBook::<Keccak256>::new(0);
+        // 9.99 units at $100 is $999 of bids: one dollar short.
+        rest(
+            &mut book,
+            1,
+            Side::Buy,
+            999 * SIZE_SCALE / 100,
+            100 * PRICE_SCALE,
+        );
+        assert_eq!(book.impact_price(Side::Buy, THOUSAND, 0), None);
+        assert_eq!(book.impact_price(Side::Sell, THOUSAND, 0), None);
+        // one more cent's worth of base reaches exactly $1,000
+        rest(&mut book, 2, Side::Buy, SIZE_SCALE / 100, 100 * PRICE_SCALE);
+        assert_eq!(
+            book.impact_price(Side::Buy, THOUSAND, 0),
+            Some(100 * PRICE_SCALE)
+        );
+        assert_eq!(book.impact_price(Side::Buy, 0, 0), None);
+        assert_eq!(book.impact_price(Side::Buy, -THOUSAND, 0), None);
+    }
+
+    #[test]
+    fn expired_makers_give_no_depth() {
+        let mut book = OrderBook::<Keccak256>::new(0);
+        rest_until(&mut book, 1, Side::Sell, SIZE_SCALE, 100 * PRICE_SCALE, 500);
+        rest(
+            &mut book,
+            2,
+            Side::Sell,
+            SIZE_SCALE * 100,
+            200 * PRICE_SCALE,
+        );
+        assert_eq!(
+            book.impact_price(Side::Sell, 50 * QUOTE_SCALE, 499),
+            Some(100 * PRICE_SCALE)
+        );
+        assert_eq!(
+            book.impact_price(Side::Sell, 50 * QUOTE_SCALE, 500),
+            Some(200 * PRICE_SCALE),
+            "the expired $100 ask is skipped"
+        );
+    }
+
+    #[test]
+    fn extreme_prices_fail_closed_without_panicking() {
+        let mut book = OrderBook::<Keccak256>::new(0);
+        // the level notional overflows
+        rest(&mut book, 1, Side::Sell, SIZE_SCALE, i128::MAX / 2);
+        // the level size overflows
+        rest(&mut book, 2, Side::Buy, i128::MAX / 2 + 1, 1);
+        rest(&mut book, 3, Side::Buy, i128::MAX / 2 + 1, 1);
+        assert_eq!(book.impact_price(Side::Sell, THOUSAND, 0), None);
+        assert_eq!(book.impact_price(Side::Buy, THOUSAND, 0), None);
+        // a tiny price with deep size is still a valid, finite average
+        let mut deep = OrderBook::<Keccak256>::new(0);
+        rest(&mut deep, 1, Side::Buy, i128::MAX / 4, 1);
+        assert_eq!(deep.impact_price(Side::Buy, THOUSAND, 0), Some(1));
+    }
+}
+
+#[cfg(test)]
 mod execution_removal_tests {
     use super::*;
     use perp_core::order::{Order, Side, TimeInForce};
