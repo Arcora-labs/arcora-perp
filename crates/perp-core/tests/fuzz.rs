@@ -196,6 +196,13 @@ fn run_session(seed: u64, steps: usize) {
             s.conservation_holds(),
             "conservation broken — seed={seed} step={step} op={op:?}"
         );
+        // every funding state stays in range (rate within the clamp, carry inside
+        // ±FUNDING_DIVISOR), so the post-state passes the pre-state shape check
+        assert_eq!(
+            s.validate_witness_shape(),
+            Ok(()),
+            "seed={seed} step={step} op={op:?}"
+        );
 
         // re-open from close-only occasionally so the session keeps exercising fills
         if matches!(s.mode, perp_core::Mode::CloseOnly) && rng.below(4) == 0 {

@@ -153,6 +153,11 @@ pub enum RejectReason {
     /// SEC-022: the fill would have left a leg closed with negative collateral, or still
     /// open below maintenance margin. Rejected rather than settled into parked debt.
     FillWouldBankrupt = 12,
+    /// The order adds exposure but its notional is below the minimum order size the
+    /// sequencer admits. This is off-chain admission policy, not an engine rule:
+    /// reduce-only orders are exempt, and a resting remainder below the minimum may
+    /// keep matching. Appended, so no existing encoding changes.
+    BelowMinimumSize = 13,
 }
 
 /// Per-batch public commitment to exactly what was sequenced (§2).
@@ -276,6 +281,61 @@ mod tests {
         };
         assert!(m.includes(&oh));
         assert_eq!(m.hash::<Keccak256>(), m.clone().hash::<Keccak256>());
+    }
+
+    #[test]
+    fn minimum_size_reason_is_appended_with_its_own_code() {
+        assert_eq!(RejectReason::BelowMinimumSize as u16, 13);
+        assert_eq!(RejectReason::FillWouldBankrupt as u16, 12);
+        let manifest = |r: RejectReason| BatchManifest {
+            previous_state_root: [0u8; 32],
+            batch_id: 1,
+            batch_time_ms: 0,
+            ordered: alloc::vec![],
+            rejected: alloc::vec![([4u8; 32], r)],
+            oracle_updates: alloc::vec![],
+            matching_rule_version: 1,
+            enclave_measurement: [9u8; 32],
+            sequencer_pubkey_epoch: 0,
+        };
+        // the manifest hash binds the reason code
+        assert_ne!(
+            manifest(RejectReason::BelowMinimumSize).hash::<Keccak256>(),
+            manifest(RejectReason::FillWouldBankrupt).hash::<Keccak256>()
+        );
+        assert_ne!(
+            manifest(RejectReason::BelowMinimumSize).hash::<Keccak256>(),
+            manifest(RejectReason::InvalidOrder).hash::<Keccak256>()
+        );
+    }
+
+    /// The witness carries the manifest, so the new reason must decode; the earlier
+    /// reasons keep their encodings.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn minimum_size_reason_round_trips_and_keeps_earlier_encodings() {
+        let all = [
+            RejectReason::Expired,
+            RejectReason::SelfTradePrevented,
+            RejectReason::PostOnlyWouldTake,
+            RejectReason::ReduceOnlyViolation,
+            RejectReason::InsufficientMargin,
+            RejectReason::MarketCloseOnly,
+            RejectReason::OracleUnavailable,
+            RejectReason::FillOrKillUnfillable,
+            RejectReason::Cancelled,
+            RejectReason::InvalidOrder,
+            RejectReason::FillPriceOutOfBand,
+            RejectReason::FillWouldBankrupt,
+            RejectReason::BelowMinimumSize,
+        ];
+        for (i, r) in all.iter().enumerate() {
+            let b = postcard::to_allocvec(r).expect("encode");
+            assert_eq!(b, alloc::vec![i as u8], "postcard variant index of {r:?}");
+            let back: RejectReason = postcard::from_bytes(&b).expect("decode");
+            assert_eq!(back, *r);
+        }
+        assert!(postcard::from_bytes::<RejectReason>(&[13]).is_err());
     }
 
     #[test]

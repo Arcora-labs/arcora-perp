@@ -180,7 +180,7 @@ fn full_lifecycle_conserves_throughout() {
             note_commitment: cm_w,
             spend_key: [1; 32],
             to: Some([0xCC; 20]),
-            nonce: 0,
+            nonce: 1,
         },
     ])
     .unwrap();
@@ -476,11 +476,10 @@ fn bad_debt_is_clawed_from_the_winners_via_adl() {
     })
     .unwrap();
 
-    let a_pos = s.position(&a, 0).unwrap();
-    assert_eq!(a_pos.size, 0, "the bad-debt position is closed");
-    assert_eq!(
-        a_pos.collateral, 0,
-        "ADL covers the bad debt from the winner — nothing parked"
+    assert!(
+        s.position(&a, 0).is_none(),
+        "ADL covers the bad debt from the winner — nothing parked, so the closed \
+         position's entry is removed"
     );
     let b_after = s.position(&b, 0).unwrap().collateral;
     assert!(
@@ -576,10 +575,9 @@ fn insurance_backstop_absorbs_bad_debt() {
         now_ms: 2_000,
     })
     .unwrap();
-    assert_eq!(
-        s.position(&owner_of(1), 0).unwrap().collateral,
-        0,
-        "bad debt fully covered by insurance"
+    assert!(
+        s.position(&owner_of(1), 0).is_none(),
+        "bad debt fully covered by insurance, so the closed entry is removed"
     );
     assert!(
         s.insurance_fund < before && s.insurance_fund > 0,
@@ -607,10 +605,9 @@ fn adl_covers_residual_after_insurance() {
         now_ms: 2_000,
     })
     .unwrap();
-    assert_eq!(
-        s.position(&owner_of(1), 0).unwrap().collateral,
-        0,
-        "insurance + ADL cover the bad debt"
+    assert!(
+        s.position(&owner_of(1), 0).is_none(),
+        "insurance + ADL cover the bad debt, so the closed entry is removed"
     );
     assert_eq!(s.insurance_fund, 0, "the small fund is fully drawn first");
     assert!(
@@ -701,7 +698,8 @@ fn true_insolvency_trips_close_only_when_winners_have_exited() {
     );
     assert!(s.conservation_holds());
     // Emergency phase-1 must remain possible after the actual insolvency
-    // circuit breaker, and flatten the surviving maker without an oracle.
+    // circuit breaker, and flatten the surviving maker without an oracle, at the
+    // last price the liquidation recorded.
     s.apply_batch(&[BatchOp::SettleAll]).unwrap();
     assert!(s
         .positions
@@ -797,10 +795,9 @@ fn adl_distributes_pro_rata_across_multiple_winners() {
 
     let b_take = b0 - s.position(&b, 0).unwrap().collateral;
     let c_take = c0 - s.position(&c, 0).unwrap().collateral;
-    assert_eq!(
-        s.position(&a, 0).unwrap().collateral,
-        0,
-        "ADL fully covered the loss across both winners"
+    assert!(
+        s.position(&a, 0).is_none(),
+        "ADL fully covered the loss across both winners, so the closed entry is removed"
     );
     assert!(b_take > 0 && c_take > 0, "both winners contributed");
     assert!(
@@ -1955,7 +1952,8 @@ fn external_in_has_exactly_one_writer_and_it_is_op_deposit() {
         stouches, 2,
         "expected exactly 2 whitespace-normalized occurrences of `self.external_in` \
          in state.rs outside its #[cfg(test)] module — the conservation identity \
-         read (`self.external_in - self.external_out`) and the root-binding read \
+         read (`self.external_in.checked_sub(self.external_out)`) and the \
+         root-binding read \
          (`word_i128(self.external_in)`) — found {stouches}. A NEW writer of \
          external_in belongs behind op_deposit's L1 binding in engine.rs; an \
          unbound writer is the fabrication SEC-024 removed."

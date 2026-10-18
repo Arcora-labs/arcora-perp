@@ -109,10 +109,13 @@ pub fn derive_roots(
     if manifest.previous_state_root != prev_state_root || manifest.batch_id != batch_id {
         return Err(EngineError::ManifestMismatch);
     }
-    // 2026-10-08 review: the state root hashes the markets map KEY, never
-    // `Market.id` — a decoded witness state could carry `Market { id: X }` under
-    // key `Y ≠ X` with an unchanged root. Fail closed before deriving anything.
-    state.validate_market_keys()?;
+    // Every serialized field the state root does not hash (a market's `id`, the
+    // funding map's key set, a position's `owner` and `market_id`) must agree with
+    // the key the root does hash, and every funding value must lie in the range
+    // the engine maintains. Fail closed before deriving anything. Fields derived
+    // on decode (empty-subtree roots, leaf and nullifier indexes, the nullifier
+    // chain) were already rebuilt from root-bound data.
+    state.validate_witness_shape()?;
     // Validate the summary without rewriting historical execution. Replacing all
     // operation times with the last tick changes funding intervals and may change
     // liquidation outcomes. External/L1 time anchoring remains a separate gate.
@@ -186,6 +189,81 @@ mod tests {
             derive_roots(&mut s, &[], &manifest).unwrap_err(),
             EngineError::MarketIdMismatch
         );
+    }
+
+    #[test]
+    fn rejects_funding_map_not_covering_exactly_the_markets() {
+        let mut base = DefaultState::new(16);
+        base.add_market(Market::conservative(0));
+        base.add_market(Market::conservative(1));
+        assert_eq!(base.validate_witness_shape(), Ok(()));
+
+        let mut missing = base.clone();
+        missing.funding.remove(&1);
+        let mut extra = base.clone();
+        extra
+            .funding
+            .insert(7, crate::funding::FundingState::default());
+        let mut moved = base.clone();
+        let f = moved.funding.remove(&1).unwrap();
+        moved.funding.insert(2, f);
+        for mut s in [missing, extra, moved] {
+            assert_eq!(
+                s.validate_witness_shape(),
+                Err(EngineError::FundingStateInvalid)
+            );
+            let manifest = manifest_for(&s, vec![]);
+            assert_eq!(
+                derive_roots(&mut s, &[], &manifest).unwrap_err(),
+                EngineError::FundingStateInvalid
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_position_fields_not_matching_map_key() {
+        use crate::position::Position;
+        let owner = word_u64(5);
+        let mut base = DefaultState::new(16);
+        base.add_market(Market::conservative(0));
+        base.add_market(Market::conservative(1));
+        let mut p = Position::empty(owner, 0);
+        p.collateral = 10 * QUOTE_SCALE;
+        base.positions.insert((owner, 0), p);
+        base.insurance_fund = -10 * QUOTE_SCALE; // keep conservation exact
+        assert_eq!(base.validate_witness_shape(), Ok(()));
+
+        let mut wrong_owner = base.clone();
+        wrong_owner.positions.get_mut(&(owner, 0)).unwrap().owner = word_u64(6);
+        let mut wrong_market = base.clone();
+        wrong_market
+            .positions
+            .get_mut(&(owner, 0))
+            .unwrap()
+            .market_id = 1;
+        for mut s in [wrong_owner, wrong_market] {
+            // the root hashes the key, so these fields alone leave it unchanged
+            assert_eq!(s.state_root(), base.state_root());
+            let manifest = manifest_for(&s, vec![]);
+            assert_eq!(
+                derive_roots(&mut s, &[], &manifest).unwrap_err(),
+                EngineError::PositionKeyMismatch
+            );
+        }
+    }
+
+    /// Binding only: an anchored entry with zero size and zero collateral is
+    /// accepted, and the batch built on it derives its roots.
+    #[test]
+    fn accepts_an_anchored_entry_with_zero_size_and_collateral() {
+        use crate::position::Position;
+        let owner = word_u64(5);
+        let mut s = DefaultState::new(16);
+        s.add_market(Market::conservative(0));
+        s.positions.insert((owner, 0), Position::empty(owner, 0));
+        assert_eq!(s.validate_witness_shape(), Ok(()));
+        let manifest = manifest_for(&s, vec![]);
+        assert!(derive_roots(&mut s, &[], &manifest).is_ok());
     }
 
     #[test]

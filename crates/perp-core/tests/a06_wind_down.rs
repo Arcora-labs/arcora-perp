@@ -59,7 +59,10 @@ fn a06_stranded_healthy_position_closes_without_counterparty_or_oracle() {
         .unwrap();
     assert_eq!(out.withdrawals.len(), 1);
     assert_eq!(out.withdrawals[0].amount, 100 * QUOTE_SCALE);
-    assert_eq!(s.position(&owner, 0).unwrap().collateral, 0);
+    assert!(
+        s.position(&owner, 0).is_none(),
+        "a full wind-down exit removes the entry"
+    );
     assert_eq!(s.external_out, 100 * QUOTE_SCALE);
     assert!(s.conservation_holds());
 }
@@ -115,7 +118,7 @@ fn a06_settle_all_reconciles_preexisting_pool_deficit_globally() {
         .values()
         .all(|p| p.size == 0 && p.collateral >= 0));
     assert!(s.notes.values().all(|n| n.amount >= 0));
-    assert_eq!(s.internal_value(), 150 * QUOTE_SCALE);
+    assert_eq!(s.internal_value(), Some(150 * QUOTE_SCALE));
     assert!(s.conservation_holds());
 }
 
