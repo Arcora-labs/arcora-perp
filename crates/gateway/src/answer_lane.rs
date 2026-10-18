@@ -16,10 +16,24 @@
 //! revert releases its slot and its hashes are planned again, so nothing wedges
 //! the lane.
 //!
+//! No nonce is ever skipped unless the chain holds a transaction there. A fee
+//! refusal at a fresh nonce (a full pool, a tip under the node's minimum) is
+//! retried at the same nonce with higher fees; a nonce is treated as occupied only
+//! when the node says a replacement is underpriced and the pending nonce confirms
+//! something is there. A stuck nonce this process did not fill (inherited at
+//! start, or occupied) is taken over by queued answers, or, when answers of ours
+//! wait behind it, replaced by a no-op transfer under the same bump caps, so it
+//! cannot hold the lane.
+//!
+//! The estimate refusing a payload is isolated by halving, behind the other
+//! queued answers, and a single refused answer is not sent again for
+//! `refused_ttl`; refusals never stop a round, so one batch cannot starve the
+//! next. Only failures that are not the payload's fault count toward
+//! `max_failures`.
+//!
 //! Nothing is persisted. A fresh pipeline reads the mined and pending nonces from
 //! the chain; transactions between them were sent before the restart and occupy
-//! slots until they mine. When one of them is stuck, queued answers replace it at
-//! its nonce.
+//! slots until they mine.
 //!
 //! Rounds are bounded by `round_budget`, and nothing here feeds the settle gate:
 //! the open-set read alone decides whether the settle loop may seal, and hashes no
@@ -56,7 +70,11 @@ pub(crate) struct Policy {
     /// Hashes in a transaction that mined successfully are not sent again for
     /// this long, so an open-set read taken before the mining does not resend them.
     pub recent_ttl: Duration,
-    /// Refused or failed broadcasts per round before the round stops.
+    /// A single answer whose estimate reverted is not sent again for this long,
+    /// so later rounds do not repeat the halving that isolated it.
+    pub refused_ttl: Duration,
+    /// Failed broadcasts per round that are not the payload's fault (an RPC or
+    /// account error) before the round stops. Payload refusals do not count.
     pub max_failures: usize,
 }
 
@@ -76,6 +94,9 @@ impl Default for Policy {
             // Below the watcher's 30 s tick, so the next round starts on time.
             round_budget: Duration::from_secs(25),
             recent_ttl: Duration::from_secs(120),
+            // Two watcher ticks: a refusal from a node lagging behind settlement
+            // clears soon, a persistent one costs one halving per minute.
+            refused_ttl: Duration::from_secs(60),
             max_failures: 16,
         }
     }
@@ -102,6 +123,9 @@ pub(crate) trait AnswerChain {
     fn fee_estimate(&self) -> Result<Fees, String>;
     /// Sign and broadcast without waiting for the receipt; the transaction hash.
     fn broadcast(&self, tx: &AnswerTx<'_>) -> Result<String, String>;
+    /// Sign and broadcast a no-op (a zero-value transfer to the answer account
+    /// itself) at `nonce`, without waiting for the receipt; the transaction hash.
+    fn cancel(&self, nonce: u64, fees: Fees) -> Result<String, String>;
     /// `Some(true)` mined and succeeded, `Some(false)` mined and reverted, `None`
     /// no receipt (still pending, or replaced by another transaction).
     fn receipt(&self, tx_hash: &str) -> Result<Option<bool>, String>;
@@ -141,8 +165,15 @@ pub(crate) struct RoundReport {
     /// Nonces consumed by a transaction this process did not send (one sent before
     /// a restart, or a replacement from elsewhere), or whose receipt was unreadable.
     pub replaced: usize,
-    /// In-flight transactions at their bump limit or fee cap.
+    /// No-op transfers broadcast to free a stuck nonce this process did not fill,
+    /// so the answers behind it can mine.
+    pub cancelled: usize,
+    /// In-flight transactions at their bump limit or fee cap, plus queued answers
+    /// whose fresh nonce the node keeps refusing at the fee cap.
     pub at_fee_cap: usize,
+    /// The lowest in-flight nonce, when no answer of ours is pending there and it
+    /// has been held longer than `bump_after`: every answer above it waits.
+    pub blocked_at: Option<u64>,
     /// Transactions still in flight when the round returned.
     pub in_flight: usize,
     /// Planned answers left for a later round.
@@ -152,7 +183,9 @@ pub(crate) struct RoundReport {
 
 /// The transactions at one nonce.
 struct Slot {
-    /// `None` for a transaction this process did not send (inherited at start).
+    /// The answers this process last broadcast (or is known to have pending) at
+    /// this nonce. `None` for a nonce it did not fill: a transaction inherited at
+    /// start, one found occupying the nonce, or a no-op transfer replacing those.
     payload: Option<(u64, Vec<ChallengeAnswer>)>,
     /// Fees of the latest broadcast attempt at this nonce.
     fees: Option<Fees>,
@@ -161,6 +194,8 @@ struct Slot {
     bumps: u32,
     /// The latest broadcast attempt (or the start, for an inherited slot).
     since: Instant,
+    /// When the slot was first tracked.
+    opened: Instant,
 }
 
 impl Slot {
@@ -171,6 +206,7 @@ impl Slot {
             hashes: Vec::new(),
             bumps: 0,
             since: now,
+            opened: now,
         }
     }
 }
@@ -183,6 +219,11 @@ pub(crate) struct Pipeline {
     next_nonce: Option<u64>,
     slots: BTreeMap<u64, Slot>,
     recent: HashMap<Digest, Instant>,
+    /// Single answers whose estimate reverted, and when.
+    refused: HashMap<Digest, Instant>,
+    /// Fees the node last refused as too low at the fresh nonce; the next attempt
+    /// there offers more. Cleared once a fresh nonce is filled.
+    fresh_floor: Option<Fees>,
 }
 
 impl Pipeline {
@@ -192,6 +233,8 @@ impl Pipeline {
             next_nonce: None,
             slots: BTreeMap::new(),
             recent: HashMap::new(),
+            refused: HashMap::new(),
+            fresh_floor: None,
         }
     }
 
@@ -213,22 +256,32 @@ impl Pipeline {
         let mut report = RoundReport::default();
         let start = clock.now();
         let deadline = start + self.policy.round_budget;
-        let ttl = self.policy.recent_ttl;
+        let (recent_ttl, refused_ttl) = (self.policy.recent_ttl, self.policy.refused_ttl);
         self.recent
-            .retain(|_, at| start.saturating_duration_since(*at) < ttl);
+            .retain(|_, at| start.saturating_duration_since(*at) < recent_ttl);
+        self.refused
+            .retain(|_, at| start.saturating_duration_since(*at) < refused_ttl);
         // Admitted after the first reconcile, so answers whose transaction just
         // reverted or was replaced are planned again in this round.
         let mut sends = Some(sends);
         let mut queue = VecDeque::new();
         let mut failures = 0;
         loop {
-            let now = clock.now();
-            let stop = self.reconcile(chain, now, &mut report).and_then(|()| {
-                if let Some(sends) = sends.take() {
-                    queue = self.admit(sends);
-                }
-                self.work(chain, now, &mut queue, &mut report, &mut failures)
-            });
+            let stop = self
+                .reconcile(chain, clock.now(), &mut report)
+                .and_then(|()| {
+                    if let Some(sends) = sends.take() {
+                        queue = self.admit(sends);
+                    }
+                    self.work(
+                        chain,
+                        clock,
+                        deadline,
+                        &mut queue,
+                        &mut report,
+                        &mut failures,
+                    )
+                });
             if let Err(stop) = stop {
                 report.first_error.get_or_insert(stop);
                 break;
@@ -241,21 +294,37 @@ impl Pipeline {
             }
             clock.sleep(self.policy.poll_every);
         }
+        let now = clock.now();
         report.in_flight = self.slots.len();
         report.deferred = queue
             .iter()
             .chain(sends.iter().flatten())
             .map(|(_, answers)| answers.len())
             .sum();
+        let fresh_at_cap = !queue.is_empty()
+            && self
+                .fresh_floor
+                .is_some_and(|f| replacement_fees(f, None, self.policy.max_fee_cap).is_none());
         report.at_fee_cap = self
             .slots
             .values()
             .filter(|slot| self.exhausted(slot))
-            .count();
+            .count()
+            + usize::from(fresh_at_cap);
+        report.blocked_at = self
+            .slots
+            .iter()
+            .next()
+            .filter(|(_, slot)| {
+                slot.payload.is_none()
+                    && now.saturating_duration_since(slot.opened) >= self.policy.bump_after
+            })
+            .map(|(nonce, _)| *nonce);
         report
     }
 
-    /// Planned answers minus those already in flight or recently mined.
+    /// Planned answers minus those already in flight, recently mined or recently
+    /// refused.
     fn admit(
         &self,
         sends: Vec<(u64, Vec<ChallengeAnswer>)>,
@@ -274,6 +343,7 @@ impl Pipeline {
                     .filter(|a| {
                         !in_flight.contains(&a.order_hash)
                             && !self.recent.contains_key(&a.order_hash)
+                            && !self.refused.contains_key(&a.order_hash)
                     })
                     .collect();
                 (!answers.is_empty()).then_some((batch, answers))
@@ -283,11 +353,22 @@ impl Pipeline {
 
     /// A slot that can no longer be replaced: only rebroadcast.
     fn exhausted(&self, slot: &Slot) -> bool {
-        slot.payload.is_some()
-            && slot.fees.is_some_and(|fees| {
-                slot.bumps >= self.policy.max_bumps
-                    || replacement_fees(fees, None, self.policy.max_fee_cap).is_none()
-            })
+        slot.fees.is_some_and(|fees| {
+            slot.bumps >= self.policy.max_bumps
+                || replacement_fees(fees, None, self.policy.max_fee_cap).is_none()
+        })
+    }
+
+    /// Fees for the next broadcast at the fresh nonce: the estimate, or more than
+    /// the node last refused there.
+    fn fresh_fees(&self, estimate: Fees) -> Fees {
+        let fees = initial_fees(estimate, &self.policy);
+        match self.fresh_floor {
+            Some(refused) => {
+                replacement_fees(refused, Some(fees), self.policy.max_fee_cap).unwrap_or(refused)
+            }
+            None => fees,
+        }
     }
 
     /// Read the mined nonce (and, once, the pending nonce) and release every slot
@@ -322,16 +403,42 @@ impl Pipeline {
         Ok(())
     }
 
-    /// Replace stuck transactions, then fill free slots from `queue`. An error
-    /// ends the round.
+    /// Track `payload` as ours at the fresh `nonce`, and move past it.
+    fn fill(
+        &mut self,
+        nonce: u64,
+        payload: (u64, Vec<ChallengeAnswer>),
+        fees: Fees,
+        hash: Option<String>,
+        now: Instant,
+    ) {
+        self.slots.insert(
+            nonce,
+            Slot {
+                payload: Some(payload),
+                fees: Some(fees),
+                hashes: hash.into_iter().collect(),
+                bumps: 0,
+                since: now,
+                opened: now,
+            },
+        );
+        self.next_nonce = Some(nonce + 1);
+        self.fresh_floor = None;
+    }
+
+    /// Replace stuck transactions, then fill free slots from `queue` until the
+    /// deadline. An error ends the round.
     fn work(
         &mut self,
         chain: &dyn AnswerChain,
-        now: Instant,
+        clock: &dyn Clock,
+        deadline: Instant,
         queue: &mut VecDeque<(u64, Vec<ChallengeAnswer>)>,
         report: &mut RoundReport,
         failures: &mut usize,
     ) -> Result<(), String> {
+        let now = clock.now();
         let mut estimate: Option<Option<Fees>> = None;
         let stuck: Vec<u64> = self
             .slots
@@ -344,7 +451,7 @@ impl Pipeline {
             self.replace(chain, nonce, now, fees, queue, report)?;
         }
 
-        while self.slots.len() < self.policy.max_in_flight {
+        while self.slots.len() < self.policy.max_in_flight && clock.now() < deadline {
             let Some((batch, answers)) = queue.pop_front() else {
                 break;
             };
@@ -352,69 +459,95 @@ impl Pipeline {
                 queue.push_front((batch, answers));
                 return Err("the fee estimate is unavailable".into());
             };
-            let fees = initial_fees(estimate, &self.policy);
+            let fees = self.fresh_fees(estimate);
             let Some(nonce) = self.next_nonce else {
                 queue.push_front((batch, answers));
                 break;
             };
-            let sent = chain.broadcast(&AnswerTx {
+            let error = match chain.broadcast(&AnswerTx {
                 nonce,
                 fees,
                 batch,
                 answers: &answers,
-            });
-            match sent {
+            }) {
                 Ok(hash) => {
-                    self.slots.insert(
-                        nonce,
-                        Slot {
-                            payload: Some((batch, answers)),
-                            fees: Some(fees),
-                            hashes: vec![hash],
-                            bumps: 0,
-                            since: now,
-                        },
-                    );
-                    self.next_nonce = Some(nonce + 1);
+                    self.fill(nonce, (batch, answers), fees, Some(hash), now);
                     report.submitted += 1;
+                    continue;
                 }
-                Err(error) => {
+                Err(error) => error,
+            };
+            let kind = classify(&error);
+            if kind != SendError::Known {
+                report.first_error.get_or_insert(error.clone());
+            }
+            let mut pause = false;
+            match kind {
+                // This very transaction is already pending (a broadcast whose
+                // reply was lost): the nonce holds our answers.
+                SendError::Known => {
+                    self.fill(nonce, (batch, answers), fees, None, now);
+                    report.submitted += 1;
+                    continue;
+                }
+                SendError::Wedged => {
+                    queue.push_front((batch, answers));
+                    return Err(error);
+                }
+                // Something mined at this nonce: read the chain again.
+                SendError::NonceTooLow => {
                     *failures += 1;
-                    let kind = classify(&error);
-                    report.first_error.get_or_insert(error.clone());
-                    match kind {
-                        SendError::Wedged => {
-                            queue.push_front((batch, answers));
-                            return Err(error);
-                        }
-                        // Something mined at this nonce: read the chain again.
-                        SendError::NonceTooLow => {
-                            queue.push_front((batch, answers));
-                            self.next_nonce = None;
-                            break;
-                        }
-                        // Something is already pending at this nonce.
-                        SendError::Occupied => {
-                            self.slots.insert(nonce, Slot::inherited(now));
-                            self.next_nonce = Some(nonce + 1);
-                            queue.push_front((batch, answers));
-                        }
-                        // Estimation refused the payload; the nonce is unused. Halve
-                        // so one bad entry cannot hold back the others; a single
-                        // refused entry waits for the next plan.
-                        SendError::Refused => {
-                            if answers.len() > 1 {
-                                let mut left = answers;
-                                let right = left.split_off(left.len() / 2);
-                                queue.push_front((batch, right));
-                                queue.push_front((batch, left));
-                            }
-                        }
-                    }
-                    if *failures >= self.policy.max_failures {
-                        return Err(format!("{failures} answer broadcasts failed this round"));
+                    queue.push_front((batch, answers));
+                    self.next_nonce = None;
+                    pause = true;
+                }
+                SendError::Occupied | SendError::Underpriced => {
+                    *failures += 1;
+                    queue.push_front((batch, answers));
+                    let occupied = kind == SendError::Occupied
+                        && chain.pending_nonce().is_ok_and(|pending| pending > nonce);
+                    if occupied {
+                        // Another transaction, paying at least as much, is pending
+                        // at this nonce: it holds a slot until it mines, and is
+                        // replaced if it gets stuck. The answers take the next nonce.
+                        self.slots.insert(
+                            nonce,
+                            Slot {
+                                fees: Some(fees),
+                                ..Slot::inherited(now)
+                            },
+                        );
+                        self.next_nonce = Some(nonce + 1);
+                    } else {
+                        // Nothing was added (a full pool, a tip under the node's
+                        // minimum, or nothing actually pending there): retry this
+                        // same nonce at the next poll with higher fees.
+                        self.fresh_floor = Some(fees);
+                        pause = true;
                     }
                 }
+                // The estimate reverted: the nonce is unused and the payload is
+                // refused. Halve, behind the other queued answers, so one bad entry
+                // cannot hold back the rest of its batch or any later batch; a
+                // single refused answer is skipped for `refused_ttl`.
+                SendError::Refused => match <[ChallengeAnswer; 1]>::try_from(answers) {
+                    Ok([single]) => {
+                        self.refused.insert(single.order_hash, now);
+                    }
+                    Err(answers) => split_to_back(queue, batch, answers),
+                },
+                // Not the payload's fault as far as we can tell: counted, and
+                // halved as the serial path does.
+                SendError::Failed => {
+                    *failures += 1;
+                    split_to_back(queue, batch, answers);
+                }
+            }
+            if *failures >= self.policy.max_failures {
+                return Err(format!("{failures} answer broadcasts failed this round"));
+            }
+            if pause {
+                break;
             }
         }
         Ok(())
@@ -455,7 +588,9 @@ impl Pipeline {
     }
 
     /// Replace (or, past the caps, rebroadcast) the stuck transaction at `nonce`.
-    /// An inherited one is replaced by queued answers. Errors only for a wedged RPC.
+    /// A nonce this process did not fill is taken over by queued answers, or, when
+    /// answers of ours wait behind it, by a no-op transfer. Errors only for a
+    /// wedged RPC.
     fn replace(
         &mut self,
         chain: &dyn AnswerChain,
@@ -465,6 +600,10 @@ impl Pipeline {
         queue: &mut VecDeque<(u64, Vec<ChallengeAnswer>)>,
         report: &mut RoundReport,
     ) -> Result<(), String> {
+        let ours_behind = self
+            .slots
+            .range(nonce.saturating_add(1)..)
+            .any(|(_, slot)| slot.payload.is_some());
         let policy = &self.policy;
         let Some(slot) = self.slots.get_mut(&nonce) else {
             return Ok(());
@@ -477,64 +616,84 @@ impl Pipeline {
                 None => estimate.map(|e| initial_fees(e, policy)),
             }
         };
-        // Our own payload, or queued answers taking over an inherited nonce.
-        let (payload, taken) = match &slot.payload {
-            Some(payload) => (payload.clone(), false),
-            None => {
-                let Some(next) = queue.pop_front() else {
+        // Our own answers; else queued answers taking over a nonce this process
+        // did not fill; else, when answers of ours wait behind it, a no-op (`None`).
+        let (content, taken) = match &slot.payload {
+            Some(payload) => (Some(payload.clone()), false),
+            None => match queue.pop_front() {
+                Some(next) => (Some(next), true),
+                None if ours_behind => (None, false),
+                // It holds back nothing of ours: let it mine on its own.
+                None => {
+                    slot.since = now;
                     return Ok(());
-                };
-                (next, true)
-            }
+                }
+            },
         };
         let (fees, bump) = match (replacement, slot.fees) {
             (Some(fees), _) => (fees, true),
-            // At the caps: rebroadcast our transaction unchanged.
-            (None, Some(fees)) if !taken => (fees, false),
+            // At the caps: rebroadcast what this process last sent here, unchanged.
+            (None, Some(fees)) if !taken && (slot.payload.is_some() || !slot.hashes.is_empty()) => {
+                (fees, false)
+            }
             (None, _) => {
-                if taken {
+                if let (true, Some(payload)) = (taken, content) {
                     queue.push_front(payload);
                 }
                 slot.since = now;
                 return Ok(());
             }
         };
-        let sent = chain.broadcast(&AnswerTx {
-            nonce,
-            fees,
-            batch: payload.0,
-            answers: &payload.1,
-        });
+        let sent = match &content {
+            Some((batch, answers)) => chain.broadcast(&AnswerTx {
+                nonce,
+                fees,
+                batch: *batch,
+                answers,
+            }),
+            None => chain.cancel(nonce, fees),
+        };
         slot.since = now;
-        match sent {
+        let error = match sent {
             Ok(hash) => {
                 if !slot.hashes.contains(&hash) {
                     slot.hashes.push(hash);
                 }
+                None
+            }
+            Err(error) => Some(error),
+        };
+        match error.as_deref().map(classify) {
+            // Broadcast, or this very transaction is already pending.
+            None | Some(SendError::Known) => {
                 if bump {
                     slot.fees = Some(fees);
                     slot.bumps += 1;
                     report.bumped += 1;
+                    if content.is_none() {
+                        report.cancelled += 1;
+                    }
                 }
                 if taken {
-                    slot.payload = Some(payload);
+                    slot.payload = content;
                 }
                 Ok(())
             }
-            Err(error) => {
-                if taken {
+            Some(kind) => {
+                let error = error.unwrap_or_default();
+                if let (true, Some(payload)) = (taken, content) {
                     queue.push_front(payload);
                 }
-                match classify(&error) {
+                match kind {
                     SendError::Wedged => {
                         report.first_error.get_or_insert(error.clone());
                         Err(error)
                     }
                     // Mined meanwhile: the next poll releases the slot.
                     SendError::NonceTooLow => Ok(()),
-                    // The pending transaction pays more than we knew (or is this
-                    // very one): start the next attempt from these fees.
-                    SendError::Occupied => {
+                    // The pending transaction pays more than we knew, or the node
+                    // wants more: start the next attempt from these fees.
+                    SendError::Occupied | SendError::Underpriced => {
                         if bump {
                             slot.fees = Some(fees);
                             slot.bumps += 1;
@@ -542,7 +701,7 @@ impl Pipeline {
                         Ok(())
                     }
                     // The pending transaction stays; retry after the next interval.
-                    SendError::Refused => {
+                    SendError::Refused | SendError::Failed | SendError::Known => {
                         report.first_error.get_or_insert(error);
                         Ok(())
                     }
@@ -552,36 +711,71 @@ impl Pipeline {
     }
 }
 
+/// Halve a refused multi-answer payload and queue both halves behind the rest.
+fn split_to_back(
+    queue: &mut VecDeque<(u64, Vec<ChallengeAnswer>)>,
+    batch: u64,
+    mut answers: Vec<ChallengeAnswer>,
+) {
+    if answers.len() > 1 {
+        let right = answers.split_off(answers.len() / 2);
+        queue.push_back((batch, answers));
+        queue.push_back((batch, right));
+    }
+}
+
 /// How a broadcast failed.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SendError {
     /// The RPC hung; stop the round.
     Wedged,
     /// The nonce is already mined.
     NonceTooLow,
-    /// A transaction is already pending at the nonce (identical, or paying more).
+    /// This very transaction is already in the pool.
+    Known,
+    /// A different transaction paying at least as much is pending at the nonce.
     Occupied,
-    /// The payload was refused (estimation reverted) or another error.
+    /// The fees are too low for the node (full pool, minimum tip, base fee);
+    /// nothing was added.
+    Underpriced,
+    /// The estimate reverted: the payload itself is refused.
     Refused,
+    /// Any other error (account, RPC or unknown).
+    Failed,
 }
 
 fn classify(error: &str) -> SendError {
     let e = error.to_ascii_lowercase();
-    if e.contains("timed out") {
+    let any = |needles: &[&str]| needles.iter().any(|n| e.contains(n));
+    if any(&["timed out"]) {
         SendError::Wedged
-    } else if e.contains("nonce too low")
-        || e.contains("nonce has already been used")
-        || e.contains("nonce_expired")
-    {
+    } else if any(&[
+        "nonce too low",
+        "nonce has already been used",
+        "nonce_expired",
+    ]) {
         SendError::NonceTooLow
-    } else if e.contains("underpriced")
-        || e.contains("already known")
-        || e.contains("already imported")
-        || e.contains("known transaction")
-    {
+    } else if any(&["already known", "already imported", "known transaction"]) {
+        SendError::Known
+    } else if any(&[
+        "replacement transaction underpriced",
+        "replacement fee too low",
+        "could not replace",
+    ]) {
         SendError::Occupied
-    } else {
+    } else if any(&[
+        "underpriced",
+        "txpool is full",
+        "pool is full",
+        "below minimum",
+        "less than block base fee",
+        "fee too low",
+    ]) {
+        SendError::Underpriced
+    } else if any(&["revert"]) {
         SendError::Refused
+    } else {
+        SendError::Failed
     }
 }
 
@@ -753,7 +947,60 @@ mod tests {
         fn accepted_nonces(&self) -> Vec<u64> {
             self.s().accepted.iter().map(|a| a.0).collect()
         }
+        /// Nonces of accepted no-op transfers.
+        fn cancelled_nonces(&self) -> Vec<u64> {
+            let s = self.s();
+            s.accepted
+                .iter()
+                .filter(|a| a.2 == CANCEL)
+                .map(|a| a.0)
+                .collect()
+        }
+        /// The pool's admission rules for one signed transaction.
+        fn submit(
+            &self,
+            nonce: u64,
+            fees: Fees,
+            batch: u64,
+            hashes: Vec<Digest>,
+        ) -> Result<String, String> {
+            let mut s = self.s();
+            s.broadcasts += 1;
+            if let Some(e) = s.fail_next.pop_front() {
+                return Err(e);
+            }
+            if hashes.iter().any(|x| s.refuse.contains(x)) {
+                return Err("execution reverted: NotIncluded()".into());
+            }
+            if nonce < s.mined {
+                return Err("nonce too low".into());
+            }
+            if let Some(old) = s.pool.get(&nonce) {
+                if old.fees == fees && old.hashes == hashes {
+                    return Err("transaction already imported".into());
+                }
+                if fees.max_fee * 10 < old.fees.max_fee * 11
+                    || fees.priority * 10 < old.fees.priority * 11
+                {
+                    return Err("replacement transaction underpriced".into());
+                }
+            }
+            s.counter += 1;
+            let hash = format!("0x{nonce:x}-{}", s.counter);
+            s.pool.insert(
+                nonce,
+                PoolTx {
+                    hash: hash.clone(),
+                    fees,
+                    hashes: hashes.clone(),
+                },
+            );
+            s.accepted.push((nonce, fees, batch, hashes));
+            Ok(hash)
+        }
     }
+    /// The batch an accepted no-op transfer is recorded under.
+    const CANCEL: u64 = u64::MAX;
     impl AnswerChain for FakeChain {
         fn mined_nonce(&self) -> Result<u64, String> {
             if self.s().reads_fail {
@@ -774,40 +1021,15 @@ mod tests {
                 .ok_or_else(|| "fee read failed".to_string())
         }
         fn broadcast(&self, tx: &AnswerTx<'_>) -> Result<String, String> {
-            let mut s = self.s();
-            s.broadcasts += 1;
-            if let Some(e) = s.fail_next.pop_front() {
-                return Err(e);
-            }
-            let hashes: Vec<Digest> = tx.answers.iter().map(|a| a.order_hash).collect();
-            if hashes.iter().any(|x| s.refuse.contains(x)) {
-                return Err("execution reverted: NotIncluded()".into());
-            }
-            if tx.nonce < s.mined {
-                return Err("nonce too low".into());
-            }
-            if let Some(old) = s.pool.get(&tx.nonce) {
-                if old.fees == tx.fees && old.hashes == hashes {
-                    return Err("transaction already imported".into());
-                }
-                if tx.fees.max_fee * 10 < old.fees.max_fee * 11
-                    || tx.fees.priority * 10 < old.fees.priority * 11
-                {
-                    return Err("replacement transaction underpriced".into());
-                }
-            }
-            s.counter += 1;
-            let hash = format!("0x{:x}-{}", tx.nonce, s.counter);
-            s.pool.insert(
+            self.submit(
                 tx.nonce,
-                PoolTx {
-                    hash: hash.clone(),
-                    fees: tx.fees,
-                    hashes: hashes.clone(),
-                },
-            );
-            s.accepted.push((tx.nonce, tx.fees, tx.batch, hashes));
-            Ok(hash)
+                tx.fees,
+                tx.batch,
+                tx.answers.iter().map(|a| a.order_hash).collect(),
+            )
+        }
+        fn cancel(&self, nonce: u64, fees: Fees) -> Result<String, String> {
+            self.submit(nonce, fees, CANCEL, vec![])
         }
         fn receipt(&self, tx_hash: &str) -> Result<Option<bool>, String> {
             Ok(self.s().receipts.get(tx_hash).copied())
@@ -1149,18 +1371,35 @@ mod tests {
         assert_eq!(report.submitted, 1);
         assert_eq!(chain.accepted_nonces(), vec![0, 5]);
 
-        // Something already pending at the next nonce occupies a slot.
+        // Another transaction really pending at the next nonce (and paying more)
+        // occupies a slot; the answer goes to the nonce after it, and every nonce
+        // mines.
         let chain = FakeChain::new();
         let clock = TestClock::new();
         let mut lane = Pipeline::new(calm());
         lane.round(&chain, &clock, sends(&[1]));
-        chain
-            .s()
-            .fail_next
-            .push_back("replacement transaction underpriced".into());
+        chain.preload(
+            1,
+            Fees {
+                max_fee: 1_000,
+                priority: 100,
+            },
+        );
         let report = lane.round(&chain, &clock, sends(&[2]));
         assert_eq!(chain.accepted_nonces(), vec![0, 2]);
         assert_eq!(report.in_flight, 3);
+        chain.mine();
+        let report = lane.round(&chain, &clock, sends(&[2]));
+        assert_eq!(chain.s().mined, 3, "no gap: every nonce mined");
+        assert_eq!(
+            (
+                report.mined,
+                report.answered,
+                report.replaced,
+                report.in_flight
+            ),
+            (2, 2, 1, 0)
+        );
 
         // One refused entry is isolated by halving; the others go out.
         let chain = FakeChain::new();
@@ -1195,6 +1434,273 @@ mod tests {
         let report = lane.round(&chain, &TestClock::new(), sends(&[1]));
         assert_eq!((chain.s().broadcasts, report.deferred), (0, 1));
         assert!(report.first_error.is_some());
+    }
+
+    #[test]
+    fn a_fee_refusal_at_a_fresh_nonce_retries_that_nonce_and_never_leaves_a_gap() {
+        // Nothing is added to the pool for any of these, so skipping the nonce
+        // would leave a gap no later transaction can mine past.
+        for refusal in [
+            "server returned an error response: error code -32000: transaction underpriced",
+            "txpool is full",
+            "gas price below minimum: gas tip cap 1, minimum needed 2",
+            "max fee per gas less than block base fee",
+            // Claimed occupied, but nothing is pending there (the pending nonce
+            // says so).
+            "replacement transaction underpriced",
+        ] {
+            let chain = FakeChain::new();
+            chain.s().fail_next.push_back(refusal.into());
+            let clock = TestClock::new();
+            let mut lane = Pipeline::new(calm());
+            let report = lane.round(&chain, &clock, sends(&[1]));
+            assert_eq!(chain.accepted_nonces(), vec![0], "{refusal}: {report:?}");
+            let fees = chain.s().accepted[0].1;
+            assert!(
+                fees.max_fee > 100 && fees.priority > 10,
+                "{refusal}: retried with higher fees, got {fees:?}"
+            );
+            assert_eq!(report.in_flight, 1, "{refusal}");
+            chain.mine();
+            let report = lane.round(&chain, &clock, sends(&[1]));
+            assert_eq!(
+                (report.mined, report.answered, report.in_flight),
+                (1, 1, 0),
+                "{refusal}"
+            );
+        }
+
+        // The reviewer's scenario: one transient refusal, then normal blocks.
+        let chain = FakeChain::new();
+        chain.s().fail_next.push_back(
+            "server returned an error response: error code -32000: transaction underpriced".into(),
+        );
+        let clock = TestClock::new();
+        let policy = Policy {
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(25),
+            ..calm()
+        };
+        let mut lane = Pipeline::new(policy);
+        let mut answered = lane.round(&chain, &clock, sends(&[1])).answered;
+        for _ in 0..3 {
+            chain.mine();
+            clock.advance(Duration::from_secs(30));
+            answered += lane.round(&chain, &clock, sends(&[1])).answered;
+        }
+        assert_eq!((chain.s().mined, answered), (1, 1));
+        assert!(chain.accepted_nonces().iter().all(|n| *n == 0));
+    }
+
+    #[test]
+    fn stuck_nonces_this_process_did_not_send_never_wedge_answers_behind_them() {
+        // After a restart during a fee spike: two inherited transactions below the
+        // base fee, the default four slots, and the planned answers at 9 and 10.
+        let chain = FakeChain::new();
+        chain.s().mined = 7;
+        let low = Fees {
+            max_fee: 20,
+            priority: 1,
+        };
+        chain.preload(7, low);
+        chain.preload(8, low);
+        let clock = TestClock::new();
+        let policy = Policy {
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(25),
+            ..calm()
+        };
+        let mut lane = Pipeline::new(policy);
+        let report = lane.round(&chain, &clock, sends(&[1, 2]));
+        let mut answered = report.answered;
+        assert_eq!(chain.accepted_nonces()[..2], [9, 10]);
+        // Nothing is queued to take the stuck nonces over, so no-ops replace them
+        // within the bump interval; the round names the blocking nonce.
+        assert_eq!(chain.cancelled_nonces(), vec![7, 8]);
+        assert_eq!(
+            (report.cancelled, report.blocked_at, report.in_flight),
+            (2, Some(7), 4),
+            "{report:?}"
+        );
+        for _ in 0..5 {
+            chain.mine();
+            clock.advance(Duration::from_secs(30));
+            // The open set stops listing the hashes once they are answered.
+            let plan = if answered < 2 { sends(&[1, 2]) } else { vec![] };
+            answered += lane.round(&chain, &clock, plan).answered;
+        }
+        assert_eq!(chain.s().mined, 11, "nonces 7 and 8 were filled");
+        assert_eq!(answered, 2, "both answers mined");
+        assert_eq!(lane.in_flight(), 0);
+
+        // A stuck nonce that holds back nothing of ours is left to mine on its own.
+        let chain = FakeChain::new();
+        chain.s().mined = 7;
+        chain.preload(7, low);
+        let clock = TestClock::new();
+        let policy = Policy {
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(25),
+            ..calm()
+        };
+        let mut lane = Pipeline::new(policy);
+        let report = lane.round(&chain, &clock, vec![]);
+        assert_eq!(chain.s().broadcasts, 0);
+        assert_eq!((report.blocked_at, report.in_flight), (Some(7), 1));
+
+        // At the bump limit a no-op is only rebroadcast, and counts at the cap.
+        let chain = FakeChain::new();
+        chain.s().mined = 7;
+        chain.s().base_fee = 10_000;
+        chain.preload(7, low);
+        let clock = TestClock::new();
+        let policy = Policy {
+            bump_after: Duration::from_secs(20),
+            max_bumps: 2,
+            round_budget: Duration::from_secs(100),
+            ..calm()
+        };
+        let mut lane = Pipeline::new(policy);
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!(chain.cancelled_nonces(), vec![7, 7]);
+        assert_eq!(chain.accepted_nonces(), vec![8, 7, 8, 7, 8]);
+        assert_eq!((report.cancelled, report.at_fee_cap), (2, 2), "{report:?}");
+
+        // The same with a nonce taken by an "already known" reply after a lost
+        // broadcast: the answers it carries are ours and keep being bumped.
+        let chain = FakeChain::new();
+        chain.s().base_fee = 10_000;
+        chain
+            .s()
+            .fail_next
+            .push_back("cast timed out after 90s (RPC wedged)".into());
+        let clock = TestClock::new();
+        let policy = Policy {
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(25),
+            ..calm()
+        };
+        let mut lane = Pipeline::new(policy);
+        lane.round(&chain, &clock, sends(&[1]));
+        // The timed-out send did reach the pool.
+        chain.s().pool.insert(
+            0,
+            PoolTx {
+                hash: "0xlost".into(),
+                fees: Fees {
+                    max_fee: 100,
+                    priority: 10,
+                },
+                hashes: vec![h(1)],
+            },
+        );
+        clock.advance(Duration::from_secs(30));
+        lane.round(&chain, &clock, sends(&[1]));
+        // The base fee settles above what the lost transaction pays: it mines only
+        // once replaced with higher fees.
+        chain.s().base_fee = 120;
+        let mut answered = 0;
+        for _ in 0..5 {
+            chain.mine();
+            clock.advance(Duration::from_secs(30));
+            let plan = if answered < 1 { sends(&[1]) } else { vec![] };
+            answered += lane.round(&chain, &clock, plan).answered;
+        }
+        assert!(chain.s().pool.is_empty(), "nothing left stuck");
+        assert_eq!(chain.s().mined, 1);
+        assert!(chain.accepted_nonces().iter().all(|n| *n == 0), "no gap");
+        assert_eq!(answered, 1);
+        assert_eq!(lane.in_flight(), 0);
+    }
+
+    #[test]
+    fn refusals_in_an_earlier_batch_never_starve_answers_in_later_batches() {
+        for bad in [9u8, 8, 12, 40] {
+            let chain = FakeChain::new();
+            for n in 1..=bad {
+                chain.s().refuse.insert(h(n));
+            }
+            let clock = TestClock::new();
+            let mut lane = Pipeline::new(calm());
+            let plan = vec![
+                (1, (1..=bad).map(answer).collect::<Vec<_>>()),
+                (2, vec![answer(50)]),
+            ];
+            let report = lane.round(&chain, &clock, plan.clone());
+            assert!(
+                chain.s().accepted.iter().any(|a| a.3.contains(&h(50))),
+                "bad={bad}: {report:?}"
+            );
+            assert!(report.first_error.unwrap().contains("NotIncluded"));
+            // Isolated refusals are not bisected again by the next rounds.
+            let before = chain.s().broadcasts;
+            lane.round(&chain, &clock, plan);
+            assert_eq!(chain.s().broadcasts, before, "bad={bad}");
+        }
+
+        // Many batches, each with one refused entry, all reach the chain.
+        let chain = FakeChain::new();
+        let clock = TestClock::new();
+        let mut lane = Pipeline::new(Policy {
+            max_in_flight: 64,
+            ..calm()
+        });
+        let mut plan = Vec::new();
+        for batch in 0..30u8 {
+            let bad = 100 + batch;
+            chain.s().refuse.insert(h(bad));
+            plan.push((u64::from(batch), vec![answer(bad), answer(batch + 1)]));
+        }
+        lane.round(&chain, &clock, plan);
+        let sent: HashSet<Digest> = chain
+            .s()
+            .accepted
+            .iter()
+            .flat_map(|a| a.3.clone())
+            .collect();
+        assert!((1..=30).all(|n| sent.contains(&h(n))), "{sent:?}");
+
+        // Failures that are not the payload's fault still stop the round.
+        let chain = FakeChain::new();
+        for _ in 0..40 {
+            chain
+                .s()
+                .fail_next
+                .push_back("insufficient funds for gas * price + value".into());
+        }
+        let clock = TestClock::new();
+        let mut lane = Pipeline::new(calm());
+        let report = lane.round(&chain, &clock, sends(&(1..=30).collect::<Vec<_>>()));
+        assert_eq!(chain.s().broadcasts, calm().max_failures);
+        assert!(report.first_error.unwrap().contains("insufficient funds"));
+    }
+
+    #[test]
+    fn broadcast_errors_are_classified_by_what_they_say_about_the_nonce() {
+        use SendError::*;
+        for (error, kind) in [
+            ("cast timed out after 90s (RPC wedged)", Wedged),
+            ("nonce too low: next nonce 5, tx nonce 4", NonceTooLow),
+            ("already known", Known),
+            ("transaction already imported", Known),
+            ("known transaction: 0xabc", Known),
+            ("replacement transaction underpriced", Occupied),
+            ("replacement fee too low", Occupied),
+            ("could not replace existing tx", Occupied),
+            ("transaction underpriced", Underpriced),
+            ("txpool is full", Underpriced),
+            ("gas price below minimum: gas tip cap 0", Underpriced),
+            ("max fee per gas less than block base fee", Underpriced),
+            ("execution reverted: NotIncluded()", Refused),
+            (
+                "server returned an error response: error code 3: execution reverted",
+                Refused,
+            ),
+            ("insufficient funds for gas * price + value", Failed),
+            ("error sending request: connection refused", Failed),
+        ] {
+            assert_eq!(classify(error), kind, "{error}");
+        }
     }
 
     #[test]

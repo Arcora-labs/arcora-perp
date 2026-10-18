@@ -1837,6 +1837,19 @@ impl crate::answer_lane::AnswerChain for CastAnswerChain<'_> {
         let out = self.l1.cast(&refs)?;
         async_tx_hash(&out).ok_or_else(|| "cast send printed no transaction hash".into())
     }
+    fn cancel(&self, nonce: u64, fees: crate::answer_lane::Fees) -> Result<String, String> {
+        let args = cancel_send_args(
+            &self.lane.address,
+            nonce,
+            fees,
+            &self.lane.keystore_path,
+            &self.lane.password_file,
+            &self.l1.rpc,
+        );
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = self.l1.cast(&refs)?;
+        async_tx_hash(&out).ok_or_else(|| "cast send printed no transaction hash".into())
+    }
     fn receipt(&self, tx_hash: &str) -> Result<Option<bool>, String> {
         let out = self.l1.cast(&[
             "rpc",
@@ -1866,13 +1879,56 @@ fn answer_send_args(
         ANSWER_CHALLENGES_SIG.into(),
     ];
     a.extend(answer_challenges_args(tx.batch, tx.answers));
-    a.extend([
+    a.extend(explicit_send_flags(
+        tx.nonce,
+        tx.fees,
+        keystore,
+        password_file,
+        rpc,
+    ));
+    a
+}
+
+/// `cast send` for a no-op that frees a stuck nonce of the answer key: a
+/// zero-value transfer to itself at the plain-transfer gas limit (nothing to
+/// estimate), with explicit nonce and fees, returning at broadcast.
+fn cancel_send_args(
+    address: &str,
+    nonce: u64,
+    fees: crate::answer_lane::Fees,
+    keystore: &str,
+    password_file: &str,
+    rpc: &str,
+) -> Vec<String> {
+    let mut a: Vec<String> = ["send", address, "--value", "0", "--gas-limit", "21000"]
+        .map(String::from)
+        .into();
+    a.extend(explicit_send_flags(
+        nonce,
+        fees,
+        keystore,
+        password_file,
+        rpc,
+    ));
+    a
+}
+
+/// Nonce, EIP-1559 fees, `--async` and the answer key: the flags every pipelined
+/// answer-lane send carries.
+fn explicit_send_flags(
+    nonce: u64,
+    fees: crate::answer_lane::Fees,
+    keystore: &str,
+    password_file: &str,
+    rpc: &str,
+) -> [String; 13] {
+    [
         "--nonce".into(),
-        tx.nonce.to_string(),
+        nonce.to_string(),
         "--gas-price".into(),
-        tx.fees.max_fee.to_string(),
+        fees.max_fee.to_string(),
         "--priority-gas-price".into(),
-        tx.fees.priority.to_string(),
+        fees.priority.to_string(),
         "--async".into(),
         "--keystore".into(),
         keystore.into(),
@@ -1880,8 +1936,7 @@ fn answer_send_args(
         password_file.into(),
         "--rpc-url".into(),
         rpc.into(),
-    ]);
-    a
+    ]
 }
 
 /// The hash `cast send --async` prints, if its output is exactly one.
@@ -1913,14 +1968,27 @@ fn receipt_status(out: &str) -> Result<Option<bool>, String> {
     }
 }
 
-/// One line per round that did something; a warning when answers reverted or a
-/// transaction sits at its fee cap.
+/// One line per round that did something; a warning when answers reverted, a
+/// transaction sits at its fee cap, or a nonce this process did not fill blocks the lane.
 fn log_answer_round(r: &crate::answer_lane::RoundReport) {
     if r.submitted + r.bumped + r.mined + r.reverted + r.replaced > 0 || r.deferred > 0 {
         println!(
-            "[l1] answer lane: {} sent, {} fee-bumped, {} mined ({} answers), {} replaced; \
-             {} in flight, {} answers deferred",
-            r.submitted, r.bumped, r.mined, r.answered, r.replaced, r.in_flight, r.deferred
+            "[l1] answer lane: {} sent, {} fee-bumped ({} as no-ops), {} mined ({} answers), \
+             {} replaced; {} in flight, {} answers deferred",
+            r.submitted,
+            r.bumped,
+            r.cancelled,
+            r.mined,
+            r.answered,
+            r.replaced,
+            r.in_flight,
+            r.deferred
+        );
+    }
+    if let Some(nonce) = r.blocked_at {
+        eprintln!(
+            "[l1] WARN: answer lane blocked at nonce {nonce} by a transaction this process did \
+             not send; it is replaced while answers wait behind it"
         );
     }
     if r.reverted > 0 {
@@ -2930,6 +2998,22 @@ mod tests {
         );
         assert_eq!(args, expected);
         assert!(!args.iter().any(|a| a == "--json" || a == "--gas-limit"));
+
+        // A no-op freeing a stuck nonce: a zero-value transfer to the answer
+        // account itself, same nonce and fee flags, no estimate.
+        let args = cancel_send_args("0xanswer", 12, tx.fees, "/ans/ks", "/ans/pw", "http://rpc");
+        let mut expected: Vec<String> =
+            ["send", "0xanswer", "--value", "0", "--gas-limit", "21000"]
+                .map(String::from)
+                .into();
+        expected.extend_from_slice(&args[6..]);
+        assert_eq!(args, expected);
+        assert_eq!(
+            args[6..],
+            answer_send_args("0xsettlement", &tx, "/ans/ks", "/ans/pw", "http://rpc")
+                [3 + answer_challenges_args(7, &answers).len()..]
+        );
+        assert!(!args.iter().any(|a| a == ANSWER_CHALLENGES_SIG));
     }
 
     #[test]
@@ -3070,7 +3154,7 @@ mod tests {
         assert_eq!(nonce("pending"), 6);
 
         // A restart reads both nonces from the chain and inherits the two pending.
-        let mut restarted = Pipeline::new(policy);
+        let mut restarted = Pipeline::new(policy.clone());
         let r = restarted.round(&chain, &clock, sends(&[7, 8]));
         assert_eq!((r.submitted, r.in_flight), (2, 4), "{r:?}");
         assert_eq!(nonce("pending"), 8);
@@ -3078,6 +3162,32 @@ mod tests {
         let r = restarted.round(&chain, &clock, vec![]);
         assert_eq!((r.replaced, r.mined, r.in_flight), (2, 2, 0), "{r:?}");
         assert_eq!(nonce("latest"), 8);
+
+        // A restart during a fee spike: the two inherited transactions are stuck
+        // with nothing queued to replace them, so zero-value transfers to the
+        // answer key take their nonces and the answers behind them mine.
+        let mut before = Pipeline::new(policy.clone());
+        let r = before.round(&chain, &clock, sends(&[9, 10]));
+        assert_eq!((r.submitted, r.in_flight), (2, 2), "{r:?}");
+        let mut restarted = Pipeline::new(policy.clone());
+        let r = restarted.round(&chain, &clock, sends(&[11, 12]));
+        assert_eq!((r.submitted, r.in_flight), (2, 4), "{r:?}");
+        assert_eq!(nonce("pending"), 12);
+        rpc_call(&["anvil_setNextBlockBaseFeePerGas", "0xba43b7400"]);
+        rpc_call(&["evm_mine"]);
+        assert_eq!(nonce("latest"), 8, "all four are stuck");
+        clock.sleep(policy.bump_after);
+        let r = restarted.round(&chain, &clock, vec![]);
+        assert_eq!(
+            (r.cancelled, r.bumped, r.blocked_at),
+            (2, 4, Some(8)),
+            "{r:?}"
+        );
+        assert_eq!(nonce("pending"), 12, "replaced at the same nonces");
+        rpc_call(&["evm_mine"]);
+        assert_eq!(nonce("latest"), 12);
+        let r = restarted.round(&chain, &clock, vec![]);
+        assert_eq!((r.mined, r.answered, r.in_flight), (4, 2, 0), "{r:?}");
         let _ = std::fs::remove_dir_all(dir);
     }
 
