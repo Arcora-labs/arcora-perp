@@ -22,6 +22,8 @@ import tempfile
 import threading
 import time
 
+import gateway_formats
+
 ROOT = Path(__file__).resolve().parents[2]
 
 # Values (including the generated signer secret) travel only through anonymous
@@ -221,8 +223,9 @@ def main():
                     # The baseline authorization's genuine durability ACK captures
                     # registration, address binding and (for cancel) the pending order.
                     baseline_permit = ok(port, 'POST', '/v1/accounts/deposit/authorize', permit, key)
-                    # New snapshots use v9; v8 is supported only as a legacy reader format.
-                    require(state.read_bytes().startswith(b'DPSNAP9\0'), 'encrypted snapshot format')
+                    # New snapshots use the current writer magic (parsed from snapshot.rs);
+                    # older magics are supported only as legacy reader formats.
+                    require(state.read_bytes().startswith(gateway_formats.snapshot_magic()), 'encrypted snapshot format')
                     baseline_hash = sha256(state)
                     baseline_account = ok(port, 'GET', '/v1/accounts/me', key=key)
                     if operation == 'authorize':

@@ -22,11 +22,11 @@ def config():
                  for i, role in enumerate(sorted(release.ADDRESS_ROLES), 1)}
     gateway = {env: addresses[role] for env, role in release.ENV_ADDRESSES.items()}
     gateway.update(L1_CHAIN_ID="31337", L1_ALLOW_MOCK_PROOF="0", DEPOSIT_PERMIT_TTL_SECS="1800")
-    return {"chain_id": 31337, "addresses": addresses, "program_vkey": release.clock.EXPECTED_VKEY,
+    return {"chain_id": 31337, "addresses": addresses, "program_vkey": release.clock.REVIEWED_GUEST["vkey"],
             "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 3_600_000},
             "gateway": gateway,
-            "prover": {"program_vkey": release.clock.EXPECTED_VKEY,
-                       "guest_elf_sha256": release.clock.EXPECTED_ELF}}
+            "prover": {"program_vkey": release.clock.REVIEWED_GUEST["vkey"],
+                       "guest_elf_sha256": release.clock.REVIEWED_GUEST["elf"]}}
 
 
 class ConfigTests(unittest.TestCase):
@@ -40,7 +40,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_legacy_stack_with_new_key_is_still_rejected(self):
         old = release.read_json(release.ROOT / "contracts/deployments/base-sepolia.json")
-        old["contracts"]["SP1ZkVerifier"]["programVKey"] = release.clock.EXPECTED_VKEY
+        old["contracts"]["SP1ZkVerifier"]["programVKey"] = release.clock.REVIEWED_GUEST["vkey"]
         with self.assertRaisesRegex(ValueError, "no clock verifier"):
             release.check_deployment_config(old)
 
@@ -166,7 +166,7 @@ class ArtifactTests(unittest.TestCase):
         source = self.root / "crates/sp1-guest/src/new.rs"
         source.parent.mkdir(parents=True)
         source.write_text("unreviewed guest code")
-        with patch.object(release.clock, "EXPECTED_GUEST_SOURCES", {}):
+        with patch.dict(release.clock.REVIEWED_GUEST, {"sources": {}}):
             with self.assertRaisesRegex(ValueError, "source layout changed"):
                 release.verify_reviewed_guest(self.root)
             source.unlink()
@@ -256,10 +256,12 @@ class ArtifactTests(unittest.TestCase):
     @patch.object(release, "build_manifest")
     def test_missing_fields_and_forged_readiness_do_not_pass(self, build):
         expected = {"schema": release.SCHEMA, "source": {"files_sha256": {"a": "123"}},
-                    "compiled_contracts": {"settlement": "456"}, "scope": dict(release.SCOPE)}
+                    "compiled_contracts": {"settlement": "456"}, "scope": dict(release.SCOPE),
+                    "public_config": release.public_config(config()),
+                    "real_proof": {"status": release.clock.PROVEN}}
         build.return_value = expected
         release.validate_manifest(self.root, expected, config())
-        for field in ("source", "compiled_contracts", "scope"):
+        for field in ("source", "compiled_contracts", "scope", "real_proof"):
             bad = copy.deepcopy(expected)
             bad.pop(field)
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, "manifest mismatch"):
@@ -273,6 +275,12 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual(bad, expected)  # Python equality alone would accept it.
         with self.assertRaisesRegex(ValueError, "manifest mismatch"):
             release.validate_manifest(self.root, bad, config())
+        # A manifest cannot claim PROVEN when the files on disk say otherwise.
+        pending = copy.deepcopy(expected)
+        pending["real_proof"]["status"] = release.clock.PENDING_REPROOF
+        build.return_value = pending
+        with self.assertRaisesRegex(ValueError, "manifest mismatch"):
+            release.validate_manifest(self.root, expected, config(), owned_test_chain=True)
 
 
 class RuntimeTests(unittest.TestCase):
@@ -320,7 +328,8 @@ class TargetTests(unittest.TestCase):
         self.public = config()
         self.addresses = self.public["addresses"]
         self.by_address = {value: role for role, value in self.addresses.items()}
-        self.manifest = {"schema": release.SCHEMA, "public_config": self.public, "compiled_contracts": {}}
+        self.manifest = {"schema": release.SCHEMA, "public_config": self.public, "compiled_contracts": {},
+                         "real_proof": {"status": release.clock.PROVEN}}
         for role, (relative, _, _) in release.CONTRACTS.items():
             path = self.root / "contracts" / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -337,7 +346,7 @@ class TargetTests(unittest.TestCase):
             ("clock_verifier", "settlement()"): self.addresses["settlement"],
             ("clock_verifier", "innerVerifier()"): self.addresses["sp1_adapter"],
             ("sp1_adapter", "gateway()"): self.addresses["sp1_gateway"],
-            ("sp1_adapter", "programVKey()"): release.clock.EXPECTED_VKEY,
+            ("sp1_adapter", "programVKey()"): release.clock.REVIEWED_GUEST["vkey"],
             ("clock_verifier", "maxWindowMs()"): 30000,
             ("clock_verifier", "clockSkewMs()"): 10000,
             ("clock_verifier", "anchorTimeoutMs()"): 3_600_000,
@@ -483,11 +492,126 @@ class TargetTests(unittest.TestCase):
         self.assertNotIn("private-provider-credential", json.dumps(result))
 
 
+PENDING_GUEST = {"elf": "cd" * 32, "vkey": "0x" + "ab" * 32}
+
+
+class ProofStatusGateTests(unittest.TestCase):
+    """The real proof status, read from disk, gates release creation and non-owned targets."""
+
+    def expected(self, status, chain_id=31337):
+        value = config()
+        value["chain_id"] = chain_id
+        value["gateway"]["L1_CHAIN_ID"] = str(chain_id)
+        return {"schema": release.SCHEMA, "public_config": release.public_config(value),
+                "real_proof": {"status": status}, "scope": dict(release.SCOPE)}
+
+    def test_manifest_records_the_status_and_both_identities(self):
+        record = release.real_proof(release.ROOT)
+        self.assertEqual(record["status"], release.clock.PROVEN)
+        self.assertEqual(record["proof"]["proof_sha256"], release.clock.PROOF_FIXTURE["proof_sha256"])
+        self.assertEqual(record["proof"]["program_vkey"], release.clock.PROOF_FIXTURE["vkey"])
+        self.assertEqual(record["reviewed"], {"guest_elf_sha256": release.clock.REVIEWED_GUEST["elf"],
+                                              "program_vkey": release.clock.REVIEWED_GUEST["vkey"]})
+        with patch.dict(release.clock.REVIEWED_GUEST, PENDING_GUEST):
+            record = release.real_proof(release.ROOT)
+        self.assertEqual(record["status"], release.clock.PENDING_REPROOF)
+        self.assertEqual(record["reviewed"]["program_vkey"], PENDING_GUEST["vkey"])
+        self.assertEqual(record["proof"]["program_vkey"], release.clock.PROOF_FIXTURE["vkey"])
+
+    def test_create_requires_proven(self):
+        with patch.object(release, "build_manifest", return_value=self.expected(release.clock.PROVEN)):
+            self.assertEqual(release.create_manifest(release.ROOT, config())["real_proof"]["status"],
+                             release.clock.PROVEN)
+        with patch.object(release, "build_manifest", return_value=self.expected(release.clock.PENDING_REPROOF)):
+            with self.assertRaisesRegex(ValueError, "create requires a committed proof"):
+                release.create_manifest(release.ROOT, config())
+
+    def test_validate_refuses_a_non_owned_target_while_pending(self):
+        for chain_id in (31337, 84532, 8453):
+            pending = self.expected(release.clock.PENDING_REPROOF, chain_id)
+            value = copy.deepcopy(pending)
+            with self.subTest(chain_id=chain_id), patch.object(release, "build_manifest", return_value=pending):
+                with self.assertRaisesRegex(ValueError, "validate refused: real proof status is PENDING_REPROOF"):
+                    release.validate_manifest(release.ROOT, value, config())
+                if chain_id in release.PUBLIC_BASE_CHAINS:
+                    # Offline, a public Base chain id is never an owned test chain.
+                    with self.assertRaisesRegex(ValueError, "validate refused"):
+                        release.validate_manifest(release.ROOT, value, config(), owned_test_chain=True)
+                else:
+                    self.assertEqual(release.validate_manifest(release.ROOT, value, config(),
+                                                               owned_test_chain=True), pending)
+            proven = self.expected(release.clock.PROVEN, chain_id)
+            with self.subTest(chain_id=chain_id, status="PROVEN"), \
+                    patch.object(release, "build_manifest", return_value=proven):
+                self.assertEqual(release.validate_manifest(release.ROOT, copy.deepcopy(proven), config()), proven)
+        with self.assertRaisesRegex(ValueError, "owned test chain declaration"):
+            release.validate_manifest(release.ROOT, self.expected(release.clock.PROVEN), config(), owned_test_chain=1)
+
+    def test_ownership_follows_the_deploy_rule(self):
+        self.assertTrue(release.target_owned(84532, True, False))
+        self.assertTrue(release.target_owned(31337, False, True))
+        self.assertFalse(release.target_owned(31337, False, False))
+        self.assertFalse(release.target_owned(84532, False, True))
+        self.assertFalse(release.target_owned(8453, False, True))
+        self.assertFalse(release.target_owned(900, "anvil", 1))
+
+
+class PendingTargetTests(unittest.TestCase):
+    """observe-target while PENDING_REPROOF: only an owned test chain is observed."""
+    setUp = TargetTests.setUp
+    rpc = TargetTests.rpc
+    word = staticmethod(TargetTests.word)
+
+    def pending(self, chain_id=31337):
+        self.manifest["real_proof"] = {"status": release.clock.PENDING_REPROOF}
+        self.public["chain_id"] = chain_id
+        self.overrides["eth_chainId"] = hex(chain_id)
+
+    def observe(self, client, **kwargs):
+        self.overrides["web3_clientVersion"] = client
+        return release.observe_target(self.root, self.manifest, self.public, self.rpc, **kwargs)
+
+    def test_non_owned_target_is_refused_before_any_contract_read(self):
+        self.pending()
+        result = self.observe("Geth/v1.14")
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("observe-target refused: real proof status is PENDING_REPROOF", result["blocker"])
+        self.assertEqual(result["real_proof_status"], release.clock.PENDING_REPROOF)
+        self.assertIs(result["target_owned"], False)
+        self.assertEqual([method for method, _ in self.calls], ["eth_chainId", "web3_clientVersion"])
+
+    def test_owned_anvil_including_the_base_sepolia_id_is_observed(self):
+        for chain_id in (31337, 84532):
+            self.calls.clear()
+            self.pending(chain_id)
+            with self.subTest(chain_id=chain_id):
+                result = self.observe("anvil/v1.2.3")
+                self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
+                self.assertIs(result["target_owned"], True)
+                self.assertIn("web3_clientVersion", {method for method, _ in self.calls})
+
+    def test_declared_owned_test_chain_is_never_a_public_base_chain(self):
+        self.pending(900)
+        self.assertEqual(self.observe("Geth/v1.14", owned_test_chain=True)["status"], "VERIFIED_AT_FINALIZED_BLOCK")
+        self.pending(84532)
+        result = self.observe("Geth/v1.14", owned_test_chain=True)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("observe-target refused", result["blocker"])
+
+    def test_proven_status_does_not_query_the_client(self):
+        result = release.observe_target(self.root, self.manifest, self.public, self.rpc)
+        self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
+        self.assertEqual(result["real_proof_status"], release.clock.PROVEN)
+        self.assertNotIn("web3_clientVersion", {method for method, _ in self.calls})
+        self.assertNotIn("target_owned", result)
+
+
 class TransportTests(unittest.TestCase):
     def test_read_allowlist_precedes_transport_and_rejects_credential_urls(self):
         rpc = release.TargetRPC("https://example.invalid")
         with self.assertRaisesRegex(ValueError, "read-only allowlist"):
             rpc("eth_sendTransaction", [])
+        self.assertEqual(release.READ_METHODS - release.deployment_reader.READ_METHODS, {"web3_clientVersion"})
         for url in ("https://user:password@example.invalid", "https://example.invalid?key=private"):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 release.TargetRPC(url)
@@ -600,7 +724,7 @@ class AnvilTargetTests(unittest.TestCase):
         addresses["sp1_verifier"] = deploy("sp1_verifier")
         addresses["sp1_gateway"] = deploy("sp1_gateway", owner)
         transact(release.deployment_reader.selector("addRoute(address)") + word(addresses["sp1_verifier"]), addresses["sp1_gateway"])
-        addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_gateway"], release.clock.EXPECTED_VKEY)
+        addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_gateway"], release.clock.REVIEWED_GUEST["vkey"])
         addresses["clock_verifier"] = deploy("clock_verifier", addresses["sp1_adapter"], 30000, 10000, 3_600_000)
         # DarkPerpSettlement.Config: 12 words, a static struct encoded inline.
         addresses["settlement"] = deploy("settlement", owner, accounts[1], addresses["clock_verifier"], 0,

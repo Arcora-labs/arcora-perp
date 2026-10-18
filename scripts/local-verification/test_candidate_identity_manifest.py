@@ -36,7 +36,7 @@ class ManifestTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         names = (set(identity.candidate.CANDIDATE_SOURCES)
-                 | set(identity.legacy.clock.EXPECTED_GUEST_SOURCES)
+                 | set(identity.legacy.clock.HISTORICAL_V2_GUEST_SOURCES)
                  | set(identity.AUXILIARY_TEST_SOURCES))
         names |= {identity.BUILDER, "Cargo.toml", "Cargo.lock", "contracts/foundry.toml", identity.FIXTURE + "/guest.elf",
                   identity.FIXTURE + "/metadata.json"}
@@ -85,7 +85,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(manifest["scope"], identity.SCOPE)
         self.assertEqual(manifest["program"]["witness_wire"], "DPCLK3")
         self.assertEqual(manifest["program"]["inner_clock_proof_version"], 2)
-        self.assertNotEqual(manifest["program"]["program_vkey"], identity.legacy.clock.EXPECTED_VKEY)
+        self.assertNotEqual(manifest["program"]["program_vkey"], identity.legacy.clock.REVIEWED_GUEST["vkey"])
         self.assertNotIn("setup_key", manifest["program"])
         self.assertEqual(len(manifest["pins"]["reviewed_v2_sources_sha256"]), 21)
         self.assertEqual(len(manifest["pins"]["candidate_sources_sha256"]), 9)
@@ -103,7 +103,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(manifest["source"]["code_commit"], "1" * 40)
 
     def test_legacy_schema_and_keys_cannot_cross_validate(self):
-        for key in (identity.legacy.clock.EXPECTED_VKEY, "0x" + "ab" * 32):
+        for key in (identity.legacy.clock.REVIEWED_GUEST["vkey"], "0x" + "ab" * 32):
             value = config()
             value["program_vkey"] = key
             with self.subTest(key=key), self.assertRaises(ValueError):
@@ -124,7 +124,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_wrong_elf_including_reviewed_v2_is_rejected(self):
         path = self.root / identity.FIXTURE / "guest.elf"
-        for data in (b"\x7fELFwrong-candidate", (identity.ROOT / identity.legacy.FIXTURE / "guest.elf").read_bytes()):
+        for data in (b"\x7fELFwrong-candidate", (identity.ROOT / identity.legacy.clock.REVIEWED_GUEST["identity_dir"] / "guest.elf").read_bytes()):
             path.write_bytes(data)
             with self.assertRaises(ValueError):
                 self.manifest()
@@ -160,7 +160,7 @@ class ManifestTests(unittest.TestCase):
     def test_candidate_metadata_sdk_key_and_scope_cannot_be_promoted(self):
         path = self.root / identity.FIXTURE / "metadata.json"
         original = identity.read_json(path)
-        for field, value in (("sdk_version", "6.2.0"), ("measured_program_vkey", identity.legacy.clock.EXPECTED_VKEY),
+        for field, value in (("sdk_version", "6.2.0"), ("measured_program_vkey", identity.legacy.clock.REVIEWED_GUEST["vkey"]),
                              ("elf_bytes", True), ("proof_generated", True), ("production_approved", True),
                              ("independent_build", True)):
             modified = copy.deepcopy(original); modified[field] = value

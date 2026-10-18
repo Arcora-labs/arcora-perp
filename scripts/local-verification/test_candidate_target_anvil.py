@@ -291,7 +291,7 @@ class CandidateTargetAnvilTests(unittest.TestCase):
                 rejected(name, expected=bad_policy)
 
         bad_key = copy.deepcopy(public)
-        bad_key["program_vkey"] = legacy.clock.EXPECTED_VKEY
+        bad_key["program_vkey"] = legacy.clock.REVIEWED_GUEST["vkey"]
         blocked_key, attempted = observe(bad_key)
         self.assertEqual(blocked_key["status"], "BLOCKED")
         self.assertEqual(attempted, [], "wrong reviewed-v2 key must be rejected before RPC")

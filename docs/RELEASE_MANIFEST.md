@@ -91,6 +91,26 @@ fails before startup on a mismatch. It does not install a startup hook or change
 running services; that integration must be configured in the target environment.
 No key values are read or emitted by the environment check.
 
+## Real proof status
+
+Two clock identities are pinned separately in
+`scripts/local-verification/verify_clock_proof.py`: `REVIEWED_GUEST` (with
+`REVIEWED_FIXTURE`), the guest this checkout must build, and `PROOF_FIXTURE`, the
+committed real proof the Solidity gate verifies. `proof_status()` reads the
+committed proof files from disk and returns `PROVEN` only when they are a proof of
+the reviewed fixture under the reviewed guest; otherwise `PENDING_REPROOF`. Editing
+a record without committing new proof files does not change the status.
+
+Every manifest records `real_proof` (that status plus both identities). `create`
+requires `PROVEN`. While the status is not `PROVEN`, `validate` and
+`observe-target` accept only an owned test chain, using the same rule as
+`deploy_clock_stack.py`: an Anvil client (asked through `web3_clientVersion`, so
+an Anvil fork at chain id 84532 qualifies), or an operator declaration
+`--owned-test-chain` for a chain id that is not a public Base network. Offline
+`validate` cannot see the client, so it needs the declaration. The deploy tool
+likewise refuses a target that is not an owned test chain until the status is
+`PROVEN`.
+
 ## Reject a legacy deployment record
 
 ```sh
@@ -117,7 +137,8 @@ python3.11 scripts/local-verification/release_manifest.py observe-target \
 ```
 
 The command uses only `eth_chainId`, `eth_getBlockByNumber`, `eth_getCode` and
-`eth_call`. It does not deploy, transact, import keys, change services or repair a
+`eth_call`, plus `web3_clientVersion` while the real proof status is not
+`PROVEN`. It does not deploy, transact, import keys, change services or repair a
 bad binding. The endpoint must support the `finalized` tag and EIP-1898 block-hash
 parameters with `requireCanonical: true`. Unsupported finality/hash pinning is a
 failure; there is no `latest` or block-number fallback. The finalized anchor and

@@ -13,7 +13,8 @@ import sys
 import verify_clock_proof as clock
 import verify_real_proof as target
 
-PROOF_SHA256 = "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89"
+# Calldata copy of the committed real proof; its hash is PROOF_FIXTURE["proof_sha256"].
+CALLDATA = "integration/fixtures/clock-v2/verified-calldata/proof.bin"
 EXPECTED_TESTS = {"SP1RealVerifierGuardTest": 8, "SP1RealProofTest": 10, "ClockBoundRealProofTest": 6}
 
 
@@ -23,16 +24,16 @@ def main():
     args = parser.parse_args()
     source_hashes = clock.verify_guest_source()
     target.verify_vendor()
-    path = target.CONTRACTS / "integration/fixtures/clock-v2/verified-calldata/proof.bin"
+    path = target.CONTRACTS / CALLDATA
     target.require(path.is_file() and not path.is_symlink(), "regular pinned proof required")
     proof = path.read_bytes()
-    target.require(len(proof) == 356 and target.sha256(proof) == PROOF_SHA256, "pinned proof changed")
+    target.require(len(proof) == 356 and target.sha256(proof) == clock.PROOF_FIXTURE["proof_sha256"],
+                   "pinned proof changed")
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=False)
     env = {key: os.environ[key] for key in ("PATH", "HOME", "TMPDIR") if key in os.environ}
-    env.update(ARCORA_REAL_PROGRAM_VKEY=clock.EXPECTED_VKEY,
-               ARCORA_REAL_PUBLIC_COMMITMENT=clock.EXPECTED_COMMITMENT,
-               ARCORA_REAL_PROOF="0x" + proof.hex(), FOUNDRY_PROFILE="default")
+    # The suites verify the committed proof, so every input is PROOF_FIXTURE's.
+    env.update(clock.forge_environment(proof), FOUNDRY_PROFILE="default")
     target.run(["forge", "build", "--root", str(target.VENDOR)], output, "upstream-build", env)
     env["FOUNDRY_PROFILE"] = "real_proof"
     result = target.run(["forge", "test", "--root", str(target.CONTRACTS), "--match-contract",
@@ -51,10 +52,13 @@ def main():
               "mock_token_used": True, "synthetic_zero_payer": True,
               "fixed_constructor_addresses": True, "production_deployed": False,
               "full_production_lifecycle": False, "sdk_verification_claimed": False,
-              "proof_sha256": PROOF_SHA256, "guest_elf_sha256": clock.EXPECTED_ELF,
-              "program_vkey": clock.EXPECTED_VKEY, "public_commitment": clock.EXPECTED_COMMITMENT,
-              "guest_source_sha256": source_hashes,
-              "scope": "Actual SP1 verifier, clock adapter, settlement and synthetic vault withdrawal; not full HTTP/order/production lifecycle."}
+              "proof_sha256": clock.PROOF_FIXTURE["proof_sha256"], "guest_elf_sha256": clock.PROOF_FIXTURE["elf"],
+              "program_vkey": clock.PROOF_FIXTURE["vkey"], "public_commitment": clock.PROOF_FIXTURE["commitment"],
+              **clock.identities(),
+              # Same value under the existing key and under the record's name.
+              "guest_source_sha256": source_hashes, "reviewed_guest_source_sha256": source_hashes,
+              "scope": "Actual SP1 verifier, clock adapter, settlement and synthetic vault withdrawal; not full HTTP/order/production lifecycle.",
+              "identity_scope": clock.IDENTITY_SCOPE}
     (output / "verification.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
     print(json.dumps(report, sort_keys=True))
 
