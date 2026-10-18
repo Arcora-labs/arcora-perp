@@ -104,8 +104,8 @@ pub struct L1 {
     /// resets it to re-seed from chain on the next attempt.
     nonce: std::sync::Arc<std::sync::Mutex<Option<u64>>>,
     /// Optional separate key for challenge answers (`L1_ANSWER_KEYSTORE`), with its
-    /// own nonce lane so answers never queue behind a register, settle or bond send.
-    /// `None` falls back to the sequencer lane.
+    /// own pipelined nonce lane so answers never queue behind a register, settle or
+    /// bond send. `None` falls back to serial answers on the sequencer lane.
     answer: Option<AnswerLane>,
     /// Bond top-up target and the operator's slash acknowledgement (shared by clones).
     bond_policy: std::sync::Arc<BondPolicy>,
@@ -124,14 +124,15 @@ pub struct L1 {
     stake_sweep: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
-/// A second signing key and its nonce tracker. The key file is the operator's;
-/// the gateway never writes or removes it.
+/// A second signing key and the pipeline that owns its nonces (up to four answer
+/// transactions in flight, replaced with higher fees when stuck). The key file is
+/// the operator's; the gateway never writes or removes it.
 #[derive(Clone)]
 struct AnswerLane {
     keystore_path: String,
     password_file: String,
     address: String,
-    nonce: std::sync::Arc<std::sync::Mutex<Option<u64>>>,
+    pipeline: std::sync::Arc<std::sync::Mutex<crate::answer_lane::Pipeline>>,
 }
 
 /// One signer as `send_on` sees it.
@@ -877,12 +878,11 @@ impl L1 {
                 "L1_ANSWER_KEYSTORE must hold a different key than L1_SEQUENCER_KEY".into(),
             );
         }
-        Ok(AnswerLane {
+        Ok(AnswerLane::new(
             keystore_path,
             password_file,
-            address: crate::hex0x(&parsed),
-            nonce: std::sync::Arc::new(std::sync::Mutex::new(None)),
-        })
+            crate::hex0x(&parsed),
+        ))
     }
 
     /// Read-only JSON-RPC, with the same subprocess and network deadlines as the bridge.
@@ -1011,19 +1011,6 @@ impl L1 {
             password_file: &self.password_file,
             address: None,
             nonce: &self.nonce,
-        }
-    }
-
-    /// The answer key's lane when configured, else the sequencer's.
-    fn answer_lane(&self) -> Lane<'_> {
-        match &self.answer {
-            Some(a) => Lane {
-                keystore_path: &a.keystore_path,
-                password_file: &a.password_file,
-                address: Some(&a.address),
-                nonce: &a.nonce,
-            },
-            None => self.sequencer_lane(),
         }
     }
 
@@ -1653,10 +1640,39 @@ impl L1 {
         })
     }
 
+    /// One round of challenge answers: `(answers in transactions that mined
+    /// successfully, first error)`. With an answer key the round is pipelined on its
+    /// own lane (`answer_lane::Pipeline`); without one, answers go out one receipt at
+    /// a time on the sequencer lane, behind its nonce lock and fence.
+    pub(crate) fn answer_round(
+        &self,
+        sends: Vec<(u64, Vec<ChallengeAnswer>)>,
+    ) -> (usize, Option<String>) {
+        let Some(lane) = &self.answer else {
+            return crate::challenge_scan::send_answers(sends, |batch, answers| {
+                let tx = self.answer_challenges(batch, answers)?;
+                println!(
+                    "[l1] answered {} inclusion challenge(s) from batch {batch} tx {tx}",
+                    answers.len()
+                );
+                Ok(tx)
+            });
+        };
+        let chain = CastAnswerChain { l1: self, lane };
+        let report = lane
+            .pipeline
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .round(&chain, &crate::answer_lane::SystemClock, sends);
+        log_answer_round(&report);
+        (report.answered, report.first_error)
+    }
+
     /// Answer open challenges proven by one settled batch with a single
-    /// `answerChallenges` call from the answer lane. Entries closed meanwhile are
-    /// skipped on-chain; one invalid proof reverts the whole call.
-    pub(crate) fn answer_challenges(
+    /// `answerChallenges` call on the sequencer lane, waiting for the receipt (the
+    /// fallback without an answer key). Entries closed meanwhile are skipped
+    /// on-chain; one invalid proof reverts the whole call.
+    fn answer_challenges(
         &self,
         batch_id: u64,
         answers: &[ChallengeAnswer],
@@ -1667,12 +1683,22 @@ impl L1 {
         let args = answer_challenges_args(batch_id, answers);
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
         self.send_on(
-            self.answer_lane(),
+            self.sequencer_lane(),
             &self.settlement.clone(),
             ANSWER_CHALLENGES_SIG,
             &refs,
             None,
         )
+    }
+
+    /// `eth_getTransactionCount(address, block)` as cast reads it.
+    fn account_nonce(&self, address: &str, block: &str) -> Result<u64, String> {
+        let out = self.cast(&["nonce", address, "--block", block, "--rpc-url", &self.rpc])?;
+        out.split_whitespace()
+            .next()
+            .unwrap_or("")
+            .parse::<u64>()
+            .map_err(|e| format!("{block} nonce parse: {e}"))
     }
 
     /// Ask the settle loop to sweep stake refunds (after answers were sent).
@@ -1749,6 +1775,167 @@ pub(crate) fn answer_challenges_args(batch_id: u64, answers: &[ChallengeAnswer])
                 .collect(),
         ),
     ]
+}
+
+impl AnswerLane {
+    fn new(keystore_path: String, password_file: String, address: String) -> Self {
+        Self {
+            keystore_path,
+            password_file,
+            address,
+            pipeline: std::sync::Arc::new(std::sync::Mutex::new(
+                crate::answer_lane::Pipeline::new(crate::answer_lane::Policy::default()),
+            )),
+        }
+    }
+}
+
+/// The answer key as `answer_lane::Pipeline` drives it: `cast` reads of its nonces,
+/// fees and receipts, and sends that return at broadcast with explicit fees.
+struct CastAnswerChain<'a> {
+    l1: &'a L1,
+    lane: &'a AnswerLane,
+}
+
+impl crate::answer_lane::AnswerChain for CastAnswerChain<'_> {
+    fn mined_nonce(&self) -> Result<u64, String> {
+        self.l1.account_nonce(&self.lane.address, "latest")
+    }
+    fn pending_nonce(&self) -> Result<u64, String> {
+        self.l1.account_nonce(&self.lane.address, "pending")
+    }
+    fn fee_estimate(&self) -> Result<crate::answer_lane::Fees, String> {
+        let base = self.l1.cast(&["base-fee", "--rpc-url", &self.l1.rpc])?;
+        let base: u128 = base
+            .trim()
+            .parse()
+            .map_err(|e| format!("base fee parse: {e}"))?;
+        // Not every node serves the tip suggestion; the policy floor covers that.
+        let priority = self
+            .l1
+            .cast(&["rpc", "eth_maxPriorityFeePerGas", "--rpc-url", &self.l1.rpc])
+            .ok()
+            .and_then(|out| quantity(&out))
+            .unwrap_or(0);
+        Ok(crate::answer_lane::Fees {
+            max_fee: base.saturating_mul(2).saturating_add(priority),
+            priority,
+        })
+    }
+    fn broadcast(&self, tx: &crate::answer_lane::AnswerTx<'_>) -> Result<String, String> {
+        if tx.answers.is_empty() {
+            return Err("no challenge answers to send".into());
+        }
+        let args = answer_send_args(
+            &self.l1.settlement,
+            tx,
+            &self.lane.keystore_path,
+            &self.lane.password_file,
+            &self.l1.rpc,
+        );
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = self.l1.cast(&refs)?;
+        async_tx_hash(&out).ok_or_else(|| "cast send printed no transaction hash".into())
+    }
+    fn receipt(&self, tx_hash: &str) -> Result<Option<bool>, String> {
+        let out = self.l1.cast(&[
+            "rpc",
+            "eth_getTransactionReceipt",
+            tx_hash,
+            "--rpc-url",
+            &self.l1.rpc,
+        ])?;
+        receipt_status(&out)
+    }
+}
+
+/// `cast send` for one pipelined answer transaction: explicit nonce and EIP-1559
+/// fees, and `--async` so it returns the hash at broadcast instead of waiting
+/// for the receipt. No gas limit: estimation still refuses an invalid payload
+/// before anything is broadcast.
+fn answer_send_args(
+    settlement: &str,
+    tx: &crate::answer_lane::AnswerTx<'_>,
+    keystore: &str,
+    password_file: &str,
+    rpc: &str,
+) -> Vec<String> {
+    let mut a: Vec<String> = vec![
+        "send".into(),
+        settlement.into(),
+        ANSWER_CHALLENGES_SIG.into(),
+    ];
+    a.extend(answer_challenges_args(tx.batch, tx.answers));
+    a.extend([
+        "--nonce".into(),
+        tx.nonce.to_string(),
+        "--gas-price".into(),
+        tx.fees.max_fee.to_string(),
+        "--priority-gas-price".into(),
+        tx.fees.priority.to_string(),
+        "--async".into(),
+        "--keystore".into(),
+        keystore.into(),
+        "--password-file".into(),
+        password_file.into(),
+        "--rpc-url".into(),
+        rpc.into(),
+    ]);
+    a
+}
+
+/// The hash `cast send --async` prints, if its output is exactly one.
+fn async_tx_hash(out: &str) -> Option<String> {
+    let line = out.lines().map(str::trim).rfind(|l| !l.is_empty())?;
+    let line = line.trim_matches('"');
+    let hex = line.strip_prefix("0x")?;
+    (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then(|| line.to_string())
+}
+
+/// A JSON-RPC quantity (`"0x…"`, quoted or not) as a number.
+fn quantity(out: &str) -> Option<u128> {
+    let hex = out.trim().trim_matches('"').strip_prefix("0x")?;
+    u128::from_str_radix(hex, 16).ok()
+}
+
+/// `eth_getTransactionReceipt` output: `None` while there is no receipt,
+/// otherwise whether the transaction succeeded.
+fn receipt_status(out: &str) -> Result<Option<bool>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(out.trim()).map_err(|e| format!("receipt parse: {e}"))?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    match value.get("status").and_then(|s| s.as_str()) {
+        Some("0x1") => Ok(Some(true)),
+        Some("0x0") => Ok(Some(false)),
+        _ => Err("receipt without a status".into()),
+    }
+}
+
+/// One line per round that did something; a warning when answers reverted or a
+/// transaction sits at its fee cap.
+fn log_answer_round(r: &crate::answer_lane::RoundReport) {
+    if r.submitted + r.bumped + r.mined + r.reverted + r.replaced > 0 || r.deferred > 0 {
+        println!(
+            "[l1] answer lane: {} sent, {} fee-bumped, {} mined ({} answers), {} replaced; \
+             {} in flight, {} answers deferred",
+            r.submitted, r.bumped, r.mined, r.answered, r.replaced, r.in_flight, r.deferred
+        );
+    }
+    if r.reverted > 0 {
+        eprintln!(
+            "[l1] WARN: {} answer transaction(s) reverted; their challenges are planned again",
+            r.reverted
+        );
+    }
+    if r.at_fee_cap > 0 {
+        eprintln!(
+            "[l1] WARN: {} answer transaction(s) at the bump limit or fee cap; rebroadcasting \
+             unchanged",
+            r.at_fee_cap
+        );
+    }
 }
 
 /// Bond terms `ensure_bond` decides from.
@@ -2659,36 +2846,239 @@ mod tests {
     }
 
     #[test]
-    fn answer_lane_has_its_own_key_and_nonce_and_falls_back_to_the_sequencer() {
+    fn answers_pipeline_on_their_own_key_and_fall_back_to_the_serial_sequencer_lane() {
         let mut l1 = L1::test_reader("http://127.0.0.1:9".into());
         l1.keystore_path = "/seq/ks".into();
         l1.password_file = "/seq/pw".into();
-        let lane = l1.answer_lane();
-        assert_eq!(
-            (lane.keystore_path, lane.password_file),
-            ("/seq/ks", "/seq/pw")
-        );
-        assert!(lane.address.is_none());
-        assert!(std::ptr::eq(lane.nonce, &*l1.nonce));
-        l1.answer = Some(AnswerLane {
-            keystore_path: "/ans/ks".into(),
-            password_file: "/ans/pw".into(),
-            address: crate::hex0x(&[0x44; 20]),
-            nonce: std::sync::Arc::new(std::sync::Mutex::new(Some(9))),
-        });
+        let sends = || {
+            vec![(
+                3,
+                vec![ChallengeAnswer {
+                    order_hash: [0x11; 32],
+                    by_rejection: false,
+                    proof: vec![],
+                }],
+            )]
+        };
+        // Without an answer key the serial path sends on the sequencer lane: its
+        // tracked nonce is used, and reset by the failed send.
         *l1.nonce.lock().unwrap() = Some(5);
-        let lane = l1.answer_lane();
-        assert_eq!(
-            (lane.keystore_path, lane.password_file),
-            ("/ans/ks", "/ans/pw")
-        );
-        assert_eq!(lane.address, Some(crate::hex0x(&[0x44; 20]).as_str()));
-        assert!(!std::ptr::eq(lane.nonce, &*l1.nonce));
-        assert_eq!(*lane.nonce.lock().unwrap(), Some(9));
+        let (answered, error) = l1.answer_round(sends());
+        assert_eq!(answered, 0);
+        assert!(error.is_some());
+        assert_eq!(*l1.nonce.lock().unwrap(), None);
+        // With one, the round runs on the answer key's pipeline and never touches
+        // the sequencer's nonce.
+        l1.answer = Some(AnswerLane::new(
+            "/ans/ks".into(),
+            "/ans/pw".into(),
+            crate::hex0x(&[0x44; 20]),
+        ));
+        *l1.nonce.lock().unwrap() = Some(5);
+        let (answered, error) = l1.answer_round(sends());
+        assert_eq!(answered, 0);
+        assert!(error.is_some(), "the nonce read fails against a dead RPC");
+        assert_eq!(*l1.nonce.lock().unwrap(), Some(5));
+        let lane = l1.answer.as_ref().unwrap();
+        assert_eq!(lane.pipeline.lock().unwrap().in_flight(), 0);
         // Register, settle and bond sends stay on the sequencer lane.
         let seq = l1.sequencer_lane();
         assert_eq!(seq.keystore_path, "/seq/ks");
-        assert_eq!(*seq.nonce.lock().unwrap(), Some(5));
+        assert!(seq.address.is_none());
+    }
+
+    #[test]
+    fn pipelined_answer_sends_carry_nonce_and_fees_and_return_at_broadcast() {
+        let answers = [ChallengeAnswer {
+            order_hash: [0x11; 32],
+            by_rejection: true,
+            proof: vec![[0x21; 32]],
+        }];
+        let tx = crate::answer_lane::AnswerTx {
+            nonce: 12,
+            fees: crate::answer_lane::Fees {
+                max_fee: 2_250_000_000,
+                priority: 1_125_000,
+            },
+            batch: 7,
+            answers: &answers,
+        };
+        let args = answer_send_args("0xsettlement", &tx, "/ans/ks", "/ans/pw", "http://rpc");
+        let mut expected: Vec<String> = vec![
+            "send".into(),
+            "0xsettlement".into(),
+            ANSWER_CHALLENGES_SIG.into(),
+        ];
+        expected.extend(answer_challenges_args(7, &answers));
+        expected.extend(
+            [
+                "--nonce",
+                "12",
+                "--gas-price",
+                "2250000000",
+                "--priority-gas-price",
+                "1125000",
+                "--async",
+                "--keystore",
+                "/ans/ks",
+                "--password-file",
+                "/ans/pw",
+                "--rpc-url",
+                "http://rpc",
+            ]
+            .map(String::from),
+        );
+        assert_eq!(args, expected);
+        assert!(!args.iter().any(|a| a == "--json" || a == "--gas-limit"));
+    }
+
+    #[test]
+    fn answer_lane_reads_parse_hashes_quantities_and_receipts() {
+        let hash = format!("0x{}", "ab".repeat(32));
+        assert_eq!(async_tx_hash(&format!("{hash}\n")), Some(hash.clone()));
+        assert_eq!(
+            async_tx_hash(&format!("Warning: nightly\n\n\"{hash}\"")),
+            Some(hash.clone())
+        );
+        assert_eq!(async_tx_hash("0x1234"), None);
+        assert_eq!(async_tx_hash(""), None);
+        assert_eq!(async_tx_hash(&format!("0x{}", "zz".repeat(32))), None);
+        assert_eq!(quantity("\"0x3b9aca00\""), Some(1_000_000_000));
+        assert_eq!(quantity("0x0"), Some(0));
+        assert_eq!(quantity("1000"), None);
+        assert_eq!(receipt_status("null"), Ok(None));
+        assert_eq!(
+            receipt_status(r#"{"status":"0x1","transactionHash":"0x00"}"#),
+            Ok(Some(true))
+        );
+        assert_eq!(receipt_status(r#"{"status":"0x0"}"#), Ok(Some(false)));
+        assert!(receipt_status(r#"{"transactionHash":"0x00"}"#).is_err());
+        assert!(receipt_status("not json").is_err());
+    }
+
+    /// Time that moves only when a round sleeps.
+    struct StepClock(std::cell::Cell<std::time::Instant>);
+    impl crate::answer_lane::Clock for StepClock {
+        fn now(&self) -> std::time::Instant {
+            self.0.get()
+        }
+        fn sleep(&self, d: std::time::Duration) {
+            self.0.set(self.0.get() + d);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires real anvil and cast; run explicitly in native verification"]
+    fn anvil_answer_lane_pipelines_replaces_at_the_same_nonce_and_restarts_from_chain() {
+        use crate::answer_lane::{Clock as _, Pipeline, Policy};
+        struct Anvil(std::process::Child);
+        impl Drop for Anvil {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let _anvil = Anvil(
+            Command::new("anvil")
+                .args(["--port", &port.to_string(), "--no-mining", "--silent"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .expect("anvil"),
+        );
+        let rpc = format!("http://127.0.0.1:{port}");
+        let mut l1 = L1::test_reader(rpc.clone());
+        l1.settlement = "0x000000000000000000000000000000000000dEaD".into();
+        let up = (0..100).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            l1.cast(&["chain-id", "--rpc-url", &rpc]).is_ok()
+        });
+        assert!(up, "anvil did not start");
+        let rpc_call = |args: &[&str]| {
+            let mut a = vec!["rpc"];
+            a.extend_from_slice(args);
+            a.extend(["--rpc-url", rpc.as_str()]);
+            l1.cast(&a).unwrap()
+        };
+        // A fresh random key, funded on the local chain only.
+        let key: [u8; 32] = rand::random();
+        let (keystore, password, dir) = create_keystore(&crate::hex0x(&key)).unwrap();
+        let address = l1
+            .cast(&[
+                "wallet",
+                "address",
+                "--keystore",
+                &keystore,
+                "--password-file",
+                &password,
+            ])
+            .unwrap();
+        rpc_call(&["anvil_setBalance", &address, "0x8ac7230489e80000"]);
+        let lane = AnswerLane::new(keystore, password, address.clone());
+        let chain = CastAnswerChain {
+            l1: &l1,
+            lane: &lane,
+        };
+        let nonce = |block: &str| l1.account_nonce(&address, block).unwrap();
+        let clock = StepClock(std::cell::Cell::new(std::time::Instant::now()));
+        let policy = Policy {
+            round_budget: std::time::Duration::from_secs(4),
+            max_fee_cap: 1_000 * 1_000_000_000,
+            ..Policy::default()
+        };
+        let sends = |hashes: &[u8]| -> Vec<(u64, Vec<ChallengeAnswer>)> {
+            hashes
+                .iter()
+                .map(|n| {
+                    (
+                        u64::from(*n),
+                        vec![ChallengeAnswer {
+                            order_hash: [*n; 32],
+                            by_rejection: false,
+                            proof: vec![[0x77; 32]],
+                        }],
+                    )
+                })
+                .collect()
+        };
+
+        // Four in flight, two deferred, nothing mined.
+        let mut pipeline = Pipeline::new(policy.clone());
+        let r = pipeline.round(&chain, &clock, sends(&[1, 2, 3, 4, 5, 6]));
+        assert_eq!((r.submitted, r.in_flight, r.deferred), (4, 4, 2), "{r:?}");
+        assert_eq!((nonce("latest"), nonce("pending")), (0, 4));
+
+        // The base fee jumps above their max fee: a block mines none of them.
+        rpc_call(&["anvil_setNextBlockBaseFeePerGas", "0x12a05f200"]);
+        rpc_call(&["evm_mine"]);
+        assert_eq!(nonce("latest"), 0, "all four are stuck");
+        clock.sleep(policy.bump_after);
+        let r = pipeline.round(&chain, &clock, sends(&[1, 2, 3, 4, 5, 6]));
+        assert_eq!((r.bumped, r.submitted, r.in_flight), (4, 0, 4), "{r:?}");
+        assert_eq!(nonce("pending"), 4, "replaced at the same nonces");
+
+        // The replacements mine; their slots go to the deferred answers.
+        rpc_call(&["evm_mine"]);
+        assert_eq!(nonce("latest"), 4);
+        let r = pipeline.round(&chain, &clock, sends(&[5, 6]));
+        assert_eq!((r.mined, r.answered, r.submitted), (4, 4, 2), "{r:?}");
+        assert_eq!(nonce("pending"), 6);
+
+        // A restart reads both nonces from the chain and inherits the two pending.
+        let mut restarted = Pipeline::new(policy);
+        let r = restarted.round(&chain, &clock, sends(&[7, 8]));
+        assert_eq!((r.submitted, r.in_flight), (2, 4), "{r:?}");
+        assert_eq!(nonce("pending"), 8);
+        rpc_call(&["evm_mine"]);
+        let r = restarted.round(&chain, &clock, vec![]);
+        assert_eq!((r.replaced, r.mined, r.in_flight), (2, 2, 0), "{r:?}");
+        assert_eq!(nonce("latest"), 8);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -2870,12 +3260,11 @@ mod tests {
         l1.clone().request_stake_sweep();
         assert!(l1.stake_sweep.load(SeqCst), "requests are shared by clones");
         // A sweep that cannot complete is asked for again on the next tick.
-        l1.answer = Some(AnswerLane {
-            keystore_path: String::new(),
-            password_file: String::new(),
-            address: crate::hex0x(&[0x66; 20]),
-            nonce: Default::default(),
-        });
+        l1.answer = Some(AnswerLane::new(
+            String::new(),
+            String::new(),
+            crate::hex0x(&[0x66; 20]),
+        ));
         assert!(l1.sweep_requested_stake_refunds().is_err());
         assert!(l1.stake_sweep.load(SeqCst));
         assert!(take_request(&l1.stake_sweep));
