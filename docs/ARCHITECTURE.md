@@ -151,6 +151,31 @@ SETTLED  = ZK proof Ethereum'da verify oldu (hard)
 valid nullifiers (double-spend yok); fill sonrası margin yeterliliği; oracle price
 freshness + confidence (§8); funding formülü; liquidation threshold.
 
+**Funding kuralı (guest'te).** Her market son `AccrueFunding`'in gözlediği clamp'li
+rate'i ve henüz commit edilmemiş span'in başlangıcını saklar. Bir span her zaman
+**saklı** rate ile, yani başında gözlenen rate ile fiyatlanır; yeni bir premium onu
+gözleyen tick'ten itibaren geçerlidir. `Fill`, `Liquidate` ve `Unbind` index'i
+okumadan önce açık span'i kendi zamanına kadar commit eder (`settle_to`); böylece her
+span, op sırası ne olursa olsun, o süre boyunca var olan pozisyonlara yazılır. Her
+boşluk en fazla bir funding interval'ı (1 saat) kadar ücretlendirilir; kalanı
+ücretlendirilmez. Carry kesindir: index'i oynatamayacak kadar küçük kısım
+`remainder` olarak taşınır. Sıfır rate'li idle tick state root'u değiştirmez. Guest
+rate clamp'ini, mark band'ini, boşluk başına 1 saat sınırını ve kesin carry'yi
+kanıtlar; funding mark'ı ve op zamanlamasını sequencer seçer.
+*(Kod: `funding.rs` — `FundingState::settle_to`, `accrue`, `index_at`.)*
+
+**Margin yuvarlama ve taban.** Maintenance ve initial margin notional'ı ve oran
+çarpımını yukarı yuvarlar; açık bir pozisyonun initial margin'i en az $1'dır
+(`MIN_INITIAL_MARGIN`). Sıfır size ve sıfır collateral bırakan op o girdiyi siler.
+Gateway/sequencer ayrıca off-chain minimumlar uygular: exposure artıran emirde $10
+notional (reduce-only ve kalan resting miktar muaf; ret nedeni `BelowMinimumSize`),
+deposit permit'inde $10, çekimde $1 (tüm serbest bakiye hariç).
+
+**Çekim nonce'u state'e bağlı.** State root son gerçek L1 çekiminin nonce'unu
+(`last_withdrawal_nonce`) tutar; her yeni çekim daha büyük bir nonce taşımalıdır (adım
+en fazla `2^32`), internal burn nonce 0 taşır. Böylece tüm batch ve fazlarda iki
+withdrawal leaf'i aynı nonce'u paylaşmaz.
+
 **Dürüstlük notu (ZK-001/ORA-001):** oracle price bugün **imzasız bir prover
 witness'ı** — `OracleTranscript` publisher imzası taşımaz, `derive_roots` onu
 authenticated bir kaynağa bağlamaz; yani yukarıdaki freshness/confidence
@@ -172,7 +197,16 @@ determinism.
 Enclave plaintext pozisyonları public oracle'a karşı sürekli değerlendirir →
 **anında** tetikler. **Liveness varsayımı yok:** kullanıcı offline olsa da likide
 edilir. Public'e per-position açıklama **yok**; yalnızca aggregate + ZK proof.
-*(Kod: `position.rs` — `is_liquidatable`; `engine.rs` — `op_liquidate`.)*
+
+**Canlı bad-debt waterfall'ı:** likidasyonun bıraktığı açık sırasıyla insurance
+fund, treasury ve aynı marketteki kazananların auto-deleverage'ı ile kapatılır. ADL
+her kazanandan en fazla `max(0, min(P − F, C⁺, E − MM))` alır: funding sonrası net
+kazanç, negatif olmayan collateral ve maintenance margin üstündeki equity payı.
+Böylece ADL yeni bad debt yaratmaz ve hiçbir pozisyonu likide edilebilir yapmaz.
+Hâlâ kapanmayan kısım kapanan pozisyonda park edilir ve sistem close-only'ye geçer;
+o andan sonra guest yeni `Deposit`'i reddeder.
+*(Kod: `position.rs` — `is_liquidatable`, `adl_clawable`; `engine.rs` —
+`op_liquidate`, `allocate_pro_rata`.)*
 
 ---
 
@@ -189,8 +223,20 @@ older than livenessTimeoutBlocks, OR governance decides
    → settled balances stay claimable (CollateralVault.claim) against any published
      withdrawals root; open perps wind down via a governance finalSettle (SettleAll)
      and repeatable finalExit
+   → SettleAll closes open positions at each market's last recorded oracle price
+     (entry price if none), covers deficits from clearing pool → insurance →
+     treasury, haircuts pro rata only the rest, and pays the leftover reserves as
+     one withdrawal leaf to the genesis-bound wind-down recipient
    → insurance fund covers protocol-fault shortfall, not market loss
 ```
+**Settlement fiyatı ve rezerv alıcısı.** `SettleAll` zaman ve oracle taşımaz; her
+marketin settled state'te kayıtlı son doğrulanmış fiyatını kullanır
+(`FundingState.last_price`). Fiyatı `Fill`/`Liquidate`/`Unbind` kaydeder;
+`AccrueFunding` ise state değiştiğinde, 6 saatlik fiyat epoch'u yenilendiğinde veya
+engine close-only iken kaydeder. Bu fiyatı operatörün kendi oracle anahtarı imzalar
+ve close-only'nin ne zaman başlayacağını governance (sevk edilen akışta sıcak
+sequencer anahtarı) seçer. Rezerv alıcısı genesis root'a bağlı, değişmez bir L1
+adresidir. Ayrıntı: `docs/FINAL_SETTLE_RUNBOOK.md`.
 Açık pozisyon collateral'ı **pozisyon kapatılmadan** çekilemez. **Bugün teslim
 edilen mekanizma (EXIT-001):** `CollateralVault.claim()` close-only'de de açık
 kalır — herhangi bir yayınlanmış withdrawals root'una karşı, settle edilmiş
@@ -203,9 +249,9 @@ Açık pozisyonlar close-only'de reduce-only kapanışlarla küçülür; bu kapa
 withdrawals root'a girmesi için governance-only `DarkPerpSettlement.finalSettle`
 bir landing pad sağlar (close-only + `closeOnlyBlock + finalSettleGraceBlocks`
 grace penceresi + proof-gated — bkz. `docs/FINAL_SETTLE_RUNBOOK.md`).
-**Muhafazakâr-TWAP forced-close (pencere TWAP'ında otomatik kapanış) henüz
-implemente değil** — kullanıcı/operatör pozisyonu reduce-only ile manuel kapatır.
-Tam trustless forced-close **P3**. Kullanıcı **son hard state'e** döner. *(Kod:
+**Muhafazakâr-TWAP forced-close (pencere TWAP'ında otomatik kapanış) yoktur:**
+close-only'de kalan açık pozisyonları phase-1 `SettleAll`, settled state'te kayıtlı
+son oracle fiyatından kapatır. Tam trustless forced-close **P3**. Kullanıcı **son hard state'e** döner. *(Kod:
 `state.rs` — `Mode::CloseOnly`; `engine.rs` — `EnterCloseOnly`;
 `contracts/DarkPerpSettlement.sol` — `finalSettle`; `contracts/CollateralVault.sol`
 — `claim`.)*

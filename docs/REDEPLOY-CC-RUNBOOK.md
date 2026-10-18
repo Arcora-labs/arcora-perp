@@ -151,14 +151,25 @@ ZK-001 minors):
 - SP1 guest rebuild on merged `main` (per `docs/PROVING-RUNBOOK.md`) → record
   the NEW `programVKey`. The old verifier `0x8012F3b3` pins the OLD guest's
   vkey — a NEW `SP1ZkVerifier` must be deployed.
-- Compute the CLEAN PROD GENESIS on the merged tree with the real oracle key
-  from 0c: `ORACLE_SIGNER_KEY=… darkperp-gateway --print-genesis-root` prints
-  `GENESIS_ROOT=0x…` and exits before any L1, attestation, prover or state-file
-  access (a production boot only reaches its genesis log line after verifying a
-  live clock-bound settlement, so it cannot be used for this). It refuses every
-  public development oracle key: the built-in default and any other default
-  Anvil account, even when set explicitly. The root is the markets-only production
-  genesis: no sentinel deposit leaves (SEC-019), `oracle_pubkey` = that signer.
+- Choose the **wind-down recipient**: a cold L1 address, independent of governance,
+  the sequencer, the enclave signer and the gateway signer. The final wind-down pays
+  the protocol's remaining reserves to it (`docs/FINAL_SETTLE_RUNBOOK.md`,
+  § Reserve recipient). It is a word of the genesis state root, so it cannot change
+  for the life of the stack.
+- Compute the CLEAN PROD GENESIS on the merged tree:
+  `WIND_DOWN_RECIPIENT=0x… ORACLE_SIGNER_KEY=… darkperp-gateway --print-genesis-root`,
+  or, so that the oracle key never has to be on this machine,
+  `WIND_DOWN_RECIPIENT=0x… darkperp-gateway --print-genesis-root --oracle-address <per-deployment oracle signer address>`.
+  It prints `GENESIS_ROOT=0x…`, `WIND_DOWN_RECIPIENT=0x…` and
+  `ORACLE_SIGNER_ADDRESS=0x…`, and exits before any L1, attestation, prover or
+  state-file access (a production boot only reaches its genesis log line after
+  verifying a live clock-bound settlement, so it cannot be used for this). It refuses
+  a missing or zero recipient, and every public development oracle key: the built-in
+  default and any other default Anvil account, even when set explicitly. The root is
+  the markets-only production genesis: no sentinel deposit leaves (SEC-019),
+  `oracle_pubkey` = that signer, and the recipient bound in. Put all three values
+  into the deploy config and the public config; `observe-target` checks
+  `currentStateRoot()` against the root while `batchCount() == 0`.
 - Dry-run `scripts/local-verification/deploy_clock_stack.py` against a local
   Anvil fork of Base Sepolia (`anvil --fork-url https://sepolia.base.org`),
   then `release_manifest.py create` + `observe-target` must report
@@ -282,7 +293,8 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
      immediately). The liveness window runs from the deploy block. If the stack is
      not launched at once, deploy no more than `livenessTimeoutBlocks / 2` before
      launch.
-3. Repoint the gateway env (addresses, `ORACLE_SIGNER_KEY`,
+3. Repoint the gateway env (addresses, `ORACLE_SIGNER_KEY`, `WIND_DOWN_RECIPIENT`
+   (the value printed with `GENESIS_ROOT` in 0d),
    `GATEWAY_SIGNER_KEY`, the fresh `ENCLAVE_SEED`, `PROVER_URL`, seal-root
    config, `DEPOSIT_PERMIT_TTL_SECS`, `L1_BOND_TARGET_TVL`, `L1_ANSWER_KEYSTORE`,
    `L1_ANSWER_PASSWORD_FILE`)

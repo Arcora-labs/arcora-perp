@@ -22,10 +22,14 @@ native/guest equality plus guest rejection of a bad manifest and an unauthorized
 withdrawal. An infrastructure failure is not a passing negative case. These are
 ordinary Deposit/Withdraw inputs, not A06 phase 1/2 or observed L1 deposits.
 
-The `vkey` binary performs setup only. The `prove` binary prepares a real local CPU
-Groth16 proof and requires working Docker/gnark plus appropriate compute. It emits
-successful proof artifacts only after matching the native public bytes and
-verifying with the SDK. Neither code preparation nor native guest execution is
+The synthetic witness uses the one framing the guest accepts, `DPCLK4` followed by
+the postcard clock witness, with no trailing bytes. The `vkey` binary performs setup
+only. The earlier `prove` binary is retired. `clock-proof --elf <reviewed ELF>
+<new dir>` executes the reviewed clock-bound fixture and its negatives against an
+explicit ELF whose SHA-256 must equal the reviewed pin; `--no-prove` stops after
+execution, and `--prove` adds a real local CPU Groth16 proof, which requires working
+Docker/gnark plus appropriate compute. It emits successful proof artifacts only after
+matching the native public bytes and verifying with the SDK. Neither code preparation nor native guest execution is
 proof production or target-contract acceptance. The September 28 continuation
 did not execute Groth16, the held A06 guest draft, or a chain transaction.
 

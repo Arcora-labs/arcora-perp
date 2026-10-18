@@ -11,9 +11,9 @@ The fixed normal/liquidation corpus reuses its original candidate witness and
 full containers. Archive metadata, clock/report observations, opaque mock proof,
 sender/nonce, outcomes and finality declarations remain fixtures. Native replay
 and matching public values do not authenticate a proof, DON report, running
-service, operator or chain. The current production prover remains legacy/DPCLK2;
-the separate public identity preflight continues to return DPCLK3 compatibility
-`REFUSED`.
+service, operator or chain. The current production prover accepts only the
+clock-bound `DPCLK4` framing; the separate public identity preflight continues to
+return DPCLK3 compatibility `REFUSED`. The candidate lane is frozen as history.
 
 ## Transport boundary
 

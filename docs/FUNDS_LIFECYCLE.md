@@ -57,7 +57,7 @@ ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-funds-witness-NEW \
 ```
 
 The export directory must not already exist. It contains only generated test data:
-four exact v2 witness byte streams, the keepalive's empty window
+four exact clock-bound witness byte streams (`DPCLK4` framing), the keepalive's empty window
 (`keepalive-batch-4.witness.bin`, listed under `keepalive`) and a final
 `lifecycle.json` linking their hashes to each local transaction, commitment and root. This export is available only in
 the test harness; it does not add witness export to the production gateway.
@@ -183,6 +183,23 @@ Python tests come from `cast`.
   close-only they are refunded from the vault (next section).
 - This is not a data-availability archive.
 
+## Amounts and nonces a wallet sees
+
+- **Deposit permits** are issued for at least 10 USDC (10,000,000 base units).
+- **Withdrawals** are at least 1 USDC, unless they take the entire free balance in
+  that market.
+- **Orders** that open, grow or flip a position need at least $10 of notional;
+  reduce-only orders are exempt (`docs/API.md`, § REST).
+- **Withdrawal leaf nonces** (`nonce` in each claim bundle) are assigned by the
+  gateway and strictly increase across every withdrawal of the deployment. The settled
+  state records the last one, and the proof refuses a leaf whose nonce does not exceed
+  it, so two leaves never share a nonce. A leaf's nonce is not the account's signed
+  withdrawal-authorization nonce.
+- **The wind-down's reserve payout** is one more leaf of this kind, paid to the
+  deployment's wind-down recipient with the next nonce. Its root holds only that leaf,
+  so its Merkle proof is empty; `claim_withdrawal.py` accepts a bundle with an empty
+  proof (`docs/FINAL_SETTLE_RUNBOOK.md`).
+
 ## Refund of a deposit the settled state never consumed
 
 A deposit enters the vault's deposit chain when it lands on L1, but it becomes part
@@ -219,6 +236,13 @@ Close-only can start in three ways, and every one makes refunds available:
 A deposit the gateway had already credited off-chain, but that no settled batch
 consumed, is also refunded at principal. Trades in windows that never settled are
 discarded with it; only settled state is withdrawable.
+
+A deposit can also land while the **engine** is close-only but the settlement is not
+yet: the engine trips on its own when a liquidation's shortfall exceeds insurance,
+the treasury and auto-deleverage. The proven transition then refuses every deposit,
+and the gateway issues no permits and credits nothing. Such a deposit stays
+unconsumed and becomes refundable as soon as the settlement enters close-only, through
+governance or through the deposit-inclusion timeout (trigger 2 above).
 
 **Claims cannot consume refundable principal.** `claim` reverts
 `ReservedForUncredited` if paying it would leave the vault holding less than

@@ -4,11 +4,13 @@
 // future risk surfaces. All values are scaled bigints; no floats in money math.
 
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type Position, type Side } from "./types";
+import { MIN_INITIAL_MARGIN } from "./minimums";
 
 export interface OrderRisk {
   /// Position notional at `mark`, quote-scaled (micro-USD).
   notional: bigint;
-  /// Required initial margin, quote-scaled.
+  /// Required initial margin, quote-scaled, rounded up like the engine and never
+  /// below the $1 floor.
   margin: bigint;
   /// Resulting leverage (notional / margin), as a plain number for display.
   leverage: number;
@@ -19,6 +21,26 @@ export interface OrderRisk {
 /// The scale divisor that turns a raw `size * price` product into quote units.
 /// Matches `perp-core::fixed::notional_quote`.
 const NOTIONAL_DIV = (SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE;
+
+/// `perp-core::fixed::RATE_SCALE`: margin ratios are fractions of this.
+const RATE_SCALE = 1_000_000n;
+
+/// Non-negative `a / d`, rounded up.
+function divCeil(a: bigint, d: bigint): bigint {
+  return a / d + (a % d === 0n ? 0n : 1n);
+}
+
+/// Initial margin required to hold `size` (base, size-scaled, unsigned) at `price`
+/// under initial-margin ratio `imr` (a fraction, e.g. 0.1 for 10×). Mirrors
+/// `perp-core::position::Position::initial_required`: the notional and the ratio
+/// product are both rounded UP, and an open position never needs less than
+/// [`MIN_INITIAL_MARGIN`] ($1). Zero for a flat size or a non-positive price.
+export function initialMarginRequired(size: bigint, price: bigint, imr: number): bigint {
+  if (size <= 0n || price <= 0n) return 0n;
+  const ratio = BigInt(Math.round(Math.max(0, imr) * Number(RATE_SCALE)));
+  const margin = divCeil(divCeil(size * price, NOTIONAL_DIV) * ratio, RATE_SCALE);
+  return margin > MIN_INITIAL_MARGIN ? margin : MIN_INITIAL_MARGIN;
+}
 
 /// Liquidation buffer (in basis points of entry) IMPLIED by the margin model: a
 /// position is liquidated once its loss eats the gap between the initial margin it
@@ -94,8 +116,8 @@ export function orderRisk(size: bigint, mark: bigint, side: Side, imr: number, m
     return { notional: 0n, margin: 0n, leverage: 0, liquidationPrice: 0n };
   }
   const notional = (size * mark) / NOTIONAL_DIV;
-  const imrBp = BigInt(Math.round(imr * 10_000));
-  const margin = (notional * imrBp) / 10_000n;
-  const leverage = imr > 0 ? 1 / imr : 0;
+  const margin = initialMarginRequired(size, mark, imr);
+  // notional / margin: 1/imr, except where the rounding or the $1 floor lifts the margin
+  const leverage = margin > 0n ? Number(notional) / Number(margin) : 0;
   return { notional, margin, leverage, liquidationPrice: liquidationPrice(mark, side === "Buy", imr, mmr) };
 }

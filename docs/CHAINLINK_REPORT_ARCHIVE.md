@@ -12,6 +12,14 @@ başarılı kontrol sonrası normal merge edildi. Bu dalın A2 kaydı:
 `chainlink-oracle` normalizasyon kodu aday guest'in de bağımlılığıdır; bütün
 Chainlink katmanı host-only değildir.
 
+18 Ekim 2026 güncellemesi: aday hat dondurulmuştur. ELF, setup key, fixture'lar
+ve `chainlink-oracle` kaynakları tarihçe olarak bayt-bayt aynı tutulur; mevcut
+state düzeninden önce üretildikleri için bu çekirdekle kanıtlanamazlar. Gateway
+`DARKPERP_CHAINLINK_ARCHIVE=candidate` yapılandırmasını açılışta reddeder;
+ayarsız veya `disabled` mod değişmez. Bu fixture'ları yeniden oynatan gateway
+testleri `#[ignore = "frozen candidate lane"]` ile işaretlidir; her dönüştürülen
+dosyada, fixture'ların mevcut düzence reddedildiğini doğrulayan bir test çalışır.
+
 ## Kullanıcı kararıyla ertelenen adım
 
 Resmi public discovery sorguları önceki oturumda testnet/mainnet için HTTP403

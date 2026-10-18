@@ -49,14 +49,16 @@ a substitute checksum when that prerequisite is missing. This requirement does
 not make Python part of the running identity handler.
 
 The prover descriptor has exactly `sdk_version: 6.1.0`, `elf_sha256`, `elf_bytes`,
-`program_vkey` and `supported_witness_domains: ["legacy", "DPCLK2"]`. Its ELF
+`program_vkey` and `supported_witness_domains: ["DPCLK4"]`. Its ELF
 checksum is taken from the actual `include_elf!("perp-core-guest")` bytes used
 by the existing backend; its key is the value captured by the existing setup.
 The checker accepts a declared `elf_bytes` from 1 byte through 64 MiB as a
 software refusal bound; this is not measured proving capacity.
 The route does not substitute the candidate fixture ELF or infer a key from a
-source checksum. The service currently supports the legacy/clock-v2 backend,
-not candidate `DPCLK3`. A key or source response alone cannot change that fact.
+source checksum. The service supports only the clock-bound backend: `/prove`
+refuses every body without the `DPCLK4` framing, including the earlier unframed
+tuple and `DPCLK2` framing, before proving. It does not support candidate
+`DPCLK3`. A key or source response alone cannot change that fact.
 
 Gateway `public_config` has exactly:
 

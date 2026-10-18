@@ -12,6 +12,14 @@ Yeni `replay-chainlink-lifecycle` ve CI exporter adımı için kaynak, fixture v
 CPU çıktıları: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-price-lifecycle/README.md).
 Bu beş vaka yeni proof veya canlı rapor doğrulaması değildir.
 
+18 Ekim 2026 güncellemesi: aday hat dondurulmuştur. Aday ELF, setup key ve
+19-case replay kümesi tarihçe olarak bayt-bayt aynı tutulur ve mevcut perp-core'a
+karşı yürütülmez. `run_chainlink_replay.py` ve `build_chainlink_candidate.py`
+herhangi bir yürütme veya derlemeden önce "frozen candidate lane" ile reddeder;
+aşağıdaki tekrar çalıştırma ve yeniden derleme komutları yalnız kayıt içindir.
+Sabit kimlik, kilit tutarlılığı ve replay kümesi `chainlink-candidate.yml`
+içinde çevrimdışı olarak denetlenmeye devam eder.
+
 ## Sabit aday kimliği
 
 - SP1 SDK ve aday guest ailesi: `6.1.0`.

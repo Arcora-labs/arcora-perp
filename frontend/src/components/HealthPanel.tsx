@@ -149,9 +149,11 @@ export function HealthPanel() {
           <p className="small muted">
             Every fill on {state.market.symbol} charges a {fmtBps(state.market.takerFeeBps)} taker
             fee: the bulk accrues to the <strong className="pos">protocol treasury</strong> (operator
-            revenue), and a thin slice funds the <strong>insurance fund</strong> — the bad-debt
-            backstop that absorbs a liquidation shortfall before any auto-deleverage and socializes
-            only once empty (audit Q3/Q7). The treasury is the final backstop after insurance + ADL.
+            revenue), and a thin slice funds the <strong>insurance fund</strong>. A liquidation
+            shortfall is covered by the insurance fund first, then by the treasury, and only then
+            by auto-deleverage of the winners, each of which keeps its maintenance margin (audit
+            Q3/Q7). Whatever is still uncovered switches the system to close-only. At wind-down,
+            the reserves left after every deficit go to the deployment's fixed wind-down recipient.
           </p>
         </div>
 

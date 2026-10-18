@@ -63,6 +63,7 @@
 </table>
 </div>
 <p><strong>Reduce-only</strong> orders can only decrease your open position in that market — they can never open or grow exposure. Useful for take-profit and stop-style exits.</p>
+<p><strong>Minimum order size.</strong> An order that opens, grows or flips a position needs at least <strong>$10 of notional</strong>. Reduce-only orders, and orders that only reduce a position, are exempt, and a resting remainder below $10 after a partial fill keeps matching. The notional is the whole order at the oracle price, not its limit price. A smaller order is refused when you submit it. The sequencer applies the same rule when it seals the batch; an order it refuses there is recorded in the batch manifest with the reason <code>BelowMinimumSize</code>.</p>
 
 <h2>The house market maker</h2>
 <p>A gateway-internal &ldquo;house market maker&rdquo; — the counterparty backed by the LP pool — quotes at the <strong>validated oracle mark</strong> against IOC/FOK market orders and crossing limit orders. Practically, this means takers always have a counterparty at the oracle price even when the resting book is thin. GTC limit orders rest on the book as usual and match against other traders under price-time priority.</p>
@@ -70,12 +71,14 @@
 
 <h2>Leverage, liquidation, insurance, ADL</h2>
 <ul>
-  <li><strong>Leverage</strong> is margin-based: your USDC balance collateralizes your positions, and position size is bounded by margin requirements checked at order time.</li>
+  <li><strong>Leverage</strong> is margin-based: your USDC balance collateralizes your positions, and position size is bounded by margin requirements checked at order time. Margin is computed on the notional rounded up, and an open position always needs at least <strong>$1</strong> of initial margin.</li>
   <li><strong>Liquidation</strong> closes under-margined positions.</li>
-  <li>An <strong>insurance fund</strong> (seeded with 25,000 USDC) absorbs losses that liquidations cannot cover.</li>
-  <li>If the insurance fund is insufficient, <strong>auto-deleveraging (ADL)</strong> trims the most profitable opposing positions. ADL haircuts are delivered as receipts that are unlinkable to third parties — outsiders cannot tell whose positions were trimmed.</li>
+  <li>A shortfall a liquidation cannot cover is absorbed first by the <strong>insurance fund</strong> (seeded with 25,000 USDC), then by the <strong>protocol treasury</strong> (the operator's fee revenue).</li>
+  <li>If both are exhausted, <strong>auto-deleveraging (ADL)</strong> takes the rest from the winning positions in that market, pro rata. Each winner gives at most its gain net of funding, never more than its collateral, and never so much that it falls below maintenance margin, so ADL never pushes anyone into liquidation. ADL takes collateral, not size. Haircuts are delivered as receipts that are unlinkable to third parties — outsiders cannot tell whose positions were clawed.</li>
+  <li>If the winners cannot cover it either, the system switches to <strong>close-only</strong>, and no new deposit is credited after that.</li>
+  <li><strong>Funding</strong> is charged at the rate observed at the start of each span, to the positions open during it. A pause or outage is charged at the rate before it, for at most one hour.</li>
 </ul>
-<p class="dim">Liquidations, funding, and ADL are part of the proven engine transition — a settled state root attests they were applied exactly per the rules, not at the operator's discretion. See <a href="architecture.html">Architecture</a>.</p>
+<p class="dim">Liquidations, funding, and ADL are part of the proven engine transition — a settled state root attests they were applied per the rules the guest checks. The operator still chooses the funding mark (within the guest's bounds) and the timing of operations, and its oracle key signs the prices. See <a href="architecture.html">Architecture</a> and <a href="security.html">Security &amp; Trust</a>.</p>
 
 <h2 id="finality">The finality model: ACCEPTED &rarr; MATCHED &rarr; SETTLED</h2>
 <p>Arcora Perp separates <em>speed</em> from <em>certainty</em>. Every order moves through three states, and they are <strong>not interchangeable</strong>:</p>
@@ -110,7 +113,7 @@
 
 <h3>What is withdrawable, when</h3>
 <ol>
-  <li>You request a withdrawal (<code>POST /v1/accounts/withdraw</code> or the Account tab). Every withdrawal is <strong>wallet-signed</strong>: it must carry a strictly-increasing nonce and a secp256k1 signature from your bound deposit address (or the registered signer, for caller-signed accounts) — the API key alone can never move funds, and a server-custody account can only withdraw <em>to</em> its bound deposit address (so keep that key safe: there is no operator recovery for a lost bound key). See the <a href="api.html">API reference</a> for the exact digest. The withdrawal is recorded off-chain and enters the current settlement window.</li>
+  <li>You request a withdrawal (<code>POST /v1/accounts/withdraw</code> or the Account tab). Every withdrawal is <strong>wallet-signed</strong>: it must carry a strictly-increasing nonce and a secp256k1 signature from your bound deposit address (or the registered signer, for caller-signed accounts) — the API key alone can never move funds, and a server-custody account can only withdraw <em>to</em> its bound deposit address (so keep that key safe: there is no operator recovery for a lost bound key). See the <a href="api.html">API reference</a> for the exact digest. The withdrawal is recorded off-chain and enters the current settlement window. The minimum is 1 USDC, unless you withdraw your entire free balance.</li>
   <li>When that window's proof lands on-chain, the withdrawal is included in the window's on-chain <strong>withdrawals Merkle root</strong>.</li>
   <li>From that moment it is claimable by <strong>anyone</strong>, permissionlessly, via <code>claim(to, amount, nonce, root, proof)</code> on the vault — funds can only go to the address bound into the leaf. Any historically published root remains claimable forever; a later root can never strand a withdrawal.</li>
 </ol>

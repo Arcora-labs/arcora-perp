@@ -76,17 +76,35 @@ prover observation.
     "L1_USDC": "0x0000000000000000000000000000000000000003",
     "CLOCK_BOUND_VERIFIER": "0x0000000000000000000000000000000000000004",
     "L1_ALLOW_MOCK_PROOF": "0",
-    "DEPOSIT_PERMIT_TTL_SECS": "1800"
+    "DEPOSIT_PERMIT_TTL_SECS": "1800",
+    "WIND_DOWN_RECIPIENT": "0x0000000000000000000000000000000000000009",
+    "PROVER_EXPECTED_ELF_SHA256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
   },
   "prover": {
     "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
     "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+  },
+  "genesis": {
+    "root": "<GENESIS_ROOT printed by --print-genesis-root>",
+    "wind_down_recipient": "0x0000000000000000000000000000000000000009",
+    "oracle_signer": "0x000000000000000000000000000000000000000a"
   }
 }
 ```
 
+`genesis` is the state the settlement is deployed with, exactly as
+`darkperp-gateway --print-genesis-root` prints it: the root, the wind-down
+recipient and the oracle signer address, which are bound into that root and
+cannot change after deployment. All three must be nonzero; the recipient and the
+oracle signer must differ from each other, from every contract address and, when
+`operator_policy` is present, from every operator address. The gateway's
+`WIND_DOWN_RECIPIENT` must equal `genesis.wind_down_recipient`, and
+`PROVER_EXPECTED_ELF_SHA256` (bare lower-case hex) must equal the reviewed guest
+ELF. Python does not recompute the root: it is carried from the one
+`--print-genesis-root` run and checked against the chain by `observe-target`.
+
 An operator may add `validate --check-process-env` as a service pre-start check.
-This compares the seven allowlisted gateway variables against the manifest and
+This compares the nine allowlisted gateway variables against the manifest and
 fails before startup on a mismatch. It does not install a startup hook or change
 running services; that integration must be configured in the target environment.
 No key values are read or emitted by the environment check.
@@ -106,10 +124,11 @@ requires `PROVEN`. While the status is not `PROVEN`, `validate` and
 `observe-target` accept only an owned test chain, using the same rule as
 `deploy_clock_stack.py`: an Anvil client (asked through `web3_clientVersion`, so
 an Anvil fork at chain id 84532 qualifies), or an operator declaration
-`--owned-test-chain` for a chain id that is not a public Base network. Offline
-`validate` cannot see the client, so it needs the declaration. The deploy tool
-likewise refuses a target that is not an owned test chain until the status is
-`PROVEN`.
+`--owned-test-chain` for a local chain id (31337 or 1337). Offline `validate`
+cannot see the client, so it needs the declaration. The deploy tool likewise
+refuses a target that is not an owned test chain until the status is `PROVEN`.
+Once it is `PROVEN`, the declaration counts for any chain id that is not a public
+Base network.
 
 ## Reject a legacy deployment record
 
@@ -158,7 +177,11 @@ At that same block it checks settlement ↔ vault, settlement ↔ clock verifier
 clock → SP1 adapter → SP1 gateway, vault → token, the settlement's
 `ABI_VERSION() == 3`, the reviewed guest key, the clock bounds and
 `anchorTimeoutMs()`, proof version 2, the SP1 verifier hash, and the selector's
-active, unfrozen route to the configured verifier. Zero/unbound or old direct-adapter
+active, unfrozen route to the configured verifier. While the settlement's
+`batchCount()` is 0 it also requires `currentStateRoot()` to equal `genesis.root`
+and records `genesis_root_verified`; after the first batch the root is recorded
+as not observed. A wind-down recipient or oracle signer equal to an operator
+address the target reports fails, with or without `operator_policy`. Zero/unbound or old direct-adapter
 configurations fail. The token must have code; its implementation is not among
 the six compiled artifacts.
 

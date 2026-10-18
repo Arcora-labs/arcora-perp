@@ -4,6 +4,7 @@ import { IS_LIVE } from "../api/apiBase";
 import { useStore } from "../store";
 import { baseAsset, formatPrice, formatSize, formatUsd, parsePrice, parseSize } from "../domain/format";
 import { maxOrderSize, orderRisk } from "../domain/risk";
+import { increasesExposure, orderMinimumError } from "../domain/minimums";
 import type { OrderInput, Side, TimeInForce } from "../domain/types";
 
 const TIFS: TimeInForce[] = ["Gtc", "Ioc", "Fok", "PostOnly"];
@@ -79,6 +80,17 @@ export function OrderTicket() {
   const previewMark = parsedPrice && parsedPrice > 0n ? parsedPrice : state.oracle.price;
   // buying power for the quick-size buttons (free balance × max leverage / mark)
   const maxSize = maxOrderSize(state.account.settledBalance, previewMark, state.market.maxLeverage);
+  // admission minimum: an order that adds exposure needs $10 of notional, measured
+  // on the whole order at the oracle price (not the limit), as the gateway measures it
+  const heldSize = state.account.positions.find((p) => p.marketId === state.market.id)?.size ?? 0n;
+  const minimumError = (size: bigint, mark: bigint, orderSide: Side, isReduceOnly: boolean) =>
+    orderMinimumError(
+      orderRisk(size, mark, orderSide, state.market.initialMarginRatio, state.market.maintenanceMarginRatio).notional,
+      isReduceOnly,
+      increasesExposure(heldSize, orderSide, size),
+    );
+  const oraclePrice = state.oracle.price;
+  const belowMinimum = previewSize > 0n && oraclePrice > 0n && minimumError(previewSize, oraclePrice, side, reduceOnly) !== null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -99,6 +111,8 @@ export function OrderTicket() {
     if (state.accountUnavailable) return setError("Your account could not be read. Reload before placing an order.");
     if (state.clockAdmission?.paused) return setError("Trading is paused for settlement. Review the order again when admission resumes.");
     if (closeOnly && !reduceOnly) return setError("Close-only mode: use reduce-only to decrease an existing position.");
+    const tooSmall = oraclePrice > 0n ? minimumError(size, oraclePrice, side, reduceOnly) : null;
+    if (tooSmall) return setError(tooSmall);
     if (IS_LIVE && (state.oracle.price <= 0n || Date.now() - state.oracle.publishTimeMs > 30_000)) return setError("Price data is stale. Check Health and wait for a fresh price.");
     setAccepted(null);
     setReview({ input, mark: previewMark, symbol: state.market.symbol });
@@ -162,6 +176,7 @@ export function OrderTicket() {
         <span className="field__label">Size ({baseAsset(state.market.symbol)})</span>
         <input className="field__input" value={sizeStr} onChange={(e) => setSizeStr(e.target.value)} inputMode="decimal" />
       </label>
+      <p className="small muted">Minimum order value: $10 to open or increase a position. Reduce-only orders are exempt.</p>
 
       <div className="quicksize" role="group" aria-label="Size as a fraction of buying power">
         {([25, 50, 75, 100] as const).map((pct) => (
@@ -208,6 +223,9 @@ export function OrderTicket() {
         <OrderPreview size={previewSize} mark={previewMark} side={side} imr={state.market.initialMarginRatio} mmr={state.market.maintenanceMarginRatio} takerFeeBps={state.market.takerFeeBps} />
       )}
 
+      {belowMinimum && (
+        <p className="notice notice--warn">Below the $10 minimum order size for an order that opens or increases a position.</p>
+      )}
       {closeOnly && (
         <p className="notice notice--warn">Close-only mode: opening/increasing is blocked (§6).</p>
       )}

@@ -85,6 +85,7 @@
   <li><strong>Inclusion challenges.</strong> The receipt's L1 challenge authorization is bound to the chain, the settlement contract and the account's deposit address (the beneficiary). One hour after the order was received, anyone holding it can open an on-chain challenge, staking <strong>0.01 ETH</strong> to prevent griefing. Anyone can answer with a settled window's ordered or rejected proof; open challenges are enumerable on-chain and can be answered in batches.</li>
   <li><strong>Capped fine.</strong> If no answer lands after <strong>two further settled windows</strong> plus a <strong>3,600-block</strong> grace, the operator's bond pays a capped fine (up to <strong>1,000 USDC</strong> per order on the testnet) to the beneficiary (pull-payment), and the stake is returned. Settlement continues; the gate counts settled windows, so a slow prover is not fined.</li>
   <li><strong>Liveness and close-only.</strong> If the state root stops progressing for <strong>43,200 blocks</strong> (~24 h), or a landed deposit stays unconsumed for that long, anyone can put the system into close-only; governance can also enter it directly. Deposits that no settled window consumed are refunded at principal from the vault. Withdrawals in published roots stay claimable; other balances exit through the governance wind-down.</li>
+  <li><strong>Wind-down.</strong> After close-only, one governance-landed <code>SettleAll</code> closes every open position at its market's last recorded oracle price (entry price for a market that never recorded one), covers deficits from the clearing pool, the insurance fund and the treasury before any pro-rata haircut, and pays the leftover reserves as one withdrawal leaf to a recipient address bound into the genesis state root. Users then exit through price-free withdrawals. The operator's oracle key signs that price, and governance chooses when close-only starts.</li>
 </ul>
 <p class="dim">These are the launch defaults of the settlement ABI version 3 contracts. The July Base Sepolia deployment predates them (300-block challenge window, 7,200-block liveness window).</p>
 
@@ -112,6 +113,7 @@
   <thead><tr><th>Property</th><th>Secured by</th></tr></thead>
   <tbody>
     <tr><td>Settled state transitions (fills, funding, liquidations, ADL, balances)</td><td>SP1 zkVM proof, Groth16-verified on-chain</td></tr>
+    <tr><td>Funding mark, op timing, oracle prices (including the wind-down settlement price)</td><td>Operator-chosen within the guest's bounds; prices signed by the operator's oracle key</td></tr>
     <tr><td>Withdrawals from settled state</td><td>Permissionless Merkle claims against the vault</td></tr>
     <tr><td>Order inclusion (accepted orders make it into windows)</td><td>Signed receipts + enclave-authorized challenge game with capped fines</td></tr>
     <tr><td>Matching integrity &amp; privacy before settlement</td><td>Intel TDX attestation (enclave identity sealed to the measurement)</td></tr>

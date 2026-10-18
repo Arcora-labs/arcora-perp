@@ -31,11 +31,12 @@ builds in isolation before invoking the host.
 ```bash
 cd crates/sp1-host && cargo run --release --bin sp1-host
 ```
-(`--bin sp1-host` is required: the crate has a second bin target, `prove`, so a bare
-`cargo run` errors with "could not determine which binary to run". Run with
+(`--bin sp1-host` is required: the crate has several bin targets and no `default-run`,
+so a bare `cargo run` errors with "could not determine which binary to run". Run with
 `SP1_SKIP_PROGRAM_BUILD` **unset** — CI's typecheck job sets it, and with it set the
 guest ELF this gate executes is never built.)
-Asserts `native derive_roots(...).commitment == the guest's committed value`. This is
+Asserts that the native `perp_core::clock::bind_transition(...).commitment` equals the
+guest's committed value for the same clock-bound witness bytes. This is
 the first execution of the P1 circuit in the SP1 zkVM. Must print the equality/success
 before proceeding. (If include_elf! can't find the guest ELF, run the standalone build
 first — `cd crates/sp1-guest && cargo prove build` — and if it still isn't found, as a
@@ -53,12 +54,19 @@ let client = ProverClient::from_env().await;      // MUST resolve to the local/a
 let pk = client.setup(ELF).await.unwrap();
 let vkey: String = pk.verifying_key().bytes32();  // <-- the bytes32 for the SP1ZkVerifier constructor
 let mut stdin = SP1Stdin::new();
-stdin.write_vec(witness_bytes);                    // postcard (DefaultState, Vec<BatchOp>, BatchManifest)
+stdin.write_vec(witness_bytes);                    // b"DPCLK4\0\0" ‖ postcard((DefaultState, Vec<BatchOp>, BatchManifest, ClockContext))
 let proof = client.prove(&pk, stdin).groth16().await.unwrap();
 let proof_bytes = proof.bytes();                   // <-- settleBatch `proof` arg
-let public_values = proof.public_values.as_slice();// == the 32-byte publicCommitment
+let public_values = proof.public_values.as_slice();// == the 32-byte clock-bound commitment
 ```
 Record `vkey` (bytes32) and `proof_bytes`.
+
+The guest accepts only that framing, with no trailing bytes; an unframed tuple or any
+other magic is refused before decode. The committed value is
+`keccak256(abi.encode(keccak256("arcora:clock-bound-proof:v2"), publicCommitment, receipt))`,
+the commitment bound to the window's L1 clock receipt; `ClockBoundVerifier` recomputes it
+and passes it to `SP1ZkVerifier`. For the reviewed fixture, `clock-proof` in
+`crates/sp1-host` builds the witness and runs this flow.
 
 ## 5. Deploy the on-chain verifier
 - Find the Base Sepolia **SP1VerifierGateway** address in
@@ -92,10 +100,11 @@ between the previous value and the vault's `depositCount()`:
 settleBatch(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot,
             depositsRoot, newDepositCount, proof_bytes)
 ```
-`publicCommitment = publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot,
-withdrawalsRoot, rejectedRoot, depositsRoot)` must equal the 32-byte `public_values`
-from step 4, and the SP1 gateway must accept `proof_bytes` under the pinned `vkey`. On
-success the derived commitment is now enforced on-chain by real ZK.
+`publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot,
+rejectedRoot, depositsRoot)` is the base commitment. `ClockBoundVerifier` binds it to the
+receipt registered for the window, and that bound value must equal the 32-byte
+`public_values` from step 4; the SP1 gateway must accept `proof_bytes` under the pinned
+`vkey`. On success the derived commitment is now enforced on-chain by real ZK.
 
 ## Notes / gotchas
 - Proving latency + resources set the L1 settle cadence.

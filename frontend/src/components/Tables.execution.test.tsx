@@ -40,6 +40,13 @@ describe("order execution is separate from finality", () => {
     expect(screen.getByText("Historical fills unavailable")).toBeTruthy();
     expect(screen.getByText(/\? \/ \+0\.0750/)).toBeTruthy();
   });
+  it("explains a rejected order's manifest reason in plain words", () => {
+    const o = order();
+    o.execution = { ...o.execution!, status: "REJECTED", remainingSize: 0n, reason: "BelowMinimumSize" };
+    fixture.orders = [o]; render(<OrdersTable />);
+    expect(screen.getByText("REJECTED")).toBeTruthy();
+    expect(screen.getByText(/below the \$10 minimum order size/i)).toBeTruthy();
+  });
   it("surfaces a durability error instead of announcing a durable cancellation", async () => {
     fixture.cancel.mockRejectedValue(new Error("Cancellation durability unconfirmed"));
     render(<OrdersTable />); fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
