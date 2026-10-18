@@ -3,6 +3,12 @@
 
 No proving network or proof generation. A PASS requires exact expected guest
 exits, public bytes and measured candidate vkey. Outputs are fresh and external.
+
+Frozen candidate lane: the candidate ELF, setup key, replay corpus and
+chainlink-oracle sources are kept byte-identical as history. They were built
+against an earlier perp-core witness wire, so `run` and the CLI refuse before
+any execution. The pins and the report parser below remain for the identity
+checks and their tests.
 """
 import argparse
 import datetime
@@ -22,6 +28,8 @@ FIXTURES = ROOT / "crates/chainlink-oracle/tests/fixtures/replay-v1"
 ELF_SHA = "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f"
 VKEY = "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590"
 FIXTURE_MANIFEST_SHA = "cc697713834cb455bb1a7cab24f419fe2badc84205a528f78ff710b7a0bd2567"
+FROZEN_LANE = ("frozen candidate lane: the Chainlink candidate ELF and replay corpus are kept as history "
+               "and are not executed against the current perp-core")
 
 
 # Candidate runtime inputs measured with this ELF, separate from reviewed v2 pins.
@@ -118,6 +126,8 @@ def verify_report(directory):
 
 
 def run(binary, elf, output, timeout=600):
+    require(False, FROZEN_LANE)
+    # Unreachable: kept unchanged as the provenance of the committed candidate evidence.
     binary = binary.resolve(strict=True)
     require(binary.is_file(), "executor binary required")
     require(sha(read_regular(elf)) == ELF_SHA, "candidate ELF pin mismatch")
@@ -176,6 +186,8 @@ def run(binary, elf, output, timeout=600):
 
 
 def main():
+    raise SystemExit(FROZEN_LANE)
+    # Unreachable: the former CLI, kept unchanged for provenance.
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--elf", type=Path, required=True)

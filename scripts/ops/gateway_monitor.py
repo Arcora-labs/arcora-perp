@@ -14,8 +14,9 @@ condition is reported once when it starts and once when it clears:
   the same lag has persisted for --stall-seconds. No L1 means no check.
 * the gateway's own alerts in ops_notify.GATEWAY_ALERTS (bond_shortfall,
   unanswerable_challenge, challenge_discovery_failed, stale_anchor,
-  liveness_low, permit_gc_stalled), while `opsAlerts` lists them. Other names
-  are ignored.
+  liveness_low, permit_gc_stalled, engine_close_only, admission_cap_reached,
+  withdraw_nonce_repaired), while `opsAlerts` lists them. Other names are
+  ignored.
 
 This complements the gateway's own alerts: it also fires when the process is
 down or wedged, which in-process alerts cannot report. An alert whose

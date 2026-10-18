@@ -92,10 +92,17 @@ class ReviewedGuestCopies(unittest.TestCase):
 
     def test_ci_builds_the_identity_binaries_and_describes_their_pins(self):
         ci = source(".github/workflows/ci.yml")
-        build = one(r"^\s*run: (cargo build --release --locked --manifest-path crates/sp1-host/Cargo\.toml .*)$",
-                    ci, "sp1-host release build")
-        self.assertIn("--bin vkey", build)
-        self.assertIn("--bin clock-proof", build)
+        # The prover crates job (with replay-funds) and the reviewed guest execution job.
+        builds = re.findall(r"^\s*run: (cargo build --release --locked --manifest-path crates/sp1-host/Cargo\.toml .*)$",
+                            ci, flags=re.MULTILINE)
+        self.assertEqual(len(builds), 2)
+        for build in builds:
+            with self.subTest(build=build):
+                self.assertIn("--bin vkey", build)
+                self.assertIn("--bin clock-proof", build)
+        self.assertEqual(sum("--bin replay-funds" in build for build in builds), 1)
+        # The frozen Chainlink candidate hosts are no longer executed by a required job.
+        self.assertFalse(any("replay-chainlink" in build for build in builds))
         comment = one(r"((?:^\s*#.*\n)+)\s*- name: Build optimized exact synthetic funds replay host", ci,
                       "release build comment")
         vkey = source("crates/sp1-host/src/bin/vkey.rs")

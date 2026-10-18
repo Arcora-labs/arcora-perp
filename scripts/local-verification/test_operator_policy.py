@@ -118,8 +118,9 @@ class PolicyTargetTests(unittest.TestCase):
         self.assertTrue(result['scope']['operator_and_settlement_policy_matches'])
         self.assertFalse(result['scope']['operator_and_settlement_policy_approved'])
         self.assertEqual(result['scope']['release_gate'], 'HOLD')
-        # 14 stack bindings + 6 operator addresses + 7 settlement policy values.
-        self.assertEqual(len(result['bindings']), 27)
+        # 14 stack bindings + 6 operator addresses + 7 settlement policy values
+        # + the genesis root (no batch settled yet).
+        self.assertEqual(len(result['bindings']), 28)
         policy_getters = {item['getter'] for item in result['bindings'] if item['contract'] == 'settlement'}
         for signature in ('challengeGraceBlocks()', 'progressBatches()', 'slashPayoutCap()'):
             self.assertIn(signature, policy_getters)

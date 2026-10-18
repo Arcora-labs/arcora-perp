@@ -9,6 +9,7 @@ import stat
 import sys
 
 import candidate_identity_manifest as identity
+import gateway_formats
 
 SCHEMA = "arcora-public-service-preflight/v1"
 EXPECTATIONS_SCHEMA = "arcora-public-service-expectations/v1"
@@ -19,6 +20,20 @@ PROGRAM_FIELDS = {"elf_sha256", "elf_bytes", "program_vkey", "supported_witness_
 CAPABILITIES = {"candidate_submission_supported": False, "candidate_submission_enabled": False}
 ENDPOINT_SCOPE = {"running_services_attested": False, "operator_policy_approved": False,
                   "proof_generated_by_identity_request": False, "release_gate": "HOLD"}
+CLOCK_SOURCE = "crates/perp-core/src/clock.rs"
+
+
+def witness_domains(root=None):
+    """The one witness domain a prover may report: the reviewed clock framing magic.
+
+    Parsed from perp-core's `WIRE_MAGIC` (NUL padding removed), so the expectation
+    follows the guest's framing instead of a hand-copied list; any other domain,
+    including the unframed tuple ("legacy") and earlier framings, is refused.
+    """
+    magic = gateway_formats.rust_magic(CLOCK_SOURCE, "WIRE_MAGIC", root)
+    domain = magic.rstrip(b"\0")
+    require(re.fullmatch(rb"[A-Z0-9]{4,8}", domain) is not None and b"\0" not in domain)
+    return [domain.decode()]
 
 
 def require(ok):
@@ -68,7 +83,7 @@ def validate_program(value, service):
     integer(value["elf_bytes"], 1, 64 * 1024 * 1024 + 1)
     hex_value(value["program_vkey"], 32, True)
     require(value["sdk_version"] == "6.1.0")
-    same(value["supported_witness_domains"], ["legacy", "DPCLK2"])
+    same(value["supported_witness_domains"], witness_domains())
 
 
 def validate_public_config(value, service):

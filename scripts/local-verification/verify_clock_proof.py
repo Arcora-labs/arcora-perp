@@ -66,7 +66,8 @@ REVIEWED_GUEST = {
 
 # Expected outputs of the reviewed guest on its normal fixture: the witness, the
 # bound public commitment, each rejected negative witness, and further case
-# witnesses (none yet).
+# witnesses, each {"witness_sha256", "commitment"} by case name (none yet).
+# check_reviewed_guest_execution.py re-executes all of them on CPU in CI.
 REVIEWED_FIXTURE = {
     "witness_sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f",
     "commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e",

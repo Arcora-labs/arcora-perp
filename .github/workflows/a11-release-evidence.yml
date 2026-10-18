@@ -22,6 +22,7 @@ jobs:
           python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py
           python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
           python3 -m unittest discover -s scripts/local-verification -p test_pin_coherence.py
+          python3 -m unittest discover -s scripts/local-verification -p test_check_reviewed_guest_execution.py
       - name: Release manifest and repository protection policy guards
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
@@ -182,13 +183,7 @@ jobs:
       - name: Clock-stack deploy tool against owned Anvil (release artifacts observed VERIFIED)
         run: |
           ARCORA_RUN_DEPLOY_ANVIL=1 ARCORA_DEPLOY_ANVIL_EVIDENCE=/tmp/arcora-local-drills/deploy-clock-stack-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_deploy_clock_stack.py -v
-      - name: Candidate target identity against owned seven-contract Anvil stack
-        run: |
-          ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-local-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v
-      - name: Candidate fixture HTTP transport and durable lost-ack recovery (not live service)
-        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks candidate-fixture-http -- cargo test --locked -p gateway --bin gateway candidate_fixture_transport_tests -- --nocapture
-      - name: Candidate signed sealed fixture channel and recovery (not approved service)
-        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks candidate-fixture-sealed -- cargo test --locked -p gateway --bin gateway candidate_fixture_seal_tests -- --nocapture
+      # The frozen Chainlink candidate drills run in chainlink-candidate.yml.
       - name: Real cast transport against owned RPC fixtures
         run: |
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1

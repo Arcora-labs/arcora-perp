@@ -29,15 +29,17 @@ chain the operator marks with --owned-test-chain; a public Base chain id is
 never accepted as one unless its client is Anvil. A target that is not an owned
 test chain is also refused unless the real proof status
 (`verify_clock_proof.proof_status()`, read from the committed proof files and
-shared with `release_manifest.py`) is PROVEN.
+shared with `release_manifest.py`) is PROVEN. Until then, a declared
+--owned-test-chain must also use a local chain id (31337 or 1337).
 
     deploy_clock_stack.py --config deploy.json --rpc http://127.0.0.1:8545 \
         --output public-config.json -- --unlocked --from 0x…
 
-The config holds exactly: `chain_id`, `genesis_root`, `sp1_gateway` (null, or
-an existing gateway plus `sp1_verifier`), `clock` {max_window_ms,
-clock_skew_ms, anchor_timeout_ms}, `deposit_permit_ttl_secs` (bound into the
-public gateway config as DEPOSIT_PERMIT_TTL_SECS) and `operator_policy`
+The config holds exactly: `chain_id`, `genesis_root`, `wind_down_recipient`,
+`oracle_signer_address`, `sp1_gateway` (null, or an existing gateway plus
+`sp1_verifier`), `clock` {max_window_ms, clock_skew_ms, anchor_timeout_ms},
+`deposit_permit_ttl_secs` (bound into the public gateway config as
+DEPOSIT_PERMIT_TTL_SECS) and `operator_policy`
 (`release_manifest.operator_policy`: settlement addresses plus
 SETTLEMENT_POLICY, the vault gateway signer, the clock configurator and the
 SP1 gateway owner). The Base Sepolia launch values are liveness 43,200 blocks,
@@ -46,8 +48,17 @@ deadline, final-settle grace 300 blocks, 2 progress batches, a 1,000 USDC
 (1,000,000,000 base units) payout cap, clock 30,000 / 30,000 / 3,600,000 ms and
 a 1,800 s permit lifetime.
 
+`genesis_root`, `wind_down_recipient` and `oracle_signer_address` are the
+GENESIS_ROOT, WIND_DOWN_RECIPIENT and ORACLE_SIGNER_ADDRESS lines of one
+`darkperp-gateway --print-genesis-root` run: the recipient and the oracle
+signer are bound into that root, which the settlement pins for life. Both
+addresses must be nonzero, distinct from each other and from every
+operator_policy address; off Anvil neither may be a public default account.
+
 Writes the release public config to --output (input for `release_manifest.py
-create` / `observe-target`) and the transaction record next to it as
+create` / `observe-target`; its `genesis` block and the gateway's
+WIND_DOWN_RECIPIENT and PROVER_EXPECTED_ELF_SHA256 come from the config and the
+reviewed guest) and the transaction record next to it as
 `<output>.deployment.json`, including `deploy_block` (the block of the first
 transaction) and `settlement_block` (the block the settlement was created in,
 where its liveness clock starts). If a transaction fails, nothing is written to
@@ -73,7 +84,10 @@ PUBLIC_DEV_ADDRESSES = frozenset({
     "0x23618e81e3f5cdf7f54c3d65f7fbc0abf5b21e8f", "0xa0ee7a142d267c1f36714e4a8f75612f20a79720",
 })
 TOKEN_ARTIFACT = "out/MockUSDC.sol/MockUSDC.json"
-CONFIG_KEYS = {"chain_id", "genesis_root", "sp1_gateway", "clock", "operator_policy", "deposit_permit_ttl_secs"}
+CONFIG_KEYS = {"chain_id", "genesis_root", "wind_down_recipient", "oracle_signer_address", "sp1_gateway",
+               "clock", "operator_policy", "deposit_permit_ttl_secs"}
+# Genesis addresses: the config key, and its name in the release `genesis` block.
+GENESIS_ADDRESSES = {"wind_down_recipient": "wind_down_recipient", "oracle_signer_address": "oracle_signer"}
 # Public Base networks: never treated as an owned test chain unless the client is Anvil.
 PUBLIC_BASE_CHAINS = release.PUBLIC_BASE_CHAINS
 # Base launch floors (2 s blocks). Each entry: (policy section, key, minimum).
@@ -121,6 +135,17 @@ def load_config(raw):
     if int(genesis, 16) == 0:
         raise DeployError("genesis_root must be the gateway's production root (gateway --print-genesis-root)")
     policy = release.operator_policy(raw["operator_policy"])
+    operators = release.operator_addresses(policy)
+    genesis_addresses = {}
+    for key in GENESIS_ADDRESSES:
+        address = release.normalized_hex(raw[key], 20, key)
+        if int(address, 16) == 0:
+            raise DeployError(f"{key} must be a nonzero address (gateway --print-genesis-root)")
+        if address in operators:
+            raise DeployError(f"{key} must differ from every operator_policy address")
+        genesis_addresses[key] = address
+    if genesis_addresses["wind_down_recipient"] == genesis_addresses["oracle_signer_address"]:
+        raise DeployError("wind_down_recipient and oracle_signer_address must be distinct")
     clock = raw["clock"]
     if (not isinstance(clock, dict) or set(clock) != set(release.CLOCK_POLICY)
             or not all(type(v) is int and 400 <= v < 2**64 for v in clock.values())):
@@ -132,7 +157,7 @@ def load_config(raw):
     if raw["sp1_gateway"]:
         reuse = {"sp1_gateway": release.normalized_hex(raw["sp1_gateway"], 20, "sp1_gateway"),
                  "sp1_verifier": release.normalized_hex(raw["sp1_verifier"], 20, "sp1_verifier")}
-    config = {"chain_id": raw["chain_id"], "genesis_root": genesis, "clock": dict(clock),
+    config = {"chain_id": raw["chain_id"], "genesis_root": genesis, **genesis_addresses, "clock": dict(clock),
               "operator_policy": policy, "deposit_permit_ttl_secs": ttl, "reuse": reuse}
     check_constructor_rules(config)
     return config
@@ -194,16 +219,27 @@ def check_chain(config, rpc, allow_public, owned_test_chain=False):
         raise DeployError(f"RPC client {client!r} is not Anvil; refusing without --allow-public-chain")
     if owned_test_chain and not anvil and config["chain_id"] in PUBLIC_BASE_CHAINS:
         raise DeployError("a public Base chain is not an owned test chain unless its client is Anvil")
-    # A vault pins its deposit-authorization signer for life; off Anvil it must be a
+    # A vault pins its deposit-authorization signer for life, and the genesis root
+    # pins the wind-down recipient and the oracle signer; off Anvil each must be a
     # secret key, never one of the published default accounts.
-    if not anvil and config["operator_policy"]["vault"]["gateway_signer"].lower() in PUBLIC_DEV_ADDRESSES:
-        raise DeployError("vault gateway_signer is a public default Anvil account; refusing off Anvil")
-    owned = release.target_owned(config["chain_id"], anvil, owned_test_chain is True)
+    if not anvil:
+        pinned = {"vault gateway_signer": config["operator_policy"]["vault"]["gateway_signer"],
+                  **{key: config[key] for key in GENESIS_ADDRESSES}}
+        for name, address in pinned.items():
+            if address.lower() in PUBLIC_DEV_ADDRESSES:
+                raise DeployError(f"{name} is a public default Anvil account; refusing off Anvil")
+    status = release.clock.proof_status()
+    proven = status == release.clock.PROVEN
+    owned = release.target_owned(config["chain_id"], anvil, owned_test_chain is True, proven=proven)
+    if owned_test_chain and not owned:
+        local = " or ".join(str(chain) for chain in sorted(release.LOCAL_TEST_CHAINS))
+        raise DeployError(f"real proof status is {status}: --owned-test-chain needs a local chain id ({local}) "
+                          "or an Anvil client until the reviewed guest has a committed real proof")
     if not owned:
-        status = release.clock.proof_status()
-        if status != release.clock.PROVEN:
+        if not proven:
             raise DeployError(f"real proof status is {status}: until the reviewed guest has a committed real proof, "
-                              "only an owned test chain (Anvil, or --owned-test-chain) may be deployed to")
+                              "only an owned test chain (Anvil, or --owned-test-chain on a local chain id) "
+                              "may be deployed to")
         check_base_floors(config)
     return client, owned
 
@@ -265,14 +301,18 @@ def settlement_words(config, clock_verifier):
 
 
 def public_config(config, addresses):
+    reviewed = release.clock.REVIEWED_GUEST
     gateway = {env: addresses[role] for env, role in release.ENV_ADDRESSES.items()}
     gateway.update(L1_CHAIN_ID=str(config["chain_id"]), L1_ALLOW_MOCK_PROOF="0",
-                   DEPOSIT_PERMIT_TTL_SECS=str(config["deposit_permit_ttl_secs"]))
-    reviewed = release.clock.REVIEWED_GUEST
+                   DEPOSIT_PERMIT_TTL_SECS=str(config["deposit_permit_ttl_secs"]),
+                   WIND_DOWN_RECIPIENT=config["wind_down_recipient"],
+                   PROVER_EXPECTED_ELF_SHA256=reviewed["elf"])
     return release.public_config({
         "chain_id": config["chain_id"], "addresses": addresses, "program_vkey": reviewed["vkey"],
         "clock": config["clock"], "gateway": gateway,
         "prover": {"program_vkey": reviewed["vkey"], "guest_elf_sha256": reviewed["elf"]},
+        "genesis": {"root": config["genesis_root"],
+                    **{name: config[key] for key, name in GENESIS_ADDRESSES.items()}},
         "operator_policy": config["operator_policy"],
     })
 
@@ -292,7 +332,8 @@ def main(argv=None):
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--allow-public-chain", action="store_true")
     parser.add_argument("--owned-test-chain", action="store_true",
-                        help="the target is a disposable chain you own; skips the Base launch floors")
+                        help="the target is a disposable chain you own; skips the Base launch floors "
+                             "(chain id 31337 or 1337 until the real proof status is PROVEN)")
     args = parser.parse_args(own)
     try:
         if not signer:
@@ -321,7 +362,8 @@ def main(argv=None):
     args.output.write_text(json.dumps(public, indent=2, sort_keys=True) + "\n")
     args.output.with_suffix(".deployment.json").write_text(json.dumps({
         "chain_id": config["chain_id"], "rpc_client": client, "owned_test_chain": owned,
-        "genesis_root": config["genesis_root"], "deploy_block": first_block(deployer),
+        "genesis_root": config["genesis_root"], "wind_down_recipient": config["wind_down_recipient"],
+        "oracle_signer_address": config["oracle_signer_address"], "deploy_block": first_block(deployer),
         "settlement_block": deployer.block_of("settlement"), "transactions": deployer.transactions,
     }, indent=2) + "\n")
     print(json.dumps({"status": "DEPLOYED", "addresses": public["addresses"]}, indent=2))

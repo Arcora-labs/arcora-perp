@@ -210,7 +210,7 @@ def main():
                     bind = sign(wallet_key, 'bind', owner=account['owner'], chainId=account['chainId'],
                                 vault=account['vault'])['signature']
                     ok(port, 'POST', '/v1/accounts/deposit/address', {'address': address, 'signature': bind}, key)
-                    permit = {'from': address, 'amount': '1000000', 'marketId': 0, 'purpose': 'collateral'}
+                    permit = {'from': address, 'amount': '10000000', 'marketId': 0, 'purpose': 'collateral'}
                     if operation == 'cancel':
                         ok(port, 'POST', '/v1/accounts/deposit', {'marketId': 0, 'amount': '20000000000'}, key)
                         ok(port, 'POST', '/v1/orders', {
@@ -334,7 +334,7 @@ def main():
                             route = ok(restored_port, 'POST', '/v1/accounts/deposit/route', routing, current_key)
                             require(route['durability'] == 'confirmed' and route['ownerCommit'] == observed['ownerCommit'], 'same durable permit/routing retained')
                             require(route.get('validUntil') == deadline, 'route keeps the permit deadline it was signed with')
-                        changed = dict(routing, amount='2000000')
+                        changed = dict(routing, amount='20000000')
                         changed_status, _ = request(restored_port, 'POST', '/v1/accounts/deposit/route', changed, current_key)
                         require(changed_status == 400, 'existing permit cannot change amount')
                         case.update(same_permit_route_repeated=2, conflicting_route_status=changed_status,

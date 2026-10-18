@@ -10,7 +10,14 @@ Every manifest records `real_proof`: verify_clock_proof.proof_status(), read fro
 the committed proof files. `create` requires PROVEN. While the status is not
 PROVEN, validate and observe-target accept only an owned test chain (the
 deploy_clock_stack rule: an Anvil client, or an operator-declared
---owned-test-chain that is not a public Base chain id).
+--owned-test-chain whose chain id is a local one, 31337 or 1337).
+
+The public config binds the genesis the settlement was deployed with: `genesis`
+{root, wind_down_recipient, oracle_signer}, the three values
+`darkperp-gateway --print-genesis-root` prints together. The recipient is also
+the gateway's WIND_DOWN_RECIPIENT, and neither address may be an operator or
+contract address. observe-target checks the deployed `currentStateRoot()`
+against `genesis.root` while `batchCount()` is still 0.
 """
 import argparse
 import datetime
@@ -47,11 +54,20 @@ ENV_ADDRESSES = {
 ADDRESS_ROLES = set(CONTRACTS) | {"token"}
 # Public Base networks: never an owned test chain unless the client is Anvil.
 PUBLIC_BASE_CHAINS = frozenset({8453, 84532})
+# Local development chain ids (Anvil/Hardhat and the common dev-node default).
+# While the real proof is not PROVEN, a declared owned test chain must use one.
+LOCAL_TEST_CHAINS = frozenset({31337, 1337})
 # observe-target asks the client name only to decide ownership while the real
 # proof status is not PROVEN; every other read is the deployment reader's.
 READ_METHODS = deployment_reader.READ_METHODS | {"web3_clientVersion"}
 # Public gateway settings bound into the release config (never keys or URLs).
-GATEWAY_KEYS = set(ENV_ADDRESSES) | {"L1_CHAIN_ID", "L1_ALLOW_MOCK_PROOF", "DEPOSIT_PERMIT_TTL_SECS"}
+# PROVER_EXPECTED_ELF_SHA256 is the reviewed guest ELF the prover must report.
+GATEWAY_KEYS = set(ENV_ADDRESSES) | {"L1_CHAIN_ID", "L1_ALLOW_MOCK_PROOF", "DEPOSIT_PERMIT_TTL_SECS",
+                                     "WIND_DOWN_RECIPIENT", "PROVER_EXPECTED_ELF_SHA256"}
+# Gateway variables holding an address: compared case-insensitively.
+GATEWAY_ADDRESS_KEYS = set(ENV_ADDRESSES) | {"WIND_DOWN_RECIPIENT"}
+# The genesis the settlement is deployed with, as `--print-genesis-root` prints it.
+GENESIS_KEYS = ("root", "wind_down_recipient", "oracle_signer")
 # The settlement ABI generation this kit deploys and observes (`ABI_VERSION()`).
 SETTLEMENT_ABI_VERSION = 3
 # ClockBoundVerifier refuses an anchor timeout below one second.
@@ -167,8 +183,36 @@ def operator_policy(value):
     return result
 
 
+def operator_addresses(policy):
+    """Every address a normalized operator policy names, in any role."""
+    return {policy[role][name] for role, fields in OPERATOR_ADDRESSES.items() for name in fields}
+
+
+def genesis_config(value, addresses, policy):
+    """The deployed genesis: a nonzero root and two independent nonzero addresses.
+
+    The wind-down recipient and the oracle signer are bound into the genesis root,
+    so neither can be rotated after deployment. Each must differ from the other,
+    from every contract address and from every operator address in the policy.
+    """
+    exact_keys(value, GENESIS_KEYS, "genesis")
+    root = normalized_hex(value["root"], 32, "genesis root")
+    require(int(root, 16) != 0, "genesis root must be the gateway's production root (--print-genesis-root)")
+    result = {"root": root}
+    for name in ("wind_down_recipient", "oracle_signer"):
+        address = normalized_hex(value[name], 20, "genesis " + name)
+        require(int(address, 16) != 0, "genesis " + name + " must be a nonzero address")
+        require(address not in addresses.values(), "genesis " + name + " must not be a contract address")
+        require(policy is None or address not in operator_addresses(policy),
+                "genesis " + name + " must differ from every operator address")
+        result[name] = address
+    require(result["wind_down_recipient"] != result["oracle_signer"],
+            "genesis wind_down_recipient and oracle_signer must be distinct")
+    return result
+
+
 def public_config(value):
-    keys = {"chain_id", "addresses", "program_vkey", "clock", "gateway", "prover"}
+    keys = {"chain_id", "addresses", "program_vkey", "clock", "gateway", "prover", "genesis"}
     if isinstance(value, dict) and "operator_policy" in value:
         keys.add("operator_policy")
     exact_keys(value, keys, "public config")
@@ -198,11 +242,21 @@ def public_config(value):
     prover_key = normalized_hex(value["prover"]["program_vkey"], 32, "prover program_vkey")
     require(prover_key == key, "prover program_vkey mismatch")
     require(value["prover"]["guest_elf_sha256"] == clock.REVIEWED_GUEST["elf"], "prover guest ELF mismatch")
+    elf = gateway["PROVER_EXPECTED_ELF_SHA256"]
+    require(isinstance(elf, str) and re.fullmatch(r"[0-9a-f]{64}", elf),
+            "PROVER_EXPECTED_ELF_SHA256 must be 64 lower-case hex digits")
+    require(elf == clock.REVIEWED_GUEST["elf"], "PROVER_EXPECTED_ELF_SHA256 does not match the reviewed guest ELF")
+    policy = operator_policy(value["operator_policy"]) if "operator_policy" in value else None
+    genesis = genesis_config(value["genesis"], addresses, policy)
+    gateway["WIND_DOWN_RECIPIENT"] = normalized_hex(gateway["WIND_DOWN_RECIPIENT"], 20, "WIND_DOWN_RECIPIENT")
+    require(gateway["WIND_DOWN_RECIPIENT"] == genesis["wind_down_recipient"],
+            "WIND_DOWN_RECIPIENT does not match the genesis wind_down_recipient")
     result = {"chain_id": value["chain_id"], "addresses": addresses, "program_vkey": key,
               "clock": dict(value["clock"]), "gateway": gateway,
-              "prover": {"program_vkey": prover_key, "guest_elf_sha256": clock.REVIEWED_GUEST["elf"]}}
-    if "operator_policy" in value:
-        result["operator_policy"] = operator_policy(value["operator_policy"])
+              "prover": {"program_vkey": prover_key, "guest_elf_sha256": clock.REVIEWED_GUEST["elf"]},
+              "genesis": genesis}
+    if policy is not None:
+        result["operator_policy"] = policy
     return result
 
 
@@ -210,8 +264,11 @@ def check_environment(config, env):
     # Never read, record, or diagnose key values from the service environment.
     for key, expected in config["gateway"].items():
         actual = env.get(key)
-        if key in ENV_ADDRESSES and isinstance(actual, str):
+        if key in GATEWAY_ADDRESS_KEYS and isinstance(actual, str):
             actual = actual.lower()
+        elif key == "PROVER_EXPECTED_ELF_SHA256" and isinstance(actual, str):
+            # The gateway accepts the digest with or without a 0x prefix.
+            actual = actual.lower().removeprefix("0x")
         require(actual == expected, "process environment mismatch: " + key)
 
 
@@ -347,9 +404,20 @@ def create_manifest(root, config):
     return manifest
 
 
-def target_owned(chain_id, anvil, owned_test_chain):
-    """deploy_clock_stack's rule: an Anvil client, or a declared non-Base test chain."""
-    return anvil is True or (owned_test_chain is True and chain_id not in PUBLIC_BASE_CHAINS)
+def target_owned(chain_id, anvil, owned_test_chain, *, proven=False):
+    """deploy_clock_stack's rule: an Anvil client, or a declared owned test chain.
+
+    While the real proof is not PROVEN, a declaration counts only for a local
+    chain id (LOCAL_TEST_CHAINS); once it is PROVEN, for any chain id that is not
+    a public Base chain. A public Base chain id is owned only through Anvil.
+    """
+    if anvil is True:
+        return True
+    if owned_test_chain is not True:
+        return False
+    if proven is True:
+        return chain_id not in PUBLIC_BASE_CHAINS
+    return chain_id in LOCAL_TEST_CHAINS
 
 
 def require_release_target(manifest, owned, action):
@@ -357,7 +425,8 @@ def require_release_target(manifest, owned, action):
     status = (manifest.get("real_proof") or {}).get("status")
     require(status == clock.PROVEN or owned,
             action + " refused: real proof status is " + str(status)
-            + "; only an owned test chain (Anvil, or --owned-test-chain off public Base) is accepted")
+            + "; only an owned test chain (an Anvil client, or --owned-test-chain on local chain id "
+            + " or ".join(str(chain) for chain in sorted(LOCAL_TEST_CHAINS)) + ") is accepted")
 
 
 def validate_manifest(root, manifest, config, env=None, *, owned_test_chain=False, check_target=True):
@@ -475,15 +544,18 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
     read-only TargetRPC; this function never deploys or repairs contract state.
     Unless the manifest's real proof status is PROVEN, the target must be an owned
     test chain (checked through web3_clientVersion before any contract read).
+    While `batchCount()` is 0 the settlement's `currentStateRoot()` must be the
+    configured genesis root; after the first batch it is recorded as unobservable.
     """
     result = {"status": "BLOCKED", "observed_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "manifest_sha256": digest(canonical(manifest)), "contracts": {}, "bindings": [],
               "scope": {**SCOPE, "local_identity_checked": False, "operator_and_settlement_policy_approved": False,
                         "operator_and_settlement_policy_matches": False,
-                        "token_runtime_verified": False},
+                        "token_runtime_verified": False, "genesis_root_verified": False},
               "limitations": ["RPC responses are trusted; no light-client or independent endpoint consensus.",
                               "Declared operator/settlement policy can be matched; its security and economic suitability are not approved.",
                               "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
+                              "The genesis root is compared on chain only before the first batch; the recipient and oracle signer are tied to it by the print-genesis-root run that produced all three.",
                               "No proof is generated or submitted; no service identity, state migration or release readiness is established."]}
     try:
         validated = validate_manifest(root, manifest, config, check_target=False)
@@ -506,7 +578,7 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
         if status != clock.PROVEN:
             client = rpc("web3_clientVersion", [])
             anvil = isinstance(client, str) and client.lower().startswith("anvil")
-            result["target_owned"] = target_owned(chain, anvil, owned_test_chain)
+            result["target_owned"] = target_owned(chain, anvil, owned_test_chain, proven=False)
             require_release_target(validated, result["target_owned"], "observe-target")
         height, block_hash = deployment_reader.header(rpc("eth_getBlockByNumber", ["finalized", False]))
         result.update(chain_id=chain, block_number=height, block_hash=block_hash)
@@ -564,12 +636,25 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
         result["sp1_route"] = {"selector": verifier_hash[:10], "verifier": addresses["sp1_verifier"], "frozen": False}
         # Compare only with explicitly supplied, manifest-bound policy. Omitting
         # a policy keeps legacy observation mode; it cannot produce a match claim.
+        observed_operators = set()
         for role, fields in OPERATOR_ADDRESSES.items():
             for name, signature in fields.items():
-                getter(role, signature, expected=policy[role][name] if policy is not None else None)
+                observed_operators.add(
+                    getter(role, signature, expected=policy[role][name] if policy is not None else None))
         for name, signature in SETTLEMENT_POLICY.items():
             getter("settlement", signature, "uint",
                    policy["settlement"][name] if policy is not None else None)
+        # The recipient and the oracle signer are fixed in the genesis root; neither
+        # may be an operator address the target reports, with or without a policy.
+        genesis = public["genesis"]
+        for name in ("wind_down_recipient", "oracle_signer"):
+            require(genesis[name] not in observed_operators,
+                    "genesis " + name + " equals an observed operator address")
+        batches = getter("settlement", "batchCount()", "uint")
+        result["genesis"] = {**genesis, "batch_count": batches, "root_observed": batches == 0}
+        if batches == 0:
+            # Before the first batch the settlement still holds its constructor root.
+            getter("settlement", "currentStateRoot()", "bytes32", genesis["root"])
         require(deployment_reader.header(rpc("eth_getBlockByNumber", [hex(height), False]), height) == (height, block_hash),
                 "finalized block changed during observation")
         require(deployment_reader.quantity(rpc("eth_chainId", [])) == chain, "chain changed during observation")
@@ -577,7 +662,8 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
         validate_manifest(root, manifest, config, check_target=False)
         result["status"] = "VERIFIED_AT_FINALIZED_BLOCK"
         result["scope"].update(target_chain_observed=True, runtime_bytecode_verified=True,
-                               operator_and_settlement_policy_matches=policy is not None)
+                               operator_and_settlement_policy_matches=policy is not None,
+                               genesis_root_verified=batches == 0)
     except Exception as error:
         # Never expose provider error data, response body, credential URL or paths.
         result["blocker"] = str(error) if type(error) is ValueError else deployment_reader.safe_error(error)
@@ -595,7 +681,8 @@ def main():
     validate.add_argument("--config", type=Path, required=True)
     validate.add_argument("--check-process-env", action="store_true", help="compare allowlisted gateway variables before startup")
     validate.add_argument("--owned-test-chain", action="store_true",
-                          help="declare a disposable non-Base test chain you own (needed while the real proof is not PROVEN)")
+                          help="declare a disposable local test chain you own (chain id 31337 or 1337; "
+                               "needed while the real proof is not PROVEN)")
     deployment = commands.add_parser("check-deployment", help="check recorded deployment key only, without RPC")
     deployment.add_argument("--deployment", type=Path, required=True)
     target = commands.add_parser("observe-target", help="read-only finalized clock-stack runtime and binding verification; release remains HOLD")
@@ -606,7 +693,8 @@ def main():
     target.add_argument("--require-operator-policy", action="store_true",
                         help="refuse before RPC unless a complete expected operator/settlement policy is bound")
     target.add_argument("--owned-test-chain", action="store_true",
-                        help="declare a disposable non-Base test chain you own (an Anvil client needs no declaration)")
+                        help="declare a disposable local test chain you own (chain id 31337 or 1337; "
+                             "an Anvil client needs no declaration)")
     args = parser.parse_args()
     if args.command == "check-deployment":
         check_deployment_config(read_json(args.deployment))
