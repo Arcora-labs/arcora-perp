@@ -208,6 +208,8 @@ impl BroadcastStore {
             Err(TryLockError::WouldBlock) => return Err(StoreError::Busy),
             Err(TryLockError::Error(_)) => return Err(StoreError::Read),
         }
+        #[cfg(test)]
+        tests::observe_locked(&lock);
         // Own the kernel lock first so every refusal below releases it via Drop.
         let lease = Lease {
             store: self,
@@ -572,7 +574,40 @@ fn decode_sealed_with_inode(bytes: &[u8], seed: &[u8; 32]) -> Result<(Record, In
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+
+    thread_local! {
+        static DUPLICATES: RefCell<Option<Vec<File>>> = const { RefCell::new(None) };
+    }
+
+    /// `try_lease` calls this as soon as it holds the lock. While a test on this
+    /// thread collects duplicates, keep one more reference to the locked open
+    /// file description, as a process created at that moment would.
+    pub(super) fn observe_locked(lock: &File) {
+        DUPLICATES.with(|slot| {
+            if let Some(held) = slot.borrow_mut().as_mut() {
+                held.push(lock.try_clone().unwrap());
+            }
+        });
+    }
+
+    /// Run `f` and return, with its value, a duplicate of every lock that
+    /// `try_lease` took on this thread meanwhile. The duplicates stay open
+    /// until the caller drops them.
+    fn holding_duplicates<T>(f: impl FnOnce() -> T) -> (T, Vec<File>) {
+        struct Disarm;
+        impl Drop for Disarm {
+            fn drop(&mut self) {
+                DUPLICATES.with(|slot| slot.borrow_mut().take());
+            }
+        }
+        DUPLICATES.with(|slot| *slot.borrow_mut() = Some(Vec::new()));
+        let _disarm = Disarm;
+        let value = f();
+        let held = DUPLICATES.with(|slot| slot.borrow_mut().take());
+        (value, held.unwrap_or_default())
+    }
 
     const TEST_LOCK: Inode = Inode {
         dev: 1,
@@ -768,6 +803,35 @@ mod tests {
         drop(relet);
         assert_eq!(peer.try_lease().unwrap().load(), Ok(None));
         drop(child);
+    }
+
+    /// A refusal after `try_lease` has taken the lock must release it as well,
+    /// while another reference to the locked description is still open. Both
+    /// cases refuse when the lease reads the target's cut.
+    #[test]
+    fn broadcast_store_refusals_after_locking_release_the_lock() {
+        for case in 0..2 {
+            let dir = Scratch::new();
+            let store = dir.store();
+            let peer = dir.store();
+            let expected = if case == 0 {
+                private_create(&dir.path())
+                    .unwrap()
+                    .set_len(MAX_SEALED_BYTES as u64 + 1)
+                    .unwrap();
+                StoreError::Bounds
+            } else {
+                std::os::unix::fs::symlink(dir.0.join("elsewhere"), dir.path()).unwrap();
+                StoreError::Identity
+            };
+            let (refused, duplicates) = holding_duplicates(|| store.try_lease().map(|_| ()));
+            assert_eq!(refused, Err(expected));
+            assert_eq!(duplicates.len(), 1, "the refusal must come after locking");
+            assert_eq!(peer.try_lease().map(|_| ()), Err(expected));
+            std::fs::remove_file(dir.path()).unwrap();
+            assert_eq!(peer.try_lease().unwrap().load(), Ok(None));
+            drop(duplicates);
+        }
     }
 
     #[test]
