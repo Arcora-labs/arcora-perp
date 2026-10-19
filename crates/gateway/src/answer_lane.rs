@@ -24,7 +24,11 @@
 //! start, or occupied) is taken over by queued answers, or, when answers of ours
 //! wait behind it, replaced by a no-op transfer under the same bump caps, so it
 //! cannot hold the lane. A no-op that fails for a reason other than its fees
-//! still counts toward those caps and toward the round's `max_failures`.
+//! (the account's balance, the RPC, the keystore) counts toward the round's
+//! `max_failures` but not toward the bump caps, so the nonce is never given up:
+//! each such failure in a row adds one `bump_after` to the wait before the next
+//! attempt there, up to `MAX_NOOP_BACKOFF` intervals, and an accepted broadcast
+//! there clears the wait.
 //!
 //! A payload the estimate refuses is halved depth-first (the left half next), so
 //! one refused entry is isolated in about log2(n) attempts however slow the RPC,
@@ -113,6 +117,10 @@ impl Default for Policy {
 /// Inherited transactions tracked after a restart, at most.
 const MAX_INHERITED: u64 = 64;
 
+/// Attempts at a nonce whose no-ops keep failing for a reason other than their
+/// fees are at most this many `bump_after` intervals apart.
+const MAX_NOOP_BACKOFF: u32 = 8;
+
 /// One answer transaction as the lane asks the chain to broadcast it.
 pub(crate) struct AnswerTx<'a> {
     pub nonce: u64,
@@ -186,6 +194,8 @@ pub(crate) struct RoundReport {
     pub in_flight: usize,
     /// Planned answers left for a later round.
     pub deferred: usize,
+    /// The first error this round; else, when a no-op this lane needs keeps
+    /// failing, its last error and when it is tried again.
     pub first_error: Option<String>,
 }
 
@@ -202,8 +212,12 @@ struct Slot {
     /// A broadcast of `payload` here was answered "already known": that
     /// transaction is pending under a hash this process never learned.
     unhashed: bool,
-    /// Replacement attempts, failed no-ops included.
+    /// Replacements accepted, or refused for their fees.
     bumps: u32,
+    /// No-op broadcasts here that failed in a row for a reason other than their
+    /// fees, and the last such error. Each one lengthens the wait before the next
+    /// attempt; an accepted broadcast here clears it.
+    failed_noops: Option<(u32, String)>,
     /// The latest broadcast attempt (or the start, for an inherited slot).
     since: Instant,
     /// When the slot was first tracked.
@@ -218,6 +232,7 @@ impl Slot {
             hashes: Vec::new(),
             unhashed: false,
             bumps: 0,
+            failed_noops: None,
             since: now,
             opened: now,
         }
@@ -400,6 +415,20 @@ impl Pipeline {
                     && now.saturating_duration_since(slot.opened) >= self.policy.bump_after
             })
             .map(|(nonce, _)| *nonce);
+        if report.first_error.is_none() {
+            report.first_error = self.slots.iter().find_map(|(nonce, slot)| {
+                let (count, error) = slot.failed_noops.as_ref()?;
+                let next = slot
+                    .since
+                    .checked_add(self.retry_after(slot))
+                    .map_or(Duration::MAX, |at| at.saturating_duration_since(now));
+                Some(format!(
+                    "the no-op at nonce {nonce} failed {count} time(s) in a row, next attempt \
+                     in {} s: {error}",
+                    next.as_secs()
+                ))
+            });
+        }
         report
     }
 
@@ -431,6 +460,15 @@ impl Pipeline {
                 })
                 .collect(),
         )
+    }
+
+    /// How long after its latest attempt a slot is stuck: `bump_after`, plus one
+    /// interval per no-op that failed there in a row, up to `MAX_NOOP_BACKOFF`.
+    fn retry_after(&self, slot: &Slot) -> Duration {
+        let failed = slot.failed_noops.as_ref().map_or(0, |(count, _)| *count);
+        self.policy
+            .bump_after
+            .saturating_mul(failed.saturating_add(1).min(MAX_NOOP_BACKOFF))
     }
 
     /// A slot that can no longer be replaced: only rebroadcast, or, when nothing
@@ -512,6 +550,7 @@ impl Pipeline {
                 unhashed: hash.is_none(),
                 hashes: hash.into_iter().collect(),
                 bumps: 0,
+                failed_noops: None,
                 since: now,
                 opened: now,
             },
@@ -536,7 +575,7 @@ impl Pipeline {
         let stuck: Vec<u64> = self
             .slots
             .iter()
-            .filter(|(_, slot)| now.saturating_duration_since(slot.since) >= self.policy.bump_after)
+            .filter(|(_, slot)| now.saturating_duration_since(slot.since) >= self.retry_after(slot))
             .map(|(nonce, _)| *nonce)
             .collect();
         // Lowest nonce first: it holds back every answer above it.
@@ -695,7 +734,8 @@ impl Pipeline {
     /// A nonce this process did not fill is taken over by queued answers, or, when
     /// answers of ours wait behind it, by a no-op transfer. `Ok(true)` when a
     /// no-op failed for a reason other than its fees: that counts toward the
-    /// round's failures. Errors only for a wedged RPC.
+    /// round's failures and lengthens the wait before the next attempt here, but
+    /// uses none of the slot's replacements. Errors only for a wedged RPC.
     fn replace(
         &mut self,
         chain: &dyn AnswerChain,
@@ -774,6 +814,7 @@ impl Pipeline {
                 if error.is_some() && content.is_some() && (bump || taken) {
                     slot.unhashed = true;
                 }
+                slot.failed_noops = None;
                 if bump {
                     slot.fees = Some(fees);
                     slot.bumps += 1;
@@ -807,13 +848,14 @@ impl Pipeline {
                         Ok(false)
                     }
                     // The pending transaction stays; retry after the next interval.
-                    // A failed no-op still uses one of the slot's attempts, so it is
-                    // not retried without limit, and counts toward the round's
-                    // failures.
+                    // A failed no-op counts toward the round's failures and waits
+                    // one interval longer each time in a row, but uses none of the
+                    // slot's replacements: once the cause clears, it is tried again.
                     SendError::Refused | SendError::Failed | SendError::Known => {
-                        report.first_error.get_or_insert(error);
+                        report.first_error.get_or_insert(error.clone());
                         if content.is_none() {
-                            slot.bumps += 1;
+                            let count = slot.failed_noops.as_ref().map_or(0, |(count, _)| *count);
+                            slot.failed_noops = Some((count.saturating_add(1), error));
                             return Ok(true);
                         }
                         Ok(false)
@@ -2107,9 +2149,10 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_no_op_counts_toward_the_bump_limit_and_the_round_failures() {
+    fn a_failing_no_op_waits_longer_each_time_and_counts_toward_the_round_failures() {
         // A stuck inherited transaction at 7, our answer behind it at 8, and every
-        // no-op broadcast fails with an error that is not about fees.
+        // no-op broadcast fails with an error that is not about fees. One pass per
+        // round, a round every 10 s.
         let chain = FakeChain::new();
         chain.s().mined = 7;
         chain.s().base_fee = 10_000; // nothing mines
@@ -2125,25 +2168,36 @@ mod tests {
         let mut lane = Pipeline::new(Policy {
             bump_after: Duration::from_secs(20),
             max_bumps: 3,
-            round_budget: Duration::from_secs(25),
+            round_budget: Duration::from_secs(1),
             ..calm()
         });
-        let mut report = lane.round(&chain, &clock, sends(&[1]));
-        assert!(report
-            .first_error
-            .as_deref()
-            .is_some_and(|e| e.contains("insufficient funds")));
-        for _ in 0..20 {
-            clock.advance(Duration::from_secs(30));
-            report = lane.round(&chain, &clock, vec![]);
-        }
-        assert_eq!(chain.s().cancels, 3, "at most max_bumps no-op attempts");
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!((report.submitted, report.in_flight), (1, 2), "{report:?}");
+        let mut attempts = Vec::new();
+        let mut run_until = |secs: u64, attempts: &mut Vec<u64>| {
+            while clock.elapsed() < Duration::from_secs(secs) {
+                clock.advance(Duration::from_secs(10));
+                let before = chain.s().cancels;
+                lane.round(&chain, &clock, vec![]);
+                if chain.s().cancels > before {
+                    attempts.push(clock.elapsed().as_secs());
+                }
+            }
+        };
+        run_until(1_000, &mut attempts);
+        // Each failure in a row adds one 20 s interval to the wait, up to eight,
+        // well past the bump limit of three.
+        assert_eq!(attempts, vec![20, 60, 120, 200, 300, 420, 560, 720, 880]);
         assert!(chain.cancelled_nonces().is_empty());
-        assert_eq!(
-            (report.blocked_at, report.at_fee_cap, report.in_flight),
-            (Some(7), 2, 2),
-            "{report:?}"
-        );
+        // The cause clears: the next attempt is accepted and the wait is back to
+        // one interval, so the no-op is bumped as any replacement is.
+        chain.s().cancel_fails = None;
+        attempts.clear();
+        run_until(1_100, &mut attempts);
+        assert_eq!(attempts, vec![1_040, 1_060, 1_080, 1_100]);
+        assert_eq!(chain.cancelled_nonces(), vec![7, 7, 7]);
+        let report = lane.round(&chain, &clock, vec![]);
+        assert_eq!(report.at_fee_cap, 2, "both nonces at the bump limit now");
 
         // Each failed no-op is a failure of its round: two stuck nonces and a
         // limit of one stop the round after the first attempt.
@@ -2171,6 +2225,84 @@ mod tests {
             vec![9],
             "the answer was not bumped"
         );
+    }
+
+    #[test]
+    fn failing_no_ops_back_off_and_free_the_nonce_once_the_cause_clears() {
+        // A stuck inherited transaction at 7 below the base fee, our answer behind
+        // it at 8, and every no-op broadcast fails for a reason that is not about
+        // its fees, for longer than the bump limit would allow.
+        let chain = FakeChain::new();
+        chain.s().mined = 7;
+        chain.s().base_fee = 10_000; // nothing mines
+        chain.s().cancel_fails = Some("insufficient funds for gas * price + value".into());
+        chain.preload(
+            7,
+            Fees {
+                max_fee: 20,
+                priority: 1,
+            },
+        );
+        let clock = TestClock::new();
+        let policy = Policy {
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(25),
+            ..calm()
+        };
+        let max_bumps = policy.max_bumps as usize;
+        let mut lane = Pipeline::new(policy);
+        let mut answered = lane.round(&chain, &clock, sends(&[1])).answered;
+        let rounds = 30;
+        let mut report = RoundReport::default();
+        for _ in 0..rounds {
+            clock.advance(Duration::from_secs(30));
+            report = lane.round(&chain, &clock, vec![]);
+            // Every round says why the answers still wait, attempt or not.
+            assert!(
+                report
+                    .first_error
+                    .as_deref()
+                    .is_some_and(|e| e.contains("insufficient funds")),
+                "{report:?}"
+            );
+            assert_eq!(
+                (report.blocked_at, report.in_flight),
+                (Some(7), 2),
+                "{report:?}"
+            );
+        }
+        // Only our own answer at 8 is at its bump limit: failed no-ops use none
+        // of the replacements at 7.
+        assert_eq!(report.at_fee_cap, 1, "{report:?}");
+        let failed = chain.s().cancels;
+        assert!(
+            failed > max_bumps,
+            "the nonce is never given up: {failed} no-op attempts"
+        );
+        assert!(
+            failed * 2 <= rounds,
+            "each failure lengthens the wait: {failed} no-op attempts in {rounds} rounds"
+        );
+        assert!(chain.cancelled_nonces().is_empty());
+
+        // The cause clears and the base fee falls, though not to what the
+        // transaction at 7 pays: only a no-op frees the answer behind it.
+        chain.s().cancel_fails = None;
+        chain.s().base_fee = 50;
+        for _ in 0..20 {
+            chain.mine();
+            clock.advance(Duration::from_secs(30));
+            let plan = if answered < 1 { sends(&[1]) } else { vec![] };
+            answered += lane.round(&chain, &clock, plan).answered;
+        }
+        let cancelled = chain.cancelled_nonces();
+        assert!(
+            !cancelled.is_empty() && cancelled.iter().all(|n| *n == 7),
+            "{cancelled:?}"
+        );
+        assert_eq!(chain.s().mined, 9, "nonces 7 and 8 were filled");
+        assert_eq!(answered, 1, "the answer mined");
+        assert_eq!(lane.in_flight(), 0);
     }
 
     #[test]
