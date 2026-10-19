@@ -208,13 +208,15 @@ impl BroadcastStore {
             Err(TryLockError::WouldBlock) => return Err(StoreError::Busy),
             Err(TryLockError::Error(_)) => return Err(StoreError::Read),
         }
-        self.check_paths()?;
+        // Own the kernel lock first so every refusal below releases it via Drop.
         let lease = Lease {
             store: self,
             lock,
-            target: Cell::new(self.target_cut()?),
+            target: Cell::new(None),
             ambiguous: Cell::new(false),
         };
+        self.check_paths()?;
+        lease.target.set(self.target_cut()?);
         lease.check()?;
         Ok(lease)
     }
@@ -264,6 +266,18 @@ impl BroadcastStore {
             return Err(StoreError::Bounds);
         }
         Ok(Some(FileCut::of(&metadata)))
+    }
+}
+
+impl Drop for Lease<'_> {
+    /// Unlock explicitly instead of relying on close. The lock belongs to the
+    /// open file description, and close releases it only with the last
+    /// reference: a process created by any thread while this lease is held
+    /// keeps one until it execs or exits. LOCK_UN releases it immediately.
+    /// Every acquisition opens its own description, so this never releases
+    /// another lease's lock.
+    fn drop(&mut self) {
+        let _ = self.lock.unlock();
     }
 }
 
@@ -717,6 +731,43 @@ mod tests {
         drop(lease);
         assert_eq!(b.try_lease().unwrap().load(), Ok(Some(finished)));
         assert_eq!(Inode::of(&std::fs::metadata(&a.lock_path).unwrap()), inode);
+    }
+
+    /// Any process created while a lease is held (by this or any other thread)
+    /// inherits a reference to the lease's open file description until it
+    /// execs or exits. Dropping the lease must still release the kernel lock
+    /// immediately, for the same handle and for an independent one.
+    #[test]
+    fn broadcast_store_lease_release_does_not_wait_for_inherited_descriptors() {
+        struct Reaped(std::process::Child);
+        impl Drop for Reaped {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let dir = Scratch::new();
+        let store = dir.store();
+        let peer = dir.store();
+        let lease = store.try_lease().unwrap();
+        // The child holds the inherited reference as its stdin; the parent's
+        // duplicate closes with the temporary Command at the end of the statement.
+        let child = Reaped(
+            std::process::Command::new("/bin/sleep")
+                .arg("600")
+                .stdin(lease.lock.try_clone().unwrap())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        assert!(matches!(peer.try_lease(), Err(StoreError::Busy)));
+        drop(lease);
+        let relet = store.try_lease().unwrap();
+        assert!(matches!(peer.try_lease(), Err(StoreError::Busy)));
+        drop(relet);
+        assert_eq!(peer.try_lease().unwrap().load(), Ok(None));
+        drop(child);
     }
 
     #[test]
