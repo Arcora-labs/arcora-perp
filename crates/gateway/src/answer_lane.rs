@@ -31,11 +31,15 @@
 //! there clears the wait.
 //!
 //! A payload the estimate refuses is halved depth-first (the left half next), so
-//! one refused entry is isolated in about log2(n) attempts however slow the RPC,
-//! while the payload's remaining pieces move behind the other queued answers. A
-//! single refused answer is not sent again for `refused_ttl`; refusals never stop
-//! a round, so one batch cannot starve the next. Only failures that are not the
-//! payload's fault count toward `max_failures`.
+//! one refused entry among n is isolated after about log2(n) refused attempts,
+//! and the payload's remaining pieces move behind the other queued answers.
+//! Every attempt is one broadcast call and none starts after the round budget,
+//! so one round makes at most `round_budget` over the RPC's time per call of
+//! them; pieces a round does not reach wait for the next. A single refused answer
+//! is not sent again for `refused_ttl`, and is isolated again if it is still
+//! planned after that. Refusals never stop a round, so one batch cannot starve
+//! the next. Only failures that are not the payload's fault count toward
+//! `max_failures`.
 //!
 //! An "already known" reply names no transaction hash, so no receipt can be read
 //! for it. When the chain moves past a nonce where these very answers were known
@@ -1889,6 +1893,38 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_payload_moves_behind_the_batches_planned_after_it() {
+        // Batch 1 is refused entry by entry; batches 2 and 3 are clean. Every chain
+        // call takes a second, so the round has room for a few broadcasts only.
+        let chain = FakeChain::new();
+        for n in 1..=64u8 {
+            chain.s().refuse.insert(h(n));
+        }
+        let clock = TestClock::new();
+        let slow = SlowChain {
+            chain: &chain,
+            clock: &clock,
+            cost: Duration::from_secs(1),
+        };
+        let mut lane = Pipeline::new(Policy {
+            round_budget: Duration::from_secs(10),
+            ..calm()
+        });
+        let plan = vec![
+            (1, (1..=64).map(answer).collect::<Vec<_>>()),
+            (2, vec![answer(100)]),
+            (3, vec![answer(101)]),
+        ];
+        let report = lane.round(&slow, &clock, plan);
+        // The first refusal moves batch 1 behind the others: batches 2 and 3 take
+        // the next two attempts and the first two nonces, and its halves follow.
+        let accepted: Vec<(u64, u64)> = chain.s().accepted.iter().map(|a| (a.0, a.2)).collect();
+        assert_eq!(accepted, vec![(0, 2), (1, 3)], "{report:?}");
+        assert!(report.deferred > 0, "batch 1 is still being halved");
+        assert!(report.first_error.unwrap().contains("NotIncluded"));
+    }
+
+    #[test]
     fn broadcast_errors_are_classified_by_what_they_say_about_the_nonce() {
         use SendError::*;
         for (error, kind) in [
@@ -2146,6 +2182,155 @@ mod tests {
             "{report:?}"
         );
         assert_eq!(chain.accepted_nonces(), vec![0], "nothing resent");
+    }
+
+    #[test]
+    fn a_replacement_told_already_known_counts_as_answered_once_its_nonce_mines() {
+        // One pass per round, so each attempt is staged by hand.
+        let policy = Policy {
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(1),
+            ..calm()
+        };
+        let wedged = "cast timed out after 90s (RPC wedged)";
+
+        // A bump times out but reaches the pool. The next bump at that nonce, at
+        // the same fees, is told the very transaction is already known.
+        let chain = FakeChain::new();
+        chain.s().base_fee = 10_000; // nothing mines
+        let clock = TestClock::new();
+        let mut lane = Pipeline::new(policy.clone());
+        lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!(chain.accepted_nonces(), vec![0]);
+        chain.s().fail_next.push_back(wedged.into());
+        clock.advance(Duration::from_secs(20));
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert!(
+            report.first_error.is_some_and(|e| e.contains("timed out")),
+            "the bump timed out"
+        );
+        chain.s().pool.insert(
+            0,
+            PoolTx {
+                hash: "0xlostbump".into(),
+                fees: Fees {
+                    max_fee: 113,
+                    priority: 12,
+                },
+                hashes: vec![h(1)],
+            },
+        );
+        clock.advance(Duration::from_secs(20));
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!(report.bumped, 1, "{report:?}");
+        assert!(report.first_error.is_none(), "{report:?}");
+        // The lost bump mines; the one hash this process learned has no receipt.
+        chain.s().base_fee = 110;
+        chain.mine();
+        assert!(chain.s().answered.contains(&h(1)));
+        // A read taken before the mining still lists the hash.
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!(
+            (
+                report.mined,
+                report.answered,
+                report.replaced,
+                report.submitted
+            ),
+            (1, 1, 0, 0),
+            "{report:?}"
+        );
+        assert_eq!(chain.accepted_nonces(), vec![0], "nothing resent");
+        assert_eq!(lane.in_flight(), 0);
+
+        // The same for queued answers taking over a stuck nonce this process did
+        // not fill: the takeover times out but reaches the pool, and the next
+        // takeover is told it is already known.
+        let chain = FakeChain::new();
+        chain.s().mined = 7;
+        chain.s().base_fee = 10_000;
+        chain.preload(
+            7,
+            Fees {
+                max_fee: 20,
+                priority: 1,
+            },
+        );
+        let clock = TestClock::new();
+        let mut lane = Pipeline::new(Policy {
+            max_in_flight: 1,
+            ..policy.clone()
+        });
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!((report.in_flight, report.deferred), (1, 1), "{report:?}");
+        chain.s().fail_next.push_back(wedged.into());
+        clock.advance(Duration::from_secs(20));
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert!(
+            report.first_error.is_some_and(|e| e.contains("timed out")),
+            "the takeover timed out"
+        );
+        chain.s().pool.insert(
+            7,
+            PoolTx {
+                hash: "0xlosttakeover".into(),
+                fees: ESTIMATE,
+                hashes: vec![h(1)],
+            },
+        );
+        clock.advance(Duration::from_secs(20));
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!((report.bumped, report.deferred), (1, 0), "{report:?}");
+        chain.s().base_fee = 50;
+        chain.mine();
+        assert!(chain.s().answered.contains(&h(1)));
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!(
+            (
+                report.mined,
+                report.answered,
+                report.replaced,
+                report.submitted
+            ),
+            (1, 1, 0, 0),
+            "{report:?}"
+        );
+        assert!(chain.accepted_nonces().is_empty(), "nothing resent");
+        assert_eq!(lane.in_flight(), 0);
+
+        // A rebroadcast at the caps told "already known" learns nothing new: what
+        // is pending there is the transaction whose hash this process holds. When
+        // a transaction from elsewhere takes the nonce, the answers are sent again.
+        let chain = FakeChain::new();
+        chain.s().base_fee = 10_000;
+        let clock = TestClock::new();
+        let mut lane = Pipeline::new(Policy {
+            max_bumps: 0,
+            ..policy
+        });
+        lane.round(&chain, &clock, sends(&[1]));
+        let before = chain.s().broadcasts;
+        clock.advance(Duration::from_secs(20));
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!(
+            (chain.s().broadcasts - before, report.bumped),
+            (1, 0),
+            "rebroadcast unchanged: {report:?}"
+        );
+        assert!(report.first_error.is_none(), "{report:?}");
+        chain.mine_external();
+        let report = lane.round(&chain, &clock, sends(&[1]));
+        assert_eq!(
+            (
+                report.mined,
+                report.answered,
+                report.replaced,
+                report.submitted
+            ),
+            (0, 0, 1, 1),
+            "{report:?}"
+        );
+        assert_eq!(chain.accepted_nonces(), vec![0, 1]);
     }
 
     #[test]
