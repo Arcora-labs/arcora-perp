@@ -3263,8 +3263,13 @@ witness https://witness.example/SECRET-witness-key (path /SECRET-witness-key)";
             query_chain_id(&rpc).unwrap_err(),
         ] {
             assert_redacted(&error);
+            // A nightly cast may print its own warning first (unless
+            // FOUNDRY_DISABLE_NIGHTLY_WARNING is set), so look for the error line
+            // itself rather than the start of the text.
             assert!(
-                error.starts_with("Error: error sending request for url (<rpc>)"),
+                error
+                    .lines()
+                    .any(|line| line.starts_with("Error: error sending request for url (<rpc>)")),
                 "{error}"
             );
             assert!(error.contains("Connection refused"), "{error}");
