@@ -247,15 +247,20 @@ impl CoordinationStore {
             Err(TryLockError::WouldBlock) => return Err(StoreError::Busy),
             Err(TryLockError::Error(_)) => return Err(StoreError::Read),
         }
-        self.check_paths()?;
-        let (source, binding) = self.cuts()?;
+        #[cfg(test)]
+        tests::observe_locked(&lock);
+        // Own the kernel lock first so every refusal below releases it via Drop.
         let lease = Lease {
             store: self,
             lock,
-            source: Cell::new(source),
-            binding: Cell::new(binding),
+            source: Cell::new(None),
+            binding: Cell::new(None),
             poisoned: Cell::new(false),
         };
+        self.check_paths()?;
+        let (source, binding) = self.cuts()?;
+        lease.source.set(source);
+        lease.binding.set(binding);
         lease.check()?;
         lease.load_binding()?;
         Ok(lease)
@@ -309,6 +314,18 @@ impl CoordinationStore {
             }
         }
         Ok((source, binding))
+    }
+}
+
+impl Drop for Lease<'_> {
+    /// Unlock explicitly instead of relying on close. The lock belongs to the
+    /// open file description, and close releases it only with the last
+    /// reference: a process created by any thread while this lease is held
+    /// keeps one until it execs or exits. LOCK_UN releases it immediately.
+    /// Every acquisition opens its own description, so this never releases
+    /// another lease's lock.
+    fn drop(&mut self) {
+        let _ = self.lock.unlock();
     }
 }
 
@@ -702,7 +719,40 @@ fn temporary_path(path: &Path) -> Result<PathBuf, StoreError> {
 mod tests {
     use super::*;
     use crate::candidate_recovery_store::{Stage, StoreError as SourceError};
+    use std::cell::RefCell;
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+
+    thread_local! {
+        static DUPLICATES: RefCell<Option<Vec<File>>> = const { RefCell::new(None) };
+    }
+
+    /// `try_lease` calls this as soon as it holds the lock. While a test on this
+    /// thread collects duplicates, keep one more reference to the locked open
+    /// file description, as a process created at that moment would.
+    pub(super) fn observe_locked(lock: &File) {
+        DUPLICATES.with(|slot| {
+            if let Some(held) = slot.borrow_mut().as_mut() {
+                held.push(lock.try_clone().unwrap());
+            }
+        });
+    }
+
+    /// Run `f` and return, with its value, a duplicate of every lock that
+    /// `try_lease` took on this thread meanwhile. The duplicates stay open
+    /// until the caller drops them.
+    fn holding_duplicates<T>(f: impl FnOnce() -> T) -> (T, Vec<File>) {
+        struct Disarm;
+        impl Drop for Disarm {
+            fn drop(&mut self) {
+                DUPLICATES.with(|slot| slot.borrow_mut().take());
+            }
+        }
+        DUPLICATES.with(|slot| *slot.borrow_mut() = Some(Vec::new()));
+        let _disarm = Disarm;
+        let value = f();
+        let held = DUPLICATES.with(|slot| slot.borrow_mut().take());
+        (value, held.unwrap_or_default())
+    }
 
     const SEED: [u8; 32] = [0x62; 32];
     const REQUEST: &[u8] = b"exact immutable offline candidate request";
@@ -810,6 +860,56 @@ mod tests {
             CoordinationStore::new(PathBuf::from("relative.dpcint4"), SEED),
             Err(StoreError::Path)
         ));
+    }
+
+    /// Any process created while a lease is held (by this or any other thread)
+    /// keeps a reference to the lease's open file description until it execs
+    /// or exits. Here a duplicate descriptor stands in for that reference.
+    /// Dropping the lease must still release the lock immediately, for the same
+    /// handle and for an independent one.
+    #[test]
+    fn preparation_store_lease_release_does_not_wait_for_duplicate_descriptors() {
+        let dir = Scratch::new();
+        let store = dir.store();
+        let peer = dir.store();
+        let lease = store.try_lease().unwrap();
+        let duplicate = lease.lock.try_clone().unwrap();
+        assert!(matches!(peer.try_lease(), Err(StoreError::Busy)));
+        drop(lease);
+        let relet = store.try_lease().unwrap();
+        assert!(matches!(peer.try_lease(), Err(StoreError::Busy)));
+        drop(relet);
+        assert_eq!(peer.try_lease().unwrap().load_binding(), Ok(None));
+        drop(duplicate);
+    }
+
+    /// A refusal after `try_lease` has taken the lock must release it as well,
+    /// while another reference to the locked description is still open. Case 0
+    /// refuses when the lease takes its cuts, case 1 when it loads the binding.
+    #[test]
+    fn preparation_store_refusals_after_locking_release_the_lock() {
+        for case in 0..2 {
+            let dir = Scratch::new();
+            let store = dir.store();
+            let peer = dir.store();
+            let (path, expected) = if case == 0 {
+                private_create(store.source_path())
+                    .unwrap()
+                    .set_len(crate::candidate_recovery_store::MAX_SEALED_BYTES as u64 + 1)
+                    .unwrap();
+                (store.source_path(), StoreError::Bounds)
+            } else {
+                replace(store.binding_path(), b"not a sealed binding");
+                (store.binding_path(), StoreError::Authentication)
+            };
+            let (refused, duplicates) = holding_duplicates(|| store.try_lease().map(|_| ()));
+            assert_eq!(refused, Err(expected));
+            assert_eq!(duplicates.len(), 1, "the refusal must come after locking");
+            assert_eq!(peer.try_lease().map(|_| ()), Err(expected));
+            std::fs::remove_file(path).unwrap();
+            assert_eq!(peer.try_lease().unwrap().load_binding(), Ok(None));
+            drop(duplicates);
+        }
     }
 
     #[test]
