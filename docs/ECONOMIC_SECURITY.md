@@ -364,8 +364,13 @@ window. Three rules make it costly to move:
 - **Fillable depth only.** A resting order counts as depth only if the engine could
   fill it now. Its price must lie inside the market's fill band around the signed
   index (`max_fill_deviation_ratio`, 2% by default), and its maker must be able to
-  settle the fill within its margin. A quote no taker could trade against does not
-  move the mark.
+  settle the fill within its margin. An order admitted below the order minimum
+  because it reduced the maker's position counts only while it still reduces, as
+  settlement fills it, so stacking such orders gives no depth beyond that position.
+  A quote no taker could trade against does not move the mark. The sample walks
+  only the fill band and at most 4,096 resting orders of a side
+  (`FUNDING_IMPACT_MAX_ORDERS`); a side that would need more counts as a side
+  without the depth, so its mark is the index.
 - **Sampled where takers trade.** The sequencer samples the book once per tick,
   before that tick's batch is matched, so each sample is the book the tick's takers
   face. Each sample prices the time since the previous tick. A quote withdrawn
@@ -386,7 +391,8 @@ sequencer.
 `crates/perp-core/tests/funding_attribution.rs` and the `funding.rs` unit tests. The
 sequencer's pre-trade check reads the index through `index_at`, so it agrees with
 the engine. The mark is built in `crates/sequencer/src/lib.rs`
-(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_MARK_MIN_SPAN_MS`);
+(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_IMPACT_MAX_ORDERS`,
+`FUNDING_MARK_MIN_SPAN_MS`);
 tests in `crates/sequencer/tests/admission_and_funding_mark.rs`.
 
 **Limit.** A pause is charged at the rate in force before it, for at most one hour.
@@ -453,9 +459,17 @@ bounds it:
 | Open position entries | 1,328 | 1,063 |
 | Unspent notes | 2,656 | 2,125 |
 
-At the soft cap it issues no new deposit permit and registers no new account; at the
-hard cap it credits no further deposit. Withdrawals, closes and claims keep working at
-both. The bounds are measured on the guest with the Keccak precompile: the largest
+The cap counts the outstanding deposit permits as if credited and keeps room for one
+more exit of every position entry. At the soft cap it issues no new deposit permit
+that adds to the bound at it (a top-up adds no position entry), and it registers no
+new account while the state itself is at it; outstanding permits never close
+registration. An account with no position holds permits for one market at a time, so
+it reserves at most one entry. A withdrawal that would need more room than the bound
+leaves is refused unless it is a full exit (the whole balance of a closed position),
+so the deposit of every permit already signed is credited within the bound and funds
+can always leave. Only a state already beyond a bound credits no further deposit.
+Closes, full exits and claims keep working throughout. The bounds are measured on
+the guest with the Keccak precompile: the largest
 state whose costliest batch, a wind-down with a shortfall, still fits one proof within
 the prover budget at an assumed proving rate. They are re-derived from the measured
 proving rate before launch and change without a new program key.

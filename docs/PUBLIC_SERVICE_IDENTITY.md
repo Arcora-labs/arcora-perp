@@ -59,7 +59,8 @@ with `DPCLK4` in the service's reviewed program table
 other ELF, including the earlier clock-v2 guest, it is `[]`. In production
 (`PROD` unset or not `0`) the service refuses to start when its embedded ELF is
 not listed with `DPCLK4`. The table lists the reviewed guest's ELF
-(`REVIEWED_GUEST`, SHA-256 `a6d51648…30e7df`) with `DPCLK4`, and
+(`REVIEWED_GUEST`, SHA-256
+`a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df`) with `DPCLK4`, and
 `test_pin_coherence.py` requires that no other ELF is. The router tests inject
 that guest's committed ELF and setup key from
 `contracts/integration/fixtures/clock-pkg3-reviewed/`.

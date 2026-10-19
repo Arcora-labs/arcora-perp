@@ -12,9 +12,11 @@ The manifest closes an offline identity check. The optional `observe-target`
 command adds finalized chain/runtime/contract-binding verification. Neither closes
 R02 as a whole, and both always record `release_gate: HOLD`. They do not assert a
 fresh reproducible guest build, a running prover's identity, operator-policy
-approval, or a state/withdrawal migration rehearsal. They reuse the established
-PR #31 guest identity and do not negate or rerun that release's real proof.
-Current contract bytecode is identified separately from that historical proof.
+approval, or a state/withdrawal migration rehearsal. They take the reviewed guest
+identity (`REVIEWED_GUEST` in `verify_clock_proof.py`) and do not rebuild or
+reprove it; `real_proof` records whether the committed real proof
+(`PROOF_FIXTURE`) is a proof of that guest. Current contract bytecode is
+identified separately from that proof.
 The validator and manifest must come from a trusted release process: checksums
 are integrity bindings, not a release signature.
 
@@ -125,6 +127,14 @@ fixture are committed in `contracts/integration/fixtures/clock-pkg3-reviewed/`
 `contracts/integration/fixtures/clock-v2-verified/` is of the earlier clock-v2
 guest. The status is therefore `PENDING_REPROOF` until a proof of the reviewed
 fixture under the reviewed guest is committed.
+
+Committing that proof means repointing `PROOF_FIXTURE` at its directory with that
+proof's identity, and its `sources` (the proof guest's source pins, recorded in
+the evidence beside its ELF) at `REVIEWED_GUEST["sources"]`. `verify_clock_proof.py`
+reads `PROOF_FIXTURE["dir"]` unless `--artifact-dir` names another directory, and
+`test_pin_coherence.py` requires a workflow that names one to name that one. The
+reviewed fixture's case witnesses are executed on CPU and never proven, so they
+stay in `REVIEWED_FIXTURE` either way.
 
 Every manifest records `real_proof` (that status plus both identities). `create`
 requires `PROVEN`. While the status is not `PROVEN`, `validate` and

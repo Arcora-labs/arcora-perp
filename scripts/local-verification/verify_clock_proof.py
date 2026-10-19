@@ -118,25 +118,6 @@ REVIEWED_FIXTURE = {
     },
 }
 
-# The committed real proof and the identity it was generated under. The Solidity
-# real-proof gate verifies exactly this proof; it says nothing about another guest.
-PROOF_FIXTURE = {
-    "dir": "contracts/integration/fixtures/clock-v2-verified",
-    "kind": "clock-v2-native-guest",
-    "elf": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
-    "vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
-    "witness_sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f",
-    "commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e",
-    "proof_sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89",
-    "negatives": {
-        "wrong-bounds": "e4057d36e7aec9f61eb537d46957d6ede75c7706c328c699025fbefcfbd26bf5",
-        "wrong-count": "8b3ce13a156da3ea015181ee6e70478dd85eec8b4575dc8602ca276387695e46",
-        "wrong-batch": "20c6cd884979d825e456666c8c67b77137761f1e192552d8ef6b06d626034d32",
-        "wrong-base": "bfbd0612d87718c7560d188a5801e7bca14a9df7216a19177ce0f32fa962e611",
-        "backdated": "0ea2e8577cd965c2ea42ba8bc7a2381239ef01e9b6798c862877a20645136c71",
-    },
-}
-
 # Frozen record of the clock-v2 guest source pins as first reviewed. Provenance
 # only: it is never compared with the checkout.
 HISTORICAL_V2_GUEST_SOURCES = MappingProxyType({
@@ -163,6 +144,28 @@ HISTORICAL_V2_GUEST_SOURCES = MappingProxyType({
     "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c",
 })
 
+
+# The committed real proof and the identity it was generated under. The Solidity
+# real-proof gate verifies exactly this proof; it says nothing about another guest.
+# `sources` are the source pins of that proof's own guest, recorded beside its ELF
+# in the evidence (provenance only; the checkout is checked against REVIEWED_GUEST).
+PROOF_FIXTURE = {
+    "dir": "contracts/integration/fixtures/clock-v2-verified",
+    "kind": "clock-v2-native-guest",
+    "elf": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+    "vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+    "witness_sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f",
+    "commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e",
+    "proof_sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89",
+    "negatives": {
+        "wrong-bounds": "e4057d36e7aec9f61eb537d46957d6ede75c7706c328c699025fbefcfbd26bf5",
+        "wrong-count": "8b3ce13a156da3ea015181ee6e70478dd85eec8b4575dc8602ca276387695e46",
+        "wrong-batch": "20c6cd884979d825e456666c8c67b77137761f1e192552d8ef6b06d626034d32",
+        "wrong-base": "bfbd0612d87718c7560d188a5801e7bca14a9df7216a19177ce0f32fa962e611",
+        "backdated": "0ea2e8577cd965c2ea42ba8bc7a2381239ef01e9b6798c862877a20645136c71",
+    },
+    "sources": HISTORICAL_V2_GUEST_SOURCES,
+}
 
 def verify_guest_source():
     """Require the checkout's guest inputs to equal REVIEWED_GUEST's source pins."""
@@ -278,8 +281,10 @@ def proof_status(root=None):
 
 # Recorded next to `scope` in the real-proof evidence files.
 IDENTITY_SCOPE = ("The forge suites verify the proof under PROOF_FIXTURE's setup key and public commitment. "
-                  "The evidence attests that proof's own guest identity (PROOF_FIXTURE), which equals the "
-                  "reviewed guest only if proof_matches_reviewed_guest is true.")
+                  "The top-level guest fields (ELF, setup key, source pins) and proof_fixture describe that "
+                  "proof's own guest; reviewed_guest and the reviewed_guest_source(s)_sha256 pins describe the guest "
+                  "this checkout is pinned to build, which is the proof's guest only if "
+                  "proof_matches_reviewed_guest is true.")
 
 
 def proof_matches_reviewed_guest():
@@ -290,6 +295,7 @@ def identities():
     """Both identities, recorded side by side in every real-proof evidence file."""
     return {"proof_fixture": {"dir": PROOF_FIXTURE["dir"], "kind": PROOF_FIXTURE["kind"],
                               "guest_elf_sha256": PROOF_FIXTURE["elf"], "program_vkey": PROOF_FIXTURE["vkey"],
+                              "guest_sources_sha256": dict(PROOF_FIXTURE["sources"]),
                               "witness_sha256": PROOF_FIXTURE["witness_sha256"],
                               "public_commitment": PROOF_FIXTURE["commitment"],
                               "proof_sha256": PROOF_FIXTURE["proof_sha256"]},
@@ -303,7 +309,8 @@ def identities():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--artifact-dir", required=True, type=Path)
+    parser.add_argument("--artifact-dir", type=Path, default=target.ROOT / PROOF_FIXTURE["dir"],
+                        help="the committed proof's directory (default: PROOF_FIXTURE's)")
     parser.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args()
     verify_guest_source()
@@ -351,8 +358,9 @@ def main():
               **identities(),
               "input_artifacts": {name: {"sha256": target.sha256(data), "size_bytes": len(data)} for name, data in files.items()},
               "runner_sha256": target.sha256(Path(__file__).read_bytes()),
-              # Same value under the existing key and under the record's name.
-              "guest_sources_sha256": dict(REVIEWED_GUEST["sources"]),
+              # The existing key pairs with guest_elf_sha256: the proof's own guest. The
+              # checkout's pins (verified above) are under the reviewed record's name.
+              "guest_sources_sha256": dict(PROOF_FIXTURE["sources"]),
               "reviewed_guest_sources_sha256": dict(REVIEWED_GUEST["sources"]), "source_sha256": checked_sources,
               "compiled_contracts": compiled, "vendor_upstreams": vendor["upstreams"]}
     (output / "verification.json").write_text(json.dumps(report, indent=2) + "\n")

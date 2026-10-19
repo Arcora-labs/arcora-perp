@@ -11,11 +11,15 @@ was changed by this documentation update.
 | Approval after the last push | **false** | **true** |
 | Resolve review threads | true | true |
 | Strict required status checks | true | true |
-| Required status-check contexts | **11** | **11** |
+| Required status-check contexts | **11** | **12** |
 
 The recommended template is [.github/main-ruleset.json](../.github/main-ruleset.json).
 Its contents do not describe the current applied approval requirement, and the
-file does not apply itself to GitHub. The stricter one-review/last-push-approval
+file does not apply itself to GitHub. The template now also lists a twelfth
+context, `reviewed guest execution (CPU)` (the CPU execution of the reviewed
+guest, `.github/workflows/ci.yml`). The applied ruleset still requires the 11
+contexts below until the repository owner applies the template; until then the
+new job runs on every pull request but GitHub does not require it to pass. The stricter one-review/last-push-approval
 settings remain a recommendation requiring a separate policy decision. Neither
 this note nor a successful merge silently applies them.
 

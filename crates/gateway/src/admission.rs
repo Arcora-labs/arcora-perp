@@ -17,12 +17,26 @@
 //! * **Admission cap.** Every batch proof re-derives the whole note tree and the
 //!   nullifier log, so the cost of proving (the final wind-down included) grows with
 //!   the history the state has accumulated, not with its live entries. The cap keeps
-//!   that history provable: at the soft cap (80%) new deposit permits and
-//!   registrations are refused; at the hard cap deposits are no longer credited
-//!   either, and a held permit is no longer re-signed. Exits keep working at both,
-//!   so funds can always leave. The soft cap counts what the outstanding permits
-//!   will add once their deposits are credited, so the permits already signed fit
-//!   below it and the margin up to the hard cap is left to exits. The bounds
+//!   that history provable. It reads the state together with what the outstanding
+//!   permits add once their deposits are credited (a leaf and a nullifier each, and
+//!   a position entry for a permit that opens one), and it keeps room for one more
+//!   exit of every position entry (a leaf and a nullifier) and of every unspent note
+//!   (a nullifier):
+//!   - at the soft cap (80% of a bound) no new permit is issued that would add to
+//!     the dimension at it (history always; position entries only for a permit that
+//!     opens one), and no account is registered while the state itself is at it;
+//!   - a new permit is issued only while the state, the outstanding permits, the new
+//!     permit and the reserved exits fit within the history bound;
+//!   - a withdrawal that would need more room than the history bound leaves is
+//!     refused, unless it is a full exit (the whole balance of a closed position,
+//!     which removes the entry) that uses no room another exit or credit needs.
+//!
+//!   So the deposit of every outstanding permit can be credited and stays within the
+//!   bounds, and funds can always leave: close the position, then withdraw its whole
+//!   balance. Only a state already beyond a bound (one that was lowered under it)
+//!   credits no deposit and re-signs no held permit. An account that holds no
+//!   position entry yet holds permits for one market at a time until its first
+//!   deposit is credited, so it reserves at most one entry. The bounds
 //!   (`MAX_PROVABLE_HISTORY`, `MAX_POSITIONS`, `MAX_NOTES`) are measured.
 use super::*;
 use std::collections::BTreeSet;
@@ -62,10 +76,21 @@ pub(crate) const ENGINE_CLOSE_ONLY_INTAKE: &str = "the engine is in close-only: 
      (refundDeposit) once the settlement is in close-only, which governance can enter at \
      once and anyone can force after the deposit inclusion timeout";
 
-/// Returned by deposit ingestion at the hard admission cap.
-pub(crate) const HISTORY_CAP_INTAKE: &str = "the provable-history admission cap is reached: \
-     no further deposit is credited. A deposit the settled state never consumes is refunded \
-     by the vault (refundDeposit) once the settlement is in close-only";
+/// Returned by deposit ingestion for a state beyond a provable-history bound.
+pub(crate) const HISTORY_CAP_INTAKE: &str = "the state is beyond a provable-history admission \
+     bound: no further deposit is credited. A deposit the settled state never consumes is \
+     refunded by the vault (refundDeposit) once the settlement is in close-only";
+
+/// Returned for a withdrawal that would need more room than the history bound leaves.
+pub(crate) const HISTORY_CAP_EXIT: &str = "HISTORY_CAP: the provable-history admission cap \
+     leaves no room for a partial withdrawal. A full exit is still accepted: close the \
+     position, then withdraw the whole balance of this market";
+
+/// Returned for a full exit that would need more room than the history bound leaves:
+/// the account's own outstanding deposit permit for the market could reopen the entry.
+pub(crate) const HISTORY_CAP_EXIT_PERMIT: &str = "HISTORY_CAP: the provable-history admission \
+     cap leaves no room for this exit while this account holds an outstanding deposit permit \
+     for the market; retry once that deposit is credited or the permit expires";
 
 /// The proof-relevant size of an engine state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +121,15 @@ impl HistorySize {
             notes: state.notes.len() as u64,
         }
     }
+
+    /// The history once every position entry and every unspent note has made one
+    /// more exit: a full exit adds a leaf and a nullifier (the unbound note and its
+    /// spend), a note's withdrawal one nullifier (saturating).
+    pub(crate) fn with_exits(self) -> u64 {
+        self.history
+            .saturating_add(self.positions.saturating_mul(2))
+            .saturating_add(self.notes)
+    }
 }
 
 /// The admission cap: one bound per dimension of `HistorySize`.
@@ -120,21 +154,37 @@ fn soft(max: u64) -> u64 {
     max - max / 5
 }
 
+/// What crediting one deposit adds: a leaf and a nullifier, and the position entry
+/// it opens, if any.
+fn credit_of(opens: bool) -> HistorySize {
+    HistorySize {
+        history: 2,
+        positions: u64::from(opens),
+        notes: 0,
+    }
+}
+
 impl AdmissionCap {
-    /// Whether any dimension has reached 80% of its bound: new deposit permits and
-    /// registrations are refused from here on.
+    /// Whether any dimension has reached 80% of its bound: the soft-cap alert, and
+    /// for the state itself, closed registration.
     pub(crate) fn soft_reached(&self, size: HistorySize) -> bool {
         size.history >= soft(self.max_history)
             || size.positions >= soft(self.max_positions)
             || size.notes >= soft(self.max_notes)
     }
 
-    /// Whether any dimension has reached its bound: deposits are no longer credited
-    /// either. Only exits remain.
-    pub(crate) fn hard_reached(&self, size: HistorySize) -> bool {
-        size.history >= self.max_history
-            || size.positions >= self.max_positions
-            || size.notes >= self.max_notes
+    /// Whether `size`, with one more exit of every position entry and note, fits the
+    /// history bound.
+    pub(crate) fn exits_fit(&self, size: HistorySize) -> bool {
+        size.with_exits() <= self.max_history
+    }
+
+    /// Whether any dimension is beyond its bound: a state the measurement did not
+    /// show provable. Only a bound lowered under an existing state reaches it.
+    pub(crate) fn exceeded(&self, size: HistorySize) -> bool {
+        size.history > self.max_history
+            || size.positions > self.max_positions
+            || size.notes > self.max_notes
     }
 }
 
@@ -152,6 +202,52 @@ impl Gw {
                 .recover(ops_alerts::AlertKind::EngineCloseOnly);
         }
         engine
+    }
+
+    /// Whether `key` holds an outstanding collateral permit for `market`.
+    fn holds_collateral_permit(&self, key: &[u8; 32], market: u64) -> bool {
+        self.accounts.get(key).is_some_and(|account| {
+            account.deposit_authorizations.keys().any(|commit| {
+                self.deposits.routes.get(commit).is_some_and(|route| {
+                    route.key == *key
+                        && route.market == market
+                        && route.purpose == deposit_ingestion::Purpose::Collateral
+                })
+            })
+        })
+    }
+
+    /// Whether `key`'s account holds a position entry in any market.
+    fn holds_any_position(&self, key: &[u8; 32]) -> bool {
+        self.accounts.get(key).is_some_and(|account| {
+            let owner = account.wallet.owner;
+            self.seq
+                .state
+                .positions
+                .range((owner, 0)..=(owner, u64::MAX))
+                .next()
+                .is_some()
+        })
+    }
+
+    /// Whether a new permit for `key`, `market` and `purpose` would open a position
+    /// entry once credited that the outstanding permits do not already count: a
+    /// collateral permit for a market where the account holds no entry and no
+    /// outstanding collateral permit.
+    fn permit_opens_entry(
+        &self,
+        key: &[u8; 32],
+        market: u64,
+        purpose: deposit_ingestion::Purpose,
+    ) -> bool {
+        purpose == deposit_ingestion::Purpose::Collateral
+            && self.accounts.get(key).is_some_and(|account| {
+                self.seq
+                    .state
+                    .position(&account.wallet.owner, market)
+                    .is_none()
+            })
+            && !self.holds_collateral_permit(key, market)
     }
 
     /// What crediting the deposits of every outstanding permit adds to the state:
@@ -181,11 +277,23 @@ impl Gw {
         }
     }
 
+    /// The state together with what the outstanding permits add once credited.
+    pub(crate) fn admission_size(&self) -> HistorySize {
+        HistorySize::of(&self.seq.state).plus(self.outstanding_permit_size())
+    }
+
+    /// Whether a deposit can still be credited at all (no wind-down, no close-only):
+    /// only then do the outstanding permits take room an exit cannot use.
+    fn permits_creditable(&self) -> bool {
+        !self.wind_down_started
+            && !self.deposits.l1_close_only
+            && self.seq.state.mode != Mode::CloseOnly
+    }
+
     /// Whether the soft admission cap is reached, counting what the outstanding
     /// permits will add, raising or clearing its alert.
     pub(crate) fn note_admission_cap(&self) -> bool {
-        let size = HistorySize::of(&self.seq.state).plus(self.outstanding_permit_size());
-        let reached = self.admission_cap.soft_reached(size);
+        let reached = self.admission_cap.soft_reached(self.admission_size());
         if reached {
             self.ops_alerts
                 .activate(ops_alerts::AlertKind::AdmissionCapReached);
@@ -196,29 +304,159 @@ impl Gw {
         reached
     }
 
-    /// Why a new account may not register now, if it may not.
+    /// Why a new account may not register now, if it may not: the state itself is
+    /// at the soft cap. Outstanding permits never close registration.
     pub(crate) fn registration_refusal(&self) -> Option<&'static str> {
-        self.note_admission_cap().then_some(
-            "the provable-history admission cap is reached; registration is closed. \
-             Existing accounts can still withdraw",
-        )
+        self.note_admission_cap();
+        self.admission_cap
+            .soft_reached(HistorySize::of(&self.seq.state))
+            .then_some(
+                "the provable-history admission cap is reached; registration is closed. \
+                 Existing accounts can still withdraw",
+            )
     }
 
-    /// Whether the state itself has reached the hard admission cap: no deposit is
-    /// credited, and a held permit is not re-signed.
-    pub(crate) fn hard_cap_reached(&self) -> bool {
+    /// Why a new deposit permit for `key`, `market` and `purpose` may not be issued
+    /// under the admission cap, if it may not: an account with no position entry
+    /// already reserves an entry in another market; the soft cap is reached in a
+    /// dimension the permit adds to; or the permit would leave too little history
+    /// for the reserved exits.
+    pub(crate) fn permit_cap_refusal(
+        &self,
+        key: &[u8; 32],
+        market: u64,
+        purpose: deposit_ingestion::Purpose,
+    ) -> Option<PermitGateRefusal> {
+        self.note_admission_cap();
+        let opens = self.permit_opens_entry(key, market, purpose);
+        if opens && !self.holds_any_position(key) {
+            let reserved_elsewhere = self.accounts.get(key).is_some_and(|account| {
+                account.deposit_authorizations.keys().any(|commit| {
+                    self.deposits.routes.get(commit).is_some_and(|route| {
+                        route.purpose == deposit_ingestion::Purpose::Collateral
+                            && route.market != market
+                    })
+                })
+            });
+            if reserved_elsewhere {
+                return Some(PermitGateRefusal::OneMarketUntilFirstDeposit);
+            }
+        }
+        let size = self.admission_size();
+        let cap = &self.admission_cap;
+        let refused = size.history >= soft(cap.max_history)
+            || (opens && size.positions >= soft(cap.max_positions))
+            || !cap.exits_fit(size.plus(credit_of(opens)));
+        refused.then_some(PermitGateRefusal::AdmissionCap)
+    }
+
+    /// Whether crediting the deposit of the held permit `commit` now would take the
+    /// state beyond a bound: then it is not re-signed.
+    pub(crate) fn held_permit_beyond_cap(&self, commit: &[u8; 32]) -> bool {
+        let opens = self.deposits.routes.get(commit).is_some_and(|route| {
+            route.purpose == deposit_ingestion::Purpose::Collateral
+                && self.accounts.get(&route.key).is_some_and(|account| {
+                    self.seq
+                        .state
+                        .position(&account.wallet.owner, route.market)
+                        .is_none()
+                })
+        });
         self.admission_cap
-            .hard_reached(HistorySize::of(&self.seq.state))
+            .exceeded(HistorySize::of(&self.seq.state).plus(credit_of(opens)))
+    }
+
+    /// What crediting `page` adds to the state: a leaf and a nullifier per deposit
+    /// (one nullifier for a resumed insurance bootstrap), and the position entries
+    /// its collateral deposits open. An event without a route adds nothing here;
+    /// ingestion refuses it.
+    pub(crate) fn page_credit_size(&self, page: &deposit_rpc::Page) -> HistorySize {
+        let mut opened = BTreeSet::new();
+        for event in &page.events {
+            let Some(route) = self.deposits.routes.get(&event.commit) else {
+                continue;
+            };
+            if route.purpose != deposit_ingestion::Purpose::Collateral {
+                continue;
+            }
+            if let Some(account) = self.accounts.get(&route.key) {
+                let owner = account.wallet.owner;
+                if self.seq.state.position(&owner, route.market).is_none() {
+                    opened.insert((owner, route.market));
+                }
+            }
+        }
+        let resume = u64::from(matches!(
+            self.bootstrap,
+            bootstrap::Bootstrap::DepositApplied { .. }
+        ));
+        HistorySize {
+            history: (page.events.len() as u64)
+                .saturating_mul(2)
+                .saturating_add(resume),
+            positions: opened.len() as u64,
+            notes: 0,
+        }
     }
 
     /// Why no deposit may be credited now, if none may: the engine is in
-    /// close-only, or the hard admission cap is reached.
-    pub(crate) fn credit_refusal(&self) -> Option<&'static str> {
+    /// close-only, or crediting `credit` would take the state beyond a bound. The
+    /// cap never refuses the deposit of a permit it counted: every admitted permit
+    /// and exit keeps the state, the outstanding permits and the reserved exits
+    /// within the bounds.
+    pub(crate) fn credit_refusal(&self, credit: HistorySize) -> Option<&'static str> {
         if self.note_engine_close_only() {
             return Some(ENGINE_CLOSE_ONLY_INTAKE);
         }
         self.note_admission_cap();
-        self.hard_cap_reached().then_some(HISTORY_CAP_INTAKE)
+        self.admission_cap
+            .exceeded(HistorySize::of(&self.seq.state).plus(credit))
+            .then_some(HISTORY_CAP_INTAKE)
+    }
+
+    /// Why a withdrawal of `amount` from `owner`'s (account `key`) entry in `market`
+    /// may not be applied under the admission cap, if it may not. Each withdrawal
+    /// adds a leaf and a nullifier. A full exit (a closed position's whole balance)
+    /// also removes the entry and its reserved exit, so it needs no room, unless the
+    /// account holds an outstanding permit for the market that could reopen it.
+    /// Every other withdrawal needs the room the reserved exits and the outstanding
+    /// permits leave under the history bound.
+    pub(crate) fn exit_cap_refusal(
+        &self,
+        key: &[u8; 32],
+        owner: &PubKey,
+        market: u64,
+        amount: i128,
+    ) -> Option<&'static str> {
+        let creditable = self.permits_creditable();
+        let state = HistorySize::of(&self.seq.state);
+        let before = if creditable {
+            state.plus(self.outstanding_permit_size())
+        } else {
+            state
+        };
+        let full_exit = self
+            .seq
+            .state
+            .position(owner, market)
+            .is_some_and(|p| p.size == 0 && p.collateral == amount);
+        let reopenable = full_exit && creditable && self.holds_collateral_permit(key, market);
+        let after = HistorySize {
+            history: before.history.saturating_add(2),
+            positions: if full_exit && !reopenable {
+                before.positions.saturating_sub(1)
+            } else {
+                before.positions
+            },
+            notes: before.notes,
+        };
+        if self.admission_cap.exits_fit(after) || after.with_exits() <= before.with_exits() {
+            None
+        } else if reopenable {
+            Some(HISTORY_CAP_EXIT_PERMIT)
+        } else {
+            Some(HISTORY_CAP_EXIT)
+        }
     }
 }
 
@@ -378,7 +616,7 @@ mod tests {
                 max_positions: 100,
                 max_notes: 100,
             };
-            assert!(!gw.hard_cap_reached());
+            assert_eq!(gw.credit_refusal(credit_of(true)), None);
         }
         let (status, body) = json_body(
             router
@@ -419,8 +657,9 @@ mod tests {
     }
 
     /// The soft cap counts what the outstanding permits will add: with the state
-    /// itself just below it, one held permit is enough to stop new permits and
-    /// registrations. The held permit is still re-signed below the hard cap.
+    /// itself just below it, one held permit is enough to stop new permits. It never
+    /// closes registration, which reads the state alone, and the held permit is
+    /// still re-signed.
     #[tokio::test]
     async fn outstanding_permits_count_toward_the_soft_cap() {
         let (app, key, writer) = permit_app().await;
@@ -459,7 +698,8 @@ mod tests {
         assert!(body["error"].as_str().unwrap().contains("admission cap"));
         let (status, body) =
             json_body(router.clone().oneshot(register_request()).await.unwrap()).await;
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(body.get("apiKey").is_some());
         let (status, again) = json_body(
             router
                 .oneshot(permit_request(
@@ -483,10 +723,11 @@ mod tests {
         writer.abort();
     }
 
-    /// At the hard cap the deposit of a held permit would not be credited, so the
-    /// permit is not re-signed, as in engine close-only.
+    /// For a state beyond a bound (one lowered under it) the deposit of a held
+    /// permit would not be credited, so the permit is not re-signed, as in engine
+    /// close-only.
     #[tokio::test]
-    async fn the_hard_cap_refuses_to_re_sign_a_held_permit() {
+    async fn a_state_beyond_a_bound_does_not_re_sign_a_held_permit() {
         let (app, key, writer) = permit_app().await;
         let router = build_router(app.clone(), true);
         let (status, held) = json_body(
@@ -505,7 +746,7 @@ mod tests {
                 max_positions: 1_000,
                 max_notes: 1_000,
             };
-            assert_eq!(gw.credit_refusal(), Some(HISTORY_CAP_INTAKE));
+            assert_eq!(gw.credit_refusal(credit_of(true)), Some(HISTORY_CAP_INTAKE));
         }
         let (status, body) = json_body(
             router
@@ -609,10 +850,16 @@ mod tests {
         assert!(cap.soft_reached(size(80, 0, 0)));
         assert!(cap.soft_reached(size(0, 8, 0)));
         assert!(cap.soft_reached(size(0, 0, 16)));
-        assert!(!cap.hard_reached(size(99, 9, 19)));
-        assert!(cap.hard_reached(size(100, 0, 0)));
-        assert!(cap.hard_reached(size(0, 10, 0)));
-        assert!(cap.hard_reached(size(0, 0, 20)));
+        // A bound itself is provable: only a size beyond it is exceeded.
+        assert!(!cap.exceeded(size(100, 10, 20)));
+        assert!(cap.exceeded(size(101, 0, 0)));
+        assert!(cap.exceeded(size(0, 11, 0)));
+        assert!(cap.exceeded(size(0, 0, 21)));
+        // One more exit per entry (a leaf and a nullifier) and per note (a nullifier).
+        assert_eq!(size(10, 3, 4).with_exits(), 20);
+        assert!(cap.exits_fit(size(90, 5, 0)));
+        assert!(!cap.exits_fit(size(91, 5, 0)));
+        assert!(!cap.exits_fit(size(90, 5, 1)));
     }
 
     /// The measured bounds and their soft caps, as recorded in
@@ -639,10 +886,13 @@ mod tests {
         assert!(cap.soft_reached(size(0, 1_063, 0)));
         assert!(cap.soft_reached(size(0, 0, 2_125)));
         assert!(!cap.soft_reached(size(10_623, 1_062, 2_124)));
-        assert!(cap.hard_reached(size(13_280, 0, 0)));
-        assert!(cap.hard_reached(size(0, 1_328, 0)));
-        assert!(cap.hard_reached(size(0, 0, 2_656)));
-        assert!(!cap.hard_reached(size(13_279, 1_327, 2_655)));
+        assert!(cap.exceeded(size(13_281, 0, 0)));
+        assert!(cap.exceeded(size(0, 1_329, 0)));
+        assert!(cap.exceeded(size(0, 0, 2_657)));
+        assert!(!cap.exceeded(size(13_280, 1_328, 2_656)));
+        // Below both soft caps and with no unspent note, every entry still has room
+        // for one more exit (and a deposit's notes are spent in the same page).
+        assert!(cap.exits_fit(size(10_623, 1_062, 0).plus(credit_of(true))));
     }
 
     #[test]
@@ -674,10 +924,13 @@ mod tests {
             .ops_alerts
             .active()
             .contains(&ops_alerts::AlertKind::AdmissionCapReached));
-        // Below the hard cap, deposits are still credited.
-        assert_eq!(gw.credit_refusal(), None);
-        gw.admission_cap.max_history = 8;
-        assert_eq!(gw.credit_refusal(), Some(HISTORY_CAP_INTAKE));
+        // A deposit that keeps the state within the bound is still credited.
+        assert_eq!(gw.credit_refusal(credit_of(false)), None);
+        gw.admission_cap.max_history = 9;
+        assert_eq!(
+            gw.credit_refusal(credit_of(false)),
+            Some(HISTORY_CAP_INTAKE)
+        );
         gw.admission_cap = measured_cap();
         assert_eq!(gw.registration_refusal(), None);
         assert!(!gw
@@ -689,9 +942,12 @@ mod tests {
     #[test]
     fn engine_close_only_refuses_credit_and_alerts_until_l1_close_only() {
         let mut gw = Gw::boot_with(GenesisMode::Production);
-        assert_eq!(gw.credit_refusal(), None);
+        assert_eq!(gw.credit_refusal(credit_of(false)), None);
         gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
-        assert_eq!(gw.credit_refusal(), Some(ENGINE_CLOSE_ONLY_INTAKE));
+        assert_eq!(
+            gw.credit_refusal(credit_of(false)),
+            Some(ENGINE_CLOSE_ONLY_INTAKE)
+        );
         assert!(gw
             .ops_alerts
             .active()
@@ -699,10 +955,330 @@ mod tests {
         // Once L1 is in close-only too, the deposit stays refused but there is
         // nothing left for governance to do.
         gw.deposits.l1_close_only = true;
-        assert_eq!(gw.credit_refusal(), Some(ENGINE_CLOSE_ONLY_INTAKE));
+        assert_eq!(
+            gw.credit_refusal(credit_of(false)),
+            Some(ENGINE_CLOSE_ONLY_INTAKE)
+        );
         assert!(!gw
             .ops_alerts
             .active()
             .contains(&ops_alerts::AlertKind::EngineCloseOnly));
+    }
+
+    const SIGNER: [u8; 32] = [0x61; 32];
+
+    /// A production gateway with one caller-signed account funded with $200 in
+    /// market 0. Returns the account key, its signing key and its address.
+    fn funded_withdrawer() -> (Gw, [u8; 32], k256::ecdsa::SigningKey, [u8; 20]) {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let sk = k256::ecdsa::SigningKey::from_slice(&SIGNER).unwrap();
+        let address = eth_address(&sk);
+        let (key, _) = gw.register_account(Some(address));
+        gw.account_deposit(&key, 0, 200 * QUOTE_SCALE).unwrap();
+        (gw, key, sk, address)
+    }
+
+    /// A signed withdrawal of `amount` from `key`'s market-0 balance to `to`.
+    fn withdraw(
+        gw: &mut Gw,
+        key: &[u8; 32],
+        sk: &k256::ecdsa::SigningKey,
+        amount: i128,
+        to: [u8; 20],
+    ) -> Result<Withdrawal, String> {
+        let (owner, auth_nonce) = {
+            let a = &gw.accounts[key];
+            (a.wallet.owner, a.last_withdraw_nonce + 1)
+        };
+        let digest =
+            withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, auth_nonce);
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let mut wire = [0u8; 65];
+        wire[..64].copy_from_slice(&sig.to_bytes());
+        wire[64] = 27 + recid.to_byte();
+        gw.account_withdraw(key, 0, amount, to, auth_nonce, &wire)
+    }
+
+    /// The one-deposit page that credits the held permit `commit`.
+    fn credit_page(gw: &Gw, commit: [u8; 32]) -> deposit_rpc::Page {
+        let start = gw.deposit_cursor();
+        let route = gw.deposits.routes[&commit].clone();
+        let tip = perp_core::merkle::deposit_chain_fold(
+            &start.tip,
+            &perp_core::merkle::deposit_leaf(&route.from, &commit, route.amount, start.count),
+        );
+        let block = deposit_rpc::Block {
+            number: start.anchor.as_ref().map_or(1, |b| b.number + 1),
+            hash: [7; 32],
+            timestamp: None,
+        };
+        deposit_rpc::Page {
+            start: start.clone(),
+            end: block.clone(),
+            events: vec![deposit_rpc::Event {
+                id: start.count,
+                from: route.from,
+                commit,
+                amount: route.amount,
+                tip,
+                tx: [9; 32],
+                tx_index: 0,
+                log_index: 0,
+                block,
+            }],
+        }
+    }
+
+    /// A fresh account bound to `PAYER` holding one collateral permit for market 0.
+    fn held_permit(gw: &mut Gw) -> ([u8; 32], [u8; 32]) {
+        let (key, _) = gw.register_account(None);
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(PAYER);
+        assert_eq!(
+            gw.permit_cap_refusal(&key, 0, deposit_ingestion::Purpose::Collateral),
+            None
+        );
+        let commit = gw
+            .authorize_routed_deposit(
+                &key,
+                PAYER,
+                MIN_DEPOSIT_PERMIT,
+                0,
+                deposit_ingestion::Purpose::Collateral,
+                u64::MAX,
+            )
+            .unwrap();
+        (key, commit)
+    }
+
+    /// Withdrawals made while a permit is held never take the history to where
+    /// that permit's deposit would be refused: partial withdrawals stop where the
+    /// state, the outstanding permit and one more exit per entry fill the bound;
+    /// the deposit is then credited; and full exits still leave, at the bound.
+    #[test]
+    fn exits_under_a_held_permit_never_refuse_its_deposit() {
+        let (mut gw, key, sk, to) = funded_withdrawer();
+        let (depositor, commit) = held_permit(&mut gw);
+        gw.admission_cap = AdmissionCap {
+            max_history: 200,
+            max_positions: 100,
+            max_notes: 100,
+        };
+        // Issued below the soft cap: the state, the permit and their exits fit.
+        assert_eq!(gw.admission_size(), size(4, 2, 0));
+        let room = (200 - gw.admission_size().with_exits()) / 2;
+        let mut partial = 0;
+        let refusal = loop {
+            match withdraw(&mut gw, &key, &sk, QUOTE_SCALE, to) {
+                Ok(_) => partial += 1,
+                Err(error) => break error,
+            }
+            assert!(gw.admission_size().with_exits() <= 200);
+            assert!(partial <= room, "a partial withdrawal past the room");
+        };
+        assert_eq!(partial, room);
+        assert_eq!(refusal, HISTORY_CAP_EXIT);
+        assert_eq!(gw.admission_size().with_exits(), 200);
+        // The held permit is still re-signed, and its deposit is credited.
+        assert!(!gw.held_permit_beyond_cap(&commit));
+        let page = credit_page(&gw, commit);
+        assert_eq!(gw.credit_refusal(gw.page_credit_size(&page)), None);
+        gw.apply_deposit_page(page).unwrap();
+        assert!(gw.deposits.routes.is_empty());
+        // The ingestion pass snapshots the credit.
+        gw.deposits.dirty = false;
+        // Both entries can still leave in full, and the history stays in bounds.
+        let left = gw.market_free_of(&gw.accounts[&key].wallet.owner, 0);
+        assert!(left > QUOTE_SCALE);
+        assert_eq!(
+            withdraw(&mut gw, &key, &sk, QUOTE_SCALE, to).unwrap_err(),
+            HISTORY_CAP_EXIT
+        );
+        withdraw(&mut gw, &key, &sk, left, to).unwrap();
+        let owner = gw.accounts[&depositor].wallet.owner;
+        assert_eq!(
+            gw.exit_cap_refusal(&depositor, &owner, 0, MIN_DEPOSIT_PERMIT as i128),
+            None
+        );
+        assert!(HistorySize::of(&gw.seq.state).history <= 200);
+        assert_eq!(gw.admission_size().with_exits(), 200);
+    }
+
+    /// At the bound a full exit by an account that holds an outstanding permit for
+    /// the same market is refused: the permit's deposit would open the entry again
+    /// and need an exit of its own. Once the permit is gone the exit is accepted.
+    #[test]
+    fn a_full_exit_that_a_held_permit_could_reopen_needs_room() {
+        let (mut gw, key, sk, to) = funded_withdrawer();
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(PAYER);
+        let commit = gw
+            .authorize_routed_deposit(
+                &key,
+                PAYER,
+                MIN_DEPOSIT_PERMIT,
+                0,
+                deposit_ingestion::Purpose::Collateral,
+                u64::MAX,
+            )
+            .unwrap();
+        // The state, the permit and one exit of the entry exactly fill the bound.
+        assert_eq!(gw.admission_size(), size(4, 1, 0));
+        gw.admission_cap = AdmissionCap {
+            max_history: 6,
+            max_positions: 100,
+            max_notes: 100,
+        };
+        let all = 200 * QUOTE_SCALE;
+        assert_eq!(
+            withdraw(&mut gw, &key, &sk, all, to).unwrap_err(),
+            HISTORY_CAP_EXIT_PERMIT
+        );
+        gw.deposits.routes.remove(&commit);
+        gw.accounts
+            .get_mut(&key)
+            .unwrap()
+            .deposit_authorizations
+            .remove(&commit);
+        withdraw(&mut gw, &key, &sk, all, to).unwrap();
+        assert!(gw
+            .seq
+            .state
+            .position(&gw.accounts[&key].wallet.owner, 0)
+            .is_none());
+    }
+
+    /// Once the settlement or the engine is in close-only no permit can be
+    /// credited, so outstanding permits take no room an exit needs.
+    #[test]
+    fn close_only_exits_do_not_wait_for_permits_that_cannot_land() {
+        let (mut gw, key, sk, to) = funded_withdrawer();
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(PAYER);
+        gw.authorize_routed_deposit(
+            &key,
+            PAYER,
+            MIN_DEPOSIT_PERMIT,
+            0,
+            deposit_ingestion::Purpose::Collateral,
+            u64::MAX,
+        )
+        .unwrap();
+        gw.admission_cap = AdmissionCap {
+            max_history: 6,
+            max_positions: 100,
+            max_notes: 100,
+        };
+        let owner = gw.accounts[&key].wallet.owner;
+        let all = 200 * QUOTE_SCALE;
+        assert_eq!(
+            gw.exit_cap_refusal(&key, &owner, 0, all),
+            Some(HISTORY_CAP_EXIT_PERMIT)
+        );
+        gw.deposits.l1_close_only = true;
+        assert_eq!(gw.exit_cap_refusal(&key, &owner, 0, all), None);
+        // A partial withdrawal still needs room for the entry's own exit after it.
+        assert_eq!(gw.exit_cap_refusal(&key, &owner, 0, QUOTE_SCALE), None);
+        gw.admission_cap.max_history = 5;
+        assert_eq!(
+            gw.exit_cap_refusal(&key, &owner, 0, QUOTE_SCALE),
+            Some(HISTORY_CAP_EXIT)
+        );
+        withdraw(&mut gw, &key, &sk, all, to).unwrap();
+    }
+
+    /// Unfunded permits never close registration, and a fresh account (no position
+    /// entry) reserves at most one entry: it holds permits for one market until
+    /// its first deposit is credited. A permit that opens no entry (a top-up) is
+    /// not refused for position headroom, and one that opens an entry is refused
+    /// once the reservations reach the positions soft cap.
+    #[test]
+    fn fresh_permits_reserve_one_entry_each_and_never_close_registration() {
+        use deposit_ingestion::Purpose::Collateral;
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.admission_cap = AdmissionCap {
+            max_history: 1_000,
+            max_positions: 5,
+            max_notes: 1_000,
+        };
+        assert_eq!(soft(5), 4);
+        let fresh = |gw: &mut Gw| {
+            let (key, _) = gw.register_account(None);
+            gw.accounts.get_mut(&key).unwrap().deposit_address = Some(PAYER);
+            key
+        };
+        let issue = |gw: &mut Gw, key: &[u8; 32], market: u64| {
+            gw.authorize_routed_deposit(
+                key,
+                PAYER,
+                MIN_DEPOSIT_PERMIT,
+                market,
+                Collateral,
+                u64::MAX,
+            )
+            .unwrap();
+        };
+        let first = fresh(&mut gw);
+        assert_eq!(gw.permit_cap_refusal(&first, 0, Collateral), None);
+        issue(&mut gw, &first, 0);
+        // Another market is refused until the first deposit is credited; the same
+        // market reserves nothing new.
+        assert_eq!(
+            gw.permit_cap_refusal(&first, 1, Collateral),
+            Some(PermitGateRefusal::OneMarketUntilFirstDeposit)
+        );
+        assert_eq!(gw.permit_cap_refusal(&first, 0, Collateral), None);
+        issue(&mut gw, &first, 0);
+        assert_eq!(gw.outstanding_permit_size().positions, 1);
+        for _ in 0..3 {
+            let key = fresh(&mut gw);
+            assert_eq!(gw.permit_cap_refusal(&key, 0, Collateral), None);
+            issue(&mut gw, &key, 0);
+        }
+        assert_eq!(gw.admission_size().positions, 4);
+        let late = fresh(&mut gw);
+        assert_eq!(
+            gw.permit_cap_refusal(&late, 0, Collateral),
+            Some(PermitGateRefusal::AdmissionCap)
+        );
+        // Registration reads the state alone.
+        assert_eq!(gw.registration_refusal(), None);
+        assert!(gw
+            .ops_alerts
+            .active()
+            .contains(&ops_alerts::AlertKind::AdmissionCapReached));
+        // A funded account tops up its entry, but opens no new one.
+        let funded = fresh(&mut gw);
+        gw.account_deposit(&funded, 0, 100 * QUOTE_SCALE).unwrap();
+        assert_eq!(gw.permit_cap_refusal(&funded, 0, Collateral), None);
+        assert_eq!(
+            gw.permit_cap_refusal(&funded, 1, Collateral),
+            Some(PermitGateRefusal::AdmissionCap)
+        );
+    }
+
+    /// Over HTTP, a fresh account's permit for a second market is a conflict.
+    #[tokio::test]
+    async fn a_fresh_account_s_second_market_permit_is_a_conflict() {
+        let (app, key, writer) = permit_app().await;
+        let router = build_router(app.clone(), true);
+        let request = |market: u64| {
+            let body = serde_json::json!({"from": hex0x(&PAYER), "amount": MIN_DEPOSIT_PERMIT.to_string(),
+                "marketId": market, "purpose": "collateral"});
+            Request::builder()
+                .method("POST")
+                .uri("/v1/accounts/deposit/authorize")
+                .header("content-type", "application/json")
+                .header("x-api-key", hex0x(&key))
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        };
+        let (status, body) = json_body(router.clone().oneshot(request(0)).await.unwrap()).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = json_body(router.clone().oneshot(request(1)).await.unwrap()).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{body}");
+        assert!(body["error"].as_str().unwrap().contains("one market"));
+        assert!(body.get("sig").is_none());
+        let (status, body) = json_body(router.oneshot(request(0)).await.unwrap()).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(app.gw.lock().await.deposits.routes.len(), 2);
+        writer.abort();
     }
 }

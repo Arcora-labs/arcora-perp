@@ -74,8 +74,11 @@ case-derived and fresh batches, and six framings the guest does not accept.
 ## Provenance
 
 Built from the working tree on top of commit
-`8820eb58490788aea2dfac2ef831155a364d2153`, whose guest inputs are the 21
-`REVIEWED_GUEST["sources"]` pins. The host was macOS on aarch64.
+`8820eb58490788aea2dfac2ef831155a364d2153`, with the tiny-keccak precompile patch
+to `crates/sp1-guest/Cargo.toml` and `crates/sp1-guest/Cargo.lock` not yet
+committed; commit `675626e` committed those two files unchanged, so the guest
+inputs of the build are the 21 `REVIEWED_GUEST["sources"]` pins (which that
+commit's tree matches). The host was macOS on aarch64.
 
 1. `rebuild_reviewed_guest.py` with the pinned succinct rustc 1.93.0-dev and
    Cargo 1.99.0 (`--locked --offline`, the tiny-keccak precompile patch already

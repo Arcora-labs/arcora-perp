@@ -537,7 +537,7 @@ impl Gw {
             return Err(CLOSE_ONLY_INTAKE.into());
         }
         if !page.events.is_empty() {
-            if let Some(refusal) = self.credit_refusal() {
+            if let Some(refusal) = self.credit_refusal(self.page_credit_size(&page)) {
                 return Err(refusal.into());
             }
         }
@@ -848,20 +848,21 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
     }
     let refused = {
         let mut gw = app.gw.lock().await;
-        // The engine in close-only, or the hard admission cap: the page's deposits
-        // are not credited. The fetch verified the consumed prefix against the
-        // finalized vault, so trading and settlement continue; the deposits stay
-        // unconsumed on L1 for the vault to refund, and are recorded so the account
-        // view can list them once the settlement is in close-only.
+        // The engine in close-only, or a state beyond a provable-history bound: the
+        // page's deposits are not credited. The fetch verified the consumed prefix
+        // against the finalized vault, so trading and settlement continue; the
+        // deposits stay unconsumed on L1 for the vault to refund, and are recorded
+        // so the account view can list them once the settlement is in close-only.
+        // The admission cap never refuses the deposit of a permit it counted.
         let refusal = if page.events.is_empty() {
             None
         } else {
-            gw.credit_refusal()
+            gw.credit_refusal(gw.page_credit_size(&page))
         };
         if let Some(refusal) = refusal {
             gw.deposits.ready = true;
             gw.deposits.last_error = Some(refusal.into());
-            // At the hard cap a permitted deposit now holds the deposit queue, and
+            // Beyond a bound a permitted deposit now holds the deposit queue, and
             // the settlement's deposit-inclusion timeout runs from its block.
             if refusal == crate::admission::HISTORY_CAP_INTAKE {
                 gw.ops_alerts

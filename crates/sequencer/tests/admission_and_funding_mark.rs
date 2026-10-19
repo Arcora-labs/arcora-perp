@@ -25,8 +25,8 @@ use perp_core::order::{Order, RejectReason, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::{EngineError, FillLeg, Note, RiskError};
 use sequencer::{
-    below_minimum_order_notional, EnclaveIdentity, Sequencer, FUNDING_IMPACT_NOTIONAL,
-    FUNDING_MARK_MIN_SPAN_MS, MIN_ORDER_NOTIONAL,
+    below_minimum_order_notional, EnclaveIdentity, Sequencer, FUNDING_IMPACT_MAX_ORDERS,
+    FUNDING_IMPACT_NOTIONAL, FUNDING_MARK_MIN_SPAN_MS, MIN_ORDER_NOTIONAL,
 };
 
 fn enclave() -> EnclaveIdentity {
@@ -1031,6 +1031,127 @@ fn a_quote_withdrawn_before_the_next_tick_never_counts() {
             .position(&owner_id(3), 0)
             .is_none_or(|p| p.size == 0));
     }
+}
+
+/// A book where owner 3 holds a $10 long and rests `stacked` asks of $9 at
+/// $100,050, one per batch, each admitted below the minimum because it reduces
+/// that position. Owner 1 bids $10k at $99,950 and owner 2 asks $10k at $100,100.
+/// Every book runs the same ticks, so twins differ only in the stacked asks.
+fn exempt_ask_book(stacked: usize, ticks: usize) -> (Sequencer, u64, Vec<Order>) {
+    let mut t = 10_000u64;
+    let mut s = setup(t);
+    fund(&mut s, 3, 1_000, 0x33);
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, TEN_DOLLARS, 100_000, 1),
+            ioc(order(3, Side::Buy, TEN_DOLLARS, 100_000, 2)),
+            order(1, Side::Buy, SIZE_SCALE / 10, 99_950, 3),
+            order(2, Side::Sell, SIZE_SCALE / 10, 100_100, 4),
+        ],
+        t,
+    );
+    assert_eq!(s.state.position(&owner_id(3), 0).unwrap().size, TEN_DOLLARS);
+    let mut asks = Vec::new();
+    for i in 0..ticks {
+        t += 700;
+        s.set_oracle(0, oracle(100_000, t));
+        let batch: Vec<Order> = if i < stacked {
+            vec![order(
+                3,
+                Side::Sell,
+                TEN_DOLLARS * 9 / 10,
+                100_050,
+                100 + i as u64,
+            )]
+        } else {
+            Vec::new()
+        };
+        let sealed = s.seal_batch(&batch, t);
+        assert!(sealed.manifest.rejected.is_empty(), "tick {i}");
+        asks.extend(batch);
+    }
+    (s, t, asks)
+}
+
+/// Orders admitted below the minimum because they reduce can be stacked, one per
+/// batch, far beyond the position they reduce; settlement fills them only while
+/// they still reduce. They give no depth beyond that position either: with 120
+/// stacked $9 asks against a $10 long, the impact ask is the one a single such ask
+/// gives, and a $1,000 buy at their price fills $9 of them.
+#[test]
+fn stacked_exempt_orders_give_no_depth_beyond_the_committed_position() {
+    let ticks = 120;
+    let (mut stacked, t, asks) = exempt_ask_book(ticks, ticks);
+    let (single, t_single, _) = exempt_ask_book(1, ticks);
+    assert_eq!(t, t_single);
+    assert!(
+        i128::try_from(asks.len()).unwrap() * 9 * QUOTE_SCALE > FUNDING_IMPACT_NOTIONAL,
+        "fixture: the stacked asks hold more than the impact notional"
+    );
+    for ask in &asks {
+        assert!(stacked
+            .remaining_order_size(&ask.order_hash::<Keccak256>())
+            .is_some());
+    }
+    let mid = stacked.impact_mid(0, t).unwrap();
+    assert_eq!(Some(mid), single.impact_mid(0, t));
+    assert!(
+        mid > 100_020 * PRICE_SCALE,
+        "the impact ask is mostly owner 2's $100,100 depth: {mid}"
+    );
+    // the depth the mark counted is the depth settlement fills
+    fund(&mut stacked, 4, 20_000, 0x44);
+    let t2 = t + 700;
+    stacked.set_oracle(0, oracle(100_000, t2));
+    let buy = ioc(order(4, Side::Buy, TEN_DOLLARS * 100, 100_050, 9_999));
+    let sealed = stacked.seal_batch(&[buy], t2);
+    assert_eq!(
+        stacked.state.position(&owner_id(4), 0).unwrap().size,
+        TEN_DOLLARS * 9 / 10
+    );
+    assert!(sealed
+        .manifest
+        .rejected
+        .iter()
+        .any(|(_, reason)| *reason == RejectReason::BelowMinimumSize));
+}
+
+/// A book with `orders` $10 bids from owner 3 (funded with $15) at $100,010, ahead
+/// of owner 1's $10k of bids at $99,990; owner 2 asks $10k at $100,030. Each of
+/// owner 3's bids fits initial margin on its own, but together only about $150 of
+/// them could fill.
+fn bloated_bid_book(orders: usize) -> (Sequencer, u64) {
+    let t = 10_000u64;
+    let mut s = setup(t);
+    fund(&mut s, 3, 15, 0x33);
+    let mut batch: Vec<Order> = (0..orders)
+        .map(|n| order(3, Side::Buy, TEN_DOLLARS, 100_010, 10 + n as u64))
+        .collect();
+    batch.push(order(1, Side::Buy, SIZE_SCALE / 10, 99_990, 1));
+    batch.push(order(2, Side::Sell, SIZE_SCALE / 10, 100_030, 2));
+    let sealed = s.seal_batch(&batch, t);
+    assert!(sealed.manifest.rejected.is_empty());
+    (s, t)
+}
+
+/// The impact sweep visits at most `FUNDING_IMPACT_MAX_ORDERS` orders of a side.
+/// Below that, the orders a maker could not fill are passed over and the honest
+/// depth behind them prices the side; a side that would need more has no impact
+/// price, and the mark is the index, as for a side without the depth.
+#[test]
+fn a_side_that_needs_more_orders_than_the_sweep_visits_falls_back_to_the_index() {
+    let (s, t) = bloated_bid_book(FUNDING_IMPACT_MAX_ORDERS - 2);
+    let mid = s.impact_mid(0, t).expect("the honest bids are reached");
+    // the same mid as a book where owner 3 rests only a few more bids than fill
+    let (few, _) = bloated_bid_book(20);
+    assert_eq!(few.impact_mid(0, t), Some(mid));
+    assert!(mid > 100_000 * PRICE_SCALE && mid < 100_030 * PRICE_SCALE);
+    let (mut s, t) = bloated_bid_book(FUNDING_IMPACT_MAX_ORDERS + 1);
+    assert_eq!(s.impact_mid(0, t), None);
+    let t2 = t + 700;
+    s.set_oracle(0, oracle(100_000, t2));
+    let sealed = s.seal_batch(&[], t2);
+    assert_eq!(accrue_mark(&sealed.ops), 100_000 * PRICE_SCALE);
 }
 
 /// A quote resting through one tick's matching counts for the span it priced,

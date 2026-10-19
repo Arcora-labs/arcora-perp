@@ -22,7 +22,9 @@ extern crate std;
 
 mod book;
 
-pub use book::{Match, OrderBook, OrderRemoval, RestingQuote, SubmitOutcome, SubmitStatus};
+pub use book::{
+    ImpactWindow, Match, OrderBook, OrderRemoval, RestingQuote, SubmitOutcome, SubmitStatus,
+};
 
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
@@ -892,8 +894,15 @@ mod impact_price_tests {
         true
     }
 
-    fn rest(book: &mut OrderBook<Keccak256>, n: u64, side: Side, size: i128, price: i128) {
-        rest_until(book, n, side, size, price, 0);
+    /// Rest a GTC order of owner `n` and return its hash.
+    fn rest(
+        book: &mut OrderBook<Keccak256>,
+        n: u64,
+        side: Side,
+        size: i128,
+        price: i128,
+    ) -> Digest {
+        rest_until(book, n, side, size, price, 0)
     }
 
     fn rest_until(
@@ -903,7 +912,7 @@ mod impact_price_tests {
         size: i128,
         price: i128,
         expiry_ms: u64,
-    ) {
+    ) -> Digest {
         let order = Order {
             owner: word_u64(n),
             market_id: 0,
@@ -918,6 +927,7 @@ mod impact_price_tests {
         };
         let out = book.submit(&order, n, 0);
         assert_eq!(out.status, SubmitStatus::Resting, "fixture order must rest");
+        out.order_hash
     }
 
     #[test]
@@ -1038,13 +1048,16 @@ mod impact_price_tests {
     }
 
     /// The filter sees each live order once, best price first and in arrival order
-    /// within a level, with its maker, price, unfilled size and reduce-only flag.
+    /// within a level, with its hash, maker, price, unfilled size and reduce-only
+    /// flag.
     #[test]
     fn the_filter_sees_live_orders_in_sweep_order() {
         let mut book = OrderBook::<Keccak256>::new(0);
-        rest(&mut book, 1, Side::Buy, SIZE_SCALE, 99 * PRICE_SCALE);
-        rest(&mut book, 2, Side::Buy, SIZE_SCALE, 100 * PRICE_SCALE);
-        rest(&mut book, 3, Side::Buy, SIZE_SCALE * 2, 100 * PRICE_SCALE);
+        let hashes = [
+            rest(&mut book, 1, Side::Buy, SIZE_SCALE, 99 * PRICE_SCALE),
+            rest(&mut book, 2, Side::Buy, SIZE_SCALE, 100 * PRICE_SCALE),
+            rest(&mut book, 3, Side::Buy, SIZE_SCALE * 2, 100 * PRICE_SCALE),
+        ];
         rest_until(&mut book, 4, Side::Buy, SIZE_SCALE, 101 * PRICE_SCALE, 10);
         let mut seen = Vec::new();
         let _ = book.impact_price(Side::Buy, THOUSAND, 10, |q| {
@@ -1052,6 +1065,7 @@ mod impact_price_tests {
             true
         });
         let quote = |n: u64, size: i128, price: i128| RestingQuote {
+            order_hash: hashes[n as usize - 1],
             owner: word_u64(n),
             price: price * PRICE_SCALE,
             remaining: size,
@@ -1065,6 +1079,92 @@ mod impact_price_tests {
                 quote(1, SIZE_SCALE, 99),
             ],
             "the expired $101 bid is never shown"
+        );
+    }
+
+    /// A window walks only the levels inside its price range (never showing the
+    /// filter an order outside it) and gives no impact price once it would visit
+    /// more than its order budget before reaching the notional.
+    #[test]
+    fn a_window_bounds_the_levels_and_the_orders_a_sweep_visits() {
+        let mut book = OrderBook::<Keccak256>::new(0);
+        // three asks of just under $50 at $90, $100 and $110, and a deep ask at $120
+        for (n, price) in [(1, 90), (2, 100), (3, 110)] {
+            rest(
+                &mut book,
+                n,
+                Side::Sell,
+                SIZE_SCALE / 2 * 100 / price,
+                price * PRICE_SCALE,
+            );
+        }
+        rest(
+            &mut book,
+            4,
+            Side::Sell,
+            100 * SIZE_SCALE,
+            120 * PRICE_SCALE,
+        );
+        let window = |lo: i128, hi: i128, max_orders: usize| ImpactWindow {
+            lo: lo * PRICE_SCALE,
+            hi: hi * PRICE_SCALE,
+            max_orders,
+        };
+        let mut seen = Vec::new();
+        let mut record = |q: &RestingQuote| {
+            seen.push(q.price / PRICE_SCALE);
+            true
+        };
+        // the $90 ask lies below the window and the $120 one above it: the $100 of
+        // depth inside it is short of $140
+        assert_eq!(
+            book.impact_price_within(
+                Side::Sell,
+                140 * QUOTE_SCALE,
+                0,
+                window(95, 115, 10),
+                &mut record
+            ),
+            None
+        );
+        assert_eq!(seen, [100, 110]);
+        // the same walk without the window reaches $140 at the $110 level
+        assert!(book
+            .impact_price_within(
+                Side::Sell,
+                140 * QUOTE_SCALE,
+                0,
+                ImpactWindow::UNBOUNDED,
+                all
+            )
+            .is_some());
+        // a budget of two orders stops the walk before the third
+        assert_eq!(
+            book.impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 200, 2), all),
+            None
+        );
+        assert!(book
+            .impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 200, 3), all)
+            .is_some());
+        // the bids side walks its window from the top down
+        let mut bids = OrderBook::<Keccak256>::new(0);
+        for (n, price) in [(5, 90), (6, 100), (7, 110)] {
+            rest(&mut bids, n, Side::Buy, SIZE_SCALE, price * PRICE_SCALE);
+        }
+        let mut seen = Vec::new();
+        let _ = bids.impact_price_within(Side::Buy, THOUSAND, 0, window(95, 105, 10), |q| {
+            seen.push(q.price / PRICE_SCALE);
+            true
+        });
+        assert_eq!(seen, [100]);
+        // an empty or inverted window has no depth
+        assert_eq!(
+            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(105, 95, 10), all),
+            None
+        );
+        assert_eq!(
+            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(0, 200, 0), all),
+            None
         );
     }
 

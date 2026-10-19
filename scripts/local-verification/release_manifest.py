@@ -469,7 +469,8 @@ def build_manifest(root, config):
             "inventory_sha256": digest(canonical(sources))},
             "guest": {"elf": artifacts["guest.elf"], "setup_key": artifacts["program-vkey.bin"],
                       "program_vkey": reviewed["vkey"], "sp1_version": check_sp1_release.RELEASE,
-                      "provenance": "PR31 reviewed clock guest identity; this command does not rebuild or reprove it."},
+                      "provenance": "verify_clock_proof.REVIEWED_GUEST (" + identity_dir
+                                    + "); this command does not rebuild or reprove it."},
             "real_proof": real_proof(root),
             "compiled_contracts": contracts, "public_config": config,
             "public_config_sha256": digest(canonical(config)), "scope": dict(SCOPE)}

@@ -53,8 +53,11 @@ contracts were built with `forge build --root contracts`.
 
 Two exports on this host, into two fresh directories, were byte-identical in
 every file. `lifecycle.json` also has a `host` block that names the machine, so
-an export from another host differs at least there. Whether the witnesses are
-identical across hosts was not checked.
+an export from another host differs at least there. The release-evidence
+workflow's drill job (`.github/workflows/a11-release-evidence.yml`, step
+"Lifecycle export equals the committed lifecycle witnesses") exports them again
+on a Linux runner and fails unless every `*.witness.bin` equals the file here
+byte for byte; `lifecycle.json` is not compared.
 
 ## Regenerate
 

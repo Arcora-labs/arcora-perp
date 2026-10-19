@@ -3132,6 +3132,9 @@ impl Gw {
                 MIN_WITHDRAWAL / QUOTE_SCALE
             ));
         }
+        if let Some(refusal) = self.exit_cap_refusal(key, &wallet.owner, market, amount) {
+            return Err(refusal.into());
+        }
         let nonce = self.next_withdrawal_nonce()?;
         let mut blind = [0xD0u8; 32];
         blind[..8].copy_from_slice(&nonce.to_le_bytes());
@@ -7774,11 +7777,15 @@ pub(crate) enum PermitGateRefusal {
     /// The engine is in close-only while the settlement is not: the engine would
     /// refuse the deposit, which the vault refunds only after close-only.
     EngineCloseOnly,
-    /// The provable-history admission cap is reached.
+    /// The provable-history admission cap is reached for this permit.
     AdmissionCap,
-    /// The hard admission cap is reached: the deposit of a held permit would not be
-    /// credited, so the permit is not re-signed.
+    /// The state is beyond a provable-history bound: the deposit of a held permit
+    /// would not be credited, so the permit is not re-signed.
     AdmissionHardCap,
+    /// The account holds no position entry yet and already holds a permit for
+    /// another market: it holds permits for one market until its first deposit is
+    /// credited.
+    OneMarketUntilFirstDeposit,
     /// The amount is below `admission::MIN_DEPOSIT_PERMIT`.
     BelowMinimum,
     /// The settlement accepts no deposits (no paired vault).
@@ -7840,7 +7847,13 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
         PermitGateRefusal::AdmissionHardCap => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
-                "error": "the provable-history admission cap is reached and no further deposit is credited; the held permit is not re-signed. Withdrawals keep working"
+                "error": "the state is beyond a provable-history admission bound and no further deposit is credited; the held permit is not re-signed. Full exits keep working"
+            })),
+        ),
+        PermitGateRefusal::OneMarketUntilFirstDeposit => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "an account with no position yet holds deposit permits for one market at a time; complete the deposit for the market of its outstanding permit first, or let that permit expire"
             })),
         ),
         PermitGateRefusal::BelowMinimum => (
@@ -7995,17 +8008,18 @@ async fn post_v1_deposit_authorize(
             if let Err(e) = gw.refuse_if_wind_down_started() {
                 return err400(e).into_response();
             }
-            // At the hard cap its deposit would not be credited, as in engine
-            // close-only above: the permit is not re-signed.
-            if gw.hard_cap_reached() {
+            // The admission cap already counts it. Only for a state beyond a bound
+            // would its deposit not be credited, as in engine close-only above: then
+            // the permit is not re-signed.
+            if gw.held_permit_beyond_cap(&commit) {
                 return permit_refusal_response(PermitGateRefusal::AdmissionHardCap);
             }
             (commit, until, true)
         } else {
             // Re-signing a held permit issues nothing new; a fresh one stops at the
             // soft admission cap, which counts the permits already outstanding.
-            if gw.note_admission_cap() {
-                return permit_refusal_response(PermitGateRefusal::AdmissionCap);
+            if let Some(refusal) = gw.permit_cap_refusal(&key, req.market_id, req.purpose) {
+                return permit_refusal_response(refusal);
             }
             if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
                 return (status, Json(serde_json::json!({ "error": error }))).into_response();
@@ -8609,7 +8623,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
-            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": { "200": { "description": "apiKey + owner + callerSigned + recoveryNonce + chainId + vault" }, "503": { "description": "the account capacity or the soft admission cap is reached" } } } },
+            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": { "200": { "description": "apiKey + owner + callerSigned + recoveryNonce + chainId + vault" }, "503": { "description": "the account capacity is reached, or the state itself is at the soft admission cap (outstanding deposit permits never close registration)" } } } },
             "/v1/accounts/me": { "get": { "summary": "Own account (balance: settledBalance account-wide and marketFree [{ marketId, free }] per market, the balance a withdrawal from that market takes from and the minimum's exception; positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode; after close-only, refundableDeposits lists { id, from, ownerCommit, amount } for vault.refundDeposit)", "responses": ok("account"), "security": auth["security"] } },
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
@@ -8618,7 +8632,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
-            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, (409) in close-only (the settlement's, or the engine's while the settlement is not yet) or above depositCapacity() (the body carries `capacity`), and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached (the soft cap for a new permit, the hard cap for re-signing a held one)", "security": auth["security"],
+            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, (409) in close-only (the settlement's, or the engine's while the settlement is not yet), above depositCapacity() (the body carries `capacity`), or for an account with no position yet that already holds a permit for another market, and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached for a new permit (a held one is re-signed unless the state is beyond a bound)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
                 "responses": ok("ownerCommit + sig + validUntil (unix seconds)") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
@@ -8628,7 +8642,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
-                "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market)") } },
+                "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },

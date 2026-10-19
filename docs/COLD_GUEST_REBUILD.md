@@ -60,8 +60,11 @@ bağımlılığın veritabanı, tek checkout'u ve Cargo'nun `CACHEDIR.TAG` işar
 bulunabilir. Checkout'taki dosyalar (`.git` meta verisi ve `.cargo-ok` hariç, symlink
 yok) yukarıdaki kaynak ağacı özetiyle eşleşmelidir; özet, `{yol: sha256}`
 haritasının sıralı JSON'unun SHA-256'sıdır. Bu kontrol de derlemeden önce ve sonra
-yapılır. cargo-audit bu paketi crates.io danışma kayıtlarıyla eşleştirmez; kimliğini
-commit ve kaynak ağacı pini taşır.
+yapılır. cargo-audit git kaynaklı bu paketi lock'taki haliyle crates.io danışma
+kayıtlarıyla eşleştirmez; kimliğini commit ve kaynak ağacı pini taşır. Bu yüzden
+`a11-release-evidence.yml` guest lock'unu bir kez daha denetler: bu paketi upstream
+crates.io kimliğiyle yazan bir kopya (`check_sp1_release.py --upstream-audit-lock`)
+`cargo audit`'ten geçer.
 
 Asıl compile `--locked --offline` ile çalışır. Bu Cargo'nun offline modudur;
 process seviyesinde ağ sandbox'ı değildir. Bağımlılık build script'leri veya
@@ -102,8 +105,12 @@ olarak kabul edilmez. Ön kontrol hatasında henüz çıktı dizini oluşmamış
 
 `guest-cold-rebuild.yml`, standart `macos-14` ARM64 GitHub-hosted runner kullanır.
 Build cache restore etmez; yalnız `contents: read` izni vardır. Repository key,
-cloud/GPU hesabı veya wallet gerektirmez. Bu ek workflow mevcut 11 zorunlu
-kontrolü, review kararını veya dal korumalarını değiştirmez.
+cloud/GPU hesabı veya wallet gerektirmez. Bu ek workflow zorunlu kontrolleri,
+review kararını veya dal korumalarını değiştirmez. Önerilen ruleset şablonu
+([.github/main-ruleset.json](../.github/main-ruleset.json)) 12 zorunlu kontrol
+listeler (`reviewed guest execution (CPU)` dahil); GitHub'da uygulanan ruleset bu
+yeni kontrolü, depo sahibi şablonu ayrıca uygulayana kadar zorunlu kılmaz
+([REPOSITORY_POLICY_STATE.md](REPOSITORY_POLICY_STATE.md)).
 
 Artifact yalnız ELF, build/fetch logları, compiler çağrıları, doğrulama kaydı ve
 runner-context içerir. Toolchain/cache dizinleri artifact'e alınmaz. Runner-context

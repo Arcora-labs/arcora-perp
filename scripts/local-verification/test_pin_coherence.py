@@ -16,6 +16,7 @@ import re
 import tempfile
 import tokenize
 import unittest
+from unittest.mock import patch
 
 import gateway_formats
 import verify_clock_fixture as fixture
@@ -63,6 +64,22 @@ def _claim_tool():
     return module
 
 
+def program_table(block):
+    """The (ELF sha256, domain) entries of a PROGRAM_WITNESS_DOMAINS table body.
+
+    Every entry must be a pair of literals, a 64-hex ELF hash and an upper-case
+    domain, and nothing but such entries (and line comments) may appear: an entry
+    naming a constant, such as WITNESS_DOMAIN, could list an unreviewed ELF with
+    the admitted domain without this check seeing it.
+    """
+    body = re.sub(r"//[^\n]*", "", block)
+    entry = r'\(\s*"([0-9a-f]{64})",\s*"([A-Z0-9]+)",?\s*\),?'
+    if re.sub(entry, "", body).strip():
+        raise AssertionError("program table entry that is not a pair of literals: "
+                             + re.sub(entry, "", body).strip())
+    return re.findall(entry, body)
+
+
 def keccak256(data):
     return _claim_tool().keccak256(data)
 
@@ -76,7 +93,8 @@ def word(value):
 
 class ReviewedGuestCopies(unittest.TestCase):
     def test_sp1_host_reviewed_elf_pins(self):
-        for relative in ("crates/sp1-host/src/bin/replay-funds.rs", "crates/sp1-host/src/bin/clock-proof.rs"):
+        for relative in ("crates/sp1-host/src/bin/replay-funds.rs", "crates/sp1-host/src/bin/clock-proof.rs",
+                         "crates/sp1-host/src/bin/finish-clock-wrapper.rs"):
             with self.subTest(file=relative):
                 pinned = one(r'^const REVIEWED_ELF: &str\s*=\s*"([0-9a-f]{64})";', source(relative), "REVIEWED_ELF")
                 self.assertEqual(pinned, REVIEWED["elf"])
@@ -115,6 +133,9 @@ class ReviewedGuestCopies(unittest.TestCase):
 
     def test_finish_clock_wrapper_setup_key(self):
         text = source("crates/sp1-host/src/bin/finish-clock-wrapper.rs")
+        # The guest is judged by its pinned hash, never by the build-script ELF.
+        self.assertNotIn("include_elf!", text)
+        self.assertRegex(text, r"assert_eq!\(\s*sha256\(&elf\),\s*REVIEWED_ELF,")
         key = one(r'assert_eq!\(\s*vkey_hex,\s*"(0x[0-9a-f]{64})"\s*\)', text, "wrapper setup key")
         self.assertEqual(key, REVIEWED["vkey"])
         verifier = one(r'hex\(&groth\.groth16_vkey_hash\),\s*"([0-9a-f]{64})"', text, "wrapper verifier hash")
@@ -145,14 +166,22 @@ class ReviewedGuestCopies(unittest.TestCase):
         domain = one(r'^pub\(crate\) const WITNESS_DOMAIN: &str = "([A-Z0-9]+)";', text, "witness domain")
         block = re.search(r"PROGRAM_WITNESS_DOMAINS: &\[\(&str, &str\)\] = &\[(.*?)\n\];", text, re.S)
         self.assertIsNotNone(block, "program table")
-        block = block.group(1)
-        table = re.findall(r'\(\s*"([0-9a-f]{64})",\s*"([A-Z0-9]+)",?\s*\)', block)
+        table = program_table(block.group(1))
         self.assertTrue(table, "the program table is parsed")
         self.assertEqual(len({sha for sha, _ in table}), len(table), "one entry per program")
         admitted = {sha for sha, listed in table if listed == domain}
         self.assertLessEqual(admitted, {REVIEWED["elf"]})
         if REVIEWED["elf"] not in {sha for sha, listed in table if listed != domain}:
             self.assertIn(REVIEWED["elf"], admitted, "the reviewed guest must be listed with " + domain)
+
+    def test_program_table_parser_refuses_entries_it_cannot_read(self):
+        sha = "ab" * 32
+        self.assertEqual(program_table('    // note\n    (\n        "%s",\n        "DPCLK4",\n    ),\n' % sha),
+                         [(sha, "DPCLK4")])
+        for entry in ('("%s", WITNESS_DOMAIN),' % sha, '(REVIEWED, "DPCLK4"),', '("%s", "DPCLK4"),' % sha[:-2],
+                      '("%s", "DPCLK4"), ("%s", "x"),' % (sha, sha), 'concat!("a", "b"),'):
+            with self.subTest(entry=entry), self.assertRaises(AssertionError):
+                program_table(entry)
 
     def test_reviewed_identity_directory(self):
         directory = ROOT / REVIEWED["identity_dir"]
@@ -267,6 +296,31 @@ class ProofFixtureCopies(unittest.TestCase):
         self.assertEqual({n["name"]: n["witness_sha256"] for n in execution["negatives"]}, PROOF["negatives"])
         self.assertEqual(execution["cycles"], evidence["cycles"])
 
+    def test_workflows_verify_the_proof_fixture_directory(self):
+        # The proof gate reads PROOF_FIXTURE["dir"] by default; a workflow that names
+        # a directory must name that one, so repointing PROOF_FIXTURE needs no
+        # workflow edit that could be missed.
+        runs = []
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            for line in path.read_text().splitlines():
+                if "verify_clock_proof.py" in line and "unittest" not in line:
+                    runs.append((path.name, line))
+        self.assertTrue(runs, "a workflow runs the proof gate")
+        for name, line in runs:
+            with self.subTest(workflow=name):
+                named = re.findall(r"--artifact-dir\s+(\S+)", line)
+                self.assertLessEqual(set(named), {PROOF["dir"]}, line)
+
+    def test_the_lifecycle_export_is_compared_with_the_committed_witnesses(self):
+        # The required replay executes the committed lifecycle witnesses; the drill
+        # that exports them afresh compares the two byte for byte.
+        import verify_funds_replay
+        a11 = source(".github/workflows/a11-release-evidence.yml")
+        self.assertIn("ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-local-drills/funds-witnesses", a11)
+        self.assertIn("committed=" + verify_funds_replay.LIFECYCLE_DIR + "\n", a11)
+        self.assertIn("fresh=/tmp/arcora-local-drills/funds-witnesses\n", a11)
+        self.assertRegex(a11, r'cmp "\$witness" "\$fresh/\$\(basename "\$witness"\)"')
+
     def test_reviewed_fixture_negatives_match_the_proof_negatives_by_name(self):
         # The reviewed fixture may add negatives; it never drops one the proof covers.
         self.assertLessEqual(set(PROOF["negatives"]), set(clock.REVIEWED_FIXTURE["negatives"]))
@@ -291,15 +345,34 @@ class ProofFixtureCopies(unittest.TestCase):
                 files = {path.name: sha(path.read_bytes()) for path in (directory / sub).iterdir()}
                 self.assertEqual(files, {name + ".witness.bin": digest for name, digest in expected.items()})
 
+    def assert_reviewed_fixture_is_the_proof_fixture(self):
+        reviewed = clock.REVIEWED_FIXTURE
+        self.assertEqual((reviewed["witness_sha256"], reviewed["commitment"], reviewed["negatives"]),
+                         (PROOF["witness_sha256"], PROOF["commitment"], PROOF["negatives"]))
+        # The cases are executed on CPU and never proven. When the proof directory's
+        # execution record lists cases, they are the reviewed fixture's.
+        execution = json.loads((ROOT / PROOF["dir"] / "execution.json").read_text())
+        if "cases" in execution:
+            self.assertEqual({c["name"]: {"witness_sha256": c["witness_sha256"], "commitment": c["commitment"]}
+                              for c in execution["cases"]}, reviewed["cases"])
+
     def test_reviewed_fixture_equals_the_proof_fixture_while_the_guests_match(self):
         # While the proof's guest is the reviewed guest, the reviewed fixture's outputs
         # are the proof fixture's: every REVIEWED_FIXTURE value has a checked copy.
         if not clock.proof_matches_reviewed_guest():
             self.skipTest("the reviewed guest differs from the proof's guest")
+        self.assert_reviewed_fixture_is_the_proof_fixture()
+
+    def test_a_proof_of_the_reviewed_guest_may_carry_reviewed_cases(self):
+        # Once PROOF_FIXTURE names a proof of the reviewed guest, the check above
+        # holds with the reviewed fixture's cases in place.
         reviewed = clock.REVIEWED_FIXTURE
-        self.assertEqual((reviewed["witness_sha256"], reviewed["commitment"], reviewed["negatives"]),
-                         (PROOF["witness_sha256"], PROOF["commitment"], PROOF["negatives"]))
-        self.assertEqual(reviewed["cases"], {})
+        self.assertTrue(reviewed["cases"], "the reviewed fixture has CPU-only cases")
+        values = {"elf": REVIEWED["elf"], "vkey": REVIEWED["vkey"], "witness_sha256": reviewed["witness_sha256"],
+                  "commitment": reviewed["commitment"], "negatives": reviewed["negatives"]}
+        with patch.dict(clock.PROOF_FIXTURE, values):
+            self.assertTrue(clock.proof_matches_reviewed_guest())
+            self.assert_reviewed_fixture_is_the_proof_fixture()
 
 
 # Prose copies of identity values, with the record each copies and the fields it
@@ -308,6 +381,7 @@ class ProofFixtureCopies(unittest.TestCase):
 DOC_COPIES = {
     "docs/RELEASE_MANIFEST.md": (REVIEWED, ("elf", "vkey")),
     "docs/COLD_GUEST_REBUILD.md": (REVIEWED, ("elf",)),
+    "docs/PUBLIC_SERVICE_IDENTITY.md": (REVIEWED, ("elf",)),
     "contracts/integration/fixtures/clock-v2/README.md": (PROOF, ("elf", "commitment")),
     "contracts/integration/fixtures/clock-v2/verified-calldata/README.md": (PROOF, ("proof_sha256",)),
     "contracts/integration/fixtures/clock-v2-verified/README.md": (PROOF, ()),
@@ -408,7 +482,9 @@ class RecordShapes(unittest.TestCase):
         self.assertEqual(set(REVIEWED), {"elf", "vkey", "sources", "identity_dir"})
         self.assertEqual(set(clock.REVIEWED_FIXTURE), {"witness_sha256", "commitment", "negatives", "cases"})
         self.assertEqual(set(PROOF), {"dir", "kind", "elf", "vkey", "witness_sha256", "commitment",
-                                      "proof_sha256", "negatives"})
+                                      "proof_sha256", "negatives", "sources"})
+        # The proof's guest pins the same 21 inputs as the reviewed guest.
+        self.assertEqual(set(PROOF["sources"]), set(REVIEWED["sources"]))
 
     def test_historical_sources_cover_the_reviewed_paths(self):
         self.assertEqual(set(clock.HISTORICAL_V2_GUEST_SOURCES), set(REVIEWED["sources"]))

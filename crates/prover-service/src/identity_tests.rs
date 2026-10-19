@@ -94,6 +94,20 @@ fn injected_reviewed_fixture_descriptor_binds_exact_bytes_and_clock_domain() {
     assert_ne!(first["program_vkey"], second["program_vkey"]);
 }
 
+/// Exactly one program is listed with the domain `/prove` admits, and it is the
+/// reviewed guest (the committed fixture's ELF): an entry naming the domain
+/// through a constant is counted here too.
+#[test]
+fn only_the_reviewed_guest_is_listed_with_the_admitted_domain() {
+    let admitted: Vec<&str> = PROGRAM_WITNESS_DOMAINS
+        .iter()
+        .filter(|(_, domain)| *domain == WITNESS_DOMAIN)
+        .map(|(elf, _)| *elf)
+        .collect();
+    let reviewed = crate::service_identity::sha256(FIXTURE_ELF);
+    assert_eq!(admitted, [reviewed.as_str()]);
+}
+
 /// The descriptor's domains come from the reviewed program table, keyed by the
 /// exact ELF bytes: a program that is not listed, or is listed with another
 /// framing, claims no domain, and only a program listed with `DPCLK4` claims it.

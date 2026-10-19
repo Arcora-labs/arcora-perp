@@ -286,6 +286,19 @@ class ProofFixtureAndStatus(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Groth16 shape/selector"):
                     clock.forge_environment(data)
 
+    def test_the_proof_fixture_names_the_sources_of_its_own_guest(self):
+        # The committed proof's evidence recorded its ELF beside its guest sources;
+        # PROOF_FIXTURE pairs the same two, so the evidence never pairs that ELF with
+        # the checkout's sources.
+        evidence = json.loads((clock.target.ROOT / "docs/audits/2026-10-09-remaining-work/real-clock-proof/"
+                               "verification.json").read_text())
+        self.assertEqual(evidence["guest_elf_sha256"], clock.PROOF_FIXTURE["elf"])
+        self.assertEqual(evidence["guest_sources_sha256"], dict(clock.PROOF_FIXTURE["sources"]))
+        self.assertIs(clock.PROOF_FIXTURE["sources"], clock.HISTORICAL_V2_GUEST_SOURCES)
+        identity = clock.identities()["proof_fixture"]
+        self.assertEqual(identity["guest_sources_sha256"], dict(clock.HISTORICAL_V2_GUEST_SOURCES))
+        self.assertNotEqual(identity["guest_sources_sha256"], clock.REVIEWED_GUEST["sources"])
+
     def test_historical_sources_are_a_frozen_provenance_copy(self):
         historical = dict(clock.HISTORICAL_V2_GUEST_SOURCES)
         reviewed = clock.REVIEWED_GUEST["sources"]
@@ -351,6 +364,13 @@ class ForgeInputsComeFromProofFixture(unittest.TestCase):
         self.assert_proof_fixture_inputs(calls, report)
         self.assertEqual(report["reviewed_guest_sources_sha256"], clock.REVIEWED_GUEST["sources"])
 
+    def test_verify_clock_proof_defaults_to_the_proof_fixture_directory(self):
+        calls, report = self.run_main(clock, [])
+        self.assert_proof_fixture_inputs(calls, report)
+        directory = clock.target.ROOT / clock.PROOF_FIXTURE["dir"]
+        self.assertEqual(report["input_artifacts"]["proof.bin"]["sha256"],
+                         clock.target.sha256((directory / "proof.bin").read_bytes()))
+
     def test_verify_clock_fixture(self):
         calls, report = self.run_main(fixture, [])
         self.assert_proof_fixture_inputs(calls, report)
@@ -395,9 +415,11 @@ class ForgeInputsComeFromProofFixture(unittest.TestCase):
                 self.assertLessEqual(keys, set(report))
                 self.assertEqual(report["scope"], scope)
                 self.assertEqual(report["identity_scope"], clock.IDENTITY_SCOPE)
-                # The source pins the checkout was checked against, under both names.
-                self.assertEqual(report[sources], clock.REVIEWED_GUEST["sources"])
-                self.assertEqual(report["reviewed_" + sources], report[sources])
+                # The existing key names the proof's own guest sources, beside its ELF;
+                # the checkout's pins are under the reviewed record's name.
+                self.assertEqual(report[sources], dict(clock.PROOF_FIXTURE["sources"]))
+                self.assertEqual(report["proof_fixture"]["guest_sources_sha256"], report[sources])
+                self.assertEqual(report["reviewed_" + sources], clock.REVIEWED_GUEST["sources"])
 
     def fixture_report(self):
         calls = []

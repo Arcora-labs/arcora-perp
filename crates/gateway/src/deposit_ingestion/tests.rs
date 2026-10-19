@@ -1074,13 +1074,14 @@ async fn deposits_refused_in_engine_close_only_are_recorded_and_later_listed() {
     writer.abort();
 }
 
-/// At the hard admission cap a permitted deposit that landed is not credited: the
-/// page stays unconsumed, intake stays ready, a signed withdrawal is still
-/// accepted, and the operator gets an alert of its own (the deposit now holds the
-/// deposit queue). Once the cap no longer holds, the same page is credited, the
+/// For a state beyond a provable-history bound (a bound lowered under it) a
+/// permitted deposit that landed is not credited: the page stays unconsumed, intake
+/// stays ready, a signed full exit is still accepted (a partial withdrawal is not),
+/// and the operator gets an alert of its own (the deposit now holds the deposit
+/// queue). Once the state is within the bound again, the same page is credited, the
 /// record goes and the alert recovers.
 #[tokio::test]
-async fn the_hard_cap_holds_a_landed_deposit_with_its_own_alert_while_exits_work() {
+async fn a_state_beyond_a_bound_holds_a_landed_deposit_with_its_own_alert_while_exits_work() {
     use crate::ops_alerts::AlertKind::{AdmissionCapReached, DepositBlockedAtCap};
     let mut gw = fresh();
     let sk = k256::ecdsa::SigningKey::from_slice(&[0x61; 32]).unwrap();
@@ -1112,26 +1113,32 @@ async fn the_hard_cap_holds_a_landed_deposit_with_its_own_alert_while_exits_work
         let alerts = gw.ops_alerts.active();
         assert!(alerts.contains(&DepositBlockedAtCap));
         assert!(alerts.contains(&AdmissionCapReached));
-        // Exits keep working at the hard cap.
-        let (owner, auth_nonce) = {
-            let a = &gw.accounts[&exiting];
-            (a.wallet.owner, a.last_withdraw_nonce + 1)
+        // A full exit keeps working beyond the bound; a partial withdrawal does not.
+        let withdraw = |gw: &mut Gw, amount: i128| {
+            let (owner, auth_nonce) = {
+                let a = &gw.accounts[&exiting];
+                (a.wallet.owner, a.last_withdraw_nonce + 1)
+            };
+            let digest = withdraw_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                amount,
+                &address,
+                auth_nonce,
+            );
+            let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+            let mut wire = [0u8; 65];
+            wire[..64].copy_from_slice(&sig.to_bytes());
+            wire[64] = 27 + recid.to_byte();
+            gw.account_withdraw(&exiting, 0, amount, address, auth_nonce, &wire)
         };
-        let digest = withdraw_auth_digest(
-            gw.chain_id,
-            &gw.vault,
-            &owner,
-            0,
-            QUOTE_SCALE,
-            &address,
-            auth_nonce,
+        assert_eq!(
+            withdraw(&mut gw, QUOTE_SCALE).unwrap_err(),
+            crate::admission::HISTORY_CAP_EXIT
         );
-        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
-        let mut wire = [0u8; 65];
-        wire[..64].copy_from_slice(&sig.to_bytes());
-        wire[64] = 27 + recid.to_byte();
-        gw.account_withdraw(&exiting, 0, QUOTE_SCALE, address, auth_nonce, &wire)
-            .unwrap();
+        withdraw(&mut gw, 100 * QUOTE_SCALE).unwrap();
         gw.admission_cap = crate::admission::measured_cap();
     }
     assert_eq!(ingest_once(&app).await.unwrap(), 1);

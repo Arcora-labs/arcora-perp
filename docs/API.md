@@ -43,7 +43,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 
 | Method | Path | Auth | Body / notes |
 |--------|------|------|--------------|
-| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned, recoveryNonce, chainId, vault }`; `503` `{ error }` once the account capacity or the soft admission cap (§ Admission cap) is reached |
+| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned, recoveryNonce, chainId, vault }`; `503` `{ error }` once the account capacity is reached, or while the state itself is at the soft admission cap (§ Admission cap); outstanding deposit permits never close registration |
 | GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, marketFree[], positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }`, `marketFree` being `[{ marketId, free }]`, each market's free balance (the withdrawal minimum's exception, § Withdrawals); after close-only also `refundableDeposits[]` (§ Refunds after close-only) |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
 | POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
@@ -239,28 +239,53 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    | the settlement is in close-only | `409` `{ error }`; no further deposits are possible (§ Refunds after close-only) |
    | the engine is close-only (a liquidation's shortfall exceeded insurance, treasury and auto-deleverage) while the settlement is not yet | `409` `{ error }`; the gateway alerts governance to call `enterCloseOnly()` |
    | the settlement accepts no deposits (no paired vault) | `409` `{ error }` |
-   | the gateway's state is at its soft admission cap (§ Admission cap) | `503` `{ error }`; below the hard cap a held permit can still be re-signed |
-   | a held permit (`reuseOwnerCommit`) while the state is at its hard admission cap | `503` `{ error }`; its deposit would not be credited, so the permit is not re-signed |
+   | a new permit while the soft admission cap is reached in a dimension the permit adds to, or the permit would leave too little room for the reserved exits (§ Admission cap) | `503` `{ error }`; a held permit is still re-signed |
+   | the account holds no position yet and already holds a permit for another market | `409` `{ error }`; it holds permits for one market until its first deposit is credited |
+   | a held permit (`reuseOwnerCommit`) while the state is beyond an admission bound | `503` `{ error }`; its deposit would not be credited, so the permit is not re-signed |
    | the gateway's settles (keepalives included) are failing and less than two permit lifetimes of liveness remain | `503` `{ error }`, until settlement recovers |
 
    **Admission cap.** Every batch proof re-derives the whole note tree and the
    nullifier log, so the gateway bounds how much history the state accumulates
    (note-tree leaves plus spent nullifiers, open position entries, unspent notes).
-   At 80% of any bound (the soft cap) it issues no new deposit permit and registers
-   no new account, each refused with `503` `{ error }`, and raises the
-   `admission_cap_reached` alert (§ Operational alerts). The soft cap counts what the
-   outstanding permits will add once their deposits are credited (each one tree leaf
-   and one spent nullifier, plus a position entry when the account holds none in that
-   market yet), so the permits already signed fit below it and the margin up to the
-   bound is left to exits. At the bound (the hard cap) it credits no further deposit
-   and re-signs no held permit: ingestion stops at the page holding the deposit,
-   `POST /v1/accounts/deposit/onchain` answers `503` `{ error, durability }` with the
-   reason, and the `deposit_blocked_at_cap` alert is raised, because that deposit is
-   now the oldest unconsumed one and the settlement's deposit-inclusion timeout runs
-   from it. The gateway records each such deposit that landed under one of its
-   permits; it is refunded by the vault once the settlement is in close-only, and
-   the account view then lists it (§ Refunds after close-only). Withdrawals, closes
-   and claims keep working at both levels.
+   It reads the state together with what the outstanding permits add once their
+   deposits are credited (each one tree leaf and one spent nullifier, plus a position
+   entry when the account holds none in that market yet), and it keeps room for one
+   more exit of every position entry (a leaf and a nullifier) and of every unspent
+   note:
+
+   - At 80% of a bound (the soft cap) it issues no new deposit permit that adds to
+     that bound (`503` `{ error }`): any permit at the history soft cap, and a permit
+     that would open a position entry at the position soft cap. A top-up of an
+     existing entry is not refused for position headroom. It registers no new
+     account while the state itself is at a soft cap (`503`); outstanding permits do
+     not close registration. It raises the `admission_cap_reached` alert
+     (§ Operational alerts).
+   - A new permit is issued only while the state, the outstanding permits, the new
+     permit and the reserved exits fit within the history bound.
+   - An account that holds no position yet holds permits for one market at a time
+     until its first deposit is credited (`409` `{ error }` otherwise), so it
+     reserves at most one position entry.
+   - A withdrawal that would need more room than the history bound leaves is
+     refused with `400` and a `HISTORY_CAP` error, unless it is a full exit: the
+     whole balance of a closed position in that market, which removes the entry and
+     uses no room another exit or credit needs. (A full exit by an account that
+     holds an outstanding permit for the same market needs room too, since that
+     deposit would open the entry again; it is accepted once the deposit is credited
+     or the permit expires.) In close-only no permit can be credited, so outstanding
+     permits take no room there.
+
+   So the deposit of every outstanding permit is credited within the bounds, and
+   funds can always leave: close the position, then withdraw its whole balance.
+   Only a state already beyond a bound (one that was lowered under it) credits no
+   further deposit and re-signs no held permit: ingestion stops at the page holding
+   the deposit, `POST /v1/accounts/deposit/onchain` answers `503`
+   `{ error, durability }` with the reason, and the `deposit_blocked_at_cap` alert is
+   raised, because that deposit is now the oldest unconsumed one and the
+   settlement's deposit-inclusion timeout runs from it. The gateway records each
+   such deposit that landed under one of its permits; it is refunded by the vault
+   once the settlement is in close-only, and the account view then lists it
+   (§ Refunds after close-only). Closes, full exits and claims keep working
+   throughout.
 
    | Bound | Hard cap | Soft cap (80%) |
    |---|---:|---:|
@@ -328,7 +353,7 @@ not merely transaction hash: multiple accounts can deposit in one transaction.
 market/purpose mismatch or a historical transaction without reconstructible new
 receipts; `503` for RPC unavailability, blocked ordering, safety halt, uncertain
 durability, or an intake that credits no deposit while the engine is in close-only or
-the hard admission cap is reached (§ Admission cap). Pending / `503` is **not** an
+the state is beyond an admission bound (§ Admission cap). Pending / `503` is **not** an
 instruction to send funds again.
 
 `status` reports the least final state of the transaction's deposits:
@@ -468,7 +493,9 @@ directly:
    § Withdrawal authorization for who must sign, what they sign, and the `to` rule.
    The minimum is **1 USDC** (1,000,000 base units), unless `amount` is the entire
    free balance in that market (`marketFree` in `GET /v1/accounts/me`, not the
-   account-wide `settledBalance`); a smaller request is a `400`.
+   account-wide `settledBalance`); a smaller request is a `400`. Once the admission
+   cap leaves no room for it, a withdrawal other than a full exit (the whole balance
+   of a closed position) is a `400` with a `HISTORY_CAP` error (§ Admission cap).
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
@@ -534,7 +561,8 @@ Once the gateway has seen close-only at a finalized block, `GET /v1/accounts/me`
 adds `refundableDeposits: [{ id, from, ownerCommit, amount }]`, ordered by `id`, for
 the account's credits that no settled batch consumed and for the deposits that
 landed under one of the account's permits and were never credited (while the engine
-was close-only, at the hard admission cap, or once the settlement was in close-only).
+was close-only, while the state was beyond an admission bound, or once the settlement
+was in close-only).
 `mode` in `/api/state` and `/v1/system/status` reads `CloseOnly`. The list survives
 the wind-down's rebase and restarts. A deposit the gateway did not record does not
 appear in it, for example one sent without a permit this gateway holds, or one that
@@ -920,9 +948,9 @@ Each is raised once when it becomes active and once when it recovers:
 | `liveness_low` | half of the settlement's liveness window has passed without progress |
 | `permit_gc_stalled` | finalized block headers have not re-hashed for a long stretch, so expired permits are not removed |
 | `engine_close_only` | the engine is in close-only while the settlement is not; governance should call `enterCloseOnly()` (§ Deposits after an engine trip) |
-| `admission_cap_reached` | the soft admission cap is reached; new permits and registrations are refused (§ Admission cap) |
+| `admission_cap_reached` | the soft admission cap is reached; new permits that add to the bound at it are refused, and registrations while the state itself is at it (§ Admission cap) |
 | `withdraw_nonce_repaired` | at boot the withdrawal-leaf counter was at or behind the engine's last withdrawal nonce and was moved forward; find out which snapshot was restored |
-| `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the hard admission cap is reached; it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
+| `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the state is beyond an admission bound (only after a bound is lowered under an existing state); it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
 
 ### `POST /v1/admin/settlement/cancel-anchor` — cancel a stale clock anchor
 

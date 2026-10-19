@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
-use matcher::{Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus};
+use matcher::{ImpactWindow, Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus};
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{notional_quote, QUOTE_SCALE, RATE_SCALE};
 use perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL;
@@ -292,6 +292,14 @@ pub const FUNDING_IMPACT_NOTIONAL: i128 = 1_000 * QUOTE_SCALE;
 /// this span.
 pub const FUNDING_MARK_MIN_SPAN_MS: u64 = 7_000;
 
+/// The most resting orders one side's impact sweep visits, inside the fill band,
+/// before it reaches [`FUNDING_IMPACT_NOTIONAL`]. A side that needs more gives no
+/// impact price, and the mark falls back to the oracle index, as for a side
+/// without the depth. Honest depth reaches the notional in far fewer orders: a
+/// hundred orders at the order minimum hold it. The bound keeps the cost of a
+/// funding sample independent of how many orders rest on the book.
+pub const FUNDING_IMPACT_MAX_ORDERS: usize = 4_096;
+
 /// Whether the minimum order size ([`MIN_ORDER_NOTIONAL`]) refuses `order` against
 /// its owner's current `position` (an empty one when the owner holds none), at the
 /// validated oracle price `mark`. Reduce-only orders and orders that do not increase
@@ -361,11 +369,14 @@ fn within_fill_band(market: &Market, index: i128, price: i128) -> bool {
 
 /// `position` after a resting maker's fill of `delta` at the `quote`'s price, if
 /// the engine could settle that fill for the maker at the validated `index`: a reduce-only
-/// maker and, in close-only mode, any maker may only reduce; a fill that adds
-/// exposure must leave initial margin; and the position must stay maintenance-
-/// compliant while open, or end with no debt. This mirrors the maker leg of
-/// `op_fill` without its fee rebate, so it errs toward refusing depth. `None` when
-/// the fill would be refused.
+/// maker, a maker whose order was admitted below the minimum because it reduced
+/// (`minimum_exempt`, which [`settle_fills`] holds to reducing) and, in close-only
+/// mode, any maker may only reduce; a fill that adds exposure must leave initial
+/// margin; and the position must stay maintenance-compliant while open, or end
+/// with no debt. This mirrors the maker leg of `op_fill` without its fee rebate,
+/// so it errs toward refusing depth. `None` when the fill would be refused.
+// one argument per rule the fill must pass, all read from the caller's state
+#[allow(clippy::too_many_arguments)]
 fn maker_fill_settles(
     position: &Position,
     market: &Market,
@@ -374,9 +385,10 @@ fn maker_fill_settles(
     index: i128,
     funding_index: i128,
     close_only: bool,
+    minimum_exempt: bool,
 ) -> Option<Position> {
     let increasing = position.increases_exposure(delta);
-    if increasing && (quote.reduce_only || close_only) {
+    if increasing && (quote.reduce_only || close_only || minimum_exempt) {
         return None;
     }
     let mut after = *position;
@@ -444,6 +456,12 @@ impl FundingMarkWindow {
         }
     }
 
+    /// Whether a sample was taken at `now_ms` or later: a sample at `now_ms` would
+    /// then change nothing.
+    fn sampled_since(&self, now_ms: u64) -> bool {
+        self.last.is_some_and(|(t, _)| now_ms <= t)
+    }
+
     /// The time-weighted average premium over the closed spans, rounded toward
     /// zero, divided by at least [`FUNDING_MARK_MIN_SPAN_MS`]; 0 while no span has
     /// closed.
@@ -451,6 +469,12 @@ impl FundingMarkWindow {
         let span = self.elapsed.max(FUNDING_MARK_MIN_SPAN_MS);
         self.weighted / i128::from(span)
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Funding-premium samples computed on this thread (each walks the book).
+    static PREMIUM_SAMPLES: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
 }
 
 /// Why an order was rejected at settlement, mapped from an engine error.
@@ -1250,7 +1274,8 @@ impl Sequencer {
     /// bids and against the asks. Only depth the engine could fill counts: a
     /// resting order inside the market's fill band around the validated index
     /// whose maker could settle the fill. `None` when either side holds less than
-    /// that, or when the market's oracle does not validate at `now_ms`.
+    /// that within its first [`FUNDING_IMPACT_MAX_ORDERS`] in-band orders, or when
+    /// the market's oracle does not validate at `now_ms`.
     pub fn impact_mid(&self, market_id: MarketId, now_ms: u64) -> Option<i128> {
         let market = self.state.markets.get(&market_id)?;
         let index = self
@@ -1274,14 +1299,26 @@ impl Sequencer {
     /// inside the market's fill band around the index ([`within_fill_band`]), and
     /// its maker could settle the fill ([`maker_fill_settles`]), taking the maker's
     /// orders met earlier in the sweep as filled first. A quote nothing could
-    /// trade against therefore cannot move the funding mark.
+    /// trade against therefore cannot move the funding mark; in particular an
+    /// order admitted below the minimum because it reduced counts only while it
+    /// still reduces, so stacking such orders gives no depth beyond the maker's
+    /// position. The sweep walks only the levels inside the fill band and visits
+    /// at most [`FUNDING_IMPACT_MAX_ORDERS`] orders; a side that needs more has no
+    /// impact price.
     fn impact_price(&self, market: &Market, index: i128, side: Side, now_ms: u64) -> Option<i128> {
         let book = self.matcher.book(market.id)?;
+        // the fill band as a price range: |price − index| · RATE_SCALE <= ratio · index
+        let reach = market.max_fill_deviation_ratio.checked_mul(index)? / RATE_SCALE;
+        let window = ImpactWindow {
+            lo: index.checked_sub(reach)?,
+            hi: index.checked_add(reach)?,
+            max_orders: FUNDING_IMPACT_MAX_ORDERS,
+        };
         let funding_index = self.funding_index_at(market.id, index, now_ms);
         let close_only = self.state.mode == Mode::CloseOnly;
         // each maker's position after the fills of its orders counted so far
         let mut staged: BTreeMap<PubKey, Position> = BTreeMap::new();
-        book.impact_price(side, FUNDING_IMPACT_NOTIONAL, now_ms, |quote| {
+        book.impact_price_within(side, FUNDING_IMPACT_NOTIONAL, now_ms, window, |quote| {
             if !within_fill_band(market, index, quote.price) {
                 return false;
             }
@@ -1304,6 +1341,7 @@ impl Sequencer {
                 index,
                 funding_index,
                 close_only,
+                self.minimum_exempt.contains(&quote.order_hash),
             ) {
                 Some(after) => {
                     staged.insert(quote.owner, after);
@@ -1324,6 +1362,8 @@ impl Sequencer {
         oracle: &OracleTranscript,
         now_ms: u64,
     ) -> i128 {
+        #[cfg(test)]
+        PREMIUM_SAMPLES.with(|n| n.set(n.get() + 1));
         let Ok(index) = oracle.validate(market, now_ms) else {
             return 0;
         };
@@ -1340,6 +1380,16 @@ impl Sequencer {
     fn sample_funding_premiums(&mut self, now_ms: u64) {
         let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
         for mid in market_ids {
+            // A later sample at the newest sample's time (or earlier) would change
+            // nothing, so it is not computed: `run_maintenance` within `seal_batch`
+            // costs no second book walk.
+            if self
+                .funding_marks
+                .get(&mid)
+                .is_some_and(|window| window.sampled_since(now_ms))
+            {
+                continue;
+            }
             let (Some(market), Some(oracle)) = (
                 self.state.markets.get(&mid).copied(),
                 self.oracles.get(&mid).copied(),
@@ -1378,7 +1428,8 @@ impl Sequencer {
     /// **Funding mark.** Each tick samples, per market, the premium of the
     /// impact-notional book mid ([`Sequencer::impact_mid`]) over the validated
     /// oracle index, or 0 when either side lacks [`FUNDING_IMPACT_NOTIONAL`] of
-    /// depth the engine could fill. [`Sequencer::seal_batch`] takes the sample from
+    /// depth the engine could fill (within [`FUNDING_IMPACT_MAX_ORDERS`] orders of
+    /// the fill band). [`Sequencer::seal_batch`] takes the sample from
     /// the book the tick's takers face, before it matches, and the sample prices
     /// the span since the previous tick. The `AccrueFunding` mark is the index plus
     /// the time-weighted average of those spans since the open window began (reset
@@ -2319,6 +2370,46 @@ mod tests {
         w.observe(10_000, 10);
         assert_eq!(w.weighted, before.weighted + 10 * 1_000);
         assert_eq!(w.elapsed, before.elapsed + 1_000);
+    }
+
+    /// One tick computes each market's premium sample once: the maintenance pass
+    /// inside `seal_batch` at the same time does not walk the book again, while a
+    /// maintenance pass at a later time does.
+    #[test]
+    fn a_tick_samples_each_market_once() {
+        let t = 10_000u64;
+        let mut s = Sequencer::new(EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]), 20);
+        s.add_market(test_market(0));
+        s.set_oracle(
+            0,
+            signed_oracle(
+                0,
+                100_000 * PRICE_SCALE,
+                t,
+                PRICE_SCALE,
+                100_000 * PRICE_SCALE,
+            ),
+        );
+        let samples = || PREMIUM_SAMPLES.with(core::cell::Cell::get);
+        let before = samples();
+        let _ = s.seal_batch(&[], t);
+        assert_eq!(samples() - before, 1, "seal_batch samples once");
+        let window = s.funding_marks.clone();
+        let _ = s.run_maintenance(t);
+        assert_eq!(samples() - before, 1, "no second walk at the same time");
+        assert_eq!(s.funding_marks, window);
+        s.set_oracle(
+            0,
+            signed_oracle(
+                0,
+                100_000 * PRICE_SCALE,
+                t + 700,
+                PRICE_SCALE,
+                100_000 * PRICE_SCALE,
+            ),
+        );
+        let _ = s.run_maintenance(t + 700);
+        assert_eq!(samples() - before, 2, "a later pass samples");
     }
 
     /// The premium cap is the smallest premium at which the engine's rate reaches
