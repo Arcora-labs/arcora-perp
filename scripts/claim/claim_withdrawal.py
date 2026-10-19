@@ -13,7 +13,9 @@ proof. This tool needs no gateway:
   has published the root (`rootPublished`), and whether the leaf was already
   claimed (`claimed`), using Foundry `cast`;
 * prints the exact `cast send` call. Anyone may send it (the vault pays `to`);
-  sign it with your own wallet flags in place of `<YOUR_SIGNER>`.
+  sign it with your own wallet flags in place of `<YOUR_SIGNER>`. The call reads
+  the RPC URL from `$RPC_URL` in your shell: this tool never prints the URL it
+  was given (it can carry a provider key), so export it before sending.
 
     python3 scripts/claim/claim_withdrawal.py my-claim.json --rpc https://sepolia.base.org
 
@@ -29,6 +31,7 @@ import sys
 import urllib.parse
 
 SCHEMA = "arcora.claim-bundle.v1"
+CLAIM_SIGNATURE = "claim(address,uint256,uint256,bytes32,bytes32[])"
 MAX_PROOF = 256
 _ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}")
 _DIGEST = re.compile(r"0x[0-9a-fA-F]{64}")
@@ -186,19 +189,25 @@ def check_bundle(raw):
     return problems
 
 
-def cast_command(b, rpc):
-    return " ".join([
-        "cast send", b["vault"], '"claim(address,uint256,uint256,bytes32,bytes32[])"',
-        b["to"], b["amount"], str(b["nonce"]), b["root"], f'"[{",".join(b["proof"])}]"',
-        "--rpc-url", rpc, "<YOUR_SIGNER>",
-    ])
+def cast_command(b):
+    """The `cast send` line for the claim; its RPC URL is `"$RPC_URL"`, read from the shell."""
+    # Imported here: chain_read takes keccak256 from this module, so it cannot load first, and this
+    # file is also loaded by path alone (scripts/local-verification/test_pin_coherence.py).
+    import chain_read
+    proof = f'"[{",".join(b["proof"])}]"'
+    return chain_read.cast_send(b["vault"], CLAIM_SIGNATURE, [b["to"], b["amount"], b["nonce"], b["root"], proof])
 
 
 # --- Read-only chain checks ----------------------------------------------------
 
 def _cast(args, rpc):
     env = {**os.environ, "FOUNDRY_DISABLE_NIGHTLY_WARNING": "1"}
-    result = subprocess.run(["cast", *args, "--rpc-url", rpc], capture_output=True, text=True, env=env, timeout=60)
+    try:
+        result = subprocess.run(["cast", *args, "--rpc-url", rpc], capture_output=True, text=True, env=env,
+                                timeout=60)
+    except subprocess.TimeoutExpired:
+        # Its own message quotes the whole command, RPC URL included.
+        raise RuntimeError(f"cast {args[0]} timed out after 60 s") from None
     if result.returncode != 0:
         raise RuntimeError(f"cast {args[0]} failed (exit {result.returncode})")
     return result.stdout.strip()
@@ -237,6 +246,8 @@ def main(argv=None):
             _plain_rpc(args.rpc)
         except ValueError as error:
             parser.error(str(error))
+    import chain_read  # see cast_command
+    out = chain_read.noting_rpc_url(print)
     with open(args.bundle) as stream:
         raw = json.load(stream)
     entries = raw if isinstance(raw, list) else [raw]
@@ -249,7 +260,7 @@ def main(argv=None):
             claimed = False
             if not problems and args.rpc:
                 problems, claimed = chain_problems(b, args.rpc)
-        except (BundleError, RuntimeError, subprocess.TimeoutExpired) as error:
+        except (BundleError, RuntimeError) as error:
             problems = [str(error)]
         if problems:
             ok = False
@@ -258,7 +269,7 @@ def main(argv=None):
         status = "already claimed" if claimed else "OK"
         print(f"{label} {status}: {b['amount']} base units to {b['to']} (nonce {b['nonce']})")
         if not claimed:
-            print("  " + cast_command(b, args.rpc or "<RPC_URL>"))
+            out("  " + cast_command(b))
     return 0 if ok else 1
 
 

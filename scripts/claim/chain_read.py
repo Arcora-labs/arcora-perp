@@ -224,12 +224,8 @@ RPC_URL_NOTE = ('the commands below read the RPC URL from $RPC_URL and this tool
                 'run `export RPC_URL=<your RPC URL>` first')
 
 
-def cast_send(to, signature, args, rpc_label=None, value=None):
-    """A `cast send` line for the user to sign; its RPC URL is `"$RPC_URL"`, read from the shell.
-
-    No URL is ever printed, whatever the caller passes: `rpc_label` is accepted for
-    callers that still pass one, and ignored.
-    """
+def cast_send(to, signature, args, value=None):
+    """A `cast send` line for the user to sign; its RPC URL is `"$RPC_URL"`, read from the shell."""
     parts = ["cast send", to, f'"{signature}"', *[str(a) for a in args]]
     if value is not None:
         parts += ["--value", str(value)]

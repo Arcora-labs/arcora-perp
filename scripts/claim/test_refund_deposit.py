@@ -179,6 +179,48 @@ class Tool(unittest.TestCase):
         self.assertNotIn("rpc.example", out.getvalue())
         return code, out.getvalue()
 
+    def assert_commands_read_the_rpc_url_from_the_shell(self, out, count):
+        """Every printed `cast send` ends with the $RPC_URL placeholder; one note before the first says so."""
+        lines = out.splitlines()
+        commands = [i for i, line in enumerate(lines) if line.lstrip().startswith("cast send")]
+        self.assertEqual(len(commands), count, out)
+        for i in commands:
+            self.assertTrue(lines[i].endswith(' --rpc-url "$RPC_URL" <YOUR_SIGNER>'), lines[i])
+        notes = [i for i, line in enumerate(lines) if chain.RPC_URL_NOTE in line]
+        self.assertEqual(notes, [commands[0] - 1], out)
+
+    def test_printed_commands_get_one_export_note_before_the_first(self):
+        # Close-only: one refund call per deposit, one note in all.
+        self.chain.close_only = True
+        code, out = self.run_tool("--vault", VAULT, "--from", ALICE)
+        self.assertEqual(code, 0, out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 2)
+        # Live settlement: the close-only trigger comes first and carries the note, the refund follows it.
+        self.chain.close_only = False
+        code, out = self.run_tool("--vault", VAULT, "--id", "1")
+        self.assertEqual(code, 0, out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 2)
+        commands = [line for line in out.splitlines() if line.lstrip().startswith("cast send")]
+        self.assertIn('"triggerCloseOnly()"', commands[0])
+        self.assertIn(f'"{rd.REFUND_SIGNATURE}"', commands[1])
+        # Close-only cannot be triggered yet: only the refund call is printed.
+        self.chain.consumed, self.chain.head = 3, 9_960
+        code, out = self.run_tool("--vault", VAULT, "--id", "3")
+        self.assertEqual(code, 0, out)
+        self.assertIn("close-only cannot be triggered yet", out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 1)
+
+    def test_no_command_means_no_note(self):
+        self.chain.close_only = True
+        code, out = self.run_tool("--vault", VAULT, "--id", "0")
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("cast send", out)
+        self.assertNotIn(chain.RPC_URL_NOTE, out)
+        self.chain.refund = lambda *a: self.chain.revert("TransferFailed")
+        code, out = self.run_tool("--vault", VAULT, "--id", "2")
+        self.assertEqual(code, 1, out)
+        self.assertNotIn(chain.RPC_URL_NOTE, out)
+
     def test_close_only_refunds_every_unconsumed_deposit_of_the_payer(self):
         self.chain.close_only = True
         code, out = self.run_tool("--vault", VAULT, "--from", ALICE)
