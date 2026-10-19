@@ -58,6 +58,11 @@ exact normal-wallet witness'ın yeni gerçek proof eksikliği ayrıca devam eder
 
 ## Tekrar çalıştırma
 
+Aşağıdaki komutlar 18 Ekim 2026 öncesi kaydıdır. Aday hat dondurulduğundan
+`run_chainlink_replay.py` ve `build_chainlink_candidate.py` bugün herhangi bir
+yürütme, derleme veya çıktı klasörü oluşturmadan önce "frozen candidate lane"
+ile reddeder.
+
 Host derlemesi `protoc` ve kilitli SP1 bağımlılıklarını gerektirir:
 
 ```sh
@@ -92,13 +97,17 @@ kanıt, bağımsız denetçi imzası veya uzak attestation değildir.
 
 ## CI ayrımı
 
-Standalone Chainlink job'ı native yeniden üretim, no_std/lint ve Python evidence
-guard testlerini çalıştırır. Mevcut `prover crates (excluded, typecheck)` job'ına
-ayrı adayın gerçek CPU yürütmesi de eklenmiştir; job'ın eski adındaki typecheck,
-bu yeni adımın yalnız typecheck olduğu anlamına gelmez. CI kontrolünün gerçekten
-çalışıp bitmesi ayrıca doğrulanmalıdır; workflow dosyası eklemek başarı kanıtı değildir.
+Aday hat dondurulduğundan adayın CPU yürütmesi zorunlu `prover crates (excluded,
+typecheck)` job'ından çıkarılmıştır; zorunlu job yalnız reviewed clock guest'i
+yürütür. `chainlink-candidate.yml` donmuş hattı ayrı ve zorunlu olmayan job'larda
+denetler: standalone biçim, std/no_std typecheck ve lint; kayıtlı corpus'u güncel
+perp-core wire'ıyla yeniden kodlayan test dışındaki standalone testler; sabit
+kimlik (kilit tutarlılığı, ELF, runtime kaynakları, replay kümesi); evidence
+parser guard'ları ile donmuş hat retleri; değişmemiş sözleşmeler üzerindeki aday
+drill'leri. Hiçbiri aday ELF'i yürütmez veya yeniden derlemez. CI kontrolünün
+gerçekten çalışıp bitmesi ayrıca doğrulanmalıdır; workflow dosyası eklemek başarı
+kanıtı değildir.
 
-CI, depodaki ayrı aday ELF'i yürütür; kendi guest derlemesini yaptığını iddia etmez.
 Başarılı yerel run, sonraki CI veya başka makine koşusu yerine geçmez.
 
 ## Açık kalan bağlar

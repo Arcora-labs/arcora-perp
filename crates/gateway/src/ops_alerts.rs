@@ -45,12 +45,17 @@ pub enum AlertKind {
     /// withdrawal nonce and was moved forward. The restored snapshot's counter
     /// lagged its engine state; find out which snapshot was restored.
     WithdrawNonceRepaired,
+    /// A deposit landed on L1 under a permit and is not credited because the hard
+    /// admission cap is reached. Ingestion stops at it, so it is the oldest
+    /// unconsumed deposit, and once it is older than the settlement's
+    /// `livenessTimeoutBlocks` anyone can put the settlement in close-only.
+    DepositBlockedAtCap,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 13] = [
+    pub const ALL: [AlertKind; 14] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -64,6 +69,7 @@ impl AlertKind {
         AlertKind::EngineCloseOnly,
         AlertKind::AdmissionCapReached,
         AlertKind::WithdrawNonceRepaired,
+        AlertKind::DepositBlockedAtCap,
     ];
 }
 

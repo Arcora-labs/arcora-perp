@@ -4,7 +4,7 @@ import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { RefundableDeposit, TrackedOrder, WithdrawalEntry } from "../domain/types";
 import { validateWithdrawal } from "../domain/withdrawal";
-import { depositMinimumError, withdrawalMinimumError } from "../domain/minimums";
+import { depositMinimumError, marketFreeBalance, withdrawalMinimumError } from "../domain/minimums";
 import { validateRefund } from "../domain/refund";
 import {
   buildClaimBundle,
@@ -152,7 +152,9 @@ export function AccountPanel() {
     const v = parseUsd(amount);
     if (v === null || v <= 0n) return setErr("Enter a valid amount.");
     if (kind === "withdraw") {
-      const tooSmall = withdrawalMinimumError(v, state.account.settledBalance);
+      // The gateway exempts a request for the selected market's whole free
+      // balance, not the account-wide one.
+      const tooSmall = withdrawalMinimumError(v, marketFreeBalance(state.account, state.selectedMarketId));
       if (tooSmall) return setErr(tooSmall);
     }
     setBusy(kind);
@@ -203,7 +205,7 @@ export function AccountPanel() {
         <span className="field__label">Amount (USD)</span>
         <input className="field__input" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
       </label>
-      <p className="muted small">Minimum withdrawal: 1 USDC, unless you withdraw your entire free balance.</p>
+      <p className="muted small">Minimum withdrawal: 1 USDC, unless you withdraw your entire free balance in the selected market.</p>
       {authCapable && auth !== undefined && (
         auth.callerSigned ? (
           <p className="muted small">

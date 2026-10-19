@@ -176,10 +176,14 @@ What the ADL cap guarantees:
 Once the engine is close-only, the guest refuses every new `Deposit`, so money that
 arrives after the trip never absorbs the earlier shortfall. Such deposits stay
 unconsumed on L1 and are refunded at principal after L1 close-only
-(`docs/FINAL_SETTLE_RUNBOOK.md`). At wind-down, `SettleAll` covers any deficit left
-from the clearing pool, insurance and the treasury before a global pro-rata haircut,
-and pays whatever reserves remain to the deployment's wind-down recipient (Q2,
-`docs/FINAL_SETTLE_RUNBOOK.md`).
+(`docs/FINAL_SETTLE_RUNBOOK.md`). Trading in close-only may only reduce exposure. The
+sequencer refuses an order that would open, grow or flip a position before it is
+matched (`MarketCloseOnly`). A resting order admitted before the trip that would add
+exposure is refused on its own when a closing order reaches it, and the close is
+matched again against the next order that can take it. At wind-down, `SettleAll`
+covers any deficit left from the clearing pool, insurance and the treasury before a
+global pro-rata haircut, and pays whatever reserves remain to the deployment's
+wind-down recipient (Q2, `docs/FINAL_SETTLE_RUNBOOK.md`).
 
 — `crates/perp-core/src/engine.rs` (`op_liquidate`, `auto_deleverage_plan`,
 `allocate_pro_rata`), `crates/perp-core/src/position.rs` (`adl_clawable`); tests in
@@ -355,14 +359,35 @@ manipulated mark can move the rate within the clamp but never scale the payment.
 the mark is an impact-notional mid: the midpoint of the average prices at which
 $1,000 of notional would fill on each side of the book, falling back to the oracle
 index when either side lacks that depth, and averaged over time across the open
-window. Moving it takes real depth held over time, not one quote. Time-correctness of the attribution above assumes an
-honest sequencer.
+window. Three rules make it costly to move:
+
+- **Fillable depth only.** A resting order counts as depth only if the engine could
+  fill it now. Its price must lie inside the market's fill band around the signed
+  index (`max_fill_deviation_ratio`, 2% by default), and its maker must be able to
+  settle the fill within its margin. A quote no taker could trade against does not
+  move the mark.
+- **Sampled where takers trade.** The sequencer samples the book once per tick,
+  before that tick's batch is matched, so each sample is the book the tick's takers
+  face. Each sample prices the time since the previous tick. A quote withdrawn
+  before the next tick never counts, and a quote placed in a tick does not move
+  that tick's mark.
+- **Bounded weight.** Each sample, and the average, is capped at the premium at
+  which the rate already reaches its clamp (0.05% of the index). The average
+  divides by at least 7 s (`FUNDING_MARK_MIN_SPAN_MS`), so time before that counts
+  at the index. One 700 ms tick's sample therefore moves the rate by at most a
+  tenth of the clamp.
+
+So moving the rate takes depth that takers can trade against, held over the window,
+not one quote. Time-correctness of the attribution above assumes an honest
+sequencer.
 
 — `crates/perp-core/src/funding.rs` (`FundingState::settle_to`, `accrue`,
 `index_at`), `crates/perp-core/src/engine.rs`; tests in
 `crates/perp-core/tests/funding_attribution.rs` and the `funding.rs` unit tests. The
 sequencer's pre-trade check reads the index through `index_at`, so it agrees with
-the engine.
+the engine. The mark is built in `crates/sequencer/src/lib.rs`
+(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_MARK_MIN_SPAN_MS`);
+tests in `crates/sequencer/tests/admission_and_funding_mark.rs`.
 
 **Limit.** A pause is charged at the rate in force before it, for at most one hour.
 
@@ -388,16 +413,34 @@ enforce, as policy that can be tuned without a new program key:
 |---|---|---|
 | Order notional | $10 | reduce-only orders and orders that only reduce a position; a resting remainder below $10 keeps matching |
 | Deposit permit | $10 | — |
-| Withdrawal | $1 | withdrawing the entire free balance |
+| Withdrawal | $1 | withdrawing the entire free balance in that market |
 
-When the sequencer refuses an order for its size, the batch manifest records the
-reject reason `BelowMinimumSize`. These minimums also slow the growth of the note tree and the
+An order below $10 is exempt only while it really reduces. In a batch, the sequencer
+measures it against its owner's position before the batch and after the owner's
+earlier orders of that batch fill in full, and exempts it only if it reduces against
+both. If its fill would still add exposure when it executes, in its own batch or
+later while it rests on the book, settlement refuses that fill and the order leaves
+the book. When the sequencer refuses an order for its size, the batch manifest
+records the reject reason `BelowMinimumSize`. The counter order the gateway's house
+market maker places against a taker has the taker's size, so it is not held to the
+minimum itself; the taker is. The gateway places no counter for a taker that the
+sequencer's pre-trade check refuses.
+
+The gateway refuses such an order at submission with the sequencer's own rule for an
+order on its own, applied to the committed position and the same validated oracle
+price. The sequencer can still refuse an order the gateway accepted: when the oracle
+price moves between submission and the seal, or when the owner's other orders change
+the position the order meets. The gateway's initial-margin check uses the engine's
+own `initial_required`. These minimums also slow the growth of the note tree and the
 nullifier log.
 
 — `crates/perp-core/src/position.rs` (`maintenance_required`, `initial_required`),
 `crates/perp-core/src/fixed.rs` (`notional_quote_ceil`, `apply_rate_ceil`),
-`crates/perp-core/src/order.rs` (`RejectReason::BelowMinimumSize`); tests in
-`crates/perp-core/tests/position_prune.rs`.
+`crates/perp-core/src/order.rs` (`RejectReason::BelowMinimumSize`),
+`crates/sequencer/src/lib.rs` (`MIN_ORDER_NOTIONAL`, `below_minimum_order_notional`);
+tests in `crates/perp-core/tests/position_prune.rs`,
+`crates/sequencer/tests/admission_and_funding_mark.rs` and
+`crates/gateway/src/order_minimum_tests.rs`.
 
 ---
 

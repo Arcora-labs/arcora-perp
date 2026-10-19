@@ -11,7 +11,7 @@
 import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
 import { fetchLiveQuotes } from "./oracleFeed";
 import { initialMarginRequired, liquidationPrice } from "../domain/risk";
-import { increasesExposure, orderMinimumError, withdrawalMinimumError } from "../domain/minimums";
+import { increasesExposure, marketFreeBalance, orderMinimumError, withdrawalMinimumError } from "../domain/minimums";
 import {
   PRICE_SCALE,
   QUOTE_SCALE,
@@ -547,7 +547,8 @@ export class MockDarkPerpClient implements DarkPerpClient {
     if (amountQuote > this.state.account.settledBalance) {
       throw new Error("Not withdrawable: amount exceeds SETTLED balance (§3).");
     }
-    const tooSmall = withdrawalMinimumError(amountQuote, this.state.account.settledBalance);
+    // One pool: the mock account reports no per-market balance.
+    const tooSmall = withdrawalMinimumError(amountQuote, marketFreeBalance(this.state.account, this.selectedMarketId));
     if (tooSmall) throw new Error(tooSmall);
     this.state.account = { ...this.state.account, settledBalance: this.state.account.settledBalance - amountQuote };
     this.emit();

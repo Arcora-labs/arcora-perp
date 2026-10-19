@@ -65,6 +65,25 @@ politikasına `challenge_grace_blocks`, `progress_batches` ve
 JSON kayıtları önceki sözleşme setiyle ve script'in önceki sürümüyle üretildi;
 tarihsel kanıttır, yeni sözleşmeler için yeniden çalıştırılmadı.
 
+**18 Ekim 2026 notu:** `fork_dry_run.py` genesis bağına güncellendi. Deploy
+yapılandırması `wind_down_recipient` ve `oracle_signer_address` anahtarlarını,
+release public config'i `genesis` bloğunu {root, wind_down_recipient,
+oracle_signer} ve gateway anahtarları `WIND_DOWN_RECIPIENT` ile
+`PROVER_EXPECTED_ELF_SHA256`'yı kazandı. `observe-target`, `batchCount()` 0
+iken settlement'ın `currentStateRoot()` değerini yapılandırılmış genesis root ile
+de karşılaştırır. Script'teki genesis root, recipient ve oracle signer
+sentetiktir ve `--print-genesis-root` tarafından birlikte yazdırılmamıştır; bu
+yüzden çalıştırma yalnız deploy edilen root'un yapılandırılmış root olduğunu
+doğrular. Fork bir Anvil istemcisidir; gerçek proof durumu `PROVEN` değilken de
+sahipli test zinciri sayılır. `--print-genesis-root` artık `WIND_DOWN_RECIPIENT`
+ister (eksik, sıfır ya da bozuk bir değeri, oracle imzalayıcısını ve varsayılan
+Anvil hesaplarını reddeder), `GENESIS_ROOT`, `WIND_DOWN_RECIPIENT` ve
+`ORACLE_SIGNER_ADDRESS` satırlarını yazdırır ve oracle anahtarı olmadan
+`--oracle-address` ile çalışabilir; testleri
+`crates/gateway/tests/print_genesis_root.rs` içindedir (6 test). Yukarıdaki JSON
+kayıtları önceki sözleşme setiyle ve script'in önceki sürümleriyle üretildi;
+tarihseldir, yeniden çalıştırılmadı.
+
 ## Doğrulanmayanlar
 
 - Gerçek Base Sepolia'ya deploy yapılmadı. Prover olmadan kontratlar boşta

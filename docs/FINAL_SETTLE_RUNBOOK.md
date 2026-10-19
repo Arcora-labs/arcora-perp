@@ -191,7 +191,9 @@ one-leaf tree is the leaf itself. The claim still cannot draw on refundable depo
 principal (`ReservedForUncredited`). The `POST /v1/admin/wind-down` response returns that
 leaf's claim data as `reserveSink`, and `GET /v1/system/status` keeps showing it under
 `windDown.reserveSink` (with `claimable` once `finalSettle` has published the root); no
-account lists it.
+account lists it. The claim data is an `arcora.claim-bundle.v1` object (`schema`,
+`chainId`, `vault`, `to`, `amount`, `nonce`, `leaf`, `root`, `proof`): saved to a file,
+`scripts/claim/claim_withdrawal.py` checks it and prints the `claim` call.
 
 The proof commitment is the legacy seven-root commitment plus little-endian word `1`.
 `settleBatch` still verifies the unchanged legacy seven-root commitment, so a phase-1 proof

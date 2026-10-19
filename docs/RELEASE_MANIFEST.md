@@ -276,6 +276,38 @@ A configuration that still carries `challenge_window_blocks`, or a clock section
 without `anchor_timeout_ms`, is refused as an unknown or missing field. The open
 challenge set is read on-chain, so no deploy-block setting is needed.
 
+### Keys introduced with the genesis binding
+
+| Section | Key | Meaning |
+|---|---|---|
+| `genesis` | `root` | the settlement's constructor state root, `GENESIS_ROOT` from `--print-genesis-root`; `observe-target` compares it with `currentStateRoot()` while `batchCount()` is 0 |
+| `genesis` | `wind_down_recipient` | the address the final wind-down pays the remaining reserves to; a word of the genesis root |
+| `genesis` | `oracle_signer` | the oracle publisher every genesis market trusts; part of the genesis root |
+| `gateway` | `WIND_DOWN_RECIPIENT` | must equal `genesis.wind_down_recipient` (addresses compare case-insensitively) |
+| `gateway` | `PROVER_EXPECTED_ELF_SHA256` | must equal the reviewed guest ELF hash, as 64 lower-case hex digits |
+
+A configuration without the `genesis` section or either gateway key is refused as
+missing fields. On a chain id that is not a local test chain (31337 or 1337),
+neither genesis address may be one of the published default development accounts
+(`PUBLIC_DEV_ADDRESSES`). `deploy_clock_stack.py` reads the recipient and the
+oracle signer from its own deploy configuration (`wind_down_recipient`,
+`oracle_signer_address`), requires both nonzero, distinct from each other and from
+every operator address, and writes the same `genesis` block and gateway keys into
+the public configuration it emits.
+
+Without further input, no tool recomputes `genesis.root` from the recipient and
+the oracle signer; they rest on the `--print-genesis-root` output that listed them
+with the root. With `--gateway-bin <darkperp-gateway>`, `create`, `validate`,
+`observe-target` and `deploy_clock_stack.py` rerun `--print-genesis-root
+--oracle-address <oracle_signer>` with only `WIND_DOWN_RECIPIENT` in its
+environment (no key is needed or passed) and refuse unless the printed root,
+recipient and oracle signer equal the configured ones. `observe-target` records
+whether it did so as `scope.genesis_bindings_recomputed`.
+
+`deploy_clock_stack.py` deploys to a chain it does not own only when the committed
+real proof is PROVEN and the checkout's guest sources are the reviewed ones
+(`release_manifest.deployable_status()`).
+
 CPU tests: `python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py -v`.
 The owned-Anvil integration additionally verifies the actual declared policy and
 rejects wrong governance, wrong challenge bond and a frozen SP1 verifier route.

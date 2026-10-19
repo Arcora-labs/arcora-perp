@@ -118,6 +118,8 @@ mod funds_lifecycle_tests;
 mod genesis;
 #[cfg(test)]
 mod http_transport_tests;
+#[cfg(test)]
+mod injected_inputs;
 mod l1;
 mod listen_config;
 mod ops_alerts;
@@ -718,6 +720,10 @@ const MARKETS: &[MarketCfg] = &[
 ];
 
 fn now_ms() -> u64 {
+    #[cfg(test)]
+    if let Some(ms) = injected_inputs::clock_ms() {
+        return ms;
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -726,6 +732,10 @@ fn now_ms() -> u64 {
 /// 32 cryptographically secure random bytes (API keys + wallet seeds) from the OS
 /// CSPRNG — never the demo's predictable xorshift walk.
 fn csprng_bytes32() -> [u8; 32] {
+    #[cfg(test)]
+    if let Some(b) = injected_inputs::entropy_bytes32() {
+        return b;
+    }
     let mut b = [0u8; 32];
     getrandom::getrandom(&mut b).expect("OS CSPRNG");
     b
@@ -1030,21 +1040,22 @@ fn required_margin(size_abs: i128, price: i128) -> i128 {
         .unwrap_or(i128::MAX)
 }
 /// Whether the minimum order size refuses an order of `side`/`size` from the holder
-/// of `position` at the oracle `mark`: the rule the sequencer applies when it seals
-/// the order ([`sequencer::below_minimum_order_notional`]), measured on the whole
-/// order at the oracle price rather than its limit. Reduce-only orders and orders
-/// that only reduce are never refused. No refusal while the market has no price
-/// yet: the sequencer's oracle check refuses such an order instead.
+/// of `position` at the validated oracle price `mark`: the rule the sequencer
+/// applies when it seals the order ([`sequencer::below_minimum_order_notional`]),
+/// measured on the whole order at the oracle price rather than its limit. Reduce-only
+/// orders and orders that only reduce are never refused. No refusal without a
+/// validated price (`None`): the sequencer refuses such an order as
+/// `OracleUnavailable` instead.
 fn below_order_minimum(
     position: &Position,
     side: Side,
     size: i128,
     reduce_only: bool,
-    mark: i128,
+    mark: Option<i128>,
 ) -> bool {
-    if mark <= 0 {
+    let Some(mark) = mark.filter(|m| *m > 0) else {
         return false;
-    }
+    };
     let probe = mk_order(
         position.owner,
         position.market_id,
@@ -2079,6 +2090,10 @@ impl Gw {
         let mut archive = NoteArchive::new();
         let user = Wallet::from_seed([1u8; 32]);
         let mm = Wallet::from_seed([2u8; 32]);
+        // The house counter answers a taker with the taker's own size, and the taker
+        // is held to the order minimum itself (off-chain boot configuration, set
+        // again on restore).
+        seq.set_minimum_exempt_owner(Some(mm.owner));
         let now = now_ms();
 
         // ZK-001: the single oracle-publisher key every market trusts. Its address is
@@ -2330,6 +2345,8 @@ impl Gw {
         let (enclave_seed, _) = enclave_seed_from_env().unwrap_or((DEMO_ENCLAVE_SEED, true));
         gw.seq
             .set_enclave(EnclaveIdentity::from_seed(enclave_seed, 1, measurement));
+        // Not persisted either; the same house exemption boot sets.
+        gw.seq.set_minimum_exempt_owner(Some(gw.mm.owner));
         gw.attestation = attestation;
         // Re-derive the order-ingress epoch from ENCLAVE_SEED exactly as boot() does
         // (the snapshot serde-skips it — the epoch secret must never persist to disk).
@@ -3688,18 +3705,17 @@ impl Gw {
         if req.reduce_only && opening {
             return Err("Reduce-only order would open or increase a position — rejected.".into());
         }
-        let position = self
-            .seq
-            .state
-            .position(&owner, req.market_id)
-            .copied()
-            .unwrap_or_else(|| Position::empty(owner, req.market_id));
+        // The minimum order size, as the sequencer applies it when it seals this
+        // order: the same committed position and the same validated oracle price.
+        // The seal also measures the order against the position after the owner's
+        // earlier orders of its batch, so an order admitted here can still be
+        // refused there as `BelowMinimumSize` when those change the position.
         if below_order_minimum(
-            &position,
+            &self.position_or_empty(&owner, req.market_id),
             side,
             size,
             req.reduce_only,
-            self.px_of(req.market_id),
+            self.validated_oracle_price(req.market_id, price_use.now_ms),
         ) {
             return Err(below_order_minimum_error());
         }
@@ -4008,9 +4024,22 @@ impl Gw {
     fn v1_account(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let a = self.accounts.get(key)?;
         let owner = a.wallet.owner;
+        // A withdrawal takes from one market's free collateral, and only a request
+        // for the whole of it may be below the minimum: the per-market amounts.
+        let market_free: Vec<serde_json::Value> = self
+            .mkts
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "marketId": m.id,
+                    "free": self.market_free_of(&owner, m.id).to_string(),
+                })
+            })
+            .collect();
         Some(serde_json::json!({
             "owner": hex0x(&owner),
             "settledBalance": self.free_balance_of(&owner).to_string(),
+            "marketFree": market_free,
             "positions": self.positions_json_of(&owner),
             "nextNonce": a.nonce,
             // SEC-021: everything the client needs to build a withdrawal signature —
@@ -4691,6 +4720,26 @@ impl Gw {
     fn px_of(&self, id: u64) -> i128 {
         self.mkt(id).map(|m| m.px).unwrap_or(0)
     }
+    /// The price the sequencer measures an order of market `id` against when it
+    /// seals the order at `now_ms` (`Sequencer::pre_trade_check`): the market's
+    /// oracle transcript, validated against the market's policy. `None` while the
+    /// transcript does not validate; the sequencer then refuses the order as
+    /// `OracleUnavailable`.
+    fn validated_oracle_price(&self, id: u64, now_ms: u64) -> Option<i128> {
+        let policy = self.seq.state.markets.get(&id)?;
+        self.seq.oracle(id)?.validate(policy, now_ms).ok()
+    }
+    /// The committed position an order from `owner` in market `id` is measured
+    /// against at intake, or an empty one when the owner holds none. (The seal also
+    /// measures each order against the position after the owner's earlier orders
+    /// of the same batch.)
+    fn position_or_empty(&self, owner: &PubKey, id: u64) -> Position {
+        self.seq
+            .state
+            .position(owner, id)
+            .copied()
+            .unwrap_or_else(|| Position::empty(*owner, id))
+    }
     fn user_collateral(&self, market: u64) -> i128 {
         self.seq
             .state
@@ -4792,18 +4841,15 @@ impl Gw {
         if req.reduce_only && opening {
             return Err("Reduce-only order would open or increase a position — rejected.".into());
         }
-        let position = self
-            .seq
-            .state
-            .position(&self.user.owner, req.market_id)
-            .copied()
-            .unwrap_or_else(|| Position::empty(self.user.owner, req.market_id));
+        // The sequencer's minimum order size at its own validated oracle price, as
+        // in `account_place_order_checked`.
+        let now = now_ms();
         if below_order_minimum(
-            &position,
+            &self.position_or_empty(&self.user.owner, req.market_id),
             side,
             size,
             req.reduce_only,
-            self.px_of(req.market_id),
+            self.validated_oracle_price(req.market_id, now),
         ) {
             return Err(below_order_minimum_error());
         }
@@ -4836,7 +4882,6 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
-        let now = now_ms();
         let signed = self.seq.accept_order(&order, now);
         let r = &signed.receipt;
         let receipt = WReceipt {
@@ -5115,8 +5160,12 @@ impl Gw {
             // SEC-025-D: gated DIRECTLY. This injector pushes straight into the seal
             // vector without touching `accept_order` and carries no `prod` gate of its
             // own — a gate placed only in the order handlers would leave it live, stopped
-            // merely because no taker got through.
-            if crosses && self.trading_gate == trading_gate::TradingGate::Open {
+            // merely because no taker got through. A taker the seal would refuse gets
+            // no counter, which would otherwise rest with nothing to answer.
+            if crosses
+                && self.trading_gate == trading_gate::TradingGate::Open
+                && self.seq.pre_trade_check(&uo, now).is_ok()
+            {
                 let opp = match uo.side {
                     Side::Buy => Side::Sell,
                     Side::Sell => Side::Buy,
@@ -5173,7 +5222,11 @@ impl Gw {
                     // one — not exploitable today, since the one-way latch means no order
                     // can be staged while Closed, but that is exactly the positional
                     // reliance this branch refuses one screen earlier for `simulate_adl`.
-                    if crosses && self.trading_gate == trading_gate::TradingGate::Open {
+                    // As above, a taker the seal would refuse gets no counter.
+                    if crosses
+                        && self.trading_gate == trading_gate::TradingGate::Open
+                        && self.seq.pre_trade_check(&uo, now).is_ok()
+                    {
                         let opp = match uo.side {
                             Side::Buy => Side::Sell,
                             Side::Sell => Side::Buy,
@@ -7264,7 +7317,7 @@ async fn post_v1_admin_wind_down(
     } else {
         None
     };
-    let sink = {
+    let (sink, chain_id, vault) = {
         let mut gw = app.gw.lock().await;
         // The rebase and the queued SettleAll are persisted together below; a
         // crash before that restores the pre-rebase snapshot, and a retry rebases
@@ -7354,7 +7407,7 @@ async fn post_v1_admin_wind_down(
         // rebase discarded as rejected. The phase-1 grammar constrains ops only.
         gw.seq
             .reject_in_window(&voided, perp_core::order::RejectReason::MarketCloseOnly);
-        sink
+        (sink, gw.chain_id, gw.vault)
     };
     if let Err(e) = snapshot_now(&app.snapshot_req).await {
         return (
@@ -7370,7 +7423,7 @@ async fn post_v1_admin_wind_down(
         Json(serde_json::json!({
             "status": "wind-down phase 1 queued for proof/finalSettle",
             "observedBlock": block,
-            "reserveSink": sink.as_ref().map(wind_down::reserve_sink_bundle),
+            "reserveSink": sink.as_ref().map(|leaf| wind_down::reserve_sink_bundle(leaf, chain_id, &vault)),
         })),
     )
         .into_response()
@@ -7723,6 +7776,9 @@ pub(crate) enum PermitGateRefusal {
     EngineCloseOnly,
     /// The provable-history admission cap is reached.
     AdmissionCap,
+    /// The hard admission cap is reached: the deposit of a held permit would not be
+    /// credited, so the permit is not re-signed.
+    AdmissionHardCap,
     /// The amount is below `admission::MIN_DEPOSIT_PERMIT`.
     BelowMinimum,
     /// The settlement accepts no deposits (no paired vault).
@@ -7779,6 +7835,12 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
                 "error": "the provable-history admission cap is reached; no new deposit permit is issued. Withdrawals keep working"
+            })),
+        ),
+        PermitGateRefusal::AdmissionHardCap => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "the provable-history admission cap is reached and no further deposit is credited; the held permit is not re-signed. Withdrawals keep working"
             })),
         ),
         PermitGateRefusal::BelowMinimum => (
@@ -7933,10 +7995,15 @@ async fn post_v1_deposit_authorize(
             if let Err(e) = gw.refuse_if_wind_down_started() {
                 return err400(e).into_response();
             }
+            // At the hard cap its deposit would not be credited, as in engine
+            // close-only above: the permit is not re-signed.
+            if gw.hard_cap_reached() {
+                return permit_refusal_response(PermitGateRefusal::AdmissionHardCap);
+            }
             (commit, until, true)
         } else {
             // Re-signing a held permit issues nothing new; a fresh one stops at the
-            // soft admission cap.
+            // soft admission cap, which counts the permits already outstanding.
             if gw.note_admission_cap() {
                 return permit_refusal_response(PermitGateRefusal::AdmissionCap);
             }
@@ -8542,8 +8609,8 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
-            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": ok("apiKey + owner + callerSigned") } },
-            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode; after close-only, refundableDeposits lists { id, from, ownerCommit, amount } for vault.refundDeposit)", "responses": ok("account"), "security": auth["security"] } },
+            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": { "200": { "description": "apiKey + owner + callerSigned + recoveryNonce + chainId + vault" }, "503": { "description": "the account capacity or the soft admission cap is reached" } } } },
+            "/v1/accounts/me": { "get": { "summary": "Own account (balance: settledBalance account-wide and marketFree [{ marketId, free }] per market, the balance a withdrawal from that market takes from and the minimum's exception; positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode; after close-only, refundableDeposits lists { id, from, ownerCommit, amount } for vault.refundDeposit)", "responses": ok("account"), "security": auth["security"] } },
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
@@ -8551,7 +8618,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
-            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, (409) in close-only (the settlement's, or the engine's while the settlement is not yet) or above depositCapacity() (the body carries `capacity`), and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached", "security": auth["security"],
+            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, (409) in close-only (the settlement's, or the engine's while the settlement is not yet) or above depositCapacity() (the body carries `capacity`), and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached (the soft cap for a new permit, the hard cap for re-signing a held one)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
                 "responses": ok("ownerCommit + sig + validUntil (unix seconds)") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
@@ -8564,7 +8631,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market)") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
             "/v1/orders": {
-                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
+                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null)", "security": auth["security"], "responses": ok("orders") }
             },
             "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a pending order or live maker remainder. Prior fills are unchanged, including settled partial fills. Retains the original receipt and execution history; retries are idempotent. Production success requires a durable snapshot; cancellation is recorded in the open window manifest", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: unknown order or no cancellable remainder" }, "503": { "description": "persistence unavailable or durable cancellation outcome unknown" } } } },

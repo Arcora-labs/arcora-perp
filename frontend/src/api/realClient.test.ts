@@ -1021,6 +1021,36 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     client.dispose();
   });
 
+  it("carries the per-market free balances of /v1/accounts/me beside the account-wide one", async () => {
+    meFields = {
+      ...defaultMeFields(),
+      marketFree: [{ marketId: 0, free: "25000000" }, { marketId: 1, free: "400000" }],
+    };
+    const client = await bootstrapClient();
+    const { account } = client.getState();
+    expect(account.settledBalance).toBe(987_654_321_777n);
+    expect(account.marketFree).toEqual({ 0: 25_000_000n, 1: 400_000n });
+    client.dispose();
+  });
+
+  it("an account view without marketFree (an older gateway) leaves it absent", async () => {
+    const client = await bootstrapClient();
+    expect(client.getState().account.marketFree).toBeUndefined();
+    client.dispose();
+  });
+
+  it("a malformed marketFree degrades the own view whole, like a malformed balance", async () => {
+    meFields = { ...defaultMeFields(), marketFree: [{ marketId: 0, free: "-1" }] };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient();
+    const st = client.getState();
+    expect(st.accountUnavailable).toBe(true);
+    expect(st.account.settledBalance).toBe(0n);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+    client.dispose();
+  });
+
   it("maps the flat /v1 order into the nested TrackedOrder (bigints; receipt = exactly the four domain fields)", async () => {
     const client = await bootstrapClient();
     // toEqual is strict on extra keys: this dies if the wire receipt (which

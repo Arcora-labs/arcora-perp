@@ -183,3 +183,37 @@ fn a_withdrawal_below_one_dollar_must_take_the_whole_free_balance() {
     let all = withdraw(&mut gw, &key, &sk, 1, QUOTE_SCALE / 2, to).unwrap();
     assert_eq!(all.amount, (QUOTE_SCALE / 2) as u128);
 }
+
+/// The minimum's exception is per market, so the account view reports each
+/// market's free balance next to the account-wide one: a client can then tell
+/// that the whole $0.40 of one market may leave while another market holds more,
+/// and that a sub-dollar request equal to the account-wide balance may not.
+#[test]
+fn the_account_view_reports_the_free_balance_the_minimum_is_judged_against() {
+    let (mut gw, key, sk, to) = withdrawer();
+    gw.account_deposit(&key, 1, QUOTE_SCALE * 2 / 5).unwrap();
+    let view = gw.v1_account(&key).unwrap();
+    let expected: Vec<serde_json::Value> = gw
+        .mkts
+        .iter()
+        .map(|m| {
+            let free = match m.id {
+                0 => 100 * QUOTE_SCALE,
+                1 => QUOTE_SCALE * 2 / 5,
+                _ => 0,
+            };
+            serde_json::json!({ "marketId": m.id, "free": free.to_string() })
+        })
+        .collect();
+    assert_eq!(view["marketFree"], serde_json::json!(expected));
+    let total = 100 * QUOTE_SCALE + QUOTE_SCALE * 2 / 5;
+    assert_eq!(view["settledBalance"], total.to_string());
+    // Under a dollar, but the account-wide balance is not this market's.
+    let error = withdraw(&mut gw, &key, &sk, 1, QUOTE_SCALE / 4, to).unwrap_err();
+    assert!(error.contains("BELOW_MINIMUM"), "{error}");
+    // The whole of the market's free balance leaves.
+    let all = withdraw(&mut gw, &key, &sk, 1, QUOTE_SCALE * 2 / 5, to).unwrap();
+    assert_eq!(all.amount, (QUOTE_SCALE * 2 / 5) as u128);
+    let view = gw.v1_account(&key).unwrap();
+    assert_eq!(view["marketFree"][1]["free"], "0");
+}

@@ -6,6 +6,7 @@ import {
   MIN_WITHDRAWAL,
   depositMinimumError,
   increasesExposure,
+  marketFreeBalance,
   orderMinimumError,
   withdrawalMinimumError,
 } from "./minimums";
@@ -75,5 +76,28 @@ describe("withdrawalMinimumError", () => {
   });
   it("accepts a sub-dollar amount that empties the free balance", () => {
     expect(withdrawalMinimumError(400_000n, 400_000n)).toBeNull();
+  });
+});
+
+describe("marketFreeBalance (what the withdrawal minimum is judged against)", () => {
+  const account = {
+    settledBalance: 25_400_000n,
+    marketFree: { 0: 25_000_000n, 1: 400_000n },
+    positions: [],
+  };
+  it("is the selected market's own free balance, not the account-wide one", () => {
+    expect(marketFreeBalance(account, 1)).toBe(400_000n);
+    expect(marketFreeBalance(account, 0)).toBe(25_000_000n);
+    expect(marketFreeBalance(account, 2)).toBe(0n);
+  });
+  it("lets the whole of one market leave below a dollar while another market holds more", () => {
+    expect(withdrawalMinimumError(400_000n, marketFreeBalance(account, 1))).toBeNull();
+  });
+  it("refuses a sub-dollar amount equal to the account-wide balance but not to the market's", () => {
+    const thin = { settledBalance: 700_000n, marketFree: { 0: 300_000n, 1: 400_000n }, positions: [] };
+    expect(withdrawalMinimumError(700_000n, marketFreeBalance(thin, 1))).toMatch(/in the selected market/);
+  });
+  it("is the settled balance of a single-pool account (the demo mock)", () => {
+    expect(marketFreeBalance({ settledBalance: 400_000n, positions: [] }, 1)).toBe(400_000n);
   });
 });

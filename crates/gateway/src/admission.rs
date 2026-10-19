@@ -19,8 +19,12 @@
 //!   the history the state has accumulated, not with its live entries. The cap keeps
 //!   that history provable: at the soft cap (80%) new deposit permits and
 //!   registrations are refused; at the hard cap deposits are no longer credited
-//!   either. Exits keep working at both, so funds can always leave.
+//!   either, and a held permit is no longer re-signed. Exits keep working at both,
+//!   so funds can always leave. The soft cap counts what the outstanding permits
+//!   will add once their deposits are credited, so the permits already signed fit
+//!   below it and the margin up to the hard cap is left to exits.
 use super::*;
+use std::collections::BTreeSet;
 
 /// The smallest deposit permit, quote-scaled ($10).
 pub(crate) const MIN_DEPOSIT_PERMIT: u128 = 10 * QUOTE_SCALE as u128;
@@ -64,6 +68,15 @@ pub(crate) struct HistorySize {
 }
 
 impl HistorySize {
+    /// Both sizes added, per dimension (saturating).
+    pub(crate) fn plus(self, other: HistorySize) -> Self {
+        Self {
+            history: self.history.saturating_add(other.history),
+            positions: self.positions.saturating_add(other.positions),
+            notes: self.notes.saturating_add(other.notes),
+        }
+    }
+
     pub(crate) fn of(state: &perp_core::State<Keccak256>) -> Self {
         Self {
             history: state
@@ -132,9 +145,37 @@ impl Gw {
         engine
     }
 
-    /// Whether the soft admission cap is reached, raising or clearing its alert.
+    /// What crediting the deposits of every outstanding permit adds to the state:
+    /// each deposit mints a note and spends it into a position or the insurance
+    /// fund (one tree leaf and one nullifier), and a collateral deposit opens a
+    /// position entry when its account holds none in that market yet. It adds no
+    /// unspent note.
+    pub(crate) fn outstanding_permit_size(&self) -> HistorySize {
+        let mut history = 0u64;
+        let mut opened = BTreeSet::new();
+        for route in self.deposits.routes.values() {
+            history = history.saturating_add(2);
+            if route.purpose != deposit_ingestion::Purpose::Collateral {
+                continue;
+            }
+            if let Some(account) = self.accounts.get(&route.key) {
+                let owner = account.wallet.owner;
+                if self.seq.state.position(&owner, route.market).is_none() {
+                    opened.insert((owner, route.market));
+                }
+            }
+        }
+        HistorySize {
+            history,
+            positions: opened.len() as u64,
+            notes: 0,
+        }
+    }
+
+    /// Whether the soft admission cap is reached, counting what the outstanding
+    /// permits will add, raising or clearing its alert.
     pub(crate) fn note_admission_cap(&self) -> bool {
-        let size = HistorySize::of(&self.seq.state);
+        let size = HistorySize::of(&self.seq.state).plus(self.outstanding_permit_size());
         let reached = self.admission_cap.soft_reached(size);
         if reached {
             self.ops_alerts
@@ -154,6 +195,13 @@ impl Gw {
         )
     }
 
+    /// Whether the state itself has reached the hard admission cap: no deposit is
+    /// credited, and a held permit is not re-signed.
+    pub(crate) fn hard_cap_reached(&self) -> bool {
+        self.admission_cap
+            .hard_reached(HistorySize::of(&self.seq.state))
+    }
+
     /// Why no deposit may be credited now, if none may: the engine is in
     /// close-only, or the hard admission cap is reached.
     pub(crate) fn credit_refusal(&self) -> Option<&'static str> {
@@ -161,9 +209,7 @@ impl Gw {
             return Some(ENGINE_CLOSE_ONLY_INTAKE);
         }
         self.note_admission_cap();
-        self.admission_cap
-            .hard_reached(HistorySize::of(&self.seq.state))
-            .then_some(HISTORY_CAP_INTAKE)
+        self.hard_cap_reached().then_some(HISTORY_CAP_INTAKE)
     }
 }
 
@@ -313,14 +359,17 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{held}");
         {
+            // The state itself at the soft cap, below the hard cap.
             let mut gw = app.gw.lock().await;
             let (other, _) = gw.register_account(None);
             gw.account_deposit(&other, 0, 100 * QUOTE_SCALE).unwrap();
+            let history = HistorySize::of(&gw.seq.state).history;
             gw.admission_cap = AdmissionCap {
-                max_history: 2,
+                max_history: (1..).find(|max| soft(*max) == history).unwrap(),
                 max_positions: 100,
                 max_notes: 100,
             };
+            assert!(!gw.hard_cap_reached());
         }
         let (status, body) = json_body(
             router
@@ -358,6 +407,178 @@ mod tests {
             .active()
             .contains(&ops_alerts::AlertKind::AdmissionCapReached));
         writer.abort();
+    }
+
+    /// The soft cap counts what the outstanding permits will add: with the state
+    /// itself just below it, one held permit is enough to stop new permits and
+    /// registrations. The held permit is still re-signed below the hard cap.
+    #[tokio::test]
+    async fn outstanding_permits_count_toward_the_soft_cap() {
+        let (app, key, writer) = permit_app().await;
+        let router = build_router(app.clone(), true);
+        let (status, held) = json_body(
+            router
+                .clone()
+                .oneshot(permit_request(&key, MIN_DEPOSIT_PERMIT, None))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{held}");
+        {
+            let mut gw = app.gw.lock().await;
+            let state = HistorySize::of(&gw.seq.state);
+            // The smallest bound whose soft cap the state alone stays below.
+            let max_history = (1..).find(|max| soft(*max) > state.history).unwrap();
+            gw.admission_cap = AdmissionCap {
+                max_history,
+                max_positions: 1_000,
+                max_notes: 1_000,
+            };
+            assert!(!gw.admission_cap.soft_reached(state));
+            assert_eq!(gw.outstanding_permit_size().history, 2);
+        }
+        let (status, body) = json_body(
+            router
+                .clone()
+                .oneshot(permit_request(&key, MIN_DEPOSIT_PERMIT + 1, None))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert!(body["error"].as_str().unwrap().contains("admission cap"));
+        let (status, body) =
+            json_body(router.clone().oneshot(register_request()).await.unwrap()).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        let (status, again) = json_body(
+            router
+                .oneshot(permit_request(
+                    &key,
+                    MIN_DEPOSIT_PERMIT,
+                    held["ownerCommit"].as_str(),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{again}");
+        assert_eq!(again["sig"], held["sig"]);
+        let gw = app.gw.lock().await;
+        assert_eq!(gw.deposits.routes.len(), 1);
+        assert!(gw
+            .ops_alerts
+            .active()
+            .contains(&ops_alerts::AlertKind::AdmissionCapReached));
+        drop(gw);
+        writer.abort();
+    }
+
+    /// At the hard cap the deposit of a held permit would not be credited, so the
+    /// permit is not re-signed, as in engine close-only.
+    #[tokio::test]
+    async fn the_hard_cap_refuses_to_re_sign_a_held_permit() {
+        let (app, key, writer) = permit_app().await;
+        let router = build_router(app.clone(), true);
+        let (status, held) = json_body(
+            router
+                .clone()
+                .oneshot(permit_request(&key, MIN_DEPOSIT_PERMIT, None))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{held}");
+        {
+            let mut gw = app.gw.lock().await;
+            gw.admission_cap = AdmissionCap {
+                max_history: HistorySize::of(&gw.seq.state).history,
+                max_positions: 1_000,
+                max_notes: 1_000,
+            };
+            assert_eq!(gw.credit_refusal(), Some(HISTORY_CAP_INTAKE));
+        }
+        let (status, body) = json_body(
+            router
+                .oneshot(permit_request(
+                    &key,
+                    MIN_DEPOSIT_PERMIT,
+                    held["ownerCommit"].as_str(),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert!(body["error"].as_str().unwrap().contains("not re-signed"));
+        assert!(body.get("sig").is_none());
+        writer.abort();
+    }
+
+    /// Each outstanding permit adds one leaf and one nullifier once credited, and a
+    /// collateral permit adds a position entry when its account holds none in that
+    /// market yet (once per account and market). Insurance adds no position.
+    #[test]
+    fn the_outstanding_permit_size_counts_what_crediting_adds() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let (key, _) = gw.register_account(None);
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(PAYER);
+        let route = |gw: &mut Gw, market, purpose, amount| {
+            gw.authorize_routed_deposit(&key, PAYER, amount, market, purpose, u64::MAX)
+                .unwrap();
+        };
+        use deposit_ingestion::Purpose::{Collateral, InsuranceBootstrap};
+        assert_eq!(gw.outstanding_permit_size(), size(0, 0, 0));
+        route(&mut gw, 0, Collateral, 5_000_000);
+        assert_eq!(gw.outstanding_permit_size(), size(2, 1, 0));
+        route(&mut gw, 0, Collateral, 6_000_000);
+        assert_eq!(gw.outstanding_permit_size(), size(4, 1, 0));
+        gw.account_deposit(&key, 1, 100 * QUOTE_SCALE).unwrap();
+        route(&mut gw, 1, Collateral, 7_000_000);
+        assert_eq!(gw.outstanding_permit_size(), size(6, 1, 0));
+        let floor = bootstrap::MIN_BOOTSTRAP_INSURANCE as u128;
+        route(&mut gw, 0, InsuranceBootstrap, floor);
+        assert_eq!(gw.outstanding_permit_size(), size(8, 1, 0));
+        // Crediting moves a permit's share from the reservation into the state.
+        let before = HistorySize::of(&gw.seq.state).plus(gw.outstanding_permit_size());
+        let commit = *gw
+            .deposits
+            .routes
+            .iter()
+            .find(|(_, r)| r.market == 1)
+            .unwrap()
+            .0;
+        let start = gw.deposit_cursor();
+        let route = gw.deposits.routes[&commit].clone();
+        let tip = perp_core::merkle::deposit_chain_fold(
+            &start.tip,
+            &perp_core::merkle::deposit_leaf(&PAYER, &commit, route.amount, start.count),
+        );
+        let block = deposit_rpc::Block {
+            number: 1,
+            hash: [7; 32],
+            timestamp: None,
+        };
+        let page = deposit_rpc::Page {
+            start: start.clone(),
+            end: block.clone(),
+            events: vec![deposit_rpc::Event {
+                id: start.count,
+                from: PAYER,
+                commit,
+                amount: route.amount,
+                tip,
+                tx: [9; 32],
+                tx_index: 0,
+                log_index: 0,
+                block,
+            }],
+        };
+        gw.apply_deposit_page(page).unwrap();
+        assert_eq!(
+            HistorySize::of(&gw.seq.state).plus(gw.outstanding_permit_size()),
+            before
+        );
     }
 
     fn size(history: u64, positions: u64, notes: u64) -> HistorySize {

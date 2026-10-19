@@ -9,8 +9,9 @@ its host, its operator or an approved deployment.
 The identity request does not run setup or proving, fetch an attestation quote,
 read accounts, release a key, call L1, register reports or change a submission
 gate. The normal prover may have performed its existing setup at startup; the
-identity route only describes its already included ELF and captured key. Its
-legacy proving and bearer/attestation rules remain unchanged. Candidate
+identity route only describes its already included ELF and captured key. It
+does not change the prover's clock-bound (`DPCLK4`) proving or its
+bearer/attestation rules. Candidate
 submission remains unsupported and disabled, and release remains **HOLD**.
 
 ## Response schema
@@ -49,9 +50,16 @@ a substitute checksum when that prerequisite is missing. This requirement does
 not make Python part of the running identity handler.
 
 The prover descriptor has exactly `sdk_version: 6.1.0`, `elf_sha256`, `elf_bytes`,
-`program_vkey` and `supported_witness_domains: ["DPCLK4"]`. Its ELF
+`program_vkey` and `supported_witness_domains`. Its ELF
 checksum is taken from the actual `include_elf!("perp-core-guest")` bytes used
 by the existing backend; its key is the value captured by the existing setup.
+`supported_witness_domains` is `["DPCLK4"]` only when that ELF checksum is listed
+with `DPCLK4` in the service's reviewed program table
+(`PROGRAM_WITNESS_DOMAINS` in `crates/prover-service/src/identity.rs`); for any
+other ELF, including the earlier clock-v2 guest, it is `[]`. In production
+(`PROD` unset or not `0`) the service refuses to start when its embedded ELF is
+not listed with `DPCLK4`. `test_pin_coherence.py` requires the reviewed guest's
+ELF to be listed with `DPCLK4` once that pin changes.
 The checker accepts a declared `elf_bytes` from 1 byte through 64 MiB as a
 software refusal bound; this is not measured proving capacity.
 The route does not substitute the candidate fixture ELF or infer a key from a

@@ -12,7 +12,7 @@
 //
 // All values are quote-scaled bigints (micro-USD = USDC base units).
 
-import { QUOTE_SCALE, type Side } from "./types";
+import { QUOTE_SCALE, type AccountState, type Side } from "./types";
 
 /// Smallest initial margin an open position requires (engine rule): $1.
 export const MIN_INITIAL_MARGIN = QUOTE_SCALE;
@@ -24,7 +24,8 @@ export const MIN_ORDER_NOTIONAL = 10n * QUOTE_SCALE;
 /// Smallest deposit the gateway issues a permit for: 10 USDC.
 export const MIN_DEPOSIT = 10n * QUOTE_SCALE;
 
-/// Smallest withdrawal: 1 USDC, unless it takes the entire free balance.
+/// Smallest withdrawal: 1 USDC, unless it takes the entire free balance in its
+/// market.
 export const MIN_WITHDRAWAL = QUOTE_SCALE;
 
 /// Does an order of `side`/`size` against a current signed position `positionSize`
@@ -54,8 +55,18 @@ export function depositMinimumError(amount: bigint): string | null {
 }
 
 /// The withdrawal-minimum refusal, or null. A withdrawal below 1 USDC is allowed
-/// only when it takes the entire free balance.
-export function withdrawalMinimumError(amount: bigint, freeBalance: bigint): string | null {
-  if (amount >= MIN_WITHDRAWAL || amount === freeBalance) return null;
-  return "Minimum withdrawal is 1 USDC, unless you withdraw your entire free balance.";
+/// only when it takes the entire free balance of the market it withdraws from:
+/// pass that market's free balance (`marketFreeBalance`), not the account-wide one.
+export function withdrawalMinimumError(amount: bigint, marketFree: bigint): string | null {
+  if (amount >= MIN_WITHDRAWAL || amount === marketFree) return null;
+  return "Minimum withdrawal is 1 USDC, unless you withdraw your entire free balance in the selected market.";
+}
+
+/// The free balance a withdrawal from `marketId` takes from, which the gateway
+/// judges the minimum's exception against: that market's own free balance when
+/// the account reports one per market (0 for a market it does not list), else the
+/// settled balance of a single-pool account (the demo mock).
+export function marketFreeBalance(account: AccountState, marketId: number): bigint {
+  if (account.marketFree === undefined) return account.settledBalance;
+  return account.marketFree[marketId] ?? 0n;
 }

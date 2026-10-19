@@ -108,7 +108,7 @@ cast send &lt;VAULT&gt; \
 
 <div class="step">
 <h3><span class="step-num">7</span> Withdraw and claim</h3>
-<p>Withdraw on the Account tab. The app asks your wallet to sign the withdrawal (every withdrawal is wallet-signed — the API key alone cannot move funds), and the destination is your bound deposit address. The minimum is 1 USDC, unless you withdraw your entire free balance. The withdrawal goes through three visible stages:</p>
+<p>Withdraw on the Account tab. The app asks your wallet to sign the withdrawal (every withdrawal is wallet-signed — the API key alone cannot move funds), and the destination is your bound deposit address. The minimum is 1 USDC, unless you withdraw your entire free balance in the selected market. The withdrawal goes through three visible stages:</p>
 <ol>
   <li>The withdrawal is recorded off-chain and shows as <em>&ldquo;Settling on-chain&hellip;&rdquo;</em> while it waits to be included in a settlement window.</li>
   <li>Once that window's proof settles, it becomes <em>&ldquo;Claimable&rdquo;</em> — the withdrawal is now a leaf in an on-chain Merkle root.</li>
@@ -126,7 +126,7 @@ cast send &lt;VAULT&gt; \
 <p>Close-only mode is permanent: the vault takes no new deposits, and from then on only the wind-down settles. A deposit that reached the vault but that settled state never credited is then refundable in full, straight from the vault. The refund needs no gateway and no operator.</p>
 <p>The wind-down closes open positions at each market's last recorded oracle price. Balances then leave through withdrawal requests as usual, and the protocol's leftover reserves go to a recipient address fixed when the deployment was created. If the trading engine itself stops new trading after an uncovered loss, it stops crediting deposits at once: a deposit that lands then waits on the vault and is refunded once the settlement contract enters close-only.</p>
 <ul>
-  <li>The app lists such deposits under <em>Refundable deposits</em> on the Account tab, with a wallet button and a copyable command.</li>
+  <li>Once the settlement contract is in close-only, the app lists such deposits under <em>Refundable deposits</em> on the Account tab, with a wallet button and a copyable command. A deposit sent without a permit from the gateway is not listed; the command line below refunds any deposit.</li>
   <li>From the command line, take <code>id</code> from the vault's <code>Deposit</code> event in your deposit transaction's receipt (<code>cast receipt &lt;TX&gt;</code>); <code>from</code>, <code>ownerCommit</code> and <code>amount</code> are the values you deposited with.</li>
 </ul>
 <pre><code><span class="c"># refund to the depositing address; anyone may send this</span>

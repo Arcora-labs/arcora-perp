@@ -63,6 +63,29 @@ four exact clock-bound witness byte streams (`DPCLK4` framing), the keepalive's 
 the test harness; it does not add witness export to the production gateway.
 The 60-second window/skew is a test policy, not a production recommendation.
 
+**Reproducible export.** The run reads neither the wall clock nor OS entropy
+wherever they reach the engine state. The gateway runs on an injected clock and an
+injected entropy stream, both test-only (`crates/gateway/src/injected_inputs.rs`)
+and set only in the test's own child process:
+
+- The owned Anvil's genesis block is at the epoch 2026-01-01T00:00:00Z
+  (`--timestamp 1767225600`), and every later block is exactly one second after the
+  one before it (`anvil_setBlockTimestampInterval`), so a block's timestamp depends
+  only on how many blocks precede it.
+- After every transaction and every mined block, the gateway's clock moves to the
+  latest block's timestamp. Order receipts, oracle publish times, permit deadlines
+  and every timed operation therefore follow the chain, and each window stays within
+  the clock policy of the registration that follows it.
+- Account wallet seeds, API keys and deposit blinds come from a keccak256 stream of
+  a fixed test seed.
+
+Two exports into two fresh directories hold byte-identical witness files. The
+exported `lifecycle.json` carries no run timing (`elapsedSeconds` is only in the
+`ARCORA_FUNDS_EVIDENCE` report and the printed `FUNDS_LIFECYCLE` line), so on one
+host the whole export is byte-identical; its `host` block names the machine, so
+exports from two machines differ only there. `lifecycle.json` records the epoch and
+the block spacing under `injectedClock`.
+
 `replay-funds` checks the complete four-window sequence, witness hashes, normal
 phase, chain and contract identity, empty deposit genesis, state-root continuity,
 conservation, deposit prefix, withdrawal roots and clock receipts. It then executes
@@ -187,7 +210,8 @@ Python tests come from `cast`.
 
 - **Deposit permits** are issued for at least 10 USDC (10,000,000 base units).
 - **Withdrawals** are at least 1 USDC, unless they take the entire free balance in
-  that market.
+  that market (`marketFree` in `GET /v1/accounts/me`), which the account panel checks
+  for the selected market.
 - **Orders** that open, grow or flip a position need at least $10 of notional;
   reduce-only orders are exempt (`docs/API.md`, § REST).
 - **Withdrawal leaf nonces** (`nonce` in each claim bundle) are assigned by the
@@ -197,8 +221,10 @@ Python tests come from `cast`.
   withdrawal-authorization nonce.
 - **The wind-down's reserve payout** is one more leaf of this kind, paid to the
   deployment's wind-down recipient with the next nonce. Its root holds only that leaf,
-  so its Merkle proof is empty; `claim_withdrawal.py` accepts a bundle with an empty
-  proof (`docs/FINAL_SETTLE_RUNBOOK.md`).
+  so its Merkle proof is empty. The gateway publishes its claim data (`reserveSink`
+  in the `POST /v1/admin/wind-down` response and in `GET /v1/system/status`) as an
+  `arcora.claim-bundle.v1` object with `chainId` and `vault`, so saved to a file it
+  is a bundle `claim_withdrawal.py` checks as it is (`docs/FINAL_SETTLE_RUNBOOK.md`).
 
 ## Challenge kit for an order the sequencer never settles
 
@@ -327,7 +353,10 @@ yet: the engine trips on its own when a liquidation's shortfall exceeds insuranc
 the treasury and auto-deleverage. The proven transition then refuses every deposit,
 and the gateway issues no permits and credits nothing. Such a deposit stays
 unconsumed and becomes refundable as soon as the settlement enters close-only, through
-governance or through the deposit-inclusion timeout (trigger 2 above).
+governance or through the deposit-inclusion timeout (trigger 2 above). The gateway
+records each deposit that landed under one of its permits, and from then on the
+account view lists it under `refundableDeposits`. The same holds for a deposit that
+lands while the hard admission cap is reached (`docs/API.md`, § Admission cap).
 
 **Claims cannot consume refundable principal.** `claim` reverts
 `ReservedForUncredited` if paying it would leave the vault holding less than

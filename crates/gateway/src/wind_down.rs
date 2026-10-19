@@ -28,7 +28,7 @@ impl Gw {
             .iter()
             .filter(|w| w.owner == RESERVE_SINK_OWNER)
             .map(|w| {
-                let mut bundle = reserve_sink_bundle(w);
+                let mut bundle = reserve_sink_bundle(w, self.chain_id, &self.vault);
                 let published = self.withdraw_proofs.get(&w.leaf());
                 bundle["claimable"] = serde_json::json!(published.is_some());
                 if let Some((root, proof)) = published {
@@ -100,10 +100,20 @@ pub(crate) fn reserve_sink_leaf(
 
 /// The claim bundle of a reserve leaf before the phase-1 root is published: the
 /// phase-1 withdrawal tree holds only this leaf, so its root is the leaf itself and
-/// `CollateralVault.claim(to, amount, nonce, [])` takes an empty proof.
-pub(crate) fn reserve_sink_bundle(w: &Withdrawal) -> serde_json::Value {
+/// `CollateralVault.claim(to, amount, nonce, root, [])` takes an empty proof. It is
+/// an `arcora.claim-bundle.v1` object, the shape `scripts/claim/claim_withdrawal.py`
+/// and the web client's claim bundles use, bound to the deployment's chain and
+/// vault.
+pub(crate) fn reserve_sink_bundle(
+    w: &Withdrawal,
+    chain_id: u64,
+    vault: &[u8; 20],
+) -> serde_json::Value {
     let leaf = w.leaf();
     serde_json::json!({
+        "schema": CLAIM_BUNDLE_SCHEMA,
+        "chainId": chain_id,
+        "vault": hex0x(vault),
         "to": hex0x(&w.to),
         "amount": w.amount.to_string(),
         "nonce": w.nonce,
@@ -112,6 +122,9 @@ pub(crate) fn reserve_sink_bundle(w: &Withdrawal) -> serde_json::Value {
         "proof": Vec::<String>::new(),
     })
 }
+
+/// The schema tag of a self-contained withdrawal claim bundle.
+pub(crate) const CLAIM_BUNDLE_SCHEMA: &str = "arcora.claim-bundle.v1";
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Observation {
@@ -191,11 +204,13 @@ impl Gw {
     /// the open window is discarded and the gateway returns to the L1-settled
     /// state: the engine state, the deposit ledger (credits with an id at or above
     /// `consumedDepositCount` become refund records; the vault refunds them) and
-    /// the withdrawals requested in the discarded window. Permits that have not
-    /// landed are dropped with their blinds, since the vault refuses every deposit
-    /// in close-only. Every precondition is checked before anything changes; the
-    /// result must equal L1's root and counts. Returns the discarded window's order
-    /// hashes, which the wind-down publishes as rejected (`MarketCloseOnly`).
+    /// the withdrawals requested in the discarded window. Every outstanding permit
+    /// is dropped with its blind, since the vault refuses every deposit in
+    /// close-only. A permitted deposit that landed and was never credited keeps its
+    /// record in `uncredited` (with the permit's route), which the account view
+    /// lists as refundable. Every precondition is checked before anything changes;
+    /// the result must equal L1's root and counts. Returns the discarded window's
+    /// order hashes, which the wind-down publishes as rejected (`MarketCloseOnly`).
     ///
     /// A window sealed but not settled must be resolved first (boot recovery
     /// returns a dead phase-0 window to the open window).
@@ -706,6 +721,204 @@ mod tests {
         }
     }
 
+    /// A signed withdrawal request from the account `sk` controls.
+    fn signed_withdraw(
+        gw: &Gw,
+        key: &[u8; 32],
+        sk: &k256::ecdsa::SigningKey,
+        amount: i128,
+        to: [u8; 20],
+    ) -> (u64, [u8; 65]) {
+        let (owner, auth_nonce) = {
+            let a = &gw.accounts[key];
+            (a.wallet.owner, a.last_withdraw_nonce + 1)
+        };
+        let digest =
+            withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, auth_nonce);
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let mut wire = [0u8; 65];
+        wire[..64].copy_from_slice(&sig.to_bytes());
+        wire[64] = 27 + recid.to_byte();
+        (auth_nonce, wire)
+    }
+
+    /// Leaf nonces across a close-only rebase, the reserve leaf and a phase-2
+    /// withdrawal. The rebase voids a withdrawal no settled batch carries (its leaf
+    /// is never published); the reserve leaf takes the nonce one past the settled
+    /// state's last; the phase-2 leaf goes above both it and the gateway counter,
+    /// which never moves back. Every published leaf nonce strictly increases.
+    #[tokio::test]
+    async fn leaf_nonces_increase_across_the_rebase_the_reserve_leaf_and_phase_two() {
+        let _env = ADMIN_ENV_LOCK.lock().await;
+        let previous = std::env::var_os("FIN_ADMIN_KEY");
+        std::env::set_var("FIN_ADMIN_KEY", "local-wind-down-test");
+        let recipient = [0xC0; 20];
+        // The demo genesis seeds the insurance fund, so phase 1 pays a reserve leaf.
+        let mut gw = Gw::boot_genesis(GenesisMode::Demo, recipient);
+        let sk = k256::ecdsa::SigningKey::from_slice(&[0x52; 32]).unwrap();
+        let public = sk.verifying_key().to_encoded_point(false);
+        let address: [u8; 20] = RawKeccak::digest(&public.as_bytes()[1..])[12..]
+            .try_into()
+            .unwrap();
+        let (key, _) = gw.register_account(Some(address));
+        gw.account_deposit(&key, 0, 100 * QUOTE_SCALE).unwrap();
+        let mut published: Vec<Withdrawal> = Vec::new();
+        let mut counters = vec![gw.next_withdraw_nonce];
+        // Window 0 settles one withdrawal.
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
+        gw.account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+            .unwrap();
+        counters.push(gw.next_withdraw_nonce);
+        let (w0, ww0) = gw.begin_window_settle(0).unwrap().unwrap();
+        published.extend(ww0.iter().cloned());
+        let prepared =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &w0, &ww0).unwrap();
+        gw.commit_window_settle(
+            w0.batch_id,
+            w0.manifest.ordered.clone(),
+            Vec::new(),
+            prepared,
+            L1Status::default(),
+            trading_gate::GateObservation::StaysClosed,
+        );
+        let settled_root = gw.seq.state.state_root();
+        assert_eq!(gw.last_settled_root, settled_root);
+        let settled_last = gw.seq.state.last_withdrawal_nonce;
+        assert!(settled_last > 0);
+        let consumed = gw.seq.state.consumed_deposit_count;
+        // Window 1 never settles: its withdrawal is voided by the rebase.
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
+        let voided = gw
+            .account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+            .unwrap();
+        assert_eq!(voided.nonce, settled_last + 1);
+        counters.push(gw.next_withdraw_nonce);
+        let window = gw.seq.current_window_id();
+        let initial = Observation {
+            block: 100,
+            close_only: true,
+            settled: false,
+            batch_count: window,
+            root: settled_root,
+        };
+        let rpc_state: RebaseRpcState =
+            Arc::new(std::sync::Mutex::new((initial, consumed, Vec::new())));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let rpc_app = Router::new()
+            .route("/", post(rebase_rpc))
+            .with_state(rpc_state.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, rpc_app).await.unwrap();
+        });
+        let mut app = crate::tests::test_app();
+        let inner = Arc::get_mut(&mut app).unwrap();
+        inner.gw = Mutex::new(gw);
+        inner.prover = Some(Arc::new(prover_client::MockProverClient));
+        let mut l1 = L1::test_reader(format!("http://{addr}"));
+        l1.settlement = format!("0x{}", "11".repeat(20));
+        inner.l1 = Some(l1);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        inner.snapshot_req = Some(tx);
+        let writer = tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                let _ = ack.send(true);
+            }
+        });
+        let body = request_json(&app, StatusCode::ACCEPTED).await;
+        let sink_nonce = body["reserveSink"]["nonce"].as_u64().unwrap();
+        assert_eq!(
+            sink_nonce,
+            settled_last + 1,
+            "one past the settled state's last"
+        );
+        let (witness, ww) = {
+            let mut gw = app.gw.lock().await;
+            assert!(gw
+                .pending_withdrawals
+                .iter()
+                .all(|w| w.leaf() != voided.leaf()));
+            counters.push(gw.next_withdraw_nonce);
+            gw.begin_window_settle(window).unwrap().unwrap()
+        };
+        assert!(matches!(witness.ops.as_slice(), [BatchOp::SettleAll]));
+        assert_eq!(ww.len(), 1);
+        assert_eq!(ww[0].nonce, sink_nonce);
+        published.extend(ww.iter().cloned());
+        let phase1 =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &witness, &ww)
+                .unwrap();
+        assert_eq!(phase1.outcome.wind_down_phase, 1);
+        let settled = Observation {
+            settled: true,
+            batch_count: witness.batch_id + 1,
+            root: phase1.outcome.new_root,
+            ..initial
+        };
+        rpc_state.lock().unwrap().0 = settled;
+        app.gw.lock().await.commit_window_settle(
+            witness.batch_id,
+            witness.manifest.ordered,
+            witness
+                .manifest
+                .rejected
+                .into_iter()
+                .map(|(hash, _)| hash)
+                .collect(),
+            phase1,
+            L1Status::default(),
+            trading_gate::GateObservation::StaysClosed,
+        );
+        // A phase-2 withdrawal through the HTTP route.
+        let (nonce, sig) = signed_withdraw(&*app.gw.lock().await, &key, &sk, QUOTE_SCALE, address);
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/accounts/withdraw")
+            .header("x-api-key", hex0x(&key))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::json!({"marketId":0,"amount":QUOTE_SCALE.to_string(),
+                "to":hex0x(&address),"nonce":nonce,"signature":hex0x(&sig)})
+                .to_string(),
+            ))
+            .unwrap();
+        let response = build_router(app.clone(), false).oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let (exit, ww2) = {
+            let mut gw = app.gw.lock().await;
+            counters.push(gw.next_withdraw_nonce);
+            gw.begin_window_settle(settled.batch_count)
+                .unwrap()
+                .unwrap()
+        };
+        let phase2 =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &exit, &ww2)
+                .unwrap();
+        assert_eq!(phase2.outcome.wind_down_phase, 2);
+        assert_eq!(ww2.len(), 1);
+        assert!(ww2[0].nonce > sink_nonce);
+        assert!(
+            ww2[0].nonce >= counters[counters.len() - 2],
+            "never below the counter"
+        );
+        published.extend(ww2.iter().cloned());
+        let nonces: Vec<u64> = published.iter().map(|w| w.nonce).collect();
+        assert!(
+            nonces.windows(2).all(|pair| pair[0] < pair[1]),
+            "published leaf nonces strictly increase: {nonces:?}"
+        );
+        assert!(
+            counters.windows(2).all(|pair| pair[0] <= pair[1]),
+            "the counter never moves back: {counters:?}"
+        );
+        writer.abort();
+        server.abort();
+        match previous {
+            Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),
+            None => std::env::remove_var("FIN_ADMIN_KEY"),
+        }
+    }
+
     #[tokio::test]
     async fn unknown_account_is_rejected_before_l1_reads() {
         let app = crate::tests::test_app();
@@ -808,9 +1021,16 @@ mod tests {
             nonce: last + 1,
         };
         let leaf = hex0x(&sink.leaf());
+        let (chain_id, vault) = {
+            let gw = app.gw.lock().await;
+            (gw.chain_id, hex0x(&gw.vault))
+        };
         assert_eq!(
             body["reserveSink"],
             serde_json::json!({
+                "schema": CLAIM_BUNDLE_SCHEMA,
+                "chainId": chain_id,
+                "vault": vault,
                 "to": hex0x(&recipient),
                 "amount": reserves.to_string(),
                 "nonce": last + 1,
@@ -889,6 +1109,49 @@ mod tests {
             Some(value) => std::env::set_var("FIN_ADMIN_KEY", value),
             None => std::env::remove_var("FIN_ADMIN_KEY"),
         }
+    }
+
+    /// The reserve leaf's claim data is an `arcora.claim-bundle.v1` object with
+    /// every field `scripts/claim/claim_withdrawal.py` requires, typed as it
+    /// requires them: the schema tag, a positive chain id, the vault and recipient
+    /// as 20-byte lowercase hex, the amount as a decimal string, an integer nonce,
+    /// and a root that is the leaf itself with an empty proof. The status read-out
+    /// carries the same object plus `claimable`.
+    #[test]
+    fn the_reserve_claim_data_is_a_claim_bundle() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.chain_id = 84_532;
+        gw.vault = [0xAB; 20];
+        let sink = Withdrawal {
+            owner: RESERVE_SINK_OWNER,
+            to: [0xC0; 20],
+            amount: 1_234_567,
+            nonce: 3,
+        };
+        let bundle = reserve_sink_bundle(&sink, gw.chain_id, &gw.vault);
+        let leaf = hex0x(&sink.leaf());
+        // `claim_withdrawal.withdrawal_leaf(to, 1234567, 3)`, which the tool's
+        // `check_bundle` requires the bundle's leaf to equal.
+        assert_eq!(
+            leaf,
+            "0x9b70005e6c1a4d420bac265b81fa429cd6fa2dae864e709fff695e4f5330ea3e"
+        );
+        assert_eq!(bundle["schema"], "arcora.claim-bundle.v1");
+        assert_eq!(bundle["chainId"], 84_532);
+        assert_eq!(bundle["vault"], format!("0x{}", "ab".repeat(20)));
+        assert_eq!(bundle["to"], format!("0x{}", "c0".repeat(20)));
+        assert_eq!(bundle["amount"], "1234567");
+        assert_eq!(bundle["nonce"], 3);
+        assert_eq!(bundle["leaf"], leaf);
+        assert_eq!(bundle["root"], leaf);
+        assert_eq!(bundle["proof"], serde_json::json!([]));
+        assert_ne!(sink.leaf(), [0; 32], "a zero root is never claimable");
+        gw.pending_withdrawals.push(sink);
+        let status = gw.reserve_sink_json();
+        let mut listed = status[0].clone();
+        assert_eq!(listed["claimable"], false);
+        listed.as_object_mut().unwrap().remove("claimable");
+        assert_eq!(listed, bundle);
     }
 
     /// With no recipient bound (tests and demos), phase 1 leaves the reserves in

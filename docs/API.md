@@ -43,8 +43,8 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 
 | Method | Path | Auth | Body / notes |
 |--------|------|------|--------------|
-| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned }`; `503` `{ error }` once the account capacity or the admission cap (§ Admission cap) is reached |
-| GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }`; after close-only also `refundableDeposits[]` (§ Refunds after close-only) |
+| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned, recoveryNonce, chainId, vault }`; `503` `{ error }` once the account capacity or the soft admission cap (§ Admission cap) is reached |
+| GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, marketFree[], positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }`, `marketFree` being `[{ marketId, free }]`, each market's free balance (the withdrawal minimum's exception, § Withdrawals); after close-only also `refundableDeposits[]` (§ Refunds after close-only) |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
 | POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
 | POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose, reuseOwnerCommit? }` → `{ ownerCommit, sig, validUntil, marketId, purpose }` — durable permit with explicit routing and a deadline |
@@ -63,7 +63,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/markets/:id` | – | one market |
 | GET  | `/v1/markets/:id/orderbook` | – | `{ marketId, bids[], asks[] }` |
 | GET  | `/v1/markets/:id/oracle` | – | `{ marketId, price, confidence, publishTimeMs }` |
-| GET  | `/v1/system/status` | – | `{ mode, insuranceFund, nextBatchId, accounts, windDown }` — `mode` is `CloseOnly` once the engine or the L1 settlement is in close-only; `windDown` is `{ started, engineCloseOnly, recipient, reserveSink, markets[] }`, with each market's `lastPrice` and `lastPriceMs` (the price a wind-down settles at) and, once the wind-down has published it, the reserve leaf in `reserveSink` |
+| GET  | `/v1/system/status` | – | `{ mode, insuranceFund, treasury, nextBatchId, openWindowId, accounts, chainId, vault, windDown }` — `mode` is `CloseOnly` once the engine or the L1 settlement is in close-only; `windDown` is described in § Wind-down status |
 | POST | `/v1/admin/settlement/cancel-anchor` | admin | `{ batchId, phase, receipt }` — cancel a stale clock anchor (§ `POST /v1/admin/settlement/cancel-anchor`) |
 | POST | `/v1/admin/bond/acknowledge-slash` | admin | `{ slashCount }` — resume bond top-ups after a slash (§ `POST /v1/admin/bond/acknowledge-slash`) |
 
@@ -130,16 +130,28 @@ batch manifest's **rejected** set. **Rate limit:** at most 10 orders/sec per acc
 **$10 of notional** (10,000,000 quote units). Reduce-only orders, and orders that
 only reduce an existing position, are exempt, and a resting remainder that falls
 below $10 after a partial fill keeps matching. The notional is the whole order at
-the market's oracle price, not its limit price. An order below the minimum is refused
-at submission with `400` `{ error }`. The sequencer applies the same rule when it
-seals the batch, at the price it validates then; an order it refuses there is
-recorded in the batch manifest with the reject reason `BelowMinimumSize`.
+the market's validated oracle price, not its limit price; a flip is measured on the
+whole order. An order below the minimum is refused at submission with `400`
+`{ error }` and is never recorded. Submission applies the sequencer's own rule
+(`sequencer::below_minimum_order_notional`) to the same position and the same
+validated oracle price the sequencer measures the order against when it seals the
+batch. The sequencer also measures it against the position after the owner's
+earlier orders of the same batch fill in full, so an accepted order can still be
+refused there for its size when the oracle price has moved since or when those
+earlier orders change the position. Such an order is recorded in the batch manifest
+with the reject reason `BelowMinimumSize`. While a market has no validated oracle price,
+submission does not refuse an order for its size; the batch then rejects it as
+`OracleUnavailable`.
 
 **Margin.** Initial and maintenance margin are computed on the notional rounded up,
 and the ratio product is rounded up too. Initial margin is never below **$1** for an
 open position. The floor applies when an order opens, grows or flips a position, and
 when an unbind leaves the position open; reductions, closes and liquidations are
-checked against maintenance margin only.
+checked against maintenance margin only. Submission computes the initial margin of
+the order and of the open position with the engine's own rule
+(`Position::initial_required`), so for an order that opens a position from flat at
+the oracle price it admits exactly the orders the batch's initial-margin check
+admits.
 
 **Reject reasons.** A rejected order's `execution.reason` in `GET /v1/orders` names
 the reason the batch manifest records for it (the manifest stores the numeric code):
@@ -151,7 +163,7 @@ the reason the batch manifest records for it (the manifest stores the numeric co
 | 3 | `PostOnlyWouldTake` | a post-only order would have taken liquidity |
 | 4 | `ReduceOnlyViolation` | a reduce-only order would have opened or grown a position |
 | 5 | `InsufficientMargin` | not enough free margin for the initial-margin requirement |
-| 6 | `MarketCloseOnly` | the system is close-only, or the order was in a window dropped by the wind-down |
+| 6 | `MarketCloseOnly` | the system is close-only and the order would open, grow or flip a position (reductions still trade), or the order was in a window dropped by the wind-down |
 | 7 | `OracleUnavailable` | no fresh validated price |
 | 8 | `FillOrKillUnfillable` | a fill-or-kill order could not fill in full |
 | 9 | `Cancelled` | the order expired before or at its matching instant |
@@ -223,20 +235,33 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    | deposit ingestion is not ready, or is halted | `503` |
    | the settlement cannot be read at the latest block | `503`; retry |
    | `amount` exceeds the settlement's `depositCapacity()` at the gateway's latest read | `409` `{ error, capacity }`, `capacity` a decimal string of USDC base units |
-   | `amount` is below the 10 USDC minimum (10,000,000 base units) | `400` `{ error }` |
+   | `amount` is below the 10 USDC minimum (10,000,000 base units) | `400` `{ error, minimum }`, `minimum` the minimum in base units |
    | the settlement is in close-only | `409` `{ error }`; no further deposits are possible (§ Refunds after close-only) |
    | the engine is close-only (a liquidation's shortfall exceeded insurance, treasury and auto-deleverage) while the settlement is not yet | `409` `{ error }`; the gateway alerts governance to call `enterCloseOnly()` |
    | the settlement accepts no deposits (no paired vault) | `409` `{ error }` |
-   | the gateway's state is at its admission cap (§ Admission cap) | `503` `{ error }`; a held permit can still be re-signed |
+   | the gateway's state is at its soft admission cap (§ Admission cap) | `503` `{ error }`; below the hard cap a held permit can still be re-signed |
+   | a held permit (`reuseOwnerCommit`) while the state is at its hard admission cap | `503` `{ error }`; its deposit would not be credited, so the permit is not re-signed |
    | the gateway's settles (keepalives included) are failing and less than two permit lifetimes of liveness remain | `503` `{ error }`, until settlement recovers |
 
    **Admission cap.** Every batch proof re-derives the whole note tree and the
    nullifier log, so the gateway bounds how much history the state accumulates
    (note-tree leaves plus spent nullifiers, open position entries, unspent notes).
-   At 80% of any bound it issues no new deposit permit and registers no new account;
-   at the bound it credits no further deposit (such a deposit is refunded by the
-   vault once the settlement is in close-only). Withdrawals, closes and claims keep
-   working at both levels. The bounds are provisional until measured.
+   At 80% of any bound (the soft cap) it issues no new deposit permit and registers
+   no new account, each refused with `503` `{ error }`, and raises the
+   `admission_cap_reached` alert (§ Operational alerts). The soft cap counts what the
+   outstanding permits will add once their deposits are credited (each one tree leaf
+   and one spent nullifier, plus a position entry when the account holds none in that
+   market yet), so the permits already signed fit below it and the margin up to the
+   bound is left to exits. At the bound (the hard cap) it credits no further deposit
+   and re-signs no held permit: ingestion stops at the page holding the deposit,
+   `POST /v1/accounts/deposit/onchain` answers `503` `{ error, durability }` with the
+   reason, and the `deposit_blocked_at_cap` alert is raised, because that deposit is
+   now the oldest unconsumed one and the settlement's deposit-inclusion timeout runs
+   from it. The gateway records each such deposit that landed under one of its
+   permits; it is refunded by the vault once the settlement is in close-only, and
+   the account view then lists it (§ Refunds after close-only). Withdrawals, closes
+   and claims keep working at both levels. The bounds are provisional until
+   measured.
 
    The gateway reserves no capacity for a permit. The vault's bond-capacity gate
    decides when the deposit lands, first come first served, so a permitted deposit can
@@ -290,8 +315,10 @@ not merely transaction hash: multiple accounts can deposit in one transaction.
 `marketId`, `purpose`, `durability: "confirmed"`; `202` with
 `status: "pendingFinalizedIngestion"` (not successful zero credit); `409` for a
 market/purpose mismatch or a historical transaction without reconstructible new
-receipts; `503` for RPC unavailability, blocked ordering, safety halt or uncertain
-durability. Pending / `503` is **not** an instruction to send funds again.
+receipts; `503` for RPC unavailability, blocked ordering, safety halt, uncertain
+durability, or an intake that credits no deposit while the engine is in close-only or
+the hard admission cap is reached (§ Admission cap). Pending / `503` is **not** an
+instruction to send funds again.
 
 `status` reports the least final state of the transaction's deposits:
 
@@ -308,7 +335,9 @@ close-only intake error and `credited: "0"`; it is still refundable on L1.
 transition refuses every deposit, so the gateway credits none. A deposit that lands
 in that state stays unconsumed on L1. Once the settlement enters close-only (governance,
 or anyone through the deposit-inclusion timeout), it is refunded at principal like any
-other unconsumed deposit.
+other unconsumed deposit. Ingestion stays at the oldest such deposit and reads on past
+it, recording each deposit that landed under one of the gateway's permits, so the
+account view can list them once the settlement is in close-only.
 
 **Credited is not yet settled.** The confirm and account views distinguish a credit
 whose deposit id is at or above the settlement's `consumedDepositCount()`: it is
@@ -427,7 +456,8 @@ directly:
    `keccak256(to, amount, nonce)`. `nonce` + `signature` are **required** — see
    § Withdrawal authorization for who must sign, what they sign, and the `to` rule.
    The minimum is **1 USDC** (1,000,000 base units), unless `amount` is the entire
-   free balance in that market; a smaller request is a `400`.
+   free balance in that market (`marketFree` in `GET /v1/accounts/me`, not the
+   account-wide `settledBalance`); a smaller request is a `400`.
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
@@ -490,11 +520,15 @@ cast send $VAULT "refundDeposit(uint64,address,bytes32,uint256,address)" \
 | `BadDepositPreimage` | the arguments do not reproduce the deposit chain link at `id` |
 
 Once the gateway has seen close-only at a finalized block, `GET /v1/accounts/me`
-adds `refundableDeposits: [{ id, from, ownerCommit, amount }]` for the account's
-credits that no settled batch consumed, and `mode` in `/api/state` and
-`/v1/system/status` reads `CloseOnly`. The list survives the wind-down's rebase and
-restarts. A deposit the gateway never credited does not appear in it; the tool
-below finds it from the chain.
+adds `refundableDeposits: [{ id, from, ownerCommit, amount }]`, ordered by `id`, for
+the account's credits that no settled batch consumed and for the deposits that
+landed under one of the account's permits and were never credited (while the engine
+was close-only, at the hard admission cap, or once the settlement was in close-only).
+`mode` in `/api/state` and `/v1/system/status` reads `CloseOnly`. The list survives
+the wind-down's rebase and restarts. A deposit the gateway did not record does not
+appear in it, for example one sent without a permit this gateway holds, or one that
+landed after the rebase dropped the outstanding permits; the tool below finds any
+deposit from the chain.
 
 `scripts/claim/refund_deposit.py --rpc <RPC> --vault <VAULT> --from <payer>` (or
 `--tx <hash>`, `--id <n>`) finds the `Deposit` log, checks it against the vault's
@@ -807,20 +841,77 @@ transaction has already finalized.
 state (its own entry price when the market never recorded one), covers deficits from the
 clearing pool, insurance and the treasury, haircuts pro rata only what remains, and pays the
 reserves left over as one withdrawal leaf to the deployment's wind-down recipient. The 202
-body then also carries that leaf's claim data as `reserveSink`
-`{ to, amount, nonce, leaf, root, proof }` (`null` when no reserves are left); `root` is the
-leaf and `proof` is empty, because the phase-1 root holds only that leaf. `GET
-/v1/system/status` shows the same leaf under `windDown.reserveSink`, with `claimable`
-once the root is published; no account lists it. Anyone may send the claim once
-`finalSettle` lands. See `docs/FINAL_SETTLE_RUNBOOK.md`.
+body then also carries that leaf's claim data as `reserveSink`, an `arcora.claim-bundle.v1`
+object `{ schema, chainId, vault, to, amount, nonce, leaf, root, proof }` (`null` when no
+reserves are left); `root` is the leaf and `proof` is empty, because the phase-1 root holds
+only that leaf. Saved to a file, it is a bundle `scripts/claim/claim_withdrawal.py` checks
+as it is. `GET /v1/system/status` shows the same leaf under `windDown.reserveSink`, with
+`claimable` once the root is published; no account lists it. Anyone may send the claim
+once `finalSettle` lands. See `docs/FINAL_SETTLE_RUNBOOK.md`.
 
 When the gateway observes close-only it first rebases to the L1-settled state: it
 drops the open window and any sealed window that never settled, drops credits for
-deposits at or above `consumedDepositCount()` (they are refundable on L1), and
-checks that its root equals `currentStateRoot()` and its consumed count equals
-`consumedDepositCount()`. Order hashes from the dropped windows enter the `SettleAll`
+deposits at or above `consumedDepositCount()` (they are refundable on L1) and every
+outstanding permit, keeps its record of the permitted deposits that landed and were
+never credited, and checks that its root equals `currentStateRoot()` and its consumed
+count equals `consumedDepositCount()`. Order hashes from the dropped windows enter the `SettleAll`
 manifest as rejected (`MarketCloseOnly`). The wind-down then starts from exactly the
 settled state. See `docs/FINAL_SETTLE_RUNBOOK.md`.
+
+### Wind-down status
+
+`GET /v1/system/status` carries `windDown`:
+
+```json
+{
+  "started": false,
+  "engineCloseOnly": false,
+  "recipient": "0x<20-byte wind-down recipient bound in the genesis root>",
+  "reserveSink": [],
+  "markets": [{ "marketId": 0, "lastPrice": "5957514000000", "lastPriceMs": 1767225600000 }]
+}
+```
+
+- `started`: the operator has started the wind-down (`POST /v1/admin/wind-down`).
+- `engineCloseOnly`: the engine is in close-only, which a liquidation's shortfall can
+  cause before the settlement is (§ Deposits after an engine trip).
+- `recipient`: the wind-down recipient the genesis root binds. It is all zero only
+  when none is configured, which a production gateway with real proofs refuses to
+  boot with; `SettleAll` then leaves the reserves in place.
+- `markets[]`: per market, the last signed oracle price the engine state recorded
+  (`lastPrice`, a decimal string, 1e8-scaled) and its publish time (`lastPriceMs`).
+  `SettleAll` closes open positions at the price recorded in the settled state it
+  starts from; `"0"` and `0` mean the market never recorded one, and its positions
+  then close at their own entry price.
+- `reserveSink`: empty, or the one reserve leaf once the wind-down has produced it:
+  the `arcora.claim-bundle.v1` object `{ schema, chainId, vault, to, amount, nonce,
+  leaf, root, proof }` plus `claimable`. Until the phase-1 root is published
+  `claimable` is `false`, `root` is the leaf and `proof` is empty; after that `root`
+  and `proof` are the published claim data.
+
+### Operational alerts
+
+`GET /api/state` lists the operational alerts currently active in `opsAlerts`, by
+the same snake_case names the gateway delivers to its alert collector
+(`FIN_ALERT_NTFY_TOPIC` or `FIN_ALERT_LOCAL_URL`, schema `arcora.ops-alert.v1`).
+Each is raised once when it becomes active and once when it recovers:
+
+| Alert | Active while |
+|---|---|
+| `settlement_held` | the settle loop is held after repeated settle failures |
+| `persistence_failed` | a durable state snapshot could not be written |
+| `deposit_halted` | deposit ingestion is stopped by a safety halt |
+| `archive_pressure` | the configured price-report archive is under storage pressure, or a checkpoint with it could not be written |
+| `bond_shortfall` | the bond is below its target and could not be topped up, or top-ups are paused after an unacknowledged slash |
+| `unanswerable_challenge` | an open inclusion challenge names an order no settled batch can prove |
+| `challenge_discovery_failed` | the open-challenge set could not be read for several ticks in a row |
+| `stale_anchor` | the current batch's clock anchor is older than `anchorTimeoutMs` |
+| `liveness_low` | half of the settlement's liveness window has passed without progress |
+| `permit_gc_stalled` | finalized block headers have not re-hashed for a long stretch, so expired permits are not removed |
+| `engine_close_only` | the engine is in close-only while the settlement is not; governance should call `enterCloseOnly()` (§ Deposits after an engine trip) |
+| `admission_cap_reached` | the soft admission cap is reached; new permits and registrations are refused (§ Admission cap) |
+| `withdraw_nonce_repaired` | at boot the withdrawal-leaf counter was at or behind the engine's last withdrawal nonce and was moved forward; find out which snapshot was restored |
+| `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the hard admission cap is reached; it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
 
 ### `POST /v1/admin/settlement/cancel-anchor` — cancel a stale clock anchor
 

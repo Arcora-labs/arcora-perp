@@ -307,13 +307,27 @@ recorded validated price (entry price for a market that never recorded one), cov
 deficits from the clearing pool, insurance and the treasury, applies a global
 pro-rata haircut only to what remains, and pays the reserves left over as one
 withdrawal leaf to the wind-down recipient. The recipient is an L1 address bound into
-the state root at genesis and immutable afterwards; the deploy kit and
-`observe-target` check it against the genesis root. See
+the state root at genesis and immutable afterwards. `darkperp-gateway
+--print-genesis-root` prints the root together with the recipient and the oracle
+signer it binds, and the release manifest carries those three values from that run.
+`observe-target` checks that the deployed `currentStateRoot()` equals the declared
+root while no batch has settled, `validate --check-process-env` ties the gateway's
+`WIND_DOWN_RECIPIENT` to the declared recipient, and at boot the gateway checks that
+its state root, on a fresh genesis the one it computes from its own configuration,
+continues the settlement's. Given the release's gateway binary (`--gateway-bin`),
+`release_manifest.py` `create`, `validate` and `observe-target` and
+`deploy_clock_stack.py` also recompute the root from the declared recipient and
+oracle signer and refuse unless it is the declared root; without it, the root is
+not recomputed and those two addresses rest on the output that listed them with it.
+On a chain id other than a local test chain (31337 or 1337), neither address may be
+one of the published default development accounts. See
 `docs/FINAL_SETTLE_RUNBOOK.md`.
 
 **Deposits after an engine trip.** Once the engine is close-only, the guest refuses
 `Deposit`, and the gateway stops permits and crediting. Such deposits stay
-unconsumed on L1 and are refunded at principal after L1 close-only.
+unconsumed on L1 and are refunded at principal after L1 close-only. The gateway
+records each one that landed under its permits, and the account view lists it as
+refundable once L1 close-only is observed.
 
 **Fresh stack.** Off-chain byte formats from before this change (witnesses, gateway
 snapshots and rollback journals) are refused by their format magic, not migrated.

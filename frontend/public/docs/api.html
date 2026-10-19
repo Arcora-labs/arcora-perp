@@ -44,12 +44,13 @@
 
 <div class="endpoint">
   <div class="sig"><span class="method post">POST</span>/v1/accounts</div>
-  <p>Register a trading account. Returns <code>{apiKey, owner, callerSigned}</code> — the API key authenticates all further calls; <code>owner</code> is the account's 32-byte owner public key (the value sealed-order AAD binds to). Optionally pass <code>{"signer": "0x&hellip;"}</code> to register in caller-signed mode, where each order additionally carries a 65-byte secp256k1 <code>signature</code> over the <strong>raw</strong> order hash (no EIP-191 prefix) made with your own key. <strong>Caution:</strong> the registered <code>signer</code> also becomes the <em>only</em> key that can authorize withdrawals — it takes precedence over a bound deposit address, so losing the signer key strands the account's funds even if the deposit-address key is safe.</p>
+  <p>Register a trading account. Returns <code>{apiKey, owner, callerSigned, recoveryNonce, chainId, vault}</code> — the API key authenticates all further calls; <code>owner</code> is the account's 32-byte owner public key (the value sealed-order AAD binds to). Optionally pass <code>{"signer": "0x&hellip;"}</code> to register in caller-signed mode, where each order additionally carries a 65-byte secp256k1 <code>signature</code> over the <strong>raw</strong> order hash (no EIP-191 prefix) made with your own key. <strong>Caution:</strong> the registered <code>signer</code> also becomes the <em>only</em> key that can authorize withdrawals — it takes precedence over a bound deposit address, so losing the signer key strands the account's funds even if the deposit-address key is safe.</p>
+  <p>Registration answers <code>503</code> <code>{error}</code> once the gateway's account capacity or its <a href="#admission-cap">admission cap</a> is reached.</p>
 </div>
 
 <div class="endpoint">
   <div class="sig"><span class="method get">GET</span>/v1/accounts/me</div>
-  <p>Your account: balance, positions, <code>nextNonce</code> (the nonce your next sealed order must carry), and the withdrawal-authorization state: <code>depositAddress</code>, <code>callerSigned</code>, <code>nextWithdrawNonce</code> (the nonce your next withdrawal must carry), <code>rebindCounter</code>, and the deployment identity <code>chainId</code> + <code>vault</code> that withdrawal digests bind — read these from here, never hardcode them. The <code>vault</code> served here is normalized lowercase hex and is the exact byte sequence hashed into the digests (the <code>vault</code> echoed by <code>GET /v1/accounts/withdrawals</code> is the raw configured string and may be EIP-55 mixed-case — don't compare the two as strings).</p>
+  <p>Your account: balance (<code>settledBalance</code> account-wide, and <code>marketFree</code>, <code>[{marketId, free}]</code>, each market's free balance, which a withdrawal from that market takes from), positions, <code>nextNonce</code> (the nonce your next sealed order must carry), and the withdrawal-authorization state: <code>depositAddress</code>, <code>callerSigned</code>, <code>nextWithdrawNonce</code> (the nonce your next withdrawal must carry), <code>rebindCounter</code>, and the deployment identity <code>chainId</code> + <code>vault</code> that withdrawal digests bind — read these from here, never hardcode them. The <code>vault</code> served here is normalized lowercase hex and is the exact byte sequence hashed into the digests (the <code>vault</code> echoed by <code>GET /v1/accounts/withdrawals</code> is the raw configured string and may be EIP-55 mixed-case — don't compare the two as strings).</p>
 </div>
 
 <div class="endpoint">
@@ -70,6 +71,8 @@
 <div class="endpoint">
   <div class="sig"><span class="method post">POST</span>/v1/accounts/deposit/onchain</div>
   <p>Credit a real on-chain vault deposit to your trading account. Body: <code>{"txHash": "0x&hellip;", "marketId": 0}</code>. The gateway verifies the transaction on-chain (it must be a vault deposit from your bound address) and credits your balance.</p>
+  <p>While the engine is in close-only, or once the <a href="#admission-cap">admission cap</a>'s hard bound is reached, no deposit is credited and this call answers <code>503</code> <code>{error, durability}</code> with the reason. Such a deposit stays unconsumed on L1 and is refunded by the vault once the settlement is in close-only.</p>
+  <p id="admission-cap"><strong>Admission cap.</strong> Every batch proof re-derives the whole note tree and nullifier log, so the gateway bounds the history the state accumulates (note-tree leaves plus spent nullifiers, open positions, unspent notes). At 80% of any bound it issues no new deposit permit and registers no new account (<code>503</code>); at the bound it credits no further deposit. Withdrawals, closes and claims keep working at both levels. The bounds are provisional until measured.</p>
 </div>
 
 <div class="endpoint">
@@ -100,7 +103,7 @@
 <div class="endpoint">
   <div class="sig"><span class="method post">POST</span>/v1/orders</div>
   <p>Place an order. Sealed body: <code>{"epochId": &lt;n&gt;, "sealed": "0x&hellip;"}</code> (see <a href="#sealed">wire format</a>). Returns an <strong>enclave-signed receipt</strong> — store it whole. For an account with a bound deposit address its <code>l1Challenge</code> field is the authorization that opens the on-chain inclusion challenge; the receipt's own signature is not accepted on L1. Responses: <code>200</code> signed receipt, <code>400</code> rejected, <code>429</code> rate-limited (10/s per account).</p>
-  <p>An order that opens, grows or flips a position needs at least <strong>$10 of notional</strong>; reduce-only orders and orders that only reduce a position are exempt. Initial margin is computed on the rounded-up notional and is never below <strong>$1</strong> for an open position.</p>
+  <p>An order that opens, grows or flips a position needs at least <strong>$10 of notional</strong>, measured on the whole order at the market's validated oracle price (not its limit); reduce-only orders and orders that only reduce a position are exempt, and a resting remainder below $10 after a partial fill keeps matching. A smaller order is refused with <code>400</code> <code>{error}</code>. Submission applies the sequencer's own rule to the same position and oracle price the batch measures the order against; the batch also measures it against the position after your earlier orders in the same batch, so an accepted order is refused there for its size (<code>BelowMinimumSize</code>) only if the oracle price has moved since or those earlier orders change the position. Initial margin is computed with the engine's own rule: on the rounded-up notional, and never below <strong>$1</strong> for an open position.</p>
 </div>
 
 <div class="endpoint">
@@ -153,7 +156,7 @@
 
 <div class="endpoint">
   <div class="sig"><span class="method get">GET</span>/v1/system/status</div>
-  <p>System status, including settlement-window progress you can compare against the on-chain batch count, and a <code>windDown</code> block: whether a wind-down has started, whether the engine is in close-only, the genesis-bound wind-down recipient, each market's last recorded price and its time (the price a wind-down settles at), and the reserve leaf once a wind-down has published it.</p>
+  <p>System status: <code>{mode, insuranceFund, treasury, nextBatchId, openWindowId, accounts, chainId, vault, windDown}</code>, including settlement-window progress you can compare against the on-chain batch count. <code>windDown</code> is <code>{started, engineCloseOnly, recipient, reserveSink, markets}</code>: whether a wind-down has started, whether the engine is in close-only, the genesis-bound wind-down recipient, and per market <code>{marketId, lastPrice, lastPriceMs}</code>, the last signed oracle price the engine state recorded and its publish time (the wind-down settles at the price its settled starting state recorded; <code>0</code> when the market never recorded one, and its positions then close at their entry price). <code>reserveSink</code> is empty, or the one reserve leaf once a wind-down has produced it: an <code>arcora.claim-bundle.v1</code> object <code>{schema, chainId, vault, to, amount, nonce, leaf, root, proof}</code> plus <code>claimable</code>, which <code>scripts/claim/claim_withdrawal.py</code> checks as it is.</p>
 </div>
 
 <div class="endpoint">

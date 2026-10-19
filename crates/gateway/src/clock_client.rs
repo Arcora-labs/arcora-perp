@@ -74,13 +74,28 @@ impl ClockProverClient {
     /// window, read before admission pauses: in production with a remote prover,
     /// its program against the on-chain SP1 adapter (whose vkey is read once),
     /// then the clock binding, batch count and wind-down phase at the latest block.
+    ///
+    /// In production a remote prover whose identity cannot be read registers
+    /// nothing: its program is compared before every registration, so the sealed
+    /// window is rolled back without being registered, as after a refused
+    /// preflight, and the settle loop retries. An in-process client has no identity
+    /// and nothing to compare. Outside production a failed identity read only means
+    /// the request-size check falls back to the transport limit.
     pub(crate) fn register_preconditions_with(
         &self,
         production: bool,
     ) -> Result<RegisterPreconditions, PreflightRefusal> {
-        // A transient identity failure is not a property of the window: the size
-        // check then falls back to the transport limit.
-        let identity = self.inner.public_identity().ok().flatten();
+        let identity = match self.inner.public_identity() {
+            Ok(identity) => identity,
+            Err(e) if production => {
+                return Err(PreflightRefusal::Refused(format!(
+                    "the prover's identity could not be read ({e}); its program and guest \
+                     ELF are compared before a window registers, so the window is not \
+                     registered"
+                )))
+            }
+            Err(_) => None,
+        };
         if production {
             if let Some(identity) = &identity {
                 check_program_identity(
@@ -305,6 +320,53 @@ mod tests {
             client.preflight(&w, 0, None),
             Err(PreflightRefusal::Refused(e)) if e.contains("before the seal")
         ));
+    }
+
+    /// A remote prover whose identity read fails.
+    struct UnreadableIdentity;
+    impl ProverClient for UnreadableIdentity {
+        fn prove(&self, _: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+            unreachable!("registration preconditions never prove")
+        }
+        fn public_identity(
+            &self,
+        ) -> Result<Option<crate::prover_client::ProverPublicIdentity>, String> {
+            Err("prover identity: timed out".into())
+        }
+    }
+
+    /// In production a prover whose identity cannot be read registers no window:
+    /// the refusal names the identity and comes before any L1 read. Outside
+    /// production the failed read is tolerated and the preconditions go on to L1
+    /// (here a closed port, so they stop there instead).
+    #[test]
+    fn production_registers_nothing_without_the_prover_identity() {
+        let client = ClockProverClient {
+            inner: Arc::new(UnreadableIdentity),
+            l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+        };
+        match client.register_preconditions_with(true) {
+            Err(PreflightRefusal::Refused(e)) => {
+                assert!(e.contains("identity could not be read"), "{e}");
+                assert!(e.contains("timed out"), "{e}");
+            }
+            other => panic!("expected an identity refusal, got {other:?}"),
+        }
+        match client.register_preconditions_with(false) {
+            Err(PreflightRefusal::Refused(e)) => {
+                assert!(!e.contains("identity"), "tolerated outside production: {e}")
+            }
+            other => panic!("expected the L1 read to fail, got {other:?}"),
+        }
+        // An in-process client has no identity to compare and is not refused for it.
+        let local = ClockProverClient {
+            inner: Arc::new(MockProverClient),
+            l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+        };
+        match local.register_preconditions_with(true) {
+            Err(PreflightRefusal::Refused(e)) => assert!(!e.contains("identity"), "{e}"),
+            other => panic!("expected the L1 read to fail, got {other:?}"),
+        }
     }
 
     /// Production with a remote prover refuses to boot without the expected

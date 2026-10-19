@@ -206,7 +206,12 @@ Before the gateway registers a window with the clock it checks:
 - under `DARKPERP_PROD=1` with the HTTP prover, the clock's inner verifier chain
   leads to an SP1 adapter whose `programVKey()`, and the route's ELF hash, match the
   release or candidate manifest in use. Mock and Chainlink-candidate stacks, whose
-  inner verifier has no `programVKey`, skip only this identity check.
+  inner verifier has no `programVKey`, skip only this identity check;
+- under `DARKPERP_PROD=1`, the HTTP prover's `GET /identity` was read: when it times
+  out, fails or lacks a field, the window is rolled back unregistered like any
+  refused preflight and the settle loop retries, so no window registers without the
+  prover's identity in hand. Outside production a failed identity read only means
+  the body-size check uses the 512 MiB transport limit.
 
 A timed window must register within `clockSkewMs` of its last operation, and
 operations are admitted until the settle tick pauses admission. So everything that
