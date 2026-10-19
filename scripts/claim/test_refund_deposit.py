@@ -20,6 +20,9 @@ SETTLEMENT = "0x" + "a2" * 20
 ALICE = "0x" + "a3" * 20
 BOB = "0x" + "a4" * 20
 CAROL = "0x" + "a5" * 20
+# An RPC URL that carries a provider key in its path and query; the key must never be printed.
+PROVIDER_KEY = "provider-key-marker"
+RPC = f"https://rpc.example/v2/{PROVIDER_KEY}?apikey={PROVIDER_KEY}"
 
 
 def word(value):
@@ -171,7 +174,9 @@ class Tool(unittest.TestCase):
     def run_tool(self, *args):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = rd.main(["--rpc", "https://rpc.example", *args], rpc_factory=lambda _url: self.chain)
+            code = rd.main(["--rpc", RPC, *args], rpc_factory=lambda _url: self.chain)
+        self.assertNotIn(PROVIDER_KEY, out.getvalue())
+        self.assertNotIn("rpc.example", out.getvalue())
         return code, out.getvalue()
 
     def test_close_only_refunds_every_unconsumed_deposit_of_the_payer(self):
@@ -184,7 +189,7 @@ class Tool(unittest.TestCase):
         self.assertNotIn("deposit 1", out)  # another payer
         commit = self.chain.deposits[2][1]
         self.assertIn(f'cast send {VAULT} "{rd.REFUND_SIGNATURE}" 2 {ALICE} {commit} 10000000 {ALICE} '
-                      "--rpc-url https://rpc.example <YOUR_SIGNER>", out)
+                      '--rpc-url "$RPC_URL" <YOUR_SIGNER>', out)
         self.assertIn("(anyone may send it)", out)
         self.assertNotIn("triggerCloseOnly", out)
         # Every eth_call is pinned to the same block.
@@ -197,7 +202,7 @@ class Tool(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("is refundable once the settlement is in close-only", out)
         self.assertIn("close-only can be triggered now by anyone:", out)
-        self.assertIn(f'cast send {SETTLEMENT} "triggerCloseOnly()" --rpc-url https://rpc.example', out)
+        self.assertIn(f'cast send {SETTLEMENT} "triggerCloseOnly()" --rpc-url "$RPC_URL" <YOUR_SIGNER>', out)
         self.assertIn("after close-only", out)
         # Nothing waits long enough yet: the earliest block is reported instead.
         self.chain.consumed, self.chain.head = 3, 9_960
@@ -290,9 +295,12 @@ class Tool(unittest.TestCase):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
                 self.run_tool(*args)
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            rd.main(["--rpc", "https://user:secret@rpc.example", "--vault", VAULT, "--id", "1"],
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            rd.main(["--rpc", f"https://user:{PROVIDER_KEY}@rpc.example", "--vault", VAULT, "--id", "1"],
                     rpc_factory=lambda _url: self.chain)
+        self.assertIn("--rpc must be an http(s) URL without user info", err.getvalue())
+        self.assertNotIn(PROVIDER_KEY, err.getvalue())
 
 
 class Handler(http.server.BaseHTTPRequestHandler):

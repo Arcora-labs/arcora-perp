@@ -2,8 +2,10 @@
 
 A small JSON-RPC client with a fixed read-only method allowlist, plus ABI word
 helpers. It never signs or sends a transaction: the tools print `cast send`
-commands for the user to sign with their own wallet. Diagnostics never echo the
-RPC URL (it may carry a provider key in its path) or provider error text.
+commands for the user to sign with their own wallet. Neither diagnostics nor
+printed commands echo the RPC URL (it may carry a provider key in its path or
+query) or provider error text: a printed command reads the URL from the shell
+variable RPC_URL.
 """
 import json
 import re
@@ -217,8 +219,31 @@ def pin_latest(rpc):
     return quantity(block.get("number")), quantity(block.get("timestamp"))
 
 
-def cast_send(to, signature, args, rpc_label, value=None):
+RPC_URL_ARG = '"$RPC_URL"'
+RPC_URL_NOTE = ('the commands below read the RPC URL from $RPC_URL and this tool never prints it; '
+                'run `export RPC_URL=<your RPC URL>` first')
+
+
+def cast_send(to, signature, args, rpc_label=None, value=None):
+    """A `cast send` line for the user to sign; its RPC URL is `"$RPC_URL"`, read from the shell.
+
+    No URL is ever printed, whatever the caller passes: `rpc_label` is accepted for
+    callers that still pass one, and ignored.
+    """
     parts = ["cast send", to, f'"{signature}"', *[str(a) for a in args]]
     if value is not None:
         parts += ["--value", str(value)]
-    return " ".join(parts + ["--rpc-url", rpc_label, "<YOUR_SIGNER>"])
+    return " ".join(parts + ["--rpc-url", RPC_URL_ARG, "<YOUR_SIGNER>"])
+
+
+def noting_rpc_url(out):
+    """`out` that writes RPC_URL_NOTE once, on the line before the first `cast send`."""
+    noted = False
+
+    def write(line):
+        nonlocal noted
+        if not noted and line.lstrip().startswith("cast send"):
+            noted = True
+            out("  " + RPC_URL_NOTE)
+        out(line)
+    return write
