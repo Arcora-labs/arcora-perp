@@ -1,12 +1,12 @@
 # Clock release identity preflight
 
-`release_manifest.py` binds the reviewed PR #31 clock guest (source hashes, ELF,
-SP1 6.1.0 and setup key) to **current local** Solidity compiler artifacts and a
-strictly public gateway/prover configuration. It rejects an old guest/key mixed
-with the new clock stack, stale compiler sources, changed source/artifact files,
-and mismatched gateway chain/address settings. Added untracked source files are
-included in the source fingerprint; a Git commit alone does not describe a dirty
-checkout.
+`release_manifest.py` binds the reviewed clock guest (`REVIEWED_GUEST`: source
+hashes, ELF, SP1 6.1.0 and setup key) to **current local** Solidity compiler
+artifacts and a strictly public gateway/prover configuration. It rejects an old
+guest/key mixed with the new clock stack, stale compiler sources, changed
+source/artifact files, and mismatched gateway chain/address settings. Added
+untracked source files are included in the source fingerprint; a Git commit alone
+does not describe a dirty checkout.
 
 The manifest closes an offline identity check. The optional `observe-target`
 command adds finalized chain/runtime/contract-binding verification. Neither closes
@@ -67,7 +67,7 @@ prover observation.
     "sp1_gateway": "0x0000000000000000000000000000000000000006",
     "sp1_verifier": "0x0000000000000000000000000000000000000007"
   },
-  "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
   "clock": {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3600000},
   "gateway": {
     "L1_CHAIN_ID": "31337",
@@ -78,11 +78,11 @@ prover observation.
     "L1_ALLOW_MOCK_PROOF": "0",
     "DEPOSIT_PERMIT_TTL_SECS": "1800",
     "WIND_DOWN_RECIPIENT": "0x0000000000000000000000000000000000000009",
-    "PROVER_EXPECTED_ELF_SHA256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+    "PROVER_EXPECTED_ELF_SHA256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
   },
   "prover": {
-    "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
-    "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+    "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+    "guest_elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
   },
   "genesis": {
     "root": "<GENESIS_ROOT printed by --print-genesis-root>",
@@ -119,6 +119,13 @@ committed proof files from disk and returns `PROVEN` only when they are a proof 
 the reviewed fixture under the reviewed guest; otherwise `PENDING_REPROOF`. Editing
 a record without committing new proof files does not change the status.
 
+In this checkout the two differ: the reviewed guest's ELF, setup key and normal
+fixture are committed in `contracts/integration/fixtures/clock-pkg3-reviewed/`
+(no proof), while the committed proof in
+`contracts/integration/fixtures/clock-v2-verified/` is of the earlier clock-v2
+guest. The status is therefore `PENDING_REPROOF` until a proof of the reviewed
+fixture under the reviewed guest is committed.
+
 Every manifest records `real_proof` (that status plus both identities). `create`
 requires `PROVEN`. While the status is not `PROVEN`, `validate` and
 `observe-target` accept only an owned test chain, using the same rule as
@@ -138,7 +145,7 @@ python3.11 scripts/local-verification/release_manifest.py check-deployment \
 ```
 
 The checked-in July Base Sepolia record is expected to fail: its program key is
-`0x000a2f…bda5ed`, whereas the reviewed clock guest uses `0x001789…4b8353`.
+`0x000a2f…bda5ed`, whereas the reviewed clock guest uses `0x009cfc…e098ec`.
 This is an offline record check, not a claim about current chain state. A passing
 record check checks only the guest key, clock presence, chain-ID range and address
 shape; it does not compare runtime bytecode or prove mutual contract bindings.

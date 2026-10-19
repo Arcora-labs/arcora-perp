@@ -271,6 +271,26 @@ class ProofFixtureCopies(unittest.TestCase):
         # The reviewed fixture may add negatives; it never drops one the proof covers.
         self.assertLessEqual(set(PROOF["negatives"]), set(clock.REVIEWED_FIXTURE["negatives"]))
 
+    def test_reviewed_fixture_record_matches_its_directory(self):
+        # The committed clock-proof --no-prove record in identity_dir is the record
+        # REVIEWED_FIXTURE copies, and its witness files are the recorded ones.
+        reviewed = clock.REVIEWED_FIXTURE
+        directory = ROOT / REVIEWED["identity_dir"]
+        sha = clock.target.sha256
+        execution = json.loads((directory / "execution.json").read_text())
+        self.assertEqual((execution["elf_sha256"], execution["witness_sha256"], execution["commitment"]),
+                         (REVIEWED["elf"], reviewed["witness_sha256"], reviewed["commitment"]))
+        self.assertEqual((execution["proof_generated"], execution["setup_performed"]), (False, False))
+        self.assertEqual(sha((directory / "clock.witness.bin").read_bytes()), reviewed["witness_sha256"])
+        self.assertEqual({n["name"]: n["witness_sha256"] for n in execution["negatives"]}, reviewed["negatives"])
+        self.assertEqual({c["name"]: {"witness_sha256": c["witness_sha256"], "commitment": c["commitment"]}
+                          for c in execution["cases"]}, reviewed["cases"])
+        for sub, expected in (("negatives", reviewed["negatives"]),
+                              ("cases", {name: case["witness_sha256"] for name, case in reviewed["cases"].items()})):
+            with self.subTest(directory=sub):
+                files = {path.name: sha(path.read_bytes()) for path in (directory / sub).iterdir()}
+                self.assertEqual(files, {name + ".witness.bin": digest for name, digest in expected.items()})
+
     def test_reviewed_fixture_equals_the_proof_fixture_while_the_guests_match(self):
         # While the proof's guest is the reviewed guest, the reviewed fixture's outputs
         # are the proof fixture's: every REVIEWED_FIXTURE value has a checked copy.
@@ -291,6 +311,7 @@ DOC_COPIES = {
     "contracts/integration/fixtures/clock-v2/README.md": (PROOF, ("elf", "commitment")),
     "contracts/integration/fixtures/clock-v2/verified-calldata/README.md": (PROOF, ("proof_sha256",)),
     "contracts/integration/fixtures/clock-v2-verified/README.md": (PROOF, ()),
+    "contracts/integration/fixtures/clock-pkg3-reviewed/README.md": (REVIEWED, ("elf", "vkey")),
 }
 
 
@@ -298,7 +319,13 @@ class DocumentCopies(unittest.TestCase):
     def independent_pins(self, relative):
         if relative == "docs/COLD_GUEST_REBUILD.md":
             recipe = source("scripts/local-verification/cold_rebuild_reviewed_guest.py")
-            return {one(r"^%s = '([0-9a-f]{64})'$" % name, recipe, name) for name in ("TOOLCHAIN_SHA256", "RUSTC_SHA256")}
+            pins = {one(r"^%s = '([0-9a-f]{64})'$" % name, recipe, name) for name in ("TOOLCHAIN_SHA256", "RUSTC_SHA256")}
+            # The git dependency's checked-out source tree, pinned with its commit.
+            release = source("scripts/local-verification/check_sp1_release.py")
+            return pins | {one(r'^    "source_tree_sha256": "([0-9a-f]{64})",$', release, "source_tree_sha256")}
+        if relative == "contracts/integration/fixtures/clock-pkg3-reviewed/README.md":
+            # The reviewed guest's fixture outputs, quoted beside its identity.
+            return record_values(clock.REVIEWED_FIXTURE)
         if relative == "contracts/integration/fixtures/clock-v2/README.md":
             # The decompressed recursion witness that the committed proof wraps.
             witness = gzip.decompress((ROOT / "contracts/integration/fixtures/clock-v2/gnark-witness.json.gz").read_bytes())
@@ -313,6 +340,18 @@ class DocumentCopies(unittest.TestCase):
                     self.assertIn(record[field].removeprefix("0x"), found, field)
                 self.assertLessEqual(found, record_values(record) | self.independent_pins(relative))
 
+    def test_reviewed_fixture_readme_quotes_the_fixture(self):
+        text = source("contracts/integration/fixtures/clock-pkg3-reviewed/README.md")
+        found = hex64(text)
+        for field in ("witness_sha256", "commitment"):
+            with self.subTest(field=field):
+                self.assertIn(clock.REVIEWED_FIXTURE[field].removeprefix("0x"), found)
+        size = (ROOT / REVIEWED["identity_dir"] / "guest.elf").stat().st_size
+        self.assertIn(str(size), text)
+        for name in clock.REVIEWED_FIXTURE["cases"]:
+            with self.subTest(case=name):
+                self.assertIn(f"`{name}`", text)
+
     def test_cold_rebuild_doc_quotes_the_reviewed_elf_size(self):
         size = (ROOT / REVIEWED["identity_dir"] / "guest.elf").stat().st_size
         self.assertIn(str(size), source("docs/COLD_GUEST_REBUILD.md"))
@@ -320,6 +359,48 @@ class DocumentCopies(unittest.TestCase):
     def test_value_scan_sees_prefixed_and_bare_values(self):
         text = "a 0x" + "Ab" * 32 + " b " + "cd" * 32 + " c " + "ef" * 33
         self.assertEqual(hex64(text), {"ab" * 32, "cd" * 32})
+
+
+class AdmissionCapCopies(unittest.TestCase):
+    """The gateway's admission bounds are the measurement gate's recommendation,
+    and every document that quotes them quotes those values."""
+
+    EVIDENCE = "docs/audits/2026-10-19-pkg3-measurement-gate/measurement.json"
+
+    def bounds(self):
+        text = source("crates/gateway/src/admission.rs")
+        return {name: int(one(r"^pub\(crate\) const %s: u64 = ([0-9_]+);$" % name, text, name).replace("_", ""))
+                for name in ("MAX_PROVABLE_HISTORY", "MAX_POSITIONS", "MAX_NOTES")}
+
+    @staticmethod
+    def soft(bound):
+        return bound - bound // 5
+
+    def test_gateway_bounds_equal_the_measured_recommendation(self):
+        bounds = self.bounds()
+        recommended = json.loads(source(self.EVIDENCE))["recommendation"]
+        self.assertEqual(bounds, {"MAX_PROVABLE_HISTORY": recommended["max_provable_history"],
+                                  "MAX_POSITIONS": recommended["max_positions"],
+                                  "MAX_NOTES": recommended["max_notes"]})
+        self.assertEqual(recommended["soft_cap_history"], self.soft(bounds["MAX_PROVABLE_HISTORY"]))
+        self.assertTrue(recommended["adopt_keccak_precompile"])
+        self.assertNotIn("PROVISIONAL", source("crates/gateway/src/admission.rs"))
+
+    def test_documents_quote_the_gateway_bounds(self):
+        bounds = self.bounds()
+        hard = [bounds[name] for name in ("MAX_PROVABLE_HISTORY", "MAX_POSITIONS", "MAX_NOTES")]
+        every = hard + [self.soft(value) for value in hard]
+        quoted = {"docs/API.md": every, "docs/ECONOMIC_SECURITY.md": every,
+                  "docs/public-site/api.html": every, "frontend/public/docs/api.html": every,
+                  "docs/REDEPLOY-CC-RUNBOOK.md": hard,
+                  "docs/audits/2026-10-19-pkg3-measurement-gate/README.md":
+                      hard + [self.soft(bounds["MAX_PROVABLE_HISTORY"])]}
+        for relative, values in quoted.items():
+            text = source(relative)
+            with self.subTest(file=relative):
+                for value in values:
+                    self.assertIn(f"{value:,}", text)
+                self.assertNotIn("provisional until measured", text.lower())
 
 
 class RecordShapes(unittest.TestCase):

@@ -58,8 +58,11 @@ with `DPCLK4` in the service's reviewed program table
 (`PROGRAM_WITNESS_DOMAINS` in `crates/prover-service/src/identity.rs`); for any
 other ELF, including the earlier clock-v2 guest, it is `[]`. In production
 (`PROD` unset or not `0`) the service refuses to start when its embedded ELF is
-not listed with `DPCLK4`. `test_pin_coherence.py` requires the reviewed guest's
-ELF to be listed with `DPCLK4` once that pin changes.
+not listed with `DPCLK4`. The table lists the reviewed guest's ELF
+(`REVIEWED_GUEST`, SHA-256 `a6d51648…30e7df`) with `DPCLK4`, and
+`test_pin_coherence.py` requires that no other ELF is. The router tests inject
+that guest's committed ELF and setup key from
+`contracts/integration/fixtures/clock-pkg3-reviewed/`.
 The checker accepts a declared `elf_bytes` from 1 byte through 64 MiB as a
 software refusal bound; this is not measured proving capacity.
 The route does not substitute the candidate fixture ELF or infer a key from a

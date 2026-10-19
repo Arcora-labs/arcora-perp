@@ -72,7 +72,7 @@ fn main() {
     let vkey_hex = format!("0x{}", hex(&vkey));
     assert_eq!(
         vkey_hex,
-        "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+        "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec"
     );
     assert_eq!(record["program_vkey"], vkey_hex);
     let embedded_vk: &[u8] = &sp1_verifier::GROTH16_VK_BYTES;

@@ -27,6 +27,12 @@ pub(crate) const PROGRAM_WITNESS_DOMAINS: &[(&str, &str)] = &[
         "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
         "DPCLK2",
     ),
+    // The reviewed guest (REVIEWED_GUEST in verify_clock_proof.py): it accepts
+    // exactly the clock-bound framing `/prove` admits.
+    (
+        "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+        "DPCLK4",
+    ),
 ];
 
 /// The witness domains both `/prove` and the program `elf` accept, judged by

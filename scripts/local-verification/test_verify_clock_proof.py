@@ -35,6 +35,32 @@ FIXTURE_REPORT_KEYS = {
     "program_vkey", "public_commitment", "guest_source_sha256", "scope"}
 FIXTURE_REPORT_SCOPE = ("Actual SP1 verifier, clock adapter, settlement and synthetic vault withdrawal; "
                         "not full HTTP/order/production lifecycle.")
+# The guest inputs the reviewed guest changed since the clock-v2 guest: the guest
+# entry point, its manifest and lockfile (the Keccak precompile patch), and twelve
+# perp-core sources. The root and perp-core manifests, hash, market, note and
+# oracle are unchanged.
+CHANGED_SINCE_CLOCK_V2 = {
+    "crates/sp1-guest/src/main.rs", "crates/sp1-guest/Cargo.toml", "crates/sp1-guest/Cargo.lock",
+    *("crates/perp-core/src/" + name + ".rs" for name in (
+        "clock", "commitment", "engine", "error", "fixed", "funding", "lib", "merkle", "nullifier", "order",
+        "position", "state")),
+}
+
+
+def proof_identity_as_reviewed():
+    """Patch REVIEWED_GUEST and REVIEWED_FIXTURE to the committed proof's own identity.
+
+    The committed proof is of the earlier clock-v2 guest, so with the committed
+    records proof_status() is PENDING_REPROOF. Inside this patch the records name
+    that proof's guest and fixture, as they will once a proof of the reviewed
+    fixture is committed, so the PROVEN path is exercised on real proof files.
+    """
+    stack = contextlib.ExitStack()
+    stack.enter_context(patch.dict(clock.REVIEWED_GUEST, {"elf": clock.PROOF_FIXTURE["elf"],
+                                                          "vkey": clock.PROOF_FIXTURE["vkey"]}))
+    stack.enter_context(patch.dict(clock.REVIEWED_FIXTURE, {"witness_sha256": clock.PROOF_FIXTURE["witness_sha256"],
+                                                            "commitment": clock.PROOF_FIXTURE["commitment"]}))
+    return stack
 
 
 def forge_stub(calls):
@@ -71,7 +97,10 @@ class ClockProofArtifactGuards(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "guest source changed"):
                     clock.verify_guest_source()
         # A rebuilt guest is a new REVIEWED identity; the committed proof is not its proof.
-        self.assertEqual(clock.proof_status(), clock.PROVEN)
+        self.assertFalse(clock.proof_matches_reviewed_guest())
+        self.assertEqual(clock.proof_status(), clock.PENDING_REPROOF)
+        with proof_identity_as_reviewed():
+            self.assertEqual(clock.proof_status(), clock.PROVEN)
         with patch.dict(clock.REVIEWED_GUEST, DUMMY_GUEST):
             self.assertEqual(clock.proof_status(), clock.PENDING_REPROOF)
             self.assertFalse(clock.proof_matches_reviewed_guest())
@@ -142,15 +171,24 @@ class ProofFixtureAndStatus(unittest.TestCase):
         self.assertEqual(evidence["proof_sha256"], clock.PROOF_FIXTURE["proof_sha256"])
 
     def test_status_is_proven_only_for_the_reviewed_guest_and_fixture(self):
-        # Today's records are identical, so the committed proof is the reviewed guest's.
-        self.assertTrue(clock.proof_matches_reviewed_guest())
-        self.assertEqual(clock.proof_status(), clock.PROVEN)
-        for record, values in ((clock.REVIEWED_GUEST, {"elf": DUMMY_GUEST["elf"]}),
-                               (clock.REVIEWED_GUEST, {"vkey": DUMMY_GUEST["vkey"]}),
-                               (clock.REVIEWED_FIXTURE, {"witness_sha256": DUMMY_FIXTURE["witness_sha256"]}),
-                               (clock.REVIEWED_FIXTURE, {"commitment": DUMMY_FIXTURE["commitment"]})):
-            with self.subTest(values=values), patch.dict(record, values):
-                self.assertEqual(clock.proof_status(), clock.PENDING_REPROOF)
+        # The committed proof is of the earlier clock-v2 guest, not of the reviewed one.
+        self.assertFalse(clock.proof_matches_reviewed_guest())
+        self.assertEqual(clock.proof_status(), clock.PENDING_REPROOF)
+        for name in ("elf", "vkey"):
+            self.assertNotEqual(clock.REVIEWED_GUEST[name], clock.PROOF_FIXTURE[name], name)
+        for name in ("witness_sha256", "commitment"):
+            self.assertNotEqual(clock.REVIEWED_FIXTURE[name], clock.PROOF_FIXTURE[name], name)
+        # With records naming the proof's own guest and fixture the files are PROVEN,
+        # and any one reviewed value that differs from the proof's makes them pending.
+        with proof_identity_as_reviewed():
+            self.assertTrue(clock.proof_matches_reviewed_guest())
+            self.assertEqual(clock.proof_status(), clock.PROVEN)
+            for record, values in ((clock.REVIEWED_GUEST, {"elf": DUMMY_GUEST["elf"]}),
+                                   (clock.REVIEWED_GUEST, {"vkey": DUMMY_GUEST["vkey"]}),
+                                   (clock.REVIEWED_FIXTURE, {"witness_sha256": DUMMY_FIXTURE["witness_sha256"]}),
+                                   (clock.REVIEWED_FIXTURE, {"commitment": DUMMY_FIXTURE["commitment"]})):
+                with self.subTest(values=values), patch.dict(record, values):
+                    self.assertEqual(clock.proof_status(), clock.PENDING_REPROOF)
 
     def test_editing_the_proof_record_without_a_new_proof_stays_pending(self):
         # Pointing PROOF_FIXTURE's dict at a new reviewed guest does not make the
@@ -162,6 +200,8 @@ class ProofFixtureAndStatus(unittest.TestCase):
 
     def test_status_reads_the_files_on_disk(self):
         root = self.copy_fixture()
+        self.assertEqual(clock.proof_status(root), clock.PENDING_REPROOF)
+        self.enterContext(proof_identity_as_reviewed())
         self.assertEqual(clock.proof_status(root), clock.PROVEN)
         directory = root / clock.PROOF_FIXTURE["dir"]
         evidence = json.loads((directory / "proof-evidence.json").read_text())
@@ -247,10 +287,24 @@ class ProofFixtureAndStatus(unittest.TestCase):
                     clock.forge_environment(data)
 
     def test_historical_sources_are_a_frozen_provenance_copy(self):
-        self.assertEqual(dict(clock.HISTORICAL_V2_GUEST_SOURCES), clock.REVIEWED_GUEST["sources"])
-        self.assertEqual(len(clock.HISTORICAL_V2_GUEST_SOURCES), 21)
+        historical = dict(clock.HISTORICAL_V2_GUEST_SOURCES)
+        reviewed = clock.REVIEWED_GUEST["sources"]
+        self.assertEqual(len(historical), 21)
         with self.assertRaises(TypeError):
             clock.HISTORICAL_V2_GUEST_SOURCES["Cargo.toml"] = "00" * 32
+        # The frozen copy is the source set the committed clock-v2 proof was verified
+        # against, as its evidence recorded it.
+        evidence = json.loads((clock.target.ROOT / "docs/audits/2026-10-09-remaining-work/real-clock-proof/"
+                               "verification.json").read_text())
+        self.assertEqual(evidence["guest_sources_sha256"], historical)
+        # The reviewed guest pins the same 21 inputs and differs exactly where they changed.
+        self.assertEqual(set(reviewed), set(historical))
+        changed = {name for name in reviewed if reviewed[name] != historical[name]}
+        self.assertEqual(changed, CHANGED_SINCE_CLOCK_V2)
+        # The checkout no longer matches the frozen copy, so it never passes the gate.
+        with patch.dict(clock.REVIEWED_GUEST, {"sources": historical}):
+            with self.assertRaisesRegex(ValueError, "guest source changed"):
+                clock.verify_guest_source()
         # The checkout gate follows REVIEWED_GUEST, never the historical copy.
         changed = dict(clock.REVIEWED_GUEST["sources"], **{"Cargo.toml": "00" * 32})
         with patch.dict(clock.REVIEWED_GUEST, {"sources": changed}):
@@ -345,7 +399,7 @@ class ForgeInputsComeFromProofFixture(unittest.TestCase):
                 self.assertEqual(report[sources], clock.REVIEWED_GUEST["sources"])
                 self.assertEqual(report["reviewed_" + sources], report[sources])
 
-    def test_unchanged_records_attest_a_matching_proof(self):
+    def fixture_report(self):
         calls = []
         output = Path(tempfile.mkdtemp()) / "out"
         self.addCleanup(shutil.rmtree, output.parent)
@@ -353,7 +407,19 @@ class ForgeInputsComeFromProofFixture(unittest.TestCase):
                 patch.object(sys, "argv", ["verify_clock_fixture.py", "--output-dir", str(output)]), \
                 contextlib.redirect_stdout(io.StringIO()):
             fixture.main()
-        report = json.loads((output / "verification.json").read_text())
+        return json.loads((output / "verification.json").read_text())
+
+    def test_committed_records_attest_a_proof_of_another_guest(self):
+        # The gate verifies the committed proof and says it is not the reviewed guest's.
+        report = self.fixture_report()
+        self.assertIs(report["proof_matches_reviewed_guest"], False)
+        self.assertEqual(report["real_proof_status"], clock.PENDING_REPROOF)
+        self.assertEqual(report["reviewed_guest"]["guest_elf_sha256"], clock.REVIEWED_GUEST["elf"])
+        self.assertEqual(report["proof_fixture"]["guest_elf_sha256"], clock.PROOF_FIXTURE["elf"])
+
+    def test_matching_records_attest_a_matching_proof(self):
+        with proof_identity_as_reviewed():
+            report = self.fixture_report()
         self.assertIs(report["proof_matches_reviewed_guest"], True)
         self.assertEqual(report["real_proof_status"], clock.PROVEN)
 

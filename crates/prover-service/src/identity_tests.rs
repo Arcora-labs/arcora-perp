@@ -14,9 +14,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tower::ServiceExt;
 
 const FIXTURE_ELF: &[u8] =
-    include_bytes!("../../../contracts/integration/fixtures/clock-v2-verified/guest.elf");
+    include_bytes!("../../../contracts/integration/fixtures/clock-pkg3-reviewed/guest.elf");
 const FIXTURE_VKEY: &[u8] =
-    include_bytes!("../../../contracts/integration/fixtures/clock-v2-verified/program-vkey.bin");
+    include_bytes!("../../../contracts/integration/fixtures/clock-pkg3-reviewed/program-vkey.bin");
 
 fn fixture_identity(dev_insecure: bool, body_bytes: usize) -> PublicIdentity {
     PublicIdentity::resolved(
@@ -63,18 +63,18 @@ fn assert_closed_scope(value: &Value) {
 #[test]
 fn injected_reviewed_fixture_descriptor_binds_exact_bytes_and_clock_domain() {
     // Existing fixture bytes only. No setup, key derivation, SDK client or proof.
-    assert_eq!(FIXTURE_ELF.len(), 525_824);
+    assert_eq!(FIXTURE_ELF.len(), 535_904);
     assert_eq!(
         crate::service_identity::sha256(FIXTURE_ELF),
-        "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+        "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
     );
     let key = format!("0x{}", hex::encode(FIXTURE_VKEY));
     assert_eq!(
         key,
-        "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+        "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec"
     );
     let first = program_descriptor(FIXTURE_ELF, &key);
-    assert_eq!(first["elf_bytes"], 525_824);
+    assert_eq!(first["elf_bytes"], 535_904);
     assert_eq!(
         first["elf_sha256"],
         crate::service_identity::sha256(FIXTURE_ELF)
@@ -85,6 +85,8 @@ fn injected_reviewed_fixture_descriptor_binds_exact_bytes_and_clock_domain() {
         first["supported_witness_domains"],
         json!(witness_domains(FIXTURE_ELF))
     );
+    // The reviewed guest is listed with the one framing `/prove` admits.
+    assert_eq!(first["supported_witness_domains"], json!([WITNESS_DOMAIN]));
     assert_eq!(first.as_object().unwrap().len(), 5);
     let second = program_descriptor(b"different injected fixture bytes", "0x99");
     assert_ne!(first["elf_sha256"], second["elf_sha256"]);
@@ -109,6 +111,15 @@ fn supported_domains_are_those_of_the_embedded_program() {
     assert_eq!(
         program_descriptor(historical, "0x99")["supported_witness_domains"],
         json!([])
+    );
+    // The reviewed guest accepts exactly the clock-bound framing.
+    assert!(PROGRAM_WITNESS_DOMAINS.contains(&(
+        "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+        WITNESS_DOMAIN
+    )));
+    assert_eq!(
+        program_descriptor(FIXTURE_ELF, "0x99")["supported_witness_domains"],
+        json!([WITNESS_DOMAIN])
     );
     let elf = b"a reviewed program accepting the clock-bound framing";
     let digest = crate::service_identity::sha256(elf);

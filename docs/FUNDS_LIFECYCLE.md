@@ -86,6 +86,10 @@ host the whole export is byte-identical; its `host` block names the machine, so
 exports from two machines differ only there. `lifecycle.json` records the epoch and
 the block spacing under `injectedClock`.
 
+One such export is committed in `contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle/`,
+with its provenance in that directory's README. `verify_funds_replay.py` pins
+each of its files and refuses that directory if a file is changed, missing or added.
+
 `replay-funds` checks the complete four-window sequence, witness hashes, normal
 phase, chain and contract identity, empty deposit genesis, state-root continuity,
 conservation, deposit prefix, withdrawal roots and clock receipts. It then executes
@@ -102,23 +106,29 @@ do not set `SP1_SKIP_PROGRAM_BUILD` when claiming a fresh source build.
 CARGO_BUILD_JOBS=2 cargo +1.99.0 build --manifest-path crates/sp1-host/Cargo.toml \
   --locked --offline --release --bin replay-funds
 crates/sp1-host/target/release/replay-funds \
-  /tmp/arcora-funds-witness-NEW /tmp/arcora-funds-replay-NEW \
-  --elf contracts/integration/fixtures/clock-v2-verified/guest.elf
+  contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle /tmp/arcora-funds-replay-NEW \
+  --elf contracts/integration/fixtures/clock-pkg3-reviewed/guest.elf
 python3 scripts/local-verification/verify_funds_replay.py \
   --binary crates/sp1-host/target/release/replay-funds \
-  --elf contracts/integration/fixtures/clock-v2-verified/guest.elf \
-  --witness-dir /tmp/arcora-funds-witness-NEW \
+  --elf contracts/integration/fixtures/clock-pkg3-reviewed/guest.elf \
+  --witness-dir contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle \
   --output-dir /tmp/arcora-funds-replay-guards-NEW
 ```
+
+These replay the committed export with the reviewed guest's committed ELF, as CI
+does; for a fresh export, pass its directory instead. On the committed export the
+four wallet windows execute about 40 million guest cycles.
 
 `--elf` explicitly selects a reviewed artifact, still requiring its exact pinned
 hash. The report labels it as an explicit artifact; that is not a source build
 claim. Without `--elf`, the host's freshly built embedded guest is used and must
-match the same pin. The first new-checkout and path-remapped builds differed from
-the reviewed ELF. Investigation found both embedded source paths and Cargo's
-path-dependent crate metadata identities. A later clean-target build normalized
-only the two reviewed workspace crate identities and paths, reproduced the exact
-reviewed ELF, and a fresh CPU setup derived the same pinned program key.
+match the same pin. The current reviewed guest's two byte-exact rebuilds and its
+setup key are recorded in `contracts/integration/fixtures/clock-pkg3-reviewed/README.md`.
+For the earlier clock-v2 guest, the first new-checkout and path-remapped builds
+differed from the reviewed ELF. Investigation found both embedded source paths
+and Cargo's path-dependent crate metadata identities. A later clean-target build
+normalized only the two reviewed workspace crate identities and paths, reproduced
+the exact reviewed ELF, and a fresh CPU setup derived the same pinned program key.
 The [reproduction evidence](audits/2026-10-09-followup/clock-lifecycle/reproducible-build/README.md)
 preserves both initial mismatches and the successful compiler arguments. This is
 a same-machine build using cached dependencies, not an independent cold build or
@@ -127,6 +137,12 @@ a fresh proof. The replay tool never changes the ELF/vkey pins.
 The separate recipe requires Python 3.11+, Cargo 1.99.0 and the recorded ARM64
 macOS SP1 compiler. It verifies all 21 source pins, the exact source layout and
 absence of extra build/config inputs before normalization and again after build.
+It also requires the guest's dependency sources to be crates.io plus the
+commit-pinned tiny-keccak precompile patch (`check_sp1_release.GUEST_GIT_DEPENDENCY`).
+Because the build is offline, that patch must already be checked out in
+`CARGO_HOME` (once: `cargo fetch --locked --manifest-path crates/sp1-guest/Cargo.toml`),
+and the recipe compares the checked-out files with the pinned source tree before and
+after the build.
 It uses `--locked --offline`, creates an exclusive empty target outside the source
 checkout, preserves existing targets, and writes its success manifest only after
 the independently pinned ELF hash matches. Select a new output path each time:

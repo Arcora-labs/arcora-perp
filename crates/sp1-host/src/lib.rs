@@ -15,15 +15,16 @@ pub use prover::{decode_clock_witness, encode_clock_witness, ProverError};
 
 use perp_core::clock::{bind_transition, BoundTransition, ClockContext, TimeBounds, WIRE_MAGIC};
 use perp_core::engine::BatchOp;
-use perp_core::fixed::PRICE_SCALE;
-use perp_core::hash::Keccak256;
+use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
+use perp_core::hash::{Digest, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::{owner_from_spend_key, Note};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
-use perp_core::order::BatchManifest;
+use perp_core::order::{BatchManifest, Side};
+use perp_core::state::TREE_DEPTH;
 use perp_core::{DefaultState, EngineError};
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use sp1_sdk::{SP1Proof, SP1ProofWithPublicValues};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -63,24 +64,130 @@ pub fn check_groth16_prerequisites(directory: &Path) -> io::Result<()> {
 /// witnesses. It is a test value, never a deployment key.
 pub(crate) const FIXTURE_ORACLE_KEY: [u8; 32] = [7; 32];
 
-/// The normal fixture: one deposit of 1,000,000 (deposit id 0, payer address(0)),
-/// a withdrawal of that note to `0xAB…AB` with nonce 1, and two funding ticks at
-/// 100,000 ms and 100,700 ms, bound to chain 84532, verifier `0x11…11`, settlement
-/// `0x22…22`, anchored at 101,000 ms with a 10,000 ms window and 2,000 ms skew.
+/// A signed transcript of market 0 at `price`, published at `now_ms` by `key`.
+fn fixture_oracle(key: &k256::ecdsa::SigningKey, price: i128, now_ms: u64) -> OracleTranscript {
+    OracleTranscript {
+        price,
+        publish_time_ms: now_ms,
+        confidence: 0,
+        backup_twap: price,
+        signature: OracleSig::sign(key, &oracle_digest(0, price, now_ms, 0, price)),
+    }
+}
+
+/// The traders of the normal fixture's pre-state, by synthetic spend key: a long,
+/// a short and the holder of an unspent note. Test values, never deployment keys.
+const NORMAL_LONG: [u8; 32] = [0xA1; 32];
+const NORMAL_SHORT: [u8; 32] = [0xA2; 32];
+const NORMAL_HOLDER: [u8; 32] = [0xA3; 32];
+/// The wind-down recipient of the normal fixture's pre-state (a synthetic address).
+pub const NORMAL_RECIPIENT: [u8; 20] = [0x5E; 20];
+
+/// The normal fixture's pre-state: hand-built, not reached by batches from a
+/// genesis root, so its batch counter (0), deposit accumulator (genesis tip, count
+/// 0) and withdrawal nonce (0) are those of a fresh settlement, as
+/// `ClockBoundRealProof.t.sol` deploys one. On a depth-[`TREE_DEPTH`] tree with a
+/// wind-down recipient and market 0 (`Market::conservative`, published by the
+/// fixture oracle key):
+///
+/// * three notes are allocated outside the deposit accumulator ($500 to the long,
+///   $500 to the short, $200 to the holder): each is appended to the tree and
+///   counted as external value in, so conservation holds;
+/// * the engine's own ops (`apply_op`, never `apply_batch`) then bind the long's
+///   and the short's notes as collateral, which spends them (two nullifiers, in an
+///   insertion order that is not their sorted order), open 0.2 long against 0.2
+///   short at $1,000, and run two funding ticks. The second commits 36,543 ms at the
+///   +0.05% rate the first adopted and adopts +0.03%, so the stored rate, the
+///   carried remainder and the recorded price are all non-zero.
+///
+/// The holder's note stays unspent.
+fn normal_pre_state(key: &k256::ecdsa::SigningKey) -> DefaultState {
+    let price = 1000 * PRICE_SCALE;
+    let mut state = DefaultState::new(TREE_DEPTH);
+    let mut market = Market::conservative(0);
+    let probe = oracle_digest(0, price, 1, 0, price);
+    market.oracle_pubkey = OracleSig::sign(key, &probe)
+        .recover(&probe)
+        .expect("fixture key recovers");
+    state.add_market(market);
+    state.set_wind_down_recipient(NORMAL_RECIPIENT);
+    let mut allocate = |spend_key: &[u8; 32], dollars: i128, blinding: u8| {
+        let amount = dollars * QUOTE_SCALE;
+        let note = Note::new(
+            owner_from_spend_key::<Keccak256>(spend_key),
+            0,
+            amount,
+            [blinding; 32],
+        );
+        let cm = note.commitment::<Keccak256>();
+        state.tree.append(cm).expect("tree capacity");
+        state.notes.insert(cm, note);
+        state.external_in += amount;
+        cm
+    };
+    let long_note = allocate(&NORMAL_LONG, 500, 0xB1);
+    let short_note = allocate(&NORMAL_SHORT, 500, 0xB2);
+    allocate(&NORMAL_HOLDER, 200, 0xB3);
+    let fund = |spend_key: &[u8; 32], note_commitment: Digest| BatchOp::FundPosition {
+        owner: owner_from_spend_key::<Keccak256>(spend_key),
+        market_id: 0,
+        note_commitment,
+        spend_key: *spend_key,
+    };
+    let tick = |mark: i128, now_ms: u64| BatchOp::AccrueFunding {
+        market_id: 0,
+        mark,
+        oracle: fixture_oracle(key, price, now_ms),
+        now_ms,
+    };
+    let history = [
+        fund(&NORMAL_LONG, long_note),
+        fund(&NORMAL_SHORT, short_note),
+        BatchOp::Fill {
+            taker: owner_from_spend_key::<Keccak256>(&NORMAL_LONG),
+            maker: owner_from_spend_key::<Keccak256>(&NORMAL_SHORT),
+            market_id: 0,
+            taker_side: Side::Buy,
+            size: SIZE_SCALE / 5,
+            price,
+            oracle: fixture_oracle(key, price, 40_000),
+            now_ms: 40_000,
+        },
+        // +0.1% premium, clamped to +0.05%
+        tick(1001 * PRICE_SCALE, 40_000),
+        // +0.03% premium
+        tick(100_030 * PRICE_SCALE / 100, 76_543),
+    ];
+    for op in &history {
+        state.apply_op(op).expect("pre-state op");
+        assert!(state.conservation_holds(), "the pre-state conserves value");
+    }
+    state
+}
+
+/// The normal fixture, in exactly the shape `ClockBoundRealProof.t.sol` hard-codes:
+/// chain 84532, verifier `0x11…11`, settlement `0x22…22`, batch 0 anchored at
+/// 101,000 ms with a 10,000 ms window and 2,000 ms skew, over the hand-built
+/// [`normal_pre_state`]. Its four ops:
+///
+/// * a deposit of 1,000,000 with deposit id 0 from payer address(0), whose owner
+///   is bound by a blinded owner commit (so the batch's deposit count becomes 1);
+/// * a withdrawal of that note, 1,000,000 to `0xAB…AB` with nonce 1, the batch's
+///   only withdrawal leaf;
+/// * the two timed ops, both funding ticks: at 100,000 ms one commits the
+///   23,457 ms span at the stored +0.03% rate, carrying the remainder, and adopts
+///   +0.05%; at 100,700 ms the other commits its 700 ms at +0.05% (a non-zero index
+///   delta) and adopts -0.05%.
+///
 /// Public test values only: the deposit is NOT an observed L1 event.
 pub fn normal_witness() -> ClockWitness {
     let spend_key = [3u8; 32];
     let owner = owner_from_spend_key::<Keccak256>(&spend_key);
     let blind = [9u8; 32];
     let amount = 1_000_000i128;
-    let mut state = DefaultState::new(16);
-    state.add_market(Market::conservative(0));
     let key = k256::ecdsa::SigningKey::from_slice(&FIXTURE_ORACLE_KEY).expect("fixture key");
+    let state = normal_pre_state(&key);
     let price = 1000 * PRICE_SCALE;
-    let probe = oracle_digest(0, price, 100_000, 0, price);
-    state.markets.get_mut(&0).expect("market 0").oracle_pubkey = OracleSig::sign(&key, &probe)
-        .recover(&probe)
-        .expect("fixture key recovers");
     let cm = Note::new(owner, 0, amount, blind).commitment::<Keccak256>();
     let mut ops = vec![
         BatchOp::Deposit {
@@ -90,7 +197,7 @@ pub fn normal_witness() -> ClockWitness {
             blinding: blind,
             from: [0u8; 20],
             deposit_id: 0,
-            deposit_blind: [0u8; 32],
+            deposit_blind: [0x0D; 32],
         },
         BatchOp::Withdraw {
             note_commitment: cm,
@@ -100,17 +207,10 @@ pub fn normal_witness() -> ClockWitness {
         },
     ];
     for (now_ms, mark) in [(100_000, 1001), (100_700, 999)] {
-        let oracle = OracleTranscript {
-            price,
-            publish_time_ms: now_ms,
-            confidence: 0,
-            backup_twap: price,
-            signature: OracleSig::sign(&key, &oracle_digest(0, price, now_ms, 0, price)),
-        };
         ops.push(BatchOp::AccrueFunding {
             market_id: 0,
             mark: mark * PRICE_SCALE,
-            oracle,
+            oracle: fixture_oracle(&key, price, now_ms),
             now_ms,
         });
     }
@@ -449,15 +549,15 @@ mod tests {
         assert_eq!(witness.3.timed_ops, 2);
         assert_eq!(
             hex(&bound.roots.commitment::<Keccak256>()),
-            "3efc04212dc8c482a8b97947a263fba11c0c709a07d0098b0f4e03dd8214bd0b"
+            "a94f1820a9e1f3cc571c1e18bb6aeecd2fe3a737b6c5aa84bd9e02745383aa5e"
         );
         assert_eq!(
             hex(&bound.receipt),
-            "c4a510e728ce65635fbd1a726edadbf25bdacb8029b7138e12e206bef7fd2500"
+            "255eb8deb1c4975362a787724d71be5c56f59b726bcc85bc22104c59abf73995"
         );
         assert_eq!(
             hex(&bound.commitment),
-            "5fcffb067d2ac6b7d605b42cdc9882e0d4a6f1361bbe60197f018db5738f57c6"
+            "6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab"
         );
         let fields = roots_json(&bound, count);
         assert_eq!(fields["new_deposit_count"], 1);
@@ -470,6 +570,127 @@ mod tests {
             format!("0x{}", hex(&bound.commitment))
         );
         assert_eq!(fields.as_object().unwrap().len(), 12);
+    }
+
+    /// The normal fixture has exactly the shape `ClockBoundRealProof.t.sol`
+    /// hard-codes (its clock context, its one deposit and one withdrawal leaf, zero
+    /// ordered and rejected roots, a fresh deposit chain), over a pre-state whose
+    /// funding and nullifier history are not trivial.
+    #[test]
+    fn normal_fixture_has_the_real_proof_shape_over_a_non_trivial_pre_state() {
+        use perp_core::merkle::{deposit_chain_fold, deposit_leaf, owner_commit, withdrawal_leaf};
+        use perp_core::state::Mode;
+        let (pre, ops, manifest, clock) = normal_witness();
+        assert_eq!(
+            (clock.chain_id, clock.verifier, clock.settlement),
+            (84532, [0x11; 20], [0x22; 20])
+        );
+        assert_eq!((clock.batch_id, clock.phase, manifest.batch_id), (0, 0, 0));
+        assert_eq!(
+            (clock.first_ms, clock.last_ms, clock.timed_ops),
+            (100_000, 100_700, 2)
+        );
+        assert_eq!(
+            (
+                clock.anchored_at_ms,
+                clock.max_window_ms,
+                clock.clock_skew_ms
+            ),
+            (101_000, 10_000, 2_000)
+        );
+
+        // The pre-state: a fresh settlement's counters, non-trivial contents.
+        assert_eq!((pre.next_batch_id, pre.last_withdrawal_nonce), (0, 0));
+        assert_eq!(
+            (pre.consumed_deposit_count, pre.consumed_deposit_tip),
+            (0, [0u8; 32])
+        );
+        assert_eq!((pre.mode, pre.tree.depth()), (Mode::Normal, TREE_DEPTH));
+        assert_eq!(pre.wind_down_recipient, NORMAL_RECIPIENT);
+        assert!(pre.conservation_holds());
+        pre.validate_witness_shape().unwrap();
+        let log = pre.nullifiers.log().to_vec();
+        let mut sorted = log.clone();
+        sorted.sort_unstable();
+        assert!(log.len() >= 2 && log != sorted, "an unsorted nullifier log");
+        assert_eq!((pre.tree.len(), pre.notes.len()), (3, 1));
+        assert_eq!(pre.positions.values().filter(|p| p.size != 0).count(), 2);
+        let funding = pre.funding[&0];
+        assert!(funding.is_well_formed());
+        assert!(funding.rate != 0 && funding.remainder != 0 && funding.last_price != 0);
+
+        // The ops: one deposit, its withdrawal, two funding ticks.
+        assert_eq!(ops.len(), 4);
+        let BatchOp::Deposit {
+            owner,
+            amount,
+            blinding,
+            from,
+            deposit_id,
+            deposit_blind,
+            ..
+        } = ops[0]
+        else {
+            panic!("the first op is the deposit")
+        };
+        assert_eq!((amount, from, deposit_id), (1_000_000, [0u8; 20], 0));
+        assert_ne!(deposit_blind, [0u8; 32], "a blinded owner commit");
+        let note = Note::new(owner, 0, amount, blinding).commitment::<Keccak256>();
+        assert!(matches!(
+            ops[1],
+            BatchOp::Withdraw { note_commitment, to: Some(to), nonce: 1, .. }
+                if note_commitment == note && to == [0xAB; 20]
+        ));
+        let times: Vec<u64> = ops[2..]
+            .iter()
+            .map(|op| match op {
+                BatchOp::AccrueFunding { now_ms, .. } => *now_ms,
+                _ => panic!("the timed ops are funding ticks"),
+            })
+            .collect();
+        assert_eq!(times, [100_000, 100_700]);
+
+        // The first tick commits a span at the stored non-zero rate, carrying the
+        // remainder, and changes the rate; the second moves the index.
+        let mut state = pre.clone();
+        state.apply_batch(&ops[..2]).unwrap();
+        state.apply_op(&ops[2]).unwrap();
+        let first = state.funding[&0];
+        let mut span = funding;
+        span.settle_to(1000 * PRICE_SCALE, 100_000);
+        assert_eq!(
+            (first.cumulative_index, first.remainder),
+            (span.cumulative_index, span.remainder)
+        );
+        assert!(first.cumulative_index > funding.cumulative_index && first.remainder != 0);
+        assert!(first.rate != funding.rate && first.rate != 0);
+        state.apply_op(&ops[3]).unwrap();
+        let second = state.funding[&0];
+        assert_ne!(second.cumulative_index, first.cumulative_index);
+        assert_eq!(second.last_update_ms, 100_700);
+
+        // The roots the Solidity test rebuilds: one withdrawal leaf (claimed with no
+        // siblings), one deposit folded onto an empty chain, zero ordered and
+        // rejected roots, and a deposit count of 1.
+        let (bound, count) = native_from_bytes(&witness_bytes(&normal_witness())).unwrap();
+        let roots = &bound.roots;
+        assert_eq!(count, 1);
+        assert_eq!(
+            (roots.ordered_root, roots.rejected_root),
+            ([0u8; 32], [0u8; 32])
+        );
+        assert_eq!(
+            roots.withdrawals_root,
+            withdrawal_leaf(&[0xAB; 20], 1_000_000, 1)
+        );
+        let leaf = deposit_leaf(
+            &[0u8; 20],
+            &owner_commit(&owner, &deposit_blind),
+            1_000_000,
+            0,
+        );
+        assert_eq!(roots.deposits_root, deposit_chain_fold(&[0u8; 32], &leaf));
+        assert_eq!(roots.prev_state_root, pre.state_root());
     }
 
     #[test]
