@@ -1,0 +1,2775 @@
+{
+  "kind": "pkg3-history-measurement-gate",
+  "schema_version": 2,
+  "date": "2026-10-19",
+  "scope": "SP1 CPU execution only (no setup, no proving) of the guest built from this tree, over synthetic conservation-consistent pre-states; public synthetic test data only; no chain, RPC or service contacted",
+  "source": {
+    "commit": "ced4b0bf6e3404c5805fe397f251faaa15feefb7",
+    "branch": "fix/perp-core-hardening-20261017",
+    "working_tree_note": "the measurement tool (crates/sp1-host/src/bin/measure-history.rs) was uncommitted when measured; guest inputs are the 21 files below",
+    "guest_inputs_sha256": {
+      "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+      "crates/perp-core/src/clock.rs": "1d936a79121040bb6415cff2aa0e0459734222bfbf8c7f4452d52452389f85a2",
+      "crates/perp-core/src/commitment.rs": "02ccf0ead5b545fc6b06948df5f5cd31c4126b417bf5097c972f725e412fa801",
+      "crates/perp-core/src/engine.rs": "e42c15a7ef7473b6ba15faea7aa0a974b1799cc525802159edc0a48ec32794aa",
+      "crates/perp-core/src/error.rs": "d1e146386deb79870fd288732265347bd207b91c153633c079e42ec7c63a8c20",
+      "crates/perp-core/src/fixed.rs": "6d5a39e6d4c9facada98d0dba398990efb8db1bc9705d0dc58f86b6333fd69c2",
+      "crates/perp-core/src/funding.rs": "d3f393138b31ed843a24c63943fb15ec0f07a860ac629ce1ca15feb40d93fea9",
+      "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+      "crates/perp-core/src/lib.rs": "d69657981bfd0d7f8e97230e7f0cbcf0d548d9fa5b69e8fb1c941864db1e9d50",
+      "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+      "crates/perp-core/src/merkle.rs": "2cbddc2a07b738dbe6ede79e447acfa6ab68499036ca48db50e53f9a97890ad2",
+      "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+      "crates/perp-core/src/nullifier.rs": "c396e40e5d757849e507d60be6b0fbab34443f1fb0d6e091feff047fad3544a8",
+      "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+      "crates/perp-core/src/order.rs": "38f1321b773e5ca2f7978059381059340e67011750faac253af4fb21382c712f",
+      "crates/perp-core/src/position.rs": "c56b36e5adf77300eae6f237d04260aa25f535bf730b566a17c16e07e121e821",
+      "crates/perp-core/src/state.rs": "fcb6719b4f91f95e2dce88166cd80302144c049b97a3edab085e66353d2aea55",
+      "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+      "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+      "crates/sp1-guest/src/main.rs": "8dc8437f4f3938fa430efc43e27b7ffcdd0ab4447462db036a08afef92d2fa9a"
+    }
+  },
+  "host": {
+    "machine": "Apple M4, 10 cores (4 performance + 6 efficiency), 16 GiB",
+    "os": "macOS 26.5.1 (25F80), arm64",
+    "load_note": "shared workstation with unrelated build, test, virtual-machine and interactive workloads running (load average between about 5 and 24, swap in use); wall times and resident memory are this host's at that load, cycles and gas are deterministic"
+  },
+  "toolchain": {
+    "host_rust": "rustc 1.99.0 (b940084d7 2026-09-28), cargo 1.99.0 (5f94df478 2026-08-27)",
+    "guest_rust": "succinct rustc 1.93.0-dev (aarch64-apple-darwin, LLVM 21.1.8) with cargo 1.99.0, as pinned by scripts/local-verification/rebuild_reviewed_guest.py",
+    "sp1": "sp1-sdk 6.1.0 (crates/sp1-host/Cargo.lock), vendored sp1-prover 6.1.0 manifest correction",
+    "sp1_host_manifest_sha256": "38ca12f69573d3fa2b2153c4bc48cd587ba82e03344af73d3d56d3b0b90521f8",
+    "sp1_host_lock_sha256": "5e110b9b48311165ff5302b622f48356a515c7f5d6700b59d9228eafa0e71c6b"
+  },
+  "guest_elf": {
+    "sha256": "b6da3317197b3dcde44929606f5375c980bb05f523c818122ecfabacec01e9f2",
+    "bytes": 536264,
+    "path_in_build": "<out>/target/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "how_built": "build() of scripts/local-verification/rebuild_reviewed_guest.py, unchanged: pinned toolchain, --locked --offline --release --target riscv64im-succinct-zkvm-elf, CARGO_BUILD_JOBS=2, the recipe's rustc flags, crate-metadata normalization and path remap, in a fresh target directory. The 21 guest-source pins the recipe compares against were set to the hashes above, read once at the start of each build and enforced again on every compiler invocation (the reviewed pins are regenerated later). The recipe's process timeout was raised from 900 s to 3,600 s for this loaded host; it bounds the build process only.",
+    "builds": [
+      {
+        "fresh_target": true,
+        "build_seconds": 1115,
+        "sha256": "b6da3317197b3dcde44929606f5375c980bb05f523c818122ecfabacec01e9f2",
+        "final_step": "comparison with the reviewed ELF pin failed, as expected before the pins are regenerated"
+      },
+      {
+        "fresh_target": true,
+        "build_seconds": 334,
+        "sha256": "b6da3317197b3dcde44929606f5375c980bb05f523c818122ecfabacec01e9f2",
+        "final_step": "comparison with the reviewed ELF pin failed, as expected before the pins are regenerated"
+      }
+    ],
+    "reproducible": true,
+    "not_from_build_script": "the sp1-host build used SP1_SKIP_PROGRAM_BUILD=true with an empty stub ELF; the measured ELF is passed with --elf",
+    "unmodified_recipe_note": "run as is, scripts/local-verification/rebuild_reviewed_guest.py refuses before building (guest source changed; rebuild and reprove: crates/perp-core/src/clock.rs), because the reviewed source pins are regenerated after this gate; so build() was driven with the current tree's source hashes in place of those pins and every other guard unchanged"
+  },
+  "measurement_tool": {
+    "path": "crates/sp1-host/src/bin/measure-history.rs",
+    "binary_sha256": "18ce64454acb30d4bfdc9498fdb644df781bfd085bd19994556f01ca8a066b20",
+    "build": "SP1_SKIP_PROGRAM_BUILD=true with an empty stub ELF at $CARGO_TARGET_DIR/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest; cargo build --release --locked --offline --manifest-path crates/sp1-host/Cargo.toml --bin measure-history (rustc 1.99.0); no dependency or lockfile change",
+    "earlier_build_note": "the 10,000, 50,000 and 100,000 runs used an earlier build of the same file (binary sha256 2512359d076a7216e9641e635dca2619ff3e8c2cdc710e9a839dd7937b8613f6) taken before a rustfmt and comment-only pass; its code lines are identical. The final binary re-ran all three 10,000 batches and reproduced the same witness sha256, commitment, withdrawals root, cycles, gas, keccak counts and calibration points",
+    "apis": "public perp-core and prover APIs only (State, BatchOp, BatchManifest, ClockContext, derive_roots, bind_transition, prover::public_from_witness, prover::decode_clock_witness) and sp1_host::encode_clock_witness for framing",
+    "executor": "sp1-sdk 6.1.0 light client: execute only, no setup, no proving; calculate_gas on (the SDK default), because the executor's instruction counts come from that pass",
+    "binary_note": "the committed file builds to this binary; it produced the 250,000 and 500,000 runs, the cap-region runs and the 10,000 re-run. cargo clippy reports no warning for the file, and rustfmt --check passes"
+  },
+  "commands": [
+    "source the local toolchain environment (rustc/cargo 1.99.0, verified local protoc, PROTOC and PROTOC_INCLUDE), then CARGO_TARGET_DIR=<measure target>",
+    "python3 <scratch>/run_reviewed_recipe.py --rustc ~/.sp1/toolchains/<id>/bin/rustc --output-dir <fresh dir> --timeout-seconds 3600   # twice, two fresh directories; runs rebuild_reviewed_guest.build() with the current-tree source hashes in place of the reviewed source pins; the final comparison with the reviewed ELF pin fails as expected",
+    "shasum -a 256 <fresh dir>/target/riscv64im-succinct-zkvm-elf/release/perp-core-guest   # both builds",
+    "mkdir -p $CARGO_TARGET_DIR/elf-compilation/riscv64im-succinct-zkvm-elf/release && touch $CARGO_TARGET_DIR/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "SP1_SKIP_PROGRAM_BUILD=true cargo build --release --locked --offline --manifest-path crates/sp1-host/Cargo.toml --bin measure-history",
+    "$CARGO_TARGET_DIR/release/measure-history --elf <reviewed-recipe ELF> --out <new file>.json --history H --batch B   # one process per (H, B), H = 10000, 50000, 100000, 250000, 500000 in increasing order, B = phase0, phase1, phase1-haircut; a 5,400 s wall limit per process",
+    "the same command at the recommended cap and at the projected precompile cap"
+  ],
+  "size_mapping": {
+    "rule": "H (tree leaves + spent nullifiers) a multiple of 80; unspent notes N = H/5; positions P = H/10 over 4 markets; tree leaves L = (H + N)/2 = 3N; spent nullifiers F = H - L = L - N (every spent note left one nullifier)",
+    "why": "Per batch the keccak work is about 4 permutations per tree leaf (each of the two state roots hashes every leaf and its tree node), 1 per spent nullifier (the decode rebuilds the nullifier chain), and about 2.4 per unspent note and 2.8 per position (the notes and positions digests in the two roots); the counted runs match this to 0.1% (355,413 measured against 355,200 at H = 100,000, phase 0). With L = (H + N)/2 and F = (H - N)/2 that is about 2.5 H + 3.9 N + 2.8 P permutations, increasing in H, N and P. The three admission bounds are enforced separately, so a state with all three at their bounds is the costliest one they admit; that is the shape measured, with N = H/5 and P = H/10, the ratio of the provisional gateway bounds",
+    "pre_state": "4 fee-bearing markets at 1,000 / 1,500 / 2,000 / 2,500 USD with a recorded price and a non-zero stored funding rate and carry; traders 2k and 2k+1 hold opposite positions of 0.01 to 0.05 base, equal entry (within 1% of the price) and funding entry, 50 to 62 USD collateral, in every market; note amounts 50 to 146 USD; reserves 5,000 insurance, 2,000 treasury, 1,000 clearing pool; external_in balances the conservation identity; tree depth 24; wind-down recipient set",
+    "batches": {
+      "phase0": "Deposit, Fill (taker buys 0.02 from a resting maker, growing both positions), Fill (partial reverse of 0.01), Withdraw to L1, AccrueFunding x2; 4 timed ops in 700 ms, oracle transcripts signed by the public test key",
+      "phase1": "SettleAll over the whole state at the recorded prices, no shortfall: every position closes inside its collateral and the 8,000 USD of reserves are paid to the wind-down recipient as one withdrawal leaf",
+      "phase1-haircut": "SettleAll with every market's recorded price at twice the entry level and empty reserves: the short side's losses exceed its collateral, the pro-rata haircut reissues every unspent note, and the tree gains N leaves before the post-state root"
+    }
+  },
+  "calibration": {
+    "cycles_per_permutation": 8040.333333333333,
+    "gas_per_permutation": 7643.422619047619,
+    "method": "tree-depth differential: one leaf, no ops, depths 8/36/64; each level adds one 65-byte MerkleNode hash to decode and to each of the two state roots",
+    "midpoint_prediction_error": 0.0,
+    "points": [
+      {
+        "cycles": 559973,
+        "gas": 541984,
+        "permutations": 60,
+        "tree_depth": 8
+      },
+      {
+        "cycles": 1235361,
+        "gas": 1184037,
+        "permutations": 144,
+        "tree_depth": 36
+      },
+      {
+        "cycles": 1910749,
+        "gas": 1826079,
+        "permutations": 228,
+        "tree_depth": 64
+      }
+    ]
+  },
+  "runs": [
+    {
+      "phase": "phase0",
+      "history": 2000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 1200,
+      "spent_nullifiers": 800,
+      "notes": 400,
+      "positions": 200,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 122236,
+      "witness_sha256": "27927584d4973baf742b8135ef9052ceb7d41854801ca5c3d9ffb21526ee1fe4",
+      "commitment": "0xdd05ad46184af60010034e805fc35f10206f54455daaa8e1fccbfe0b3415fe23",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x18bb90143d4a540bd67af358cd63c8b93c09a4955c8e34580f82732c0cb6f1ab",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 200,
+        "spent_nullifiers": 801,
+        "tree_leaves": 1201,
+        "unspent_notes": 400
+      },
+      "cycles": 71249855,
+      "gas": 68108219,
+      "guest_execute_wall_s": 1.4,
+      "process_wall_s": 1.7,
+      "peak_rss_bytes": 340721664,
+      "peak_rss_mib": 325,
+      "peak_rss_bytes_before_execute": 81707008,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 503728,
+        "hash_calls": 5680,
+        "permutations": 7232
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 53593,
+          "hash_calls": 825,
+          "permutations": 825
+        },
+        "new_state_root": {
+          "absorbed_bytes": 224602,
+          "hash_calls": 2426,
+          "permutations": 3200
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 224309,
+          "hash_calls": 2421,
+          "permutations": 3195
+        }
+      },
+      "keccak_share_estimate": 0.8161,
+      "precompile_equivalent_cycles_projection": 37251259,
+      "gpu_seconds_at_central_rate": 321.2,
+      "gpu_seconds_at_central_rate_precompile_projection": 287.3,
+      "rate_needed_for_per_proof_budget": 356249
+    },
+    {
+      "phase": "phase1",
+      "history": 2000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 1200,
+      "spent_nullifiers": 800,
+      "notes": 400,
+      "positions": 200,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 121416,
+      "witness_sha256": "90ba6bea4b01e80fa404d849380f1183aada3536adbe93e7a61c5431820c715f",
+      "commitment": "0x1df8bdcc480d7d0cad2faf6e13f39462c3ceef34359141b6dfad88cd5306282c",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x54cdcd0d47be73c147adf9ce12c7971e5d1b988e45fc9ba7126bf762f8fbf57e",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 200,
+        "spent_nullifiers": 800,
+        "tree_leaves": 1200,
+        "unspent_notes": 400
+      },
+      "cycles": 60282053,
+      "gas": 57777705,
+      "guest_execute_wall_s": 1.2,
+      "process_wall_s": 1.5,
+      "peak_rss_bytes": 304873472,
+      "peak_rss_mib": 291,
+      "peak_rss_bytes_before_execute": 81477632,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 503014,
+        "hash_calls": 5670,
+        "permutations": 7222
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 53593,
+          "hash_calls": 825,
+          "permutations": 825
+        },
+        "new_state_root": {
+          "absorbed_bytes": 224309,
+          "hash_calls": 2421,
+          "permutations": 3195
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 224309,
+          "hash_calls": 2421,
+          "permutations": 3195
+        }
+      },
+      "keccak_share_estimate": 0.9633,
+      "precompile_equivalent_cycles_projection": 26420776,
+      "gpu_seconds_at_central_rate": 310.3,
+      "gpu_seconds_at_central_rate_precompile_projection": 276.4,
+      "rate_needed_for_per_proof_budget": 301410
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 2000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 1200,
+      "spent_nullifiers": 800,
+      "notes": 400,
+      "positions": 200,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 121404,
+      "witness_sha256": "d80682befe62e011f30a29f20f0959a1b5baa41c1846f8ee6ed08f126aa9f05f",
+      "commitment": "0x749e02160971d3461299e5b469ed2c02e09d578b3399ac2e25da24580c10ebcd",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 161,
+        "spent_nullifiers": 800,
+        "tree_leaves": 1600,
+        "unspent_notes": 400
+      },
+      "cycles": 75548935,
+      "gas": 71866767,
+      "guest_execute_wall_s": 1.5,
+      "process_wall_s": 1.8,
+      "peak_rss_bytes": 366116864,
+      "peak_rss_mib": 349,
+      "peak_rss_bytes_before_execute": 82116608,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 625061,
+        "hash_calls": 7269,
+        "permutations": 8766
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 90400,
+          "hash_calls": 800,
+          "permutations": 800
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 53593,
+          "hash_calls": 825,
+          "permutations": 825
+        },
+        "new_state_root": {
+          "absorbed_bytes": 255956,
+          "hash_calls": 3220,
+          "permutations": 3939
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 224309,
+          "hash_calls": 2421,
+          "permutations": 3195
+        }
+      },
+      "keccak_share_estimate": 0.9329,
+      "precompile_equivalent_cycles_projection": 34137545,
+      "gpu_seconds_at_central_rate": 325.5,
+      "gpu_seconds_at_central_rate_precompile_projection": 284.1,
+      "rate_needed_for_per_proof_budget": 377745
+    },
+    {
+      "phase": "phase0",
+      "history": 4000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 2400,
+      "spent_nullifiers": 1600,
+      "notes": 800,
+      "positions": 400,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 243044,
+      "witness_sha256": "4a79e1584bba44b852b154b6f7c39bba83257bc70121081b4de5f9f160e4b2d7",
+      "commitment": "0xffddd2076138ab6c78f612be90723a38fef0db775567fac3204527991309e690",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x6beddd66dafa6d9ae21860680a76f853df7f06f8d2ce98a7dd7aab2a8b399c2f",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 400,
+        "spent_nullifiers": 1601,
+        "tree_leaves": 2401,
+        "unspent_notes": 800
+      },
+      "cycles": 130465453,
+      "gas": 124860830,
+      "guest_execute_wall_s": 2.5,
+      "process_wall_s": 2.9,
+      "peak_rss_bytes": 566214656,
+      "peak_rss_mib": 540,
+      "peak_rss_bytes_before_execute": 81428480,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 995663,
+        "hash_calls": 11279,
+        "permutations": 14337
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 105593,
+          "hash_calls": 1625,
+          "permutations": 1625
+        },
+        "new_state_root": {
+          "absorbed_bytes": 444602,
+          "hash_calls": 4826,
+          "permutations": 6353
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 444244,
+          "hash_calls": 4820,
+          "permutations": 6347
+        }
+      },
+      "keccak_share_estimate": 0.8836,
+      "precompile_equivalent_cycles_projection": 63145207,
+      "gpu_seconds_at_central_rate": 380.5,
+      "gpu_seconds_at_central_rate_precompile_projection": 313.1,
+      "rate_needed_for_per_proof_budget": 652327
+    },
+    {
+      "phase": "phase1",
+      "history": 4000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 2400,
+      "spent_nullifiers": 1600,
+      "notes": 800,
+      "positions": 400,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 242224,
+      "witness_sha256": "d0691e08300cdbfa9ca24427e075a62c4c8dedb3c0f9b0ef0670f2a0272e5194",
+      "commitment": "0x832fe6eb53322b05e5f36c4b044d82e93b013164227ebbdeaa4e96297a50fd4f",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xbce5aedeb3d2c98013cf1a3449eec14e890bc563ad43b4d0e5edd1d04145d516",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 400,
+        "spent_nullifiers": 1600,
+        "tree_leaves": 2400,
+        "unspent_notes": 800
+      },
+      "cycles": 119722171,
+      "gas": 114696575,
+      "guest_execute_wall_s": 2.3,
+      "process_wall_s": 2.7,
+      "peak_rss_bytes": 531841024,
+      "peak_rss_mib": 507,
+      "peak_rss_bytes_before_execute": 81707008,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 994884,
+        "hash_calls": 11268,
+        "permutations": 14326
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 105593,
+          "hash_calls": 1625,
+          "permutations": 1625
+        },
+        "new_state_root": {
+          "absorbed_bytes": 444244,
+          "hash_calls": 4820,
+          "permutations": 6347
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 444244,
+          "hash_calls": 4820,
+          "permutations": 6347
+        }
+      },
+      "keccak_share_estimate": 0.9621,
+      "precompile_equivalent_cycles_projection": 52522495,
+      "gpu_seconds_at_central_rate": 369.7,
+      "gpu_seconds_at_central_rate_precompile_projection": 302.5,
+      "rate_needed_for_per_proof_budget": 598611
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 4000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 2400,
+      "spent_nullifiers": 1600,
+      "notes": 800,
+      "positions": 400,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 242212,
+      "witness_sha256": "50970b97a06c00fa32579e56d1361c92c6f0a786af065c153c926bd5861f4d54",
+      "commitment": "0xf1423f790dea374693878ee091efec93efc0e0c41ab47110a299fd69a55dc823",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 322,
+        "spent_nullifiers": 1600,
+        "tree_leaves": 3200,
+        "unspent_notes": 800
+      },
+      "cycles": 150541634,
+      "gas": 143098764,
+      "guest_execute_wall_s": 2.9,
+      "process_wall_s": 3.3,
+      "peak_rss_bytes": 653852672,
+      "peak_rss_mib": 624,
+      "peak_rss_bytes_before_execute": 81772544,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1239043,
+        "hash_calls": 14467,
+        "permutations": 17415
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 180800,
+          "hash_calls": 1600,
+          "permutations": 1600
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 105593,
+          "hash_calls": 1625,
+          "permutations": 1625
+        },
+        "new_state_root": {
+          "absorbed_bytes": 507603,
+          "hash_calls": 6419,
+          "permutations": 7836
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 444244,
+          "hash_calls": 4820,
+          "permutations": 6347
+        }
+      },
+      "keccak_share_estimate": 0.9301,
+      "precompile_equivalent_cycles_projection": 68210837,
+      "gpu_seconds_at_central_rate": 400.5,
+      "gpu_seconds_at_central_rate_precompile_projection": 318.2,
+      "rate_needed_for_per_proof_budget": 752708
+    },
+    {
+      "phase": "phase0",
+      "history": 5280,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3168,
+      "spent_nullifiers": 2112,
+      "notes": 1056,
+      "positions": 528,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 320356,
+      "witness_sha256": "19bf4d501d8b1e8d44ed934cd799eb5e3c5c17ccefd69933b8134566fdbf9854",
+      "commitment": "0x1d2e7aca07f728a8f78856d1118324330f641c89f75807c3c4ba9bd2b3e8301c",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x2ffc215134016afc1ca79bb91061e7068b022450356f827f695327bfdac28f71",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 528,
+        "spent_nullifiers": 2113,
+        "tree_leaves": 3169,
+        "unspent_notes": 1056
+      },
+      "cycles": 168453424,
+      "gas": 161304959,
+      "guest_execute_wall_s": 3.3,
+      "process_wall_s": 3.7,
+      "peak_rss_bytes": 713506816,
+      "peak_rss_mib": 680,
+      "peak_rss_bytes_before_execute": 83623936,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1310543,
+        "hash_calls": 14863,
+        "permutations": 18885
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 138873,
+          "hash_calls": 2137,
+          "permutations": 2137
+        },
+        "new_state_root": {
+          "absorbed_bytes": 585402,
+          "hash_calls": 6362,
+          "permutations": 8371
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 585044,
+          "hash_calls": 6356,
+          "permutations": 8365
+        }
+      },
+      "keccak_share_estimate": 0.9014,
+      "precompile_equivalent_cycles_projection": 79826187,
+      "gpu_seconds_at_central_rate": 418.5,
+      "gpu_seconds_at_central_rate_precompile_projection": 329.8,
+      "rate_needed_for_per_proof_budget": 842267
+    },
+    {
+      "phase": "phase1",
+      "history": 5280,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3168,
+      "spent_nullifiers": 2112,
+      "notes": 1056,
+      "positions": 528,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 319536,
+      "witness_sha256": "826bdb15d52fa0096648fe2917c5306039c0e0adfa1b7e7af3206ba4d403cea8",
+      "commitment": "0x56ee21fc54c8402ceeeee4bcd6e6dae2ac5e224755399bcff6a8873382199de7",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xcd0afddabdda8119c0a51b571e5b71b293ab4c417b2daf36e31b9165f5282b27",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 528,
+        "spent_nullifiers": 2112,
+        "tree_leaves": 3168,
+        "unspent_notes": 1056
+      },
+      "cycles": 157856282,
+      "gas": 151226840,
+      "guest_execute_wall_s": 3.1,
+      "process_wall_s": 3.5,
+      "peak_rss_bytes": 677363712,
+      "peak_rss_mib": 646,
+      "peak_rss_bytes_before_execute": 81805312,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1309764,
+        "hash_calls": 14852,
+        "permutations": 18874
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 138873,
+          "hash_calls": 2137,
+          "permutations": 2137
+        },
+        "new_state_root": {
+          "absorbed_bytes": 585044,
+          "hash_calls": 6356,
+          "permutations": 8365
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 585044,
+          "hash_calls": 6356,
+          "permutations": 8365
+        }
+      },
+      "keccak_share_estimate": 0.9613,
+      "precompile_equivalent_cycles_projection": 69321272,
+      "gpu_seconds_at_central_rate": 407.9,
+      "gpu_seconds_at_central_rate_precompile_projection": 319.3,
+      "rate_needed_for_per_proof_budget": 789281
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 5280,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3168,
+      "spent_nullifiers": 2112,
+      "notes": 1056,
+      "positions": 528,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 319524,
+      "witness_sha256": "c2ddf861cfe8e52351b36364b06d4a79feda05f5aab6dc6cd48faa9395d1ce9a",
+      "commitment": "0x747db1fc97c968099dc6c85286585937894b6fb8846f308b16b6379844caa5a6",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 428,
+        "spent_nullifiers": 2112,
+        "tree_leaves": 4224,
+        "unspent_notes": 1056
+      },
+      "cycles": 198725972,
+      "gas": 189144380,
+      "guest_execute_wall_s": 3.9,
+      "process_wall_s": 4.3,
+      "peak_rss_bytes": 843300864,
+      "peak_rss_mib": 804,
+      "peak_rss_bytes_before_execute": 79659008,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1632708,
+        "hash_calls": 19076,
+        "permutations": 22957
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 238656,
+          "hash_calls": 2112,
+          "permutations": 2112
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 138873,
+          "hash_calls": 2137,
+          "permutations": 2137
+        },
+        "new_state_root": {
+          "absorbed_bytes": 669332,
+          "hash_calls": 8468,
+          "permutations": 10336
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 585044,
+          "hash_calls": 6356,
+          "permutations": 8365
+        }
+      },
+      "keccak_share_estimate": 0.9288,
+      "precompile_equivalent_cycles_projection": 90334673,
+      "gpu_seconds_at_central_rate": 448.7,
+      "gpu_seconds_at_central_rate_precompile_projection": 340.3,
+      "rate_needed_for_per_proof_budget": 993630
+    },
+    {
+      "phase": "phase0",
+      "history": 5360,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3216,
+      "spent_nullifiers": 2144,
+      "notes": 1072,
+      "positions": 536,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 325192,
+      "witness_sha256": "b3c00f04a3f8fa46af48a435bdd97fb3d4d896f90415d38bf2142b1ce15573ab",
+      "commitment": "0xc9410a1907c0b5e146aea27a939b38a9d70a10171182061e9833474097270246",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xa3bcf69fb8ed0553b9f3dbc0e395c94a87287f41911d51d4731d77386cde86bf",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 536,
+        "spent_nullifiers": 2145,
+        "tree_leaves": 3217,
+        "unspent_notes": 1072
+      },
+      "cycles": 170829072,
+      "gas": 163580186,
+      "guest_execute_wall_s": 3.4,
+      "process_wall_s": 3.7,
+      "peak_rss_bytes": 722681856,
+      "peak_rss_mib": 689,
+      "peak_rss_bytes_before_execute": 83918848,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1330288,
+        "hash_calls": 15088,
+        "permutations": 19170
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 140953,
+          "hash_calls": 2169,
+          "permutations": 2169
+        },
+        "new_state_root": {
+          "absorbed_bytes": 594202,
+          "hash_calls": 6458,
+          "permutations": 8497
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 593909,
+          "hash_calls": 6453,
+          "permutations": 8492
+        }
+      },
+      "keccak_share_estimate": 0.9023,
+      "precompile_equivalent_cycles_projection": 80864546,
+      "gpu_seconds_at_central_rate": 420.8,
+      "gpu_seconds_at_central_rate_precompile_projection": 330.9,
+      "rate_needed_for_per_proof_budget": 854145
+    },
+    {
+      "phase": "phase1",
+      "history": 5360,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3216,
+      "spent_nullifiers": 2144,
+      "notes": 1072,
+      "positions": 536,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 324372,
+      "witness_sha256": "a1d6c9aa6fbe8a8d8b9c8ece4b3e88b28b23f7d2321c4180e7a319851662d05e",
+      "commitment": "0xfffebe7484baf0b7f8a03a3d59d8d8f03b724e7ae1711c2ffd5f368c72a2fe9e",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x242b661d34256b7dfd477fe8de53cfdf2514ed887e83b82207c76bb6eb6ccc84",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 536,
+        "spent_nullifiers": 2144,
+        "tree_leaves": 3216,
+        "unspent_notes": 1072
+      },
+      "cycles": 160247755,
+      "gas": 153519730,
+      "guest_execute_wall_s": 3.2,
+      "process_wall_s": 3.5,
+      "peak_rss_bytes": 686407680,
+      "peak_rss_mib": 655,
+      "peak_rss_bytes_before_execute": 81461248,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1329574,
+        "hash_calls": 15078,
+        "permutations": 19160
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 140953,
+          "hash_calls": 2169,
+          "permutations": 2169
+        },
+        "new_state_root": {
+          "absorbed_bytes": 593909,
+          "hash_calls": 6453,
+          "permutations": 8492
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 593909,
+          "hash_calls": 6453,
+          "permutations": 8492
+        }
+      },
+      "keccak_share_estimate": 0.9613,
+      "precompile_equivalent_cycles_projection": 70372247,
+      "gpu_seconds_at_central_rate": 410.2,
+      "gpu_seconds_at_central_rate_precompile_projection": 320.4,
+      "rate_needed_for_per_proof_budget": 801239
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 5360,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3216,
+      "spent_nullifiers": 2144,
+      "notes": 1072,
+      "positions": 536,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 324360,
+      "witness_sha256": "07980d8c65f6ebee046fa04127ce9f146c5c49f6ff6eb10e56cf75bd9c658c50",
+      "commitment": "0x3c93deac850d115fa2c83617e8e410e14457fff2ba1398bd237ee3dd934c30e9",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 436,
+        "spent_nullifiers": 2144,
+        "tree_leaves": 4288,
+        "unspent_notes": 1072
+      },
+      "cycles": 201728802,
+      "gas": 192006487,
+      "guest_execute_wall_s": 4.0,
+      "process_wall_s": 4.3,
+      "peak_rss_bytes": 858619904,
+      "peak_rss_mib": 819,
+      "peak_rss_bytes_before_execute": 83607552,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1657637,
+        "hash_calls": 19365,
+        "permutations": 23306
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 242272,
+          "hash_calls": 2144,
+          "permutations": 2144
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 140953,
+          "hash_calls": 2169,
+          "permutations": 2169
+        },
+        "new_state_root": {
+          "absorbed_bytes": 679700,
+          "hash_calls": 8596,
+          "permutations": 10494
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 593909,
+          "hash_calls": 6453,
+          "permutations": 8492
+        }
+      },
+      "keccak_share_estimate": 0.9289,
+      "precompile_equivalent_cycles_projection": 91692028,
+      "gpu_seconds_at_central_rate": 451.7,
+      "gpu_seconds_at_central_rate_precompile_projection": 341.7,
+      "rate_needed_for_per_proof_budget": 1008644
+    },
+    {
+      "phase": "phase0",
+      "history": 6000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3600,
+      "spent_nullifiers": 2400,
+      "notes": 1200,
+      "positions": 600,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 363856,
+      "witness_sha256": "ebfaed8e791875abbe389391865797d034bbc8b22703bd9eab80dd224ff08727",
+      "commitment": "0x08ea86d055f957753b7649323b30c8d9c3cb825dca209f978e044ea6bcee61f5",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xad4c2837ec4fef463ef58a8d0831ad88a6c6e1e7d5df72d03c0ce298a73406ce",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 600,
+        "spent_nullifiers": 2401,
+        "tree_leaves": 3601,
+        "unspent_notes": 1200
+      },
+      "cycles": 189809940,
+      "gas": 181755032,
+      "guest_execute_wall_s": 3.8,
+      "process_wall_s": 4.2,
+      "peak_rss_bytes": 798687232,
+      "peak_rss_mib": 762,
+      "peak_rss_bytes_before_execute": 81494016,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1487728,
+        "hash_calls": 16880,
+        "permutations": 21446
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 157593,
+          "hash_calls": 2425,
+          "permutations": 2425
+        },
+        "new_state_root": {
+          "absorbed_bytes": 664602,
+          "hash_calls": 7226,
+          "permutations": 9507
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 664309,
+          "hash_calls": 7221,
+          "permutations": 9502
+        }
+      },
+      "keccak_share_estimate": 0.9085,
+      "precompile_equivalent_cycles_projection": 89163850,
+      "gpu_seconds_at_central_rate": 439.8,
+      "gpu_seconds_at_central_rate_precompile_projection": 339.2,
+      "rate_needed_for_per_proof_budget": 949050
+    },
+    {
+      "phase": "phase1",
+      "history": 6000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3600,
+      "spent_nullifiers": 2400,
+      "notes": 1200,
+      "positions": 600,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 363036,
+      "witness_sha256": "43d6de9313e38fbf47a0ecdfeedca831c01de343a2563bb9f8e2fb8ebc4b828c",
+      "commitment": "0x51d0cbb583da445655dd6972b3218c02d734587d8f0a6aaf658b3d0f5c774f3b",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xdc98206a65da56fed4f8243e7c3dacf4091a215476c97b4fa1efd15828974ef0",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 600,
+        "spent_nullifiers": 2400,
+        "tree_leaves": 3600,
+        "unspent_notes": 1200
+      },
+      "cycles": 179300863,
+      "gas": 171760593,
+      "guest_execute_wall_s": 3.5,
+      "process_wall_s": 3.9,
+      "peak_rss_bytes": 766394368,
+      "peak_rss_mib": 731,
+      "peak_rss_bytes_before_execute": 80527360,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1487014,
+        "hash_calls": 16870,
+        "permutations": 21436
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 157593,
+          "hash_calls": 2425,
+          "permutations": 2425
+        },
+        "new_state_root": {
+          "absorbed_bytes": 664309,
+          "hash_calls": 7221,
+          "permutations": 9502
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 664309,
+          "hash_calls": 7221,
+          "permutations": 9502
+        }
+      },
+      "keccak_share_estimate": 0.9612,
+      "precompile_equivalent_cycles_projection": 78741921,
+      "gpu_seconds_at_central_rate": 429.3,
+      "gpu_seconds_at_central_rate_precompile_projection": 328.7,
+      "rate_needed_for_per_proof_budget": 896504
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 6000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 3600,
+      "spent_nullifiers": 2400,
+      "notes": 1200,
+      "positions": 600,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 363024,
+      "witness_sha256": "bbe2aac31bfa42bf81fdb531641aa66a3c567f7cf9ffa64a44500680bc46ef4c",
+      "commitment": "0x1e51aa23c5a660a885560f85a03fdcaf600080926f5025ef7776ef41cf503591",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 484,
+        "spent_nullifiers": 2400,
+        "tree_leaves": 4800,
+        "unspent_notes": 1200
+      },
+      "cycles": 225819369,
+      "gas": 214657888,
+      "guest_execute_wall_s": 4.4,
+      "process_wall_s": 4.8,
+      "peak_rss_bytes": 948830208,
+      "peak_rss_mib": 905,
+      "peak_rss_bytes_before_execute": 81625088,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1853412,
+        "hash_calls": 21668,
+        "permutations": 26070
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 271200,
+          "hash_calls": 2400,
+          "permutations": 2400
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 157593,
+          "hash_calls": 2425,
+          "permutations": 2425
+        },
+        "new_state_root": {
+          "absorbed_bytes": 759507,
+          "hash_calls": 9619,
+          "permutations": 11736
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 664309,
+          "hash_calls": 7221,
+          "permutations": 9502
+        }
+      },
+      "keccak_share_estimate": 0.9282,
+      "precompile_equivalent_cycles_projection": 102573189,
+      "gpu_seconds_at_central_rate": 475.8,
+      "gpu_seconds_at_central_rate_precompile_projection": 352.6,
+      "rate_needed_for_per_proof_budget": 1129097
+    },
+    {
+      "phase": "phase0",
+      "history": 8000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 4800,
+      "spent_nullifiers": 3200,
+      "notes": 1600,
+      "positions": 800,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 484664,
+      "witness_sha256": "25fe554f9d5cd9c2525b66d34ec86422e9ea484215c2fab51dd7e6ce03c868b7",
+      "commitment": "0xac99c80e487e9144950396c3d6eafc4e921d753807f4f14dad32031dc15775d0",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x9f96b8345532fdadd2b03055f5870bbc296b92af837b8df4795b531360ff1381",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 800,
+        "spent_nullifiers": 3201,
+        "tree_leaves": 4801,
+        "unspent_notes": 1600
+      },
+      "cycles": 249206205,
+      "gas": 238608961,
+      "guest_execute_wall_s": 4.9,
+      "process_wall_s": 5.3,
+      "peak_rss_bytes": 1030504448,
+      "peak_rss_mib": 983,
+      "peak_rss_bytes_before_execute": 85770240,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1979598,
+        "hash_calls": 22478,
+        "permutations": 28548
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 209593,
+          "hash_calls": 3225,
+          "permutations": 3225
+        },
+        "new_state_root": {
+          "absorbed_bytes": 884602,
+          "hash_calls": 9626,
+          "permutations": 12659
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 884179,
+          "hash_calls": 9619,
+          "permutations": 12652
+        }
+      },
+      "keccak_share_estimate": 0.9211,
+      "precompile_equivalent_cycles_projection": 115218210,
+      "gpu_seconds_at_central_rate": 499.2,
+      "gpu_seconds_at_central_rate_precompile_projection": 365.2,
+      "rate_needed_for_per_proof_budget": 1246031
+    },
+    {
+      "phase": "phase1",
+      "history": 8000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 4800,
+      "spent_nullifiers": 3200,
+      "notes": 1600,
+      "positions": 800,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 483844,
+      "witness_sha256": "1ae4a9175552b60f245b9cf7f073fa306e6eac89171850512bdc305614941dfd",
+      "commitment": "0xb07194be331d7e3f780a55795ea0ce31e445db1df16c0f8c5aa41b6cf90afa7b",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xe99edebbb796476d14db11b6230469101a777be73d7f1f6cd9b91d8268c2185d",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 800,
+        "spent_nullifiers": 3200,
+        "tree_leaves": 4800,
+        "unspent_notes": 1600
+      },
+      "cycles": 238912287,
+      "gas": 228777811,
+      "guest_execute_wall_s": 4.7,
+      "process_wall_s": 5.1,
+      "peak_rss_bytes": 992428032,
+      "peak_rss_mib": 946,
+      "peak_rss_bytes_before_execute": 81838080,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 1978754,
+        "hash_calls": 22466,
+        "permutations": 28536
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 209593,
+          "hash_calls": 3225,
+          "permutations": 3225
+        },
+        "new_state_root": {
+          "absorbed_bytes": 884179,
+          "hash_calls": 9619,
+          "permutations": 12652
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 884179,
+          "hash_calls": 9619,
+          "permutations": 12652
+        }
+      },
+      "keccak_share_estimate": 0.9603,
+      "precompile_equivalent_cycles_projection": 104995266,
+      "gpu_seconds_at_central_rate": 488.9,
+      "gpu_seconds_at_central_rate_precompile_projection": 355.0,
+      "rate_needed_for_per_proof_budget": 1194561
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 8000,
+      "measured": true,
+      "gate_size": false,
+      "tree_leaves": 4800,
+      "spent_nullifiers": 3200,
+      "notes": 1600,
+      "positions": 800,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 483832,
+      "witness_sha256": "0c2bb5dc91f2e95843d339fd725815e05e77fc43d75bdd4b7a01c59b8aab081c",
+      "commitment": "0xeb86a7c905bcae46d6ac0bc885e6f0eed3c43d4db70013ce64055c03548bf452",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 644,
+        "spent_nullifiers": 3200,
+        "tree_leaves": 6400,
+        "unspent_notes": 1600
+      },
+      "cycles": 301080595,
+      "gas": 285985490,
+      "guest_execute_wall_s": 5.9,
+      "process_wall_s": 6.3,
+      "peak_rss_bytes": 1238499328,
+      "peak_rss_mib": 1181,
+      "peak_rss_bytes_before_execute": 81510400,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 2467137,
+        "hash_calls": 28865,
+        "permutations": 34715
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 361600,
+          "hash_calls": 3200,
+          "permutations": 3200
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 209593,
+          "hash_calls": 3225,
+          "permutations": 3225
+        },
+        "new_state_root": {
+          "absorbed_bytes": 1010962,
+          "hash_calls": 12818,
+          "permutations": 15631
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 884179,
+          "hash_calls": 9619,
+          "permutations": 12652
+        }
+      },
+      "keccak_share_estimate": 0.9271,
+      "precompile_equivalent_cycles_projection": 136842449,
+      "gpu_seconds_at_central_rate": 551.1,
+      "gpu_seconds_at_central_rate_precompile_projection": 386.8,
+      "rate_needed_for_per_proof_budget": 1505403
+    },
+    {
+      "phase": "phase0",
+      "history": 10000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 6000,
+      "spent_nullifiers": 4000,
+      "notes": 2000,
+      "positions": 1000,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 605472,
+      "witness_sha256": "a72b432643f195bd4d7fb7f57c35add2d10ef1ffe26d6e0231ce2aa32577d2d2",
+      "commitment": "0x91feeb71b299ac9552d659641fe8fba382f063ed03f25e6ec5cfed0da2c62172",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x55467d717f2b1698281e5ad2cd76bdee63cab537a06e894ed5defd2a1b24c637",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 1000,
+        "spent_nullifiers": 4001,
+        "tree_leaves": 6001,
+        "unspent_notes": 2000
+      },
+      "cycles": 308746303,
+      "gas": 295889915,
+      "guest_execute_wall_s": 30.1,
+      "process_wall_s": 32.2,
+      "peak_rss_bytes": 1257193472,
+      "peak_rss_mib": 1199,
+      "peak_rss_bytes_before_execute": 84983808,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 2471338,
+        "hash_calls": 28074,
+        "permutations": 35652
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 261593,
+          "hash_calls": 4025,
+          "permutations": 4025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 1104407,
+          "hash_calls": 12023,
+          "permutations": 15810
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 1104114,
+          "hash_calls": 12018,
+          "permutations": 15805
+        }
+      },
+      "keccak_share_estimate": 0.9284,
+      "precompile_equivalent_cycles_projection": 141570430,
+      "gpu_seconds_at_central_rate": 558.7,
+      "gpu_seconds_at_central_rate_precompile_projection": 391.6,
+      "rate_needed_for_per_proof_budget": 1543732
+    },
+    {
+      "phase": "phase1",
+      "history": 10000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 6000,
+      "spent_nullifiers": 4000,
+      "notes": 2000,
+      "positions": 1000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 604652,
+      "witness_sha256": "6892f56db6ee820ec16c1605dd9ab6ed512461a884f5a423a2a559b4dbff531d",
+      "commitment": "0xded0bc50f60a8e568d083ea5745e7fb160dc4ca568adca2bbf3a4820e29e7686",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x37a90c434cb27eb54d9a44480c9eb06f600b38f6501841c616fb4a82692af194",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 1000,
+        "spent_nullifiers": 4000,
+        "tree_leaves": 6000,
+        "unspent_notes": 2000
+      },
+      "cycles": 298700156,
+      "gas": 286035914,
+      "guest_execute_wall_s": 33.2,
+      "process_wall_s": 34.8,
+      "peak_rss_bytes": 1224261632,
+      "peak_rss_mib": 1168,
+      "peak_rss_bytes_before_execute": 83247104,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 2470624,
+        "hash_calls": 28064,
+        "permutations": 35642
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 261593,
+          "hash_calls": 4025,
+          "permutations": 4025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 1104114,
+          "hash_calls": 12018,
+          "permutations": 15805
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 1104114,
+          "hash_calls": 12018,
+          "permutations": 15805
+        }
+      },
+      "keccak_share_estimate": 0.9594,
+      "precompile_equivalent_cycles_projection": 131439018,
+      "gpu_seconds_at_central_rate": 548.7,
+      "gpu_seconds_at_central_rate_precompile_projection": 381.4,
+      "rate_needed_for_per_proof_budget": 1493501
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 10000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 6000,
+      "spent_nullifiers": 4000,
+      "notes": 2000,
+      "positions": 1000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 604640,
+      "witness_sha256": "60b7903f7bb543c514bb731160afd81b40f7cb6e77b934ef70a502e4feedf108",
+      "commitment": "0xae4acf55fe4b965ee3719765628478b097090f8ee0c380a902b305d06aeccfca",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 806,
+        "spent_nullifiers": 4000,
+        "tree_leaves": 8000,
+        "unspent_notes": 2000
+      },
+      "cycles": 376597213,
+      "gas": 357954194,
+      "guest_execute_wall_s": 48.4,
+      "process_wall_s": 50.8,
+      "peak_rss_bytes": 1529184256,
+      "peak_rss_mib": 1458,
+      "peak_rss_bytes_before_execute": 81231872,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 3081311,
+        "hash_calls": 36063,
+        "permutations": 43367
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 452000,
+          "hash_calls": 4000,
+          "permutations": 4000
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 261593,
+          "hash_calls": 4025,
+          "permutations": 4025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 1262801,
+          "hash_calls": 16017,
+          "permutations": 19530
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 1104114,
+          "hash_calls": 12018,
+          "permutations": 15805
+        }
+      },
+      "keccak_share_estimate": 0.9259,
+      "precompile_equivalent_cycles_projection": 171562627,
+      "gpu_seconds_at_central_rate": 626.6,
+      "gpu_seconds_at_central_rate_precompile_projection": 421.6,
+      "rate_needed_for_per_proof_budget": 1882986
+    },
+    {
+      "phase": "phase0",
+      "history": 50000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 30000,
+      "spent_nullifiers": 20000,
+      "notes": 10000,
+      "positions": 5000,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 3021671,
+      "witness_sha256": "59ad1e9b5e51cb769dd29b31f8f40ec3936decfb5b088bf24d684ea40eb6dbbb",
+      "commitment": "0x1a1601083282d3ae6bc372900762be6a7aac763e1a43db125681ebee85789b66",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x425cce3001243c8f2dfef9c6d79e2c9eb1ea1ff446847671913aaf8d5f663ac9",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 5000,
+        "spent_nullifiers": 20001,
+        "tree_leaves": 30001,
+        "unspent_notes": 10000
+      },
+      "cycles": 1502477548,
+      "gas": 1449330698,
+      "guest_execute_wall_s": 157.9,
+      "process_wall_s": 160.2,
+      "peak_rss_bytes": 2333982720,
+      "peak_rss_mib": 2226,
+      "peak_rss_bytes_before_execute": 91996160,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 12311338,
+        "hash_calls": 140074,
+        "permutations": 177768
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 1301593,
+          "hash_calls": 20025,
+          "permutations": 20025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 5504407,
+          "hash_calls": 60023,
+          "permutations": 78868
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 5504114,
+          "hash_calls": 60018,
+          "permutations": 78863
+        }
+      },
+      "keccak_share_estimate": 0.9513,
+      "precompile_equivalent_cycles_projection": 674321487,
+      "gpu_seconds_at_central_rate": 1752.5,
+      "gpu_seconds_at_central_rate_precompile_projection": 924.3,
+      "rate_needed_for_per_proof_budget": 7512388
+    },
+    {
+      "phase": "phase1",
+      "history": 50000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 30000,
+      "spent_nullifiers": 20000,
+      "notes": 10000,
+      "positions": 5000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 3020849,
+      "witness_sha256": "1d8a90113525e3fe37dc767dbc74ebdaa4ff74d8f821f7fe02fcfd8d5d82e3de",
+      "commitment": "0x46b9b9c19feb3c2e04c38cda60760a90efa671e12023587b8f6633c3dead8eec",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x12704e6784b884a62e24ff560ba89d8badedb3dbace09bba0a19506f611acff0",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 5000,
+        "spent_nullifiers": 20000,
+        "tree_leaves": 30000,
+        "unspent_notes": 10000
+      },
+      "cycles": 1497032162,
+      "gas": 1443667660,
+      "guest_execute_wall_s": 97.9,
+      "process_wall_s": 100.3,
+      "peak_rss_bytes": 3797696512,
+      "peak_rss_mib": 3622,
+      "peak_rss_bytes_before_execute": 92209152,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 12310624,
+        "hash_calls": 140064,
+        "permutations": 177758
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 1301593,
+          "hash_calls": 20025,
+          "permutations": 20025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 5504114,
+          "hash_calls": 60018,
+          "permutations": 78863
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 5504114,
+          "hash_calls": 60018,
+          "permutations": 78863
+        }
+      },
+      "keccak_share_estimate": 0.9547,
+      "precompile_equivalent_cycles_projection": 668687350,
+      "gpu_seconds_at_central_rate": 1747.0,
+      "gpu_seconds_at_central_rate_precompile_projection": 918.7,
+      "rate_needed_for_per_proof_budget": 7485161
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 50000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 30000,
+      "spent_nullifiers": 20000,
+      "notes": 10000,
+      "positions": 5000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 3020837,
+      "witness_sha256": "987fcad9cb7d3519093f457bf75a5355cef90d0009bf1fa790646f322025d698",
+      "commitment": "0x71149468ca07c9ba29bdfa13abc56213dc3fe7c9e8b2033429dd48fc46869591",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 4039,
+        "spent_nullifiers": 20000,
+        "tree_leaves": 40000,
+        "unspent_notes": 10000
+      },
+      "cycles": 1893242378,
+      "gas": 1814975658,
+      "guest_execute_wall_s": 116.8,
+      "process_wall_s": 119.6,
+      "peak_rss_bytes": 4861427712,
+      "peak_rss_mib": 4636,
+      "peak_rss_bytes_before_execute": 96419840,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 15366112,
+        "hash_calls": 180064,
+        "permutations": 216401
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 2260000,
+          "hash_calls": 20000,
+          "permutations": 20000
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 1301593,
+          "hash_calls": 20025,
+          "permutations": 20025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 6299602,
+          "hash_calls": 80018,
+          "permutations": 97506
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 5504114,
+          "hash_calls": 60018,
+          "permutations": 78863
+        }
+      },
+      "keccak_share_estimate": 0.919,
+      "precompile_equivalent_cycles_projection": 878834125,
+      "gpu_seconds_at_central_rate": 2143.2,
+      "gpu_seconds_at_central_rate_precompile_projection": 1128.8,
+      "rate_needed_for_per_proof_budget": 9466212
+    },
+    {
+      "phase": "phase0",
+      "history": 100000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 60000,
+      "spent_nullifiers": 40000,
+      "notes": 20000,
+      "positions": 10000,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 6041909,
+      "witness_sha256": "c1a8eefe054b17e2e9ae3c3e4ab127bdce293ac08989e832368354f879717477",
+      "commitment": "0x413490f8a6ed5566da1c55601ed1ba26dba2350ddf6ada11823c6a6a43c41fe3",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x72139ecbd1faf83a35d804afd2e401ce655cb380f3c5d18edb486f4e88fd8dce",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 10000,
+        "spent_nullifiers": 40001,
+        "tree_leaves": 60001,
+        "unspent_notes": 20000
+      },
+      "cycles": 2999864877,
+      "gas": 2904173833,
+      "guest_execute_wall_s": 177.3,
+      "process_wall_s": 180.7,
+      "peak_rss_bytes": 4871176192,
+      "peak_rss_mib": 4646,
+      "peak_rss_bytes_before_execute": 114049024,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 24611273,
+        "hash_calls": 280073,
+        "permutations": 355413
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 2601593,
+          "hash_calls": 40025,
+          "permutations": 40025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 11004407,
+          "hash_calls": 120023,
+          "permutations": 157691
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 11004049,
+          "hash_calls": 120017,
+          "permutations": 157685
+        }
+      },
+      "keccak_share_estimate": 0.9526,
+      "precompile_equivalent_cycles_projection": 1350067942,
+      "gpu_seconds_at_central_rate": 3249.9,
+      "gpu_seconds_at_central_rate_precompile_projection": 1600.1,
+      "rate_needed_for_per_proof_budget": 14999324
+    },
+    {
+      "phase": "phase1",
+      "history": 100000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 60000,
+      "spent_nullifiers": 40000,
+      "notes": 20000,
+      "positions": 10000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 6041087,
+      "witness_sha256": "e48000850e5fbc0ee9b1ce4057e9945f18336fe4a3c780acb2747e3811b1ab65",
+      "commitment": "0xcbb8e35746b00e49e310511145520dcb1e42348ab05b04f9091c3e9f046f6c9c",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x9bbf997d23d8e60c7a1d59ead21791779325711905bfb41e7687c508be4d47c3",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 10000,
+        "spent_nullifiers": 40000,
+        "tree_leaves": 60000,
+        "unspent_notes": 20000
+      },
+      "cycles": 3001361013,
+      "gas": 2912030724,
+      "guest_execute_wall_s": 182.1,
+      "process_wall_s": 187.9,
+      "peak_rss_bytes": 4479959040,
+      "peak_rss_mib": 4272,
+      "peak_rss_bytes_before_execute": 121536512,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 24610494,
+        "hash_calls": 280062,
+        "permutations": 355402
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 2601593,
+          "hash_calls": 40025,
+          "permutations": 40025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 11004049,
+          "hash_calls": 120017,
+          "permutations": 157685
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 11004049,
+          "hash_calls": 120017,
+          "permutations": 157685
+        }
+      },
+      "keccak_share_estimate": 0.9521,
+      "precompile_equivalent_cycles_projection": 1355245720,
+      "gpu_seconds_at_central_rate": 3251.4,
+      "gpu_seconds_at_central_rate_precompile_projection": 1605.2,
+      "rate_needed_for_per_proof_budget": 15006805
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 100000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 60000,
+      "spent_nullifiers": 40000,
+      "notes": 20000,
+      "positions": 10000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 6041075,
+      "witness_sha256": "962fd55fef3c7de21b31adf0b4a0d8d6635b0cec698609ff370041ee31a8ab45",
+      "commitment": "0xa61525884012cb246e98093dceafecb363f843fc6c06964e1414f6d423d4bb3c",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 8076,
+        "spent_nullifiers": 40000,
+        "tree_leaves": 80000,
+        "unspent_notes": 20000
+      },
+      "cycles": 3800185818,
+      "gas": 3661259645,
+      "guest_execute_wall_s": 208.4,
+      "process_wall_s": 212.1,
+      "peak_rss_bytes": 5414699008,
+      "peak_rss_mib": 5164,
+      "peak_rss_bytes_before_execute": 130138112,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 30721086,
+        "hash_calls": 360062,
+        "permutations": 432686
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 4520000,
+          "hash_calls": 40000,
+          "permutations": 40000
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 2601593,
+          "hash_calls": 40025,
+          "permutations": 40025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 12594641,
+          "hash_calls": 160017,
+          "permutations": 194969
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 11004049,
+          "hash_calls": 120017,
+          "permutations": 157685
+        }
+      },
+      "keccak_share_estimate": 0.9155,
+      "precompile_equivalent_cycles_projection": 1781980967,
+      "gpu_seconds_at_central_rate": 4050.2,
+      "gpu_seconds_at_central_rate_precompile_projection": 2032.0,
+      "rate_needed_for_per_proof_budget": 19000929
+    },
+    {
+      "phase": "phase0",
+      "history": 250000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 150000,
+      "spent_nullifiers": 100000,
+      "notes": 50000,
+      "positions": 25000,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 15102625,
+      "witness_sha256": "e7dbef8e568a5d5f6a92003ae366104852ceb8f9f0318e991d90aa80b804c4f8",
+      "commitment": "0x65d781456ce50ec2918069d72abe875c4c553caec958b4457bd0989129664389",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xd9ab865189f8a96d5b49e9de66700a9cf0645c74a4c790cbd52832c1d182a0ef",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 25000,
+        "spent_nullifiers": 100001,
+        "tree_leaves": 150001,
+        "unspent_notes": 50000
+      },
+      "cycles": 7510362229,
+      "gas": 7315619453,
+      "guest_execute_wall_s": 499.0,
+      "process_wall_s": 508.0,
+      "peak_rss_bytes": 2912813056,
+      "peak_rss_mib": 2778,
+      "peak_rss_bytes_before_execute": 258490368,
+      "sampled_peak_footprint_mib": null,
+      "keccak_native": {
+        "absorbed_bytes": 61511208,
+        "hash_calls": 700072,
+        "permutations": 888354
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 6501593,
+          "hash_calls": 100025,
+          "permutations": 100025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 27504342,
+          "hash_calls": 300022,
+          "permutations": 394161
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 27504049,
+          "hash_calls": 300017,
+          "permutations": 394156
+        }
+      },
+      "keccak_share_estimate": 0.951,
+      "precompile_equivalent_cycles_projection": 3411966048,
+      "gpu_seconds_at_central_rate": 7760.4,
+      "gpu_seconds_at_central_rate_precompile_projection": 3662.0,
+      "rate_needed_for_per_proof_budget": 37551811
+    },
+    {
+      "phase": "phase1",
+      "history": 250000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 150000,
+      "spent_nullifiers": 100000,
+      "notes": 50000,
+      "positions": 25000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 15101803,
+      "witness_sha256": "b02090cf1b67e98d1769b96e0d5aa7385550dea41666f833d1a83a630fc61f17",
+      "commitment": "0x56f016e416f7e30ead33f952e6437e86cd862e8eb6456237c2b76d05c8f8bb07",
+      "native_guest_equal": true,
+      "withdrawals_root": "0xee4a5d0ccf2a513d9c4a5530590da97853b4fb069fff9bd0a2489ef5fa4afacc",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 25000,
+        "spent_nullifiers": 100000,
+        "tree_leaves": 150000,
+        "unspent_notes": 50000
+      },
+      "cycles": 7530928440,
+      "gas": 7354955977,
+      "guest_execute_wall_s": 282.2,
+      "process_wall_s": 292.3,
+      "peak_rss_bytes": 4646076416,
+      "peak_rss_mib": 4431,
+      "peak_rss_bytes_before_execute": 319455232,
+      "sampled_peak_footprint_mib": 8570,
+      "keccak_native": {
+        "absorbed_bytes": 61510494,
+        "hash_calls": 700062,
+        "permutations": 888344
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 6501593,
+          "hash_calls": 100025,
+          "permutations": 100025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 27504049,
+          "hash_calls": 300017,
+          "permutations": 394156
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 27504049,
+          "hash_calls": 300017,
+          "permutations": 394156
+        }
+      },
+      "keccak_share_estimate": 0.9484,
+      "precompile_equivalent_cycles_projection": 3443334798,
+      "gpu_seconds_at_central_rate": 7780.9,
+      "gpu_seconds_at_central_rate_precompile_projection": 3693.3,
+      "rate_needed_for_per_proof_budget": 37654642
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 250000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 150000,
+      "spent_nullifiers": 100000,
+      "notes": 50000,
+      "positions": 25000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 15101791,
+      "witness_sha256": "aebf626632bb0083c5fb4c798b878bcd32d07c6e621d3789bb15eba95432ec00",
+      "commitment": "0xe38b6563871460991f191ac0a3b3321d783b612136d86b35777acb7c98b473b0",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 20186,
+        "spent_nullifiers": 100000,
+        "tree_leaves": 200000,
+        "unspent_notes": 50000
+      },
+      "cycles": 9547532149,
+      "gas": 9255667343,
+      "guest_execute_wall_s": 170.8,
+      "process_wall_s": 172.6,
+      "peak_rss_bytes": 4867375104,
+      "peak_rss_mib": 4642,
+      "peak_rss_bytes_before_execute": 327647232,
+      "sampled_peak_footprint_mib": 6042,
+      "keccak_native": {
+        "absorbed_bytes": 76786206,
+        "hash_calls": 900062,
+        "permutations": 1081548
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 11300000,
+          "hash_calls": 100000,
+          "permutations": 100000
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 6501593,
+          "hash_calls": 100025,
+          "permutations": 100025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 31479761,
+          "hash_calls": 400017,
+          "permutations": 487360
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 27504049,
+          "hash_calls": 300017,
+          "permutations": 394156
+        }
+      },
+      "keccak_share_estimate": 0.9108,
+      "precompile_equivalent_cycles_projection": 4533959771,
+      "gpu_seconds_at_central_rate": 9797.5,
+      "gpu_seconds_at_central_rate_precompile_projection": 4784.0,
+      "rate_needed_for_per_proof_budget": 47737661
+    },
+    {
+      "phase": "phase0",
+      "history": 500000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 300000,
+      "spent_nullifiers": 200000,
+      "notes": 100000,
+      "positions": 50000,
+      "markets": 4,
+      "ops": [
+        "Deposit",
+        "Fill",
+        "Fill",
+        "Withdraw",
+        "AccrueFunding",
+        "AccrueFunding"
+      ],
+      "witness_bytes": 30203809,
+      "witness_sha256": "dba20ec54df51eac3e4d421bb1cb515f3b75a7e324185aec870a31f5614640d0",
+      "commitment": "0x4af413a56017d032ac4d1df6bacde4a2a0eec6fac8eaf36b4c8c12920e40f8a1",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x50fb5db62595c663062a027959d20ae58d75e70c3555bef0d322d0034aecdd3f",
+      "post_state": {
+        "mode": "Normal",
+        "positions": 50000,
+        "spent_nullifiers": 200001,
+        "tree_leaves": 300001,
+        "unspent_notes": 100000
+      },
+      "cycles": 15046445208,
+      "gas": 14713084559,
+      "guest_execute_wall_s": 185.0,
+      "process_wall_s": 187.5,
+      "peak_rss_bytes": 5571854336,
+      "peak_rss_mib": 5314,
+      "peak_rss_bytes_before_execute": 415678464,
+      "sampled_peak_footprint_mib": 6089,
+      "keccak_native": {
+        "absorbed_bytes": 123011143,
+        "hash_calls": 1400071,
+        "permutations": 1776589
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 421,
+          "hash_calls": 5,
+          "permutations": 5
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 13001593,
+          "hash_calls": 200025,
+          "permutations": 200025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 55004342,
+          "hash_calls": 600022,
+          "permutations": 788279
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 55003984,
+          "hash_calls": 600016,
+          "permutations": 788273
+        }
+      },
+      "keccak_share_estimate": 0.9494,
+      "precompile_equivalent_cycles_projection": 6881838977,
+      "gpu_seconds_at_central_rate": 15296.4,
+      "gpu_seconds_at_central_rate_precompile_projection": 7131.8,
+      "rate_needed_for_per_proof_budget": 75232226
+    },
+    {
+      "phase": "phase1",
+      "history": 500000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 300000,
+      "spent_nullifiers": 200000,
+      "notes": 100000,
+      "positions": 50000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 30202987,
+      "witness_sha256": "e9185704b16e5edf61cb6ae7de960d9107c7dfbe7cf89cbeeb90ee4766647b15",
+      "commitment": "0xcad6271417f5f52f431354803e766eb54527d429cc54f2250f717133caf3e20d",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x1f524d9608b77a322747ae2403da0ba8c2d8455f16a85fd6f7ac91a57866b719",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 50000,
+        "spent_nullifiers": 200000,
+        "tree_leaves": 300000,
+        "unspent_notes": 100000
+      },
+      "cycles": 15098764685,
+      "gas": 14799885608,
+      "guest_execute_wall_s": 122.8,
+      "process_wall_s": 125.4,
+      "peak_rss_bytes": 6033883136,
+      "peak_rss_mib": 5754,
+      "peak_rss_bytes_before_execute": 477839360,
+      "sampled_peak_footprint_mib": 9367,
+      "keccak_native": {
+        "absorbed_bytes": 123010364,
+        "hash_calls": 1400060,
+        "permutations": 1776578
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 0,
+          "hash_calls": 0,
+          "permutations": 0
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 13001593,
+          "hash_calls": 200025,
+          "permutations": 200025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 55003984,
+          "hash_calls": 600016,
+          "permutations": 788273
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 55003984,
+          "hash_calls": 600016,
+          "permutations": 788273
+        }
+      },
+      "keccak_share_estimate": 0.9461,
+      "precompile_equivalent_cycles_projection": 6953870696,
+      "gpu_seconds_at_central_rate": 15348.8,
+      "gpu_seconds_at_central_rate_precompile_projection": 7203.9,
+      "rate_needed_for_per_proof_budget": 75493823
+    },
+    {
+      "phase": "phase1-haircut",
+      "history": 500000,
+      "measured": true,
+      "gate_size": true,
+      "tree_leaves": 300000,
+      "spent_nullifiers": 200000,
+      "notes": 100000,
+      "positions": 50000,
+      "markets": 4,
+      "ops": [
+        "SettleAll"
+      ],
+      "witness_bytes": 30202975,
+      "witness_sha256": "baa22ea707f1f790aba8f0f3caeb6cfa74a75dc3b4b7d5b2f478e53c3d0d9935",
+      "commitment": "0x8a56132c84d53ec056191df707a4fcce33764afa0be41329e1871a5e82e4954f",
+      "native_guest_equal": true,
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 40383,
+        "spent_nullifiers": 200000,
+        "tree_leaves": 400000,
+        "unspent_notes": 100000
+      },
+      "cycles": 19166171669,
+      "gas": 18654225573,
+      "guest_execute_wall_s": 246.6,
+      "process_wall_s": 250.0,
+      "peak_rss_bytes": 6649118720,
+      "peak_rss_mib": 6341,
+      "peak_rss_bytes_before_execute": 523386880,
+      "sampled_peak_footprint_mib": 6694,
+      "keccak_native": {
+        "absorbed_bytes": 153563900,
+        "hash_calls": 1800060,
+        "permutations": 2163001
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 22600000,
+          "hash_calls": 200000,
+          "permutations": 200000
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 13001593,
+          "hash_calls": 200025,
+          "permutations": 200025
+        },
+        "new_state_root": {
+          "absorbed_bytes": 62957520,
+          "hash_calls": 800016,
+          "permutations": 974696
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 55003984,
+          "hash_calls": 600016,
+          "permutations": 788273
+        }
+      },
+      "keccak_share_estimate": 0.9074,
+      "precompile_equivalent_cycles_projection": 9179219540,
+      "gpu_seconds_at_central_rate": 19416.2,
+      "gpu_seconds_at_central_rate_precompile_projection": 9429.2,
+      "rate_needed_for_per_proof_budget": 95830858
+    }
+  ],
+  "fits": {
+    "phase0": {
+      "software_cycles": {
+        "intercept": -2002705,
+        "per_history": 30085.6
+      },
+      "precompile_equivalent_cycles_projection": {
+        "intercept": -14566777,
+        "per_history": 13772.1
+      },
+      "measured_histories": [
+        10000,
+        50000,
+        100000,
+        250000,
+        500000
+      ],
+      "max_relative_residual": 0.032
+    },
+    "phase1": {
+      "software_cycles": {
+        "intercept": -13459822,
+        "per_history": 30213.3
+      },
+      "precompile_equivalent_cycles_projection": {
+        "intercept": -26932018,
+        "per_history": 13942.0
+      },
+      "measured_histories": [
+        10000,
+        50000,
+        100000,
+        250000,
+        500000
+      ],
+      "max_relative_residual": 0.0336
+    },
+    "phase1-haircut": {
+      "software_cycles": {
+        "intercept": -24915693,
+        "per_history": 38360.8
+      },
+      "precompile_equivalent_cycles_projection": {
+        "intercept": -41094292,
+        "per_history": 18407.7
+      },
+      "measured_histories": [
+        10000,
+        50000,
+        100000,
+        250000,
+        500000
+      ],
+      "max_relative_residual": 0.0475
+    }
+  },
+  "precompile_model": {
+    "status": "projection; the precompile build is not measured here",
+    "keccakf_instructions": 6437,
+    "cycles_per_65_byte_hash_measured": 8040.3,
+    "gas_per_cycle_in_keccak_code": 0.9506,
+    "software_keccakf_gas": 6119.2,
+    "precompile_trace_area": 76795,
+    "precompile_complexity": 80065,
+    "precompile_gas": 1625.4,
+    "gas_saved_per_permutation": 4493.8,
+    "method": "Effective cycles if every counted keccak-f permutation ran as SP1's KECCAK_PERMUTE syscall: cycles x (gas - permutations x saving) / gas. saving = gas of the 6,437 tiny_keccak::keccakf instructions at the gas-per-cycle of keccak code (from the calibration) minus the syscall's gas from SP1 6.1.0's own cost tables (sp1-core-executor utils::cost_and_height_per_syscall with artifacts/rv64im_costs.json, vm/gas.rs complexity mapping, report.rs normalization 191). Absorb, padding and loop code around the permutation stay in software. A projection only: the precompile build needs a network fetch and is measured when it is built"
+  },
+  "gpu_time_model": {
+    "formula": "T(H) = fixed_s + cycles(H) / R; a size fits when T(H) <= prover_budget_s / margin for phase0, phase1 and phase1-haircut",
+    "prover_budget_source": "crates/gateway/src/prover_client.rs: PROVER_TIMEOUT_SECS, default 900 s, bounds each /prove call. crates/gateway/src/l1.rs min_anchor_timeout_ms: the boot handshake requires anchorTimeoutMs >= (2 x FINALITY_BUDGET + PROVER_TIMEOUT_SECS + 300 s) x 1000, FINALITY_BUDGET = 1,200 s (crates/gateway/src/clock_wait.rs). The launch anchor_timeout_ms is 3,600,000 (docs/REDEPLOY-CC-RUNBOOK.md, docs/RELEASE_MANIFEST.md), which admits at most 3,600 - 2,400 - 300 = 900 s of proving",
+    "fixed_source": "the recorded Groth16 wrapping stage of the clock-v2 proof: container 2026-10-09T18:27:56.49Z to 18:32:06.25Z, 249.8 s with 4 CPUs and 13 GB (docs/audits/2026-10-09-clock-final/generation.json, .github/workflows/clock-proof-wrap.yml); its input is the constant-size recursion output, so it does not grow with the program",
+    "rate_assumption": "No GPU proving throughput is recorded in this repository. R, the sustained core-plus-recursion proving rate of the launch prover in guest cycles per second, is assumed at 1,000,000 (central) with the sensitivity rows below. The central value is taken at the low end because the hard cap protects a one-shot wind-down proof and is raised only by a measured rate",
+    "recorded_reference": "contracts/integration/fixtures/clock-v2-verified records a real proof of a 6,035,092-cycle clock-v2 execution under SP1 6.1.0; its core and recursion time is not recorded",
+    "prover_budget_s": 900,
+    "margin": 2,
+    "per_proof_s": 450.0,
+    "fixed_s": 250,
+    "compute_s": 200.0,
+    "central_rate_cycles_per_s": 1000000.0,
+    "max_cycles_per_proof_at_central_rate": 200000000.0
+  },
+  "sensitivity": [
+    {
+      "gpu_cycles_per_second": 500000.0,
+      "max_cycles_per_proof": 100000000.0,
+      "history_cap_software": 2652,
+      "history_cap_software_by_batch": {
+        "phase0": 2971,
+        "phase1": 3336,
+        "phase1-haircut": 2652
+      },
+      "history_cap_precompile_projection": 5848,
+      "history_cap_precompile_projection_by_batch": {
+        "phase0": 6831,
+        "phase1": 7619,
+        "phase1-haircut": 5848
+      }
+    },
+    {
+      "gpu_cycles_per_second": 1000000.0,
+      "max_cycles_per_proof": 200000000.0,
+      "history_cap_software": 5313,
+      "history_cap_software_by_batch": {
+        "phase0": 6343,
+        "phase1": 6694,
+        "phase1-haircut": 5313
+      },
+      "history_cap_precompile_projection": 11608,
+      "history_cap_precompile_projection_by_batch": {
+        "phase0": 14387,
+        "phase1": 15104,
+        "phase1-haircut": 11608
+      }
+    },
+    {
+      "gpu_cycles_per_second": 2000000.0,
+      "max_cycles_per_proof": 400000000.0,
+      "history_cap_software": 10617,
+      "history_cap_software_by_batch": {
+        "phase0": 13057,
+        "phase1": 13381,
+        "phase1-haircut": 10617
+      },
+      "history_cap_precompile_projection": 22919,
+      "history_cap_precompile_projection_by_batch": {
+        "phase0": 29403,
+        "phase1": 29995,
+        "phase1-haircut": 22919
+      }
+    },
+    {
+      "gpu_cycles_per_second": 4000000.0,
+      "max_cycles_per_proof": 800000000.0,
+      "history_cap_software": 21166,
+      "history_cap_software_by_batch": {
+        "phase0": 26461,
+        "phase1": 26733,
+        "phase1-haircut": 21166
+      },
+      "history_cap_precompile_projection": 45541,
+      "history_cap_precompile_projection_by_batch": {
+        "phase0": 59299,
+        "phase1": 59563,
+        "phase1-haircut": 45541
+      }
+    },
+    {
+      "gpu_cycles_per_second": 8000000.0,
+      "max_cycles_per_proof": 1600000000.0,
+      "history_cap_software": 42266,
+      "history_cap_software_by_batch": {
+        "phase0": 53256,
+        "phase1": 53422,
+        "phase1-haircut": 42266
+      },
+      "history_cap_precompile_projection": 89925,
+      "history_cap_precompile_projection_by_batch": {
+        "phase0": 118182,
+        "phase1": 117582,
+        "phase1-haircut": 89925
+      }
+    },
+    {
+      "gpu_cycles_per_second": 16000000.0,
+      "max_cycles_per_proof": 3200000000.0,
+      "history_cap_software": 84263,
+      "history_cap_software_by_batch": {
+        "phase0": 106655,
+        "phase1": 106578,
+        "phase1-haircut": 84263
+      },
+      "history_cap_precompile_projection": 177290,
+      "history_cap_precompile_projection_by_batch": {
+        "phase0": 234579,
+        "phase1": 232519,
+        "phase1-haircut": 177290
+      }
+    },
+    {
+      "gpu_cycles_per_second": 32000000.0,
+      "max_cycles_per_proof": 6400000000.0,
+      "history_cap_software": 167852,
+      "history_cap_software_by_batch": {
+        "phase0": 213074,
+        "phase1": 212548,
+        "phase1-haircut": 167852
+      },
+      "history_cap_precompile_projection": 350427,
+      "history_cap_precompile_projection_by_batch": {
+        "phase0": 465284,
+        "phase1": 460556,
+        "phase1-haircut": 350427
+      }
+    }
+  ],
+  "rate_needed_for_100k_history": {
+    "software_cycles_per_s": 19000929,
+    "precompile_projection_cycles_per_s": 8909905
+  },
+  "caps_at_central_rate": {
+    "software_by_batch": {
+      "phase0": 6343,
+      "phase1": 6694,
+      "phase1-haircut": 5313
+    },
+    "precompile_projection_by_batch": {
+      "phase0": 14387,
+      "phase1": 15104,
+      "phase1-haircut": 11608
+    },
+    "software_cap_multiple_of_80": 5280,
+    "precompile_projection_cap_multiple_of_80": 11600
+  },
+  "cap_check": {
+    "5280/phase0": {
+      "cycles": 168453424,
+      "fits_central_budget": true
+    },
+    "5280/phase1": {
+      "cycles": 157856282,
+      "fits_central_budget": true
+    },
+    "5280/phase1-haircut": {
+      "cycles": 198725972,
+      "fits_central_budget": true
+    },
+    "5360/phase0": {
+      "cycles": 170829072,
+      "fits_central_budget": true
+    },
+    "5360/phase1": {
+      "cycles": 160247755,
+      "fits_central_budget": true
+    },
+    "5360/phase1-haircut": {
+      "cycles": 201728802,
+      "fits_central_budget": false
+    }
+  },
+  "recommendation": {
+    "max_provable_history": 5280,
+    "soft_cap_history": 4224,
+    "max_positions": 528,
+    "max_notes": 1056,
+    "adopt_keccak_precompile": true,
+    "basis": "At the central rate the launch budget allows 200,000,000 cycles per proof ((900 s / 2 - 250 s) x 1,000,000 cycles/s). The shortfall variant of phase 1 is the costliest batch at every measured size and sets the cap: at 5,280 history it takes 198,725,972 cycles, at 5,360 it takes 201,728,802. Phase 0 and the solvent phase 1 alone would allow about 6,300 and 6,700. Positions and notes keep the measured ratio, H/10 and H/5. The bound holds for the software and for the precompile build, since the precompile only lowers the cost",
+    "precompile_decision": "Without the precompile the cap is 5,280 at the central rate, below the planned 100,000 (crates/gateway/src/admission.rs). Software keccak reaches 100,000 only at R >= 19.0 M cycles/s sustained, 19x the central assumption; at the gate sizes about 91 to 96% of the cycles are keccak, and the precompile projection lowers the cost per history unit by a factor of about 2.1 (100,000 then needs R >= 8.9 M cycles/s). So the precompile is adopted in this program key",
+    "after_precompile_build": "Re-run this tool on the precompile ELF once it is built with the reviewed recipe and set the caps from its measured cycles with the same formula; the projection at the central rate is about 11,600 history (positions 1,160, notes 2,320)",
+    "planned_scale": "At the launch prover budget, 100,000 history needs a measured R of at least 8.9 M cycles/s with the precompile. The cap scales linearly with R and with the compute seconds per proof, (anchorTimeoutMs / 1000 - 2,700) / 2 - 250; a launch with a larger anchorTimeoutMs gives a proportionally larger cap without a program change"
+  },
+  "gpu_day": "GPU day re-measures: it proves phase 0 and phase 1 (and the shortfall variant) at the configured cap on the launch prover, records the proving time and the sustained rate R, and re-derives the cap with the same formula. This gate fixes the program decision (the precompile) before the program key freezes; the caps are admission policy and change without a new program key"
+}
