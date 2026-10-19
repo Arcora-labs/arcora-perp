@@ -1,20 +1,22 @@
 # Clock release identity preflight
 
-`release_manifest.py` binds the reviewed PR #31 clock guest (source hashes, ELF,
-SP1 6.1.0 and setup key) to **current local** Solidity compiler artifacts and a
-strictly public gateway/prover configuration. It rejects an old guest/key mixed
-with the new clock stack, stale compiler sources, changed source/artifact files,
-and mismatched gateway chain/address settings. Added untracked source files are
-included in the source fingerprint; a Git commit alone does not describe a dirty
-checkout.
+`release_manifest.py` binds the reviewed clock guest (`REVIEWED_GUEST`: source
+hashes, ELF, SP1 6.1.0 and setup key) to **current local** Solidity compiler
+artifacts and a strictly public gateway/prover configuration. It rejects an old
+guest/key mixed with the new clock stack, stale compiler sources, changed
+source/artifact files, and mismatched gateway chain/address settings. Added
+untracked source files are included in the source fingerprint; a Git commit alone
+does not describe a dirty checkout.
 
 The manifest closes an offline identity check. The optional `observe-target`
 command adds finalized chain/runtime/contract-binding verification. Neither closes
 R02 as a whole, and both always record `release_gate: HOLD`. They do not assert a
 fresh reproducible guest build, a running prover's identity, operator-policy
-approval, or a state/withdrawal migration rehearsal. They reuse the established
-PR #31 guest identity and do not negate or rerun that release's real proof.
-Current contract bytecode is identified separately from that historical proof.
+approval, or a state/withdrawal migration rehearsal. They take the reviewed guest
+identity (`REVIEWED_GUEST` in `verify_clock_proof.py`) and do not rebuild or
+reprove it; `real_proof` records whether the committed real proof
+(`PROOF_FIXTURE`) is a proof of that guest. Current contract bytecode is
+identified separately from that proof.
 The validator and manifest must come from a trusted release process: checksums
 are integrity bindings, not a release signature.
 
@@ -67,7 +69,7 @@ prover observation.
     "sp1_gateway": "0x0000000000000000000000000000000000000006",
     "sp1_verifier": "0x0000000000000000000000000000000000000007"
   },
-  "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
   "clock": {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3600000},
   "gateway": {
     "L1_CHAIN_ID": "31337",
@@ -76,17 +78,35 @@ prover observation.
     "L1_USDC": "0x0000000000000000000000000000000000000003",
     "CLOCK_BOUND_VERIFIER": "0x0000000000000000000000000000000000000004",
     "L1_ALLOW_MOCK_PROOF": "0",
-    "DEPOSIT_PERMIT_TTL_SECS": "1800"
+    "DEPOSIT_PERMIT_TTL_SECS": "1800",
+    "WIND_DOWN_RECIPIENT": "0x0000000000000000000000000000000000000009",
+    "PROVER_EXPECTED_ELF_SHA256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
   },
   "prover": {
-    "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
-    "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+    "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+    "guest_elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
+  },
+  "genesis": {
+    "root": "<GENESIS_ROOT printed by --print-genesis-root>",
+    "wind_down_recipient": "0x0000000000000000000000000000000000000009",
+    "oracle_signer": "0x000000000000000000000000000000000000000a"
   }
 }
 ```
 
+`genesis` is the state the settlement is deployed with, exactly as
+`darkperp-gateway --print-genesis-root` prints it: the root, the wind-down
+recipient and the oracle signer address, which are bound into that root and
+cannot change after deployment. All three must be nonzero; the recipient and the
+oracle signer must differ from each other, from every contract address and, when
+`operator_policy` is present, from every operator address. The gateway's
+`WIND_DOWN_RECIPIENT` must equal `genesis.wind_down_recipient`, and
+`PROVER_EXPECTED_ELF_SHA256` (bare lower-case hex) must equal the reviewed guest
+ELF. Python does not recompute the root: it is carried from the one
+`--print-genesis-root` run and checked against the chain by `observe-target`.
+
 An operator may add `validate --check-process-env` as a service pre-start check.
-This compares the seven allowlisted gateway variables against the manifest and
+This compares the nine allowlisted gateway variables against the manifest and
 fails before startup on a mismatch. It does not install a startup hook or change
 running services; that integration must be configured in the target environment.
 No key values are read or emitted by the environment check.
@@ -101,15 +121,31 @@ committed proof files from disk and returns `PROVEN` only when they are a proof 
 the reviewed fixture under the reviewed guest; otherwise `PENDING_REPROOF`. Editing
 a record without committing new proof files does not change the status.
 
+In this checkout the two differ: the reviewed guest's ELF, setup key and normal
+fixture are committed in `contracts/integration/fixtures/clock-pkg3-reviewed/`
+(no proof), while the committed proof in
+`contracts/integration/fixtures/clock-v2-verified/` is of the earlier clock-v2
+guest. The status is therefore `PENDING_REPROOF` until a proof of the reviewed
+fixture under the reviewed guest is committed.
+
+Committing that proof means repointing `PROOF_FIXTURE` at its directory with that
+proof's identity, and its `sources` (the proof guest's source pins, recorded in
+the evidence beside its ELF) at `REVIEWED_GUEST["sources"]`. `verify_clock_proof.py`
+reads `PROOF_FIXTURE["dir"]` unless `--artifact-dir` names another directory, and
+`test_pin_coherence.py` requires a workflow that names one to name that one. The
+reviewed fixture's case witnesses are executed on CPU and never proven, so they
+stay in `REVIEWED_FIXTURE` either way.
+
 Every manifest records `real_proof` (that status plus both identities). `create`
 requires `PROVEN`. While the status is not `PROVEN`, `validate` and
 `observe-target` accept only an owned test chain, using the same rule as
 `deploy_clock_stack.py`: an Anvil client (asked through `web3_clientVersion`, so
 an Anvil fork at chain id 84532 qualifies), or an operator declaration
-`--owned-test-chain` for a chain id that is not a public Base network. Offline
-`validate` cannot see the client, so it needs the declaration. The deploy tool
-likewise refuses a target that is not an owned test chain until the status is
-`PROVEN`.
+`--owned-test-chain` for a local chain id (31337 or 1337). Offline `validate`
+cannot see the client, so it needs the declaration. The deploy tool likewise
+refuses a target that is not an owned test chain until the status is `PROVEN`.
+Once it is `PROVEN`, the declaration counts for any chain id that is not a public
+Base network.
 
 ## Reject a legacy deployment record
 
@@ -119,7 +155,7 @@ python3.11 scripts/local-verification/release_manifest.py check-deployment \
 ```
 
 The checked-in July Base Sepolia record is expected to fail: its program key is
-`0x000a2f…bda5ed`, whereas the reviewed clock guest uses `0x001789…4b8353`.
+`0x000a2f…bda5ed`, whereas the reviewed clock guest uses `0x009cfc…e098ec`.
 This is an offline record check, not a claim about current chain state. A passing
 record check checks only the guest key, clock presence, chain-ID range and address
 shape; it does not compare runtime bytecode or prove mutual contract bindings.
@@ -158,7 +194,11 @@ At that same block it checks settlement ↔ vault, settlement ↔ clock verifier
 clock → SP1 adapter → SP1 gateway, vault → token, the settlement's
 `ABI_VERSION() == 3`, the reviewed guest key, the clock bounds and
 `anchorTimeoutMs()`, proof version 2, the SP1 verifier hash, and the selector's
-active, unfrozen route to the configured verifier. Zero/unbound or old direct-adapter
+active, unfrozen route to the configured verifier. While the settlement's
+`batchCount()` is 0 it also requires `currentStateRoot()` to equal `genesis.root`
+and records `genesis_root_verified`; after the first batch the root is recorded
+as not observed. A wind-down recipient or oracle signer equal to an operator
+address the target reports fails, with or without `operator_policy`. Zero/unbound or old direct-adapter
 configurations fail. The token must have code; its implementation is not among
 the six compiled artifacts.
 
@@ -252,6 +292,38 @@ rotate keys, audit token proxies, or promote `release_gate` beyond `HOLD`.
 A configuration that still carries `challenge_window_blocks`, or a clock section
 without `anchor_timeout_ms`, is refused as an unknown or missing field. The open
 challenge set is read on-chain, so no deploy-block setting is needed.
+
+### Keys introduced with the genesis binding
+
+| Section | Key | Meaning |
+|---|---|---|
+| `genesis` | `root` | the settlement's constructor state root, `GENESIS_ROOT` from `--print-genesis-root`; `observe-target` compares it with `currentStateRoot()` while `batchCount()` is 0 |
+| `genesis` | `wind_down_recipient` | the address the final wind-down pays the remaining reserves to; a word of the genesis root |
+| `genesis` | `oracle_signer` | the oracle publisher every genesis market trusts; part of the genesis root |
+| `gateway` | `WIND_DOWN_RECIPIENT` | must equal `genesis.wind_down_recipient` (addresses compare case-insensitively) |
+| `gateway` | `PROVER_EXPECTED_ELF_SHA256` | must equal the reviewed guest ELF hash, as 64 lower-case hex digits |
+
+A configuration without the `genesis` section or either gateway key is refused as
+missing fields. On a chain id that is not a local test chain (31337 or 1337),
+neither genesis address may be one of the published default development accounts
+(`PUBLIC_DEV_ADDRESSES`). `deploy_clock_stack.py` reads the recipient and the
+oracle signer from its own deploy configuration (`wind_down_recipient`,
+`oracle_signer_address`), requires both nonzero, distinct from each other and from
+every operator address, and writes the same `genesis` block and gateway keys into
+the public configuration it emits.
+
+Without further input, no tool recomputes `genesis.root` from the recipient and
+the oracle signer; they rest on the `--print-genesis-root` output that listed them
+with the root. With `--gateway-bin <darkperp-gateway>`, `create`, `validate`,
+`observe-target` and `deploy_clock_stack.py` rerun `--print-genesis-root
+--oracle-address <oracle_signer>` with only `WIND_DOWN_RECIPIENT` in its
+environment (no key is needed or passed) and refuse unless the printed root,
+recipient and oracle signer equal the configured ones. `observe-target` records
+whether it did so as `scope.genesis_bindings_recomputed`.
+
+`deploy_clock_stack.py` deploys to a chain it does not own only when the committed
+real proof is PROVEN and the checkout's guest sources are the reviewed ones
+(`release_manifest.deployable_status()`).
 
 CPU tests: `python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py -v`.
 The owned-Anvil integration additionally verifies the actual declared policy and

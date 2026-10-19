@@ -1,4 +1,6 @@
-//! Fixed public Sequencer fixtures; goldens come from the actual pre-change seal.
+//! Fixed public Sequencer fixtures compared against a frozen seal-window baseline.
+//! The baseline in testdata/seal-window-pkg3/ comes from `export_seal_window_baseline`
+//! below; a change to these bytes is a deliberate re-pin, never a silent update.
 use k256::ecdsa::SigningKey;
 use perp_core::clock::{ClockContext, TimeBounds, WIRE_MAGIC};
 use perp_core::commitment::derive_roots;
@@ -14,12 +16,12 @@ use sequencer::{EnclaveIdentity, Sequencer, WindowWitness};
 
 type Rows = Vec<(&'static str, Vec<u8>)>;
 type Golden = &'static [u8];
-// Actual old-source bytes, captured before the ownership change.
+// Complete postcard bytes written by the ignored exporter at the end of this file.
 macro_rules! golden {
     ($name:literal) => {
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../docs/audits/2026-10-14-seal-window-ownership/baseline-export/",
+            "/testdata/seal-window-pkg3/",
             $name
         )) as &[u8]
     };
@@ -355,7 +357,7 @@ fn assert_golden(rows: Rows, expected: &[Golden]) {
         assert_eq!(
             bytes.as_slice(),
             *golden,
-            "old-source complete postcard bytes: {name}"
+            "frozen baseline complete postcard bytes: {name}"
         );
     }
 }
@@ -368,4 +370,51 @@ fn old_seal_bytes_and_second_baseline_survive_live_mutation() {
 #[test]
 fn old_rollback_reseal_bytes_keep_intervening_order_clocks_and_maps() {
     assert_golden(rollback_trace(), &ROLLBACK_GOLDEN);
+}
+
+/// Regenerates the frozen baseline from the current source. It writes files, so it
+/// is ignored and never an acceptance test; see testdata/seal-window-pkg3/README.md.
+/// Without ARCORA_SEAL_WINDOW_EXPORT_DIR it only prints lengths and SHA-256.
+#[test]
+#[ignore = "writes the seal-window baseline; run explicitly to regenerate testdata"]
+fn export_seal_window_baseline() {
+    use sha2::{Digest as _, Sha256};
+    use std::io::Write;
+    let traces = [("normal", normal_trace()), ("rollback", rollback_trace())];
+    // A golden must be reproducible: a second run gives the same complete bytes.
+    assert_eq!(traces[0].1, normal_trace());
+    assert_eq!(traces[1].1, rollback_trace());
+    let dir = std::env::var_os("ARCORA_SEAL_WINDOW_EXPORT_DIR").map(std::path::PathBuf::from);
+    if let Some(dir) = &dir {
+        assert!(dir.is_absolute(), "export directory must be absolute");
+        assert!(!dir
+            .components()
+            .any(|c| c == std::path::Component::ParentDir));
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let mut records = Vec::new();
+    for (case, rows) in traces {
+        for (index, (name, bytes)) in rows.into_iter().enumerate() {
+            let file = format!("{case}-{index:02}-{name}.bin");
+            records.push(serde_json::json!({
+                "file": file,
+                "bytes": bytes.len(),
+                "sha256": format!("{:x}", Sha256::digest(&bytes)),
+            }));
+            if let Some(dir) = &dir {
+                let mut f = std::fs::File::create(dir.join(&file)).unwrap();
+                f.write_all(&bytes).unwrap();
+                f.sync_all().unwrap();
+            }
+        }
+    }
+    let record = serde_json::json!({
+        "schema": "arcora-seal-window-baseline-export/v1",
+        "rows": records,
+        "scope": "Fixed public Sequencer API, oracle publisher signatures and signed receipts; no Gw boot, wall clock, backend, transport or proof.",
+    });
+    println!(
+        "SEAL_WINDOW_BASELINE {}",
+        serde_json::to_string(&record).unwrap()
+    );
 }

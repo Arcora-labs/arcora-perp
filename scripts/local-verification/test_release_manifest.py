@@ -16,17 +16,31 @@ from unittest.mock import patch
 
 import release_manifest as release
 
+# Synthetic genesis values: none is a contract, operator or public dev address.
+GENESIS_ROOT = "0x" + "4d" * 32
+RECIPIENT = "0x" + "5a" * 20
+ORACLE_SIGNER = "0x" + "6b" * 20
+
 
 def config():
     addresses = {role: "0x" + format(i, "040x")
                  for i, role in enumerate(sorted(release.ADDRESS_ROLES), 1)}
     gateway = {env: addresses[role] for env, role in release.ENV_ADDRESSES.items()}
-    gateway.update(L1_CHAIN_ID="31337", L1_ALLOW_MOCK_PROOF="0", DEPOSIT_PERMIT_TTL_SECS="1800")
+    gateway.update(L1_CHAIN_ID="31337", L1_ALLOW_MOCK_PROOF="0", DEPOSIT_PERMIT_TTL_SECS="1800",
+                   WIND_DOWN_RECIPIENT=RECIPIENT, PROVER_EXPECTED_ELF_SHA256=release.clock.REVIEWED_GUEST["elf"])
     return {"chain_id": 31337, "addresses": addresses, "program_vkey": release.clock.REVIEWED_GUEST["vkey"],
             "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 3_600_000},
             "gateway": gateway,
             "prover": {"program_vkey": release.clock.REVIEWED_GUEST["vkey"],
-                       "guest_elf_sha256": release.clock.REVIEWED_GUEST["elf"]}}
+                       "guest_elf_sha256": release.clock.REVIEWED_GUEST["elf"]},
+            "genesis": {"root": GENESIS_ROOT, "wind_down_recipient": RECIPIENT, "oracle_signer": ORACLE_SIGNER}}
+
+
+def operator_policy(address="0x" + "00" * 19 + "0a"):
+    """A complete operator policy whose every address is `address`."""
+    value = {role: {name: address for name in fields} for role, fields in release.OPERATOR_ADDRESSES.items()}
+    value["settlement"].update({name: 1 for name in release.SETTLEMENT_POLICY})
+    return value
 
 
 class ConfigTests(unittest.TestCase):
@@ -122,6 +136,134 @@ class ConfigTests(unittest.TestCase):
             "slash_payout_cap_usdc"])
         self.assertNotIn("challengeWindowBlocks()", release.SETTLEMENT_POLICY.values())
         self.assertEqual(release.SETTLEMENT_ABI_VERSION, 3)
+
+    def test_prover_expected_elf_is_the_reviewed_guest_elf(self):
+        self.assertEqual(release.public_config(config())["gateway"]["PROVER_EXPECTED_ELF_SHA256"],
+                         release.clock.REVIEWED_GUEST["elf"])
+        value = config()
+        del value["gateway"]["PROVER_EXPECTED_ELF_SHA256"]
+        with self.assertRaisesRegex(ValueError, "public gateway config"):
+            release.public_config(value)
+        elf = release.clock.REVIEWED_GUEST["elf"]
+        for bad in ("ab" * 32, "0x" + elf, elf.upper(), elf[:-1], "", None, 1):
+            value = config()
+            value["gateway"]["PROVER_EXPECTED_ELF_SHA256"] = bad
+            with self.subTest(value=bad), self.assertRaisesRegex(ValueError, "PROVER_EXPECTED_ELF_SHA256"):
+                release.public_config(value)
+
+    def test_genesis_is_required_and_normalized(self):
+        value = config()
+        del value["genesis"]
+        with self.assertRaisesRegex(ValueError, "public config"):
+            release.public_config(value)
+        for field in release.GENESIS_KEYS:
+            value = config()
+            del value["genesis"][field]
+            with self.subTest(missing=field), self.assertRaisesRegex(ValueError, "genesis"):
+                release.public_config(value)
+        value = config()
+        value["genesis"]["extra"] = "0x" + "01" * 20
+        with self.assertRaisesRegex(ValueError, "genesis"):
+            release.public_config(value)
+        value = config()
+        value["genesis"] = {"root": GENESIS_ROOT.upper().replace("0X", "0x"),
+                            "wind_down_recipient": RECIPIENT.upper().replace("0X", "0x"),
+                            "oracle_signer": ORACLE_SIGNER.upper().replace("0X", "0x")}
+        self.assertEqual(release.public_config(value)["genesis"], config()["genesis"])
+
+    def test_zero_or_malformed_genesis_values_are_rejected(self):
+        for field, bad in (("root", "0x" + "00" * 32), ("root", "0x" + "4d" * 31), ("root", None),
+                           ("wind_down_recipient", "0x" + "00" * 20), ("wind_down_recipient", "0x" + "5a" * 19),
+                           ("oracle_signer", "0x" + "00" * 20), ("oracle_signer", 7)):
+            value = config()
+            value["genesis"][field] = bad
+            if field == "wind_down_recipient" and isinstance(bad, str) and len(bad) == 42:
+                value["gateway"]["WIND_DOWN_RECIPIENT"] = bad
+            with self.subTest(field=field, value=bad), self.assertRaisesRegex(ValueError, "genesis"):
+                release.public_config(value)
+
+    def test_recipient_and_oracle_signer_are_independent_addresses(self):
+        value = config()
+        value["genesis"]["oracle_signer"] = RECIPIENT
+        with self.assertRaisesRegex(ValueError, "must be distinct"):
+            release.public_config(value)
+        for field in ("wind_down_recipient", "oracle_signer"):
+            for role in ("settlement", "vault", "token"):
+                value = config()
+                value["genesis"][field] = value["addresses"][role]
+                if field == "wind_down_recipient":
+                    value["gateway"]["WIND_DOWN_RECIPIENT"] = value["addresses"][role]
+                with self.subTest(field=field, contract=role), \
+                        self.assertRaisesRegex(ValueError, "must not be a contract address"):
+                    release.public_config(value)
+
+    def test_public_dev_accounts_are_refused_as_genesis_addresses_off_a_local_chain(self):
+        anvil = ("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266", "0x70997970c51812dc3a010c7d01b50e0d17dc79c8")
+        self.assertTrue(set(anvil) <= release.PUBLIC_DEV_ADDRESSES)
+        self.assertEqual(len(release.PUBLIC_DEV_ADDRESSES), 10)
+        for chain_id in (84532, 8453, 900):
+            for field, address in zip(("wind_down_recipient", "oracle_signer"), anvil):
+                value = config()
+                value["chain_id"] = chain_id
+                value["gateway"]["L1_CHAIN_ID"] = str(chain_id)
+                value["genesis"][field] = address.upper().replace("0X", "0x")
+                if field == "wind_down_recipient":
+                    value["gateway"]["WIND_DOWN_RECIPIENT"] = address
+                with self.subTest(chain_id=chain_id, field=field), \
+                        self.assertRaisesRegex(ValueError, "public default development account"):
+                    release.public_config(value)
+        # A local test chain may use them.
+        for chain_id in sorted(release.LOCAL_TEST_CHAINS):
+            value = config()
+            value["chain_id"] = chain_id
+            value["gateway"]["L1_CHAIN_ID"] = str(chain_id)
+            value["genesis"].update(wind_down_recipient=anvil[0], oracle_signer=anvil[1])
+            value["gateway"]["WIND_DOWN_RECIPIENT"] = anvil[0]
+            self.assertEqual(release.public_config(value)["genesis"]["oracle_signer"], anvil[1])
+
+    def test_genesis_addresses_differ_from_every_operator_address(self):
+        value = config()
+        value["operator_policy"] = operator_policy()
+        release.public_config(value)
+        for field in ("wind_down_recipient", "oracle_signer"):
+            for role, fields in release.OPERATOR_ADDRESSES.items():
+                for name in fields:
+                    value = config()
+                    value["operator_policy"] = operator_policy()
+                    value["operator_policy"][role][name] = value["genesis"][field].upper().replace("0X", "0x")
+                    with self.subTest(field=field, operator=role + "." + name), \
+                            self.assertRaisesRegex(ValueError, "must differ from every operator address"):
+                        release.public_config(value)
+
+    def test_gateway_recipient_must_be_the_genesis_recipient(self):
+        value = config()
+        value["gateway"]["WIND_DOWN_RECIPIENT"] = RECIPIENT.upper().replace("0X", "0x")
+        self.assertEqual(release.public_config(value)["gateway"]["WIND_DOWN_RECIPIENT"], RECIPIENT)
+        for bad in (ORACLE_SIGNER, "0x" + "00" * 20, "0x5a", None):
+            value = config()
+            value["gateway"]["WIND_DOWN_RECIPIENT"] = bad
+            with self.subTest(value=bad), self.assertRaisesRegex(ValueError, "WIND_DOWN_RECIPIENT"):
+                release.public_config(value)
+        value = config()
+        del value["gateway"]["WIND_DOWN_RECIPIENT"]
+        with self.assertRaisesRegex(ValueError, "public gateway config"):
+            release.public_config(value)
+
+    def test_process_environment_accepts_equivalent_spellings_of_the_new_keys(self):
+        value = release.public_config(config())
+        env = dict(value["gateway"])
+        env["WIND_DOWN_RECIPIENT"] = RECIPIENT.upper().replace("0X", "0x")
+        env["PROVER_EXPECTED_ELF_SHA256"] = "0x" + release.clock.REVIEWED_GUEST["elf"].upper()
+        release.check_environment(value, env)
+        for key, bad in (("WIND_DOWN_RECIPIENT", ORACLE_SIGNER), ("PROVER_EXPECTED_ELF_SHA256", "ab" * 32),
+                         ("PROVER_EXPECTED_ELF_SHA256", None), ("WIND_DOWN_RECIPIENT", None)):
+            changed = dict(env)
+            if bad is None:
+                del changed[key]
+            else:
+                changed[key] = bad
+            with self.subTest(key=key, value=bad), self.assertRaisesRegex(ValueError, "mismatch: " + key):
+                release.check_environment(value, changed)
 
     def test_unknown_or_secret_config_keys_are_rejected_without_echo(self):
         value = config()
@@ -353,7 +495,10 @@ class TargetTests(unittest.TestCase):
             ("clock_verifier", "proofVersion()"): 2,
             ("settlement", "ABI_VERSION()"): 3,
             ("sp1_verifier", "VERIFIER_HASH()"): "0x" + release.clock.target.VERIFIER_HASH,
+            ("settlement", "currentStateRoot()"): GENESIS_ROOT,
         }
+        # Chain state read without an expected value (no settled batch yet).
+        self.state = {("settlement", "batchCount()"): 0}
         validator = patch.object(release, "validate_manifest", return_value=self.manifest)
         self.validate = validator.start()
         self.addCleanup(validator.stop)
@@ -382,6 +527,8 @@ class TargetTests(unittest.TestCase):
             if signature.startswith("routes(bytes4)"):
                 self.assertEqual(signature, "routes(bytes4)" + release.clock.target.VERIFIER_HASH[:8] + "0" * 56)
                 return self.word(self.addresses["sp1_verifier"]) + "0" * 64
+            if (role, signature) in self.state:
+                return self.word(self.state[(role, signature)])
             return self.word(self.values.get((role, signature), 1))
         self.fail("unexpected RPC method")
 
@@ -392,10 +539,13 @@ class TargetTests(unittest.TestCase):
         result = self.observe()
         self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
         self.assertEqual(set(result["contracts"]), set(release.CONTRACTS))
-        self.assertEqual(len(result["bindings"]), 14)
+        self.assertEqual(len(result["bindings"]), 15)
         bound = {(item["contract"], item["getter"]) for item in result["bindings"]}
         self.assertIn(("settlement", "ABI_VERSION()"), bound)
         self.assertIn(("clock_verifier", "anchorTimeoutMs()"), bound)
+        self.assertIn(("settlement", "currentStateRoot()"), bound)
+        self.assertTrue(result["scope"]["genesis_root_verified"])
+        self.assertEqual(result["genesis"], {**config()["genesis"], "batch_count": 0, "root_observed": True})
         self.assertEqual(result["scope"]["release_gate"], "HOLD")
         self.assertFalse(result["scope"]["operator_and_settlement_policy_approved"])
         self.assertFalse(result["scope"]["token_runtime_verified"])
@@ -416,6 +566,32 @@ class TargetTests(unittest.TestCase):
                 self.assertIn("target binding mismatch", result["blocker"])
                 self.assertFalse(result["scope"]["runtime_bytecode_verified"])
             self.values[key] = original
+
+    def test_genesis_root_is_compared_only_before_the_first_batch(self):
+        self.values[("settlement", "currentStateRoot()")] = "0x" + "ee" * 32
+        result = self.observe()
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("target binding mismatch: settlement.currentStateRoot()", result["blocker"])
+        self.assertFalse(result["scope"]["genesis_root_verified"])
+        # After a settled batch the root has moved on: recorded, never claimed.
+        self.state[("settlement", "batchCount()")] = 3
+        result = self.observe()
+        self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
+        self.assertFalse(result["scope"]["genesis_root_verified"])
+        self.assertEqual(result["genesis"]["batch_count"], 3)
+        self.assertIs(result["genesis"]["root_observed"], False)
+        self.assertNotIn("currentStateRoot()", result["contracts"]["settlement"]["getters"])
+
+    def test_genesis_address_equal_to_an_observed_operator_blocks_without_a_policy(self):
+        for field in ("wind_down_recipient", "oracle_signer"):
+            for key in (("settlement", "governance()"), ("settlement", "sequencer()"),
+                        ("vault", "gatewaySigner()"), ("clock_verifier", "configurator()")):
+                self.values[key] = config()["genesis"][field]
+                with self.subTest(field=field, getter=key):
+                    result = self.observe()
+                    self.assertEqual(result["status"], "BLOCKED")
+                    self.assertIn("genesis " + field + " equals an observed operator address", result["blocker"])
+                del self.values[key]
 
     def test_missing_code_or_wrong_runtime_blocks(self):
         for code in ("0x", "0x606163", "0x60616200"):
@@ -495,6 +671,97 @@ class TargetTests(unittest.TestCase):
 PENDING_GUEST = {"elf": "cd" * 32, "vkey": "0x" + "ab" * 32}
 
 
+def fake_gateway(directory, *, exit_code=0, extra_line=""):
+    """A stand-in `darkperp-gateway --print-genesis-root`: its root is a hash of the
+    recipient and the oracle signer, and it refuses other arguments or an inherited
+    environment."""
+    import sys
+    path = Path(directory) / "gateway"
+    path.write_text(f"""#!{sys.executable}
+import hashlib, os, sys
+args = sys.argv[1:]
+if args[:2] != ["--print-genesis-root", "--oracle-address"] or len(args) != 3:
+    sys.exit(9)
+# The caller's environment (its PATH, any key) is not inherited.
+if "PATH" in os.environ or "ORACLE_SIGNER_KEY" in os.environ or "WIND_DOWN_RECIPIENT" not in os.environ:
+    sys.exit(8)
+recipient, oracle = os.environ["WIND_DOWN_RECIPIENT"].lower(), args[2].lower()
+if {exit_code}:
+    sys.exit({exit_code})
+print("GENESIS_ROOT=0x" + hashlib.sha256((recipient + oracle).encode()).hexdigest())
+print("WIND_DOWN_RECIPIENT=" + recipient)
+print("ORACLE_SIGNER_ADDRESS=" + oracle)
+{"print(" + repr(extra_line) + ")" if extra_line else ""}
+""")
+    path.chmod(0o755)
+    return path
+
+
+def fake_root(recipient, oracle):
+    import hashlib
+    return "0x" + hashlib.sha256((recipient.lower() + oracle.lower()).encode()).hexdigest()
+
+
+class GenesisBindingTests(unittest.TestCase):
+    """--gateway-bin recomputes the genesis root from the recipient and the oracle signer."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.genesis = {"root": fake_root(RECIPIENT, ORACLE_SIGNER), "wind_down_recipient": RECIPIENT,
+                        "oracle_signer": ORACLE_SIGNER}
+
+    def test_a_matching_genesis_passes_and_no_caller_variable_reaches_the_gateway(self):
+        gateway = fake_gateway(self.tmp.name)
+        with patch.dict(os.environ, {"ORACLE_SIGNER_KEY": "0x" + "11" * 32}):
+            self.assertEqual(release.check_genesis_binding(self.genesis, gateway), self.genesis)
+
+    def test_a_wrong_oracle_signer_or_recipient_is_refused(self):
+        gateway = fake_gateway(self.tmp.name)
+        for field, other in (("oracle_signer", "0x" + "7c" * 20), ("wind_down_recipient", "0x" + "7d" * 20),
+                             ("root", "0x" + "4d" * 32)):
+            genesis = dict(self.genesis, **{field: other})
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "does not bind"):
+                release.check_genesis_binding(genesis, gateway)
+
+    def test_a_refusing_missing_or_noisy_gateway_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "refused the genesis addresses"):
+            release.check_genesis_binding(self.genesis, fake_gateway(self.tmp.name, exit_code=2))
+        with self.assertRaisesRegex(ValueError, "unexpected gateway --print-genesis-root output"):
+            release.check_genesis_binding(self.genesis, fake_gateway(self.tmp.name, extra_line="NOTE=1"))
+        with self.assertRaisesRegex(ValueError, "could not be run"):
+            release.check_genesis_binding(self.genesis, Path(self.tmp.name) / "absent")
+
+    def test_create_and_validate_recompute_when_given_a_gateway(self):
+        value = config()
+        value["genesis"]["root"] = self.genesis["root"]
+        expected = {"schema": release.SCHEMA, "public_config": release.public_config(value),
+                    "real_proof": {"status": release.clock.PROVEN}, "scope": dict(release.SCOPE)}
+        gateway = fake_gateway(self.tmp.name)
+        with patch.object(release, "build_manifest", return_value=expected):
+            self.assertEqual(release.create_manifest(release.ROOT, value, gateway_bin=gateway), expected)
+            self.assertEqual(release.validate_manifest(release.ROOT, copy.deepcopy(expected), value,
+                                                       gateway_bin=gateway), expected)
+        wrong = copy.deepcopy(expected)
+        wrong["public_config"]["genesis"]["oracle_signer"] = "0x" + "7c" * 20
+        with patch.object(release, "build_manifest", return_value=wrong):
+            with self.assertRaisesRegex(ValueError, "does not bind"):
+                release.create_manifest(release.ROOT, value, gateway_bin=gateway)
+            with self.assertRaisesRegex(ValueError, "does not bind"):
+                release.validate_manifest(release.ROOT, copy.deepcopy(wrong), value, gateway_bin=gateway)
+            # Without a gateway the configured values are taken as printed.
+            self.assertEqual(release.create_manifest(release.ROOT, value), wrong)
+
+    @unittest.skipUnless(os.environ.get("ARCORA_GATEWAY_BIN"), "set ARCORA_GATEWAY_BIN to a built gateway")
+    def test_the_real_gateway_prints_a_genesis_this_check_accepts(self):
+        gateway = Path(os.environ["ARCORA_GATEWAY_BIN"])
+        printed = release.genesis_from_gateway(gateway, RECIPIENT, ORACLE_SIGNER)
+        self.assertEqual((printed["wind_down_recipient"], printed["oracle_signer"]), (RECIPIENT, ORACLE_SIGNER))
+        self.assertEqual(release.check_genesis_binding(printed, gateway), printed)
+        with self.assertRaisesRegex(ValueError, "does not bind"):
+            release.check_genesis_binding(dict(printed, oracle_signer="0x" + "7c" * 20), gateway)
+
+
 class ProofStatusGateTests(unittest.TestCase):
     """The real proof status, read from disk, gates release creation and non-owned targets."""
 
@@ -507,7 +774,9 @@ class ProofStatusGateTests(unittest.TestCase):
 
     def test_manifest_records_the_status_and_both_identities(self):
         record = release.real_proof(release.ROOT)
-        self.assertEqual(record["status"], release.clock.PROVEN)
+        # The status is the on-disk reading, whichever it is today.
+        self.assertIn(record["status"], {release.clock.PROVEN, release.clock.PENDING_REPROOF})
+        self.assertEqual(record["status"], release.clock.proof_status(release.ROOT))
         self.assertEqual(record["proof"]["proof_sha256"], release.clock.PROOF_FIXTURE["proof_sha256"])
         self.assertEqual(record["proof"]["program_vkey"], release.clock.PROOF_FIXTURE["vkey"])
         self.assertEqual(record["reviewed"], {"guest_elf_sha256": release.clock.REVIEWED_GUEST["elf"],
@@ -527,15 +796,15 @@ class ProofStatusGateTests(unittest.TestCase):
                 release.create_manifest(release.ROOT, config())
 
     def test_validate_refuses_a_non_owned_target_while_pending(self):
-        for chain_id in (31337, 84532, 8453):
+        for chain_id in (31337, 1337, 900, 84532, 8453):
             pending = self.expected(release.clock.PENDING_REPROOF, chain_id)
             value = copy.deepcopy(pending)
             with self.subTest(chain_id=chain_id), patch.object(release, "build_manifest", return_value=pending):
                 with self.assertRaisesRegex(ValueError, "validate refused: real proof status is PENDING_REPROOF"):
                     release.validate_manifest(release.ROOT, value, config())
-                if chain_id in release.PUBLIC_BASE_CHAINS:
-                    # Offline, a public Base chain id is never an owned test chain.
-                    with self.assertRaisesRegex(ValueError, "validate refused"):
+                if chain_id not in release.LOCAL_TEST_CHAINS:
+                    # Offline, only a local chain id can be declared owned while pending.
+                    with self.assertRaisesRegex(ValueError, "validate refused.*local chain id 1337 or 31337"):
                         release.validate_manifest(release.ROOT, value, config(), owned_test_chain=True)
                 else:
                     self.assertEqual(release.validate_manifest(release.ROOT, value, config(),
@@ -548,12 +817,22 @@ class ProofStatusGateTests(unittest.TestCase):
             release.validate_manifest(release.ROOT, self.expected(release.clock.PROVEN), config(), owned_test_chain=1)
 
     def test_ownership_follows_the_deploy_rule(self):
+        self.assertEqual(release.LOCAL_TEST_CHAINS, {31337, 1337})
         self.assertTrue(release.target_owned(84532, True, False))
         self.assertTrue(release.target_owned(31337, False, True))
+        self.assertTrue(release.target_owned(1337, False, True))
         self.assertFalse(release.target_owned(31337, False, False))
         self.assertFalse(release.target_owned(84532, False, True))
         self.assertFalse(release.target_owned(8453, False, True))
         self.assertFalse(release.target_owned(900, "anvil", 1))
+        # While pending, a declared chain must be a local one.
+        self.assertFalse(release.target_owned(900, False, True))
+        self.assertFalse(release.target_owned(900, False, True, proven=False))
+        # Once proven, a declaration covers any chain that is not a public Base chain.
+        self.assertTrue(release.target_owned(900, False, True, proven=True))
+        self.assertFalse(release.target_owned(84532, False, True, proven=True))
+        self.assertFalse(release.target_owned(8453, False, True, proven=True))
+        self.assertFalse(release.target_owned(900, False, True, proven=1))
 
 
 class PendingTargetTests(unittest.TestCase):
@@ -590,13 +869,22 @@ class PendingTargetTests(unittest.TestCase):
                 self.assertIs(result["target_owned"], True)
                 self.assertIn("web3_clientVersion", {method for method, _ in self.calls})
 
-    def test_declared_owned_test_chain_is_never_a_public_base_chain(self):
-        self.pending(900)
-        self.assertEqual(self.observe("Geth/v1.14", owned_test_chain=True)["status"], "VERIFIED_AT_FINALIZED_BLOCK")
-        self.pending(84532)
-        result = self.observe("Geth/v1.14", owned_test_chain=True)
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertIn("observe-target refused", result["blocker"])
+    def test_declared_owned_test_chain_must_be_a_local_chain_id(self):
+        for chain_id in (31337, 1337):
+            self.pending(chain_id)
+            with self.subTest(chain_id=chain_id):
+                result = self.observe("Geth/v1.14", owned_test_chain=True)
+                self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
+                self.assertIs(result["target_owned"], True)
+        for chain_id in (900, 84532, 8453):
+            self.calls.clear()
+            self.pending(chain_id)
+            with self.subTest(chain_id=chain_id):
+                result = self.observe("Geth/v1.14", owned_test_chain=True)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertIn("observe-target refused", result["blocker"])
+                self.assertIs(result["target_owned"], False)
+                self.assertEqual([method for method, _ in self.calls], ["eth_chainId", "web3_clientVersion"])
 
     def test_proven_status_does_not_query_the_client(self):
         result = release.observe_target(self.root, self.manifest, self.public, self.rpc)
@@ -727,7 +1015,7 @@ class AnvilTargetTests(unittest.TestCase):
         addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_gateway"], release.clock.REVIEWED_GUEST["vkey"])
         addresses["clock_verifier"] = deploy("clock_verifier", addresses["sp1_adapter"], 30000, 10000, 3_600_000)
         # DarkPerpSettlement.Config: 12 words, a static struct encoded inline.
-        addresses["settlement"] = deploy("settlement", owner, accounts[1], addresses["clock_verifier"], 0,
+        addresses["settlement"] = deploy("settlement", owner, accounts[1], addresses["clock_verifier"], GENESIS_ROOT,
                                          100, 50, 1000, 600, owner, 10, 2, 1_000_000_000)
         addresses["token"] = deploy("token")
         addresses["vault"] = deploy("vault", addresses["settlement"], addresses["token"], accounts[2])
@@ -748,12 +1036,29 @@ class AnvilTargetTests(unittest.TestCase):
             "sp1_gateway": {"owner": owner},
         }
         manifest = release.build_manifest(release.ROOT, public)
+        if manifest["real_proof"]["status"] != release.clock.PROVEN:
+            # The owned drill still observes while pending; a release still refuses.
+            with self.assertRaisesRegex(ValueError, "create requires a committed proof"):
+                release.create_manifest(release.ROOT, public)
         observed = release.observe_target(release.ROOT, manifest, public, release.TargetRPC(url),
                                           require_operator_policy=True)
         self.assertEqual(observed["status"], "VERIFIED_AT_FINALIZED_BLOCK", observed)
         self.assertEqual(len(observed["contracts"]), 6)
         self.assertTrue(observed["scope"]["operator_and_settlement_policy_matches"])
         self.assertFalse(observed["scope"]["operator_and_settlement_policy_approved"])
+        self.assertTrue(observed["scope"]["genesis_root_verified"])
+        self.assertEqual(observed["contracts"]["settlement"]["getters"]["currentStateRoot()"], GENESIS_ROOT)
+        # A config naming another genesis root needs its own manifest; the
+        # deployed settlement's constructor root still refuses it.
+        wrong_genesis = copy.deepcopy(public)
+        wrong_genesis["genesis"]["root"] = "0x" + "4e" * 32
+        wrong_manifest = copy.deepcopy(manifest)
+        wrong_manifest["public_config"] = release.public_config(wrong_genesis)
+        wrong_manifest["public_config_sha256"] = release.digest(release.canonical(wrong_manifest["public_config"]))
+        genesis_rejected = release.observe_target(release.ROOT, wrong_manifest, wrong_genesis, release.TargetRPC(url),
+                                                  require_operator_policy=True)
+        self.assertEqual(genesis_rejected["status"], "BLOCKED", genesis_rejected)
+        self.assertIn("target binding mismatch: settlement.currentStateRoot()", genesis_rejected["blocker"])
         policy_rejections = {}
         for field, wrong in (("governance", accounts[3]), ("challenge_bond_wei", 1001),
                              ("progress_batches", 3), ("slash_payout_cap_usdc", 999_999_999)):
@@ -780,6 +1085,7 @@ class AnvilTargetTests(unittest.TestCase):
         if evidence:
             Path(evidence).write_text(json.dumps({"scope": "Owned local Anvil; real compiled constructors and RPC, mock token, no proof submission or target deployment.",
                                                 "pass": observed, "policy_mismatches_rejected": policy_rejections,
+                                                "genesis_root_mismatch_rejected": genesis_rejected,
                                                 "frozen_route_rejected": frozen}, indent=2) + "\n")
 
 

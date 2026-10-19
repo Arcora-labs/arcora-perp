@@ -7,6 +7,8 @@ on:
       - 'scripts/local-verification/cold_rebuild_reviewed_guest.py'
       - 'scripts/local-verification/test_cold_rebuild_reviewed_guest.py'
       - 'scripts/local-verification/rebuild_reviewed_guest.py'
+      - 'scripts/local-verification/test_rebuild_reviewed_guest.py'
+      - 'scripts/local-verification/check_sp1_release.py'
       - 'scripts/local-verification/verify_clock_proof.py'
       - 'scripts/local-verification/release_manifest.py'
       - 'crates/sp1-guest/**'
@@ -33,7 +35,12 @@ jobs:
         with:
           toolchain: '1.99.0'
       - name: Guard tests
-        run: python3 -m unittest discover -s scripts/local-verification -p test_cold_rebuild_reviewed_guest.py -v
+        run: |
+          python3 -m unittest discover -s scripts/local-verification -p test_cold_rebuild_reviewed_guest.py -v
+          python3 -m unittest discover -s scripts/local-verification -p test_rebuild_reviewed_guest.py -v
+          python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py -v
+      - name: Guest dependency sources (crates.io plus the commit-pinned tiny-keccak patch)
+        run: python3 scripts/local-verification/check_sp1_release.py
       - name: Fetch pinned official compiler archive
         shell: bash
         run: |

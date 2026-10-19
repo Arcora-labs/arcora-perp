@@ -1,0 +1,286 @@
+{
+  "status": "PASS",
+  "negativeCases": [
+    "settlement with a verifier that is not a clock adapter",
+    "settlement with progressBatches outside 1..16",
+    "vault that does not name the settlement",
+    "deposit before any bond (gateway 409 and vault BondCapacityExceeded)",
+    "expired permit",
+    "missing allowance",
+    "wrong deposit amount",
+    "wrong permit deadline",
+    "replayed permit",
+    "deposit beyond remaining capacity (gateway 409)",
+    "second permit over capacity at landing (BondCapacityExceeded)",
+    "nonexistent deposit credited zero",
+    "wrong order signer",
+    "duplicate signed order",
+    "challenge without the stake",
+    "challenge naming another beneficiary",
+    "re-opening an answered challenge",
+    "bond withdrawal below the open-challenge floor",
+    "slash of an answered challenge",
+    "wrong withdrawal destination",
+    "duplicate withdrawal authorization",
+    "unsettled withdrawal claim",
+    "invalid mock proof",
+    "legacy proof rejected by clock adapter",
+    "refund before close-only",
+    "close-only before liveness expiry",
+    "deposit after close-only",
+    "permit after close-only (gateway 409)",
+    "duplicate vault claim",
+    "refund of a consumed deposit",
+    "refund redirected by a third party",
+    "refund with a wrong leaf",
+    "duplicate refund"
+  ],
+  "injectedClock": {
+    "epochMs": 1767225600000,
+    "blockIntervalSecs": 1,
+    "chainGenesisTimestamp": 1767225600,
+    "gatewayClock": "the latest block's timestamp after each transaction or mined block; no wall clock",
+    "entropy": "a keccak256 stream of a fixed test seed for account seeds, API keys and deposit blinds; no OS entropy"
+  },
+  "host": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu": "Apple M4",
+    "availableParallelism": 10,
+    "rustupToolchain": "1.99.0-aarch64-apple-darwin",
+    "anvil": "anvil Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist"
+  },
+  "proofBackend": "native replay + real ClockBoundVerifier + MockZkVerifier (NOT SP1)",
+  "chainId": 31337,
+  "settlementAbiVersion": 3,
+  "settlementConfig": {
+    "livenessTimeoutBlocks": 400,
+    "challengeGraceBlocks": 50,
+    "challengeBondWei": "10000000000000000",
+    "inclusionDeadlineSecs": 0,
+    "finalSettleGraceBlocks": 10,
+    "progressBatches": 2,
+    "slashPayoutCap": "1000000000"
+  },
+  "gatewayTransport": "real loopback HTTP",
+  "restart": "encrypted snapshot and WAL restoration after mined settlement before local commit; not OS crash",
+  "bond": {
+    "amount": "4000000000",
+    "tx": "0x87864880dddddc5950a1e49c07afa21ee5bed4799a183aa3387362a85254750b",
+    "capacityBefore": "19",
+    "capacityAfter": "80000000019",
+    "postedBeforeFirstDeposit": true
+  },
+  "deposits": [
+    {
+      "payer": "0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a",
+      "amount": "10000000000",
+      "validUntil": 1767227415,
+      "tx": "0xb5ba5a436100f4a1cf0fbd3ce9a72b225ed0215550f6bc6f5896f02588b95c60"
+    },
+    {
+      "payer": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41",
+      "amount": "20000000000",
+      "validUntil": 1767227418,
+      "tx": "0x1475fd6aa7934c48874b1522ad8332ec837306218bda923e55dd78d08f22ee9b"
+    },
+    {
+      "payer": "0x1563915e194d8cfba1943570603f7606a3115508",
+      "amount": "20000000000",
+      "validUntil": 1767227421,
+      "tx": "0x97dac9fd6d94f6ed5600135e6dd7471e96f211df9a365c8af1a06fe969d865fd"
+    }
+  ],
+  "orders": [
+    "0xb6e87c0764ba332a279a148d1704d05ee132ac1ea396cf597da1f8a5ccbca366",
+    "0x39b32e70e9cb31f4bb6b47f363d291c50c1d8e876a71e71d78e119da48bcd505",
+    "0x4ee9c8b8831ba5775b6c21ec453ea47406d4b3585c62f416e6d0011cf3130a7b",
+    "0x58193f16cff135314486e9436c0748c7ffb9a3891d00dab768e8d9182c7c4333"
+  ],
+  "challenge": {
+    "orderHash": "0xb6e87c0764ba332a279a148d1704d05ee132ac1ea396cf597da1f8a5ccbca366",
+    "beneficiary": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41",
+    "stakeWei": "10000000000000000",
+    "openTx": "0x0317172564ab0e6c890227a3510c2104811e6a84c555c307ac2e1a2ed7cebee5",
+    "openBatchCount": 1,
+    "receipt": {
+      "orderHash": "0xb6e87c0764ba332a279a148d1704d05ee132ac1ea396cf597da1f8a5ccbca366",
+      "seqNo": 0,
+      "recvTimeMs": 1767225689000,
+      "batchIdHint": 0,
+      "windowId": 1,
+      "signature": "0xd265ba21fd7946b060dc770e0f2fc48c88e3148b209eaab9c849d3eca0b4732b58133a610588874566e275b1a44943d98e15e9cce8ae8cf2967f5e6d5d5a6af31c",
+      "enclaveSigner": "0x4a62316623ad457f02cdc5d997ded67a383ec569",
+      "l1Challenge": {
+        "chainId": 31337,
+        "settlement": "0x08425d9df219f93d5763c3e85204cb5b4ce33aaa",
+        "beneficiary": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41",
+        "signature": "0x1f2f3b01a6a76eb5a728102912486a1482884bdd677aadc899cc6be53cdee2b21c630e8c3ef6ad114180da9b65524eb08848466985c424dd68bb5530bfdd253c1c"
+      }
+    },
+    "answer": {
+      "batch": 1,
+      "tx": "0x57eaf87d6564b779a6f6a53c7eda63bfea1c92509cbfa9236ab36ec8e620a01c",
+      "sender": "third party",
+      "stakeReturnedTo": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41"
+    }
+  },
+  "batches": [
+    {
+      "batch": 0,
+      "tx": "0xc072810f64ecae9c8814c347b014462e77bed213050f8fa2b16f1aecce7a360d",
+      "block": 89,
+      "stateRoot": "0x5d46479b174969283872bab2034f6525ef61258a1585538041679a72895c8691",
+      "depositTip": "0x43fbf42aa54071a6a6ca324486efef4b62f377aefd8eb7c802763e07b82efe26",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "recoveredAfterMining": false,
+      "keepalive": false,
+      "clock": {
+        "receipt": "0x4acc1499b4e32572b935571344aa6e4fbb2d5061a1466bf14f3554495c067ea1",
+        "commitment": "0x6a2b80869dec094590e59bac72530d3a70856202da236a726746a5ccdcdaadec",
+        "registrationTx": "0xdd67a9beae46a799d2a93c8b92f60f64452810b79e87652bac3481f30342e7dc",
+        "registrationBlock": "0x7b47ec6c49bf7af6c606e281b9fc10273d996485f8df3f3cdfee259b5a99e4fe",
+        "anchoredAtMs": 1767225688000,
+        "timedOps": 0,
+        "witnessSha256": "0x8d0f6c540bfe0624ab08204e1c3aebe9e24dff2306d34a7e3d47010ddfff1cb7",
+        "witnessBytes": 1078,
+        "filename": "batch-0.witness.bin"
+      }
+    },
+    {
+      "batch": 1,
+      "tx": "0x4094d2180fb8176c4e0d20cca13d1cf53ad2a51ca6fa78b82df0352eacdf524b",
+      "block": 92,
+      "stateRoot": "0xf42f56e69d5bbf82ed5163336ae8f512dea7289e824f990c10f816dc75b4b413",
+      "depositTip": "0x43fbf42aa54071a6a6ca324486efef4b62f377aefd8eb7c802763e07b82efe26",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "recoveredAfterMining": false,
+      "keepalive": false,
+      "clock": {
+        "receipt": "0x9c2a1ec4f5f644b765dd840571611212b7bbc6c9e82af2a700818a0dd77d55d7",
+        "commitment": "0x2b3edce1a57395db8ac46843a588e1984418a99bca26261cda65be847f100c8f",
+        "registrationTx": "0x302d12da1a8fbb25c99ce53dac3ff3b795323592a9f1a6b5fb3e7eb8a38457b7",
+        "registrationBlock": "0x9d9ef06e0f28b5e244680195253287f4b09d35424a67c54ba74263924a3a704c",
+        "anchoredAtMs": 1767225691000,
+        "timedOps": 6,
+        "witnessSha256": "0xd5b0f13ae8925fe5975b2c67b324ab3869cbb0e94eb82c254d1dcf11226a2c98",
+        "witnessBytes": 1764,
+        "filename": "batch-1.witness.bin"
+      }
+    },
+    {
+      "batch": 2,
+      "tx": "0x5060e58572cedba78a61f2c88f87d352c55feb9696fc2fd217a015c2565def87",
+      "block": 96,
+      "stateRoot": "0x199eb56e17c22c3284075fe9c74a5de6b4ffc390729150d795e7caf373afed94",
+      "depositTip": "0x43fbf42aa54071a6a6ca324486efef4b62f377aefd8eb7c802763e07b82efe26",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "recoveredAfterMining": false,
+      "keepalive": false,
+      "clock": {
+        "receipt": "0x7db9563b7b3cf32b120b11f8b844dd9fa846cdfaa962dde1bb0b2f87c8242603",
+        "commitment": "0x06b4a14607154e6097def0f2cebda5f677c5c0a5b1e5c23139cb31a536aa9600",
+        "registrationTx": "0xfa0171ed2a78edf96ef63aaac4ec7c4214226286ca288ea400f7e92e99b6fd35",
+        "registrationBlock": "0xfe3b7cf2057bc827c430484eacd9b5f8b647c9dbfc1b2d12b16ac66d83f6a7af",
+        "anchoredAtMs": 1767225695000,
+        "timedOps": 6,
+        "witnessSha256": "0x79161f155882a14e9db392f8e07c6b8e7e3f74cef000d9ca851b1695eb43767b",
+        "witnessBytes": 1801,
+        "filename": "batch-2.witness.bin"
+      }
+    },
+    {
+      "batch": 3,
+      "tx": "0x6e908b17a08f0e5f63b516c6bae6aa0ad84e1b28cb314212dfb293459563bbe0",
+      "block": 98,
+      "stateRoot": "0xcf92289625bb87bf92af0720db63de29353feee577965f32519f27cb6096f7eb",
+      "depositTip": "0x43fbf42aa54071a6a6ca324486efef4b62f377aefd8eb7c802763e07b82efe26",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x619484fc5579105095eca3ed9af343610edc622c7c9c2ae12209cfb2e3eb434a",
+      "recoveredAfterMining": true,
+      "keepalive": false,
+      "clock": {
+        "receipt": "0x830df863ab06eb5c1f9623824caf91011a579c7ade717a63bdf2d4b4607bee42",
+        "commitment": "0x16de68d9808523d6ac607e923dbb9910d53dc3e51120e2f3f9b17415f2e2f0df",
+        "registrationTx": "0x8d0aa2ebc4fd6d8c8fddbb5f4b2d17892a8bff4c6ae8c039d53fe30ecd06fe50",
+        "registrationBlock": "0x48c70904c38a66ce3c83f140fe5c8c42062741404a0adfac531f2c97cc8d18ba",
+        "anchoredAtMs": 1767225697000,
+        "timedOps": 2,
+        "witnessSha256": "0x97b3965c29aeeac57c8d28acadf968cc8dce871f35daa3b91a11bc5826115a57",
+        "witnessBytes": 1400,
+        "filename": "batch-3.witness.bin"
+      }
+    }
+  ],
+  "keepalive": {
+    "batch": 4,
+    "tx": "0xaf0c250212aa1d246fc296ecfcdd5fd4975836a9270b9a70e5b63e40c17b2f94",
+    "block": 200,
+    "stateRoot": "0xe5c1d5ffcc83811051ab90d8fc1a74e88283d097a8e36ed04102a26e9927c5b2",
+    "depositTip": "0x43fbf42aa54071a6a6ca324486efef4b62f377aefd8eb7c802763e07b82efe26",
+    "depositCount": 3,
+    "withdrawalsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "recoveredAfterMining": false,
+    "keepalive": true,
+    "clock": {
+      "receipt": "0xa61f7c67639989f745058226630a8024fc835cdb226e15816daec925e7d5c33d",
+      "commitment": "0x1ca9e90309b4dd425acc7a838f793356d61aff9c80eb515b3515fec24076d170",
+      "registrationTx": "0xd4713a3aebcb11bff8c0b677903f218dcd6eb7d7143528a5474b50a758a9396b",
+      "registrationBlock": "0x734b85b20b67bad4d516a6efd09698a42f662d2c2aba6704880999346b531566",
+      "anchoredAtMs": 1767225799000,
+      "timedOps": 0,
+      "witnessSha256": "0x5c78b6e48ecd8d57e2006afb8e75100ac6840d4880e70a7df7dd51594333379a",
+      "witnessBytes": 944,
+      "filename": "keepalive-batch-4.witness.bin"
+    }
+  },
+  "claims": [
+    {
+      "to": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41",
+      "amount": "10000000000",
+      "tx": "0x08fa080791c259dda6524587463cb078bcc94f0bc46f271004bc9be708126ce5",
+      "balanceAfter": "30000000000"
+    },
+    {
+      "to": "0x1563915e194d8cfba1943570603f7606a3115508",
+      "amount": "10000000000",
+      "tx": "0x9ba20f3371b52608ea748fcabb1d97cb7e36bad72fe40713a074e8abb4382173",
+      "balanceAfter": "50000000000"
+    }
+  ],
+  "closeOnly": {
+    "trigger": "triggerCloseOnly() by a non-operator after livenessTimeoutBlocks without progress",
+    "tx": "0xd541785d18fb2dc1cc459da73e998c79a8a7b087737c043f445366be6dd20267",
+    "closeOnlyBatchCount": 5,
+    "consumedDepositCount": 3
+  },
+  "refund": {
+    "depositId": 3,
+    "from": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41",
+    "amount": "20000000000",
+    "tx": "0x0a2ac192d25529bab7787253c0210e1c1c6bc6c8dcf76464eda2b29b6fb76c8c",
+    "sender": "non-depositor; paid to the depositor"
+  },
+  "contracts": {
+    "token": "0xae519fc2ba8e6ffe6473195c092bf1bae986ff90",
+    "vault": "0x6e05f58eedda592f34dd9105b1827f252c509de0",
+    "settlement": "0x08425d9df219f93d5763c3e85204cb5b4ce33aaa",
+    "clockVerifier": "0x7d73424a8256c0b2ba245e5d5a3de8820e45f390"
+  },
+  "syntheticWitnesses": true,
+  "operatorOutageClaims": {
+    "gatewayStoppedBeforeClaims": true,
+    "retainedClaimData": true,
+    "successfulClaims": 2,
+    "scope": "Previously published roots and saved proof data only; no new exit or production service loss claim"
+  },
+  "clockRegistration": "real owned-Anvil registration and adapter verification; test inner verifier; no target finality or production L1 reader claim",
+  "clockPolicyMs": {
+    "maxWindow": 60000,
+    "skew": 60000,
+    "anchorTimeout": 3600000
+  }
+}

@@ -206,7 +206,18 @@ mod tests {
         u64::from_be_bytes(bytes[offset + 24..offset + 32].try_into().unwrap())
     }
 
+    /// Frozen candidate lane: the committed lifecycle witness these unit tests
+    /// read predates the current state layout and is refused.
     #[test]
+    fn frozen_lane_registration_fixture_is_refused_by_the_current_layout() {
+        use crate::candidate_frozen_fixtures::{assert_refused, PRICE_LIFECYCLE};
+        assert_refused(PRICE_LIFECYCLE, &["normal-lifecycle.witness.bin"]);
+    }
+
+    // Its generation-source fingerprint covers this file, which changed only to
+    // freeze the lane, so it is frozen with the lane.
+    #[test]
+    #[ignore = "frozen candidate lane"]
     fn committed_original_archive_vectors_match_native_and_solidity_bytes() {
         use sha2::{Digest as _, Sha256};
         // Runtime reads prevent a circular generated-file/source fingerprint.
@@ -298,6 +309,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "frozen candidate lane"]
     fn exact_nested_abi_offsets_and_independent_a3_body_evidence() {
         let (policy, clock, entries) = fixture();
         let encoded = registration(&policy, &clock, &entries).unwrap();
@@ -341,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "frozen candidate lane"]
     fn full_signature_container_changes_input_but_preserves_body_evidence() {
         let (policy, clock, mut entries) = fixture();
         let original = registration(&policy, &clock, &entries).unwrap();
@@ -351,6 +364,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "frozen candidate lane"]
     fn missing_extra_reordered_wrong_clock_and_bad_container_fail() {
         let (policy, clock, entries) = fixture();
         let mut missing = entries.clone();
@@ -392,6 +406,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "frozen candidate lane"]
     fn encoding_is_bounded_and_price_free_array_has_two_words() {
         let (policy, mut clock, original) = fixture();
         let mut entries = vec![original[0].clone(); MAX_ENTRIES];

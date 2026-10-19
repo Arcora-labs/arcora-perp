@@ -33,7 +33,9 @@ pub enum EngineError {
     },
     /// Position is not liquidatable but a liquidation was attempted.
     NotLiquidatable,
-    /// Withdrawals / opens blocked because the market is in close-only mode (§6).
+    /// The op is not allowed in the current mode (§6): opening or increasing
+    /// exposure, or crediting a deposit, while the system is close-only; or a
+    /// wind-down exit while it is not.
     CloseOnly,
     /// Amount is non-positive where a positive amount is required.
     NonPositiveAmount,
@@ -89,7 +91,11 @@ pub enum EngineError {
     /// A wind-down-only operation was mixed with ordinary operations, or the
     /// phase-specific batch grammar was otherwise violated.
     WindDownGrammar,
-    /// The terminal socialization set cannot absorb the remaining deficit.
+    /// `SettleAll` cannot complete: the claims left for the haircut are smaller
+    /// than the remaining deficit, or its result fails a postcondition (a
+    /// position not flat with positive collateral, a negative reserve, a reserve
+    /// left although a recipient is set, or value not conserved). Nothing is
+    /// changed.
     WindDownInsolvent,
     /// 2026-10-08 review: a `Market` stored in the canonical state's `markets` map
     /// under a key different from its own `id`. Every state root hashes the map KEY,
@@ -100,6 +106,38 @@ pub enum EngineError {
     /// The manifest timestamp differs from the maximum original operation time.
     /// This consistency check does not authenticate external/L1 time.
     ClockMismatch,
+    /// The per-market funding map does not cover exactly the registered markets,
+    /// or a funding state holds a value outside the range the engine maintains
+    /// (`FundingState::is_well_formed`). `add_market` always creates both entries
+    /// together and the engine keeps every funding field in range, so every honest
+    /// state passes.
+    FundingStateInvalid,
+    /// A `Position` stored under the key `(owner, market)` carries a different
+    /// `owner` or `market_id` field. The state root hashes the key, so these
+    /// fields must equal it.
+    PositionKeyMismatch,
+    /// A real L1 withdrawal (`to = Some`) whose nonce does not advance
+    /// `State::last_withdrawal_nonce`: it is not strictly greater than the last
+    /// accepted nonce, or it exceeds it by more than
+    /// `engine::MAX_WITHDRAWAL_NONCE_STEP`. Refused before any state is touched.
+    WithdrawalNonceNotIncreasing,
+    /// An internal burn (`to = None`) carried a non-zero nonce. Internal burns
+    /// emit no withdrawal leaf, so their nonce must be 0. Refused before any state
+    /// is touched.
+    InternalBurnNonceNotZero,
+}
+
+/// A serialized structure whose derived parts could not be rebuilt from its
+/// encoded fields: an out-of-range tree depth, more leaves than the tree holds, a
+/// repeated tree leaf, or a repeated nullifier. Decoding fails with this message;
+/// no value of the type is constructed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WireError(pub &'static str);
+
+impl core::fmt::Display for WireError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.0)
+    }
 }
 
 impl From<RiskError> for EngineError {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { orderRisk, maxOrderSize, accountSummary, liqBufferBp, liquidationPrice } from "./risk";
+import { orderRisk, maxOrderSize, accountSummary, liqBufferBp, liquidationPrice, initialMarginRequired } from "./risk";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type Position } from "./types";
 
 const MARK = 100_000n * PRICE_SCALE; // $100k
@@ -118,5 +118,32 @@ describe("orderRisk", () => {
     // 1.5 BTC at $100k = $150k
     const r = orderRisk(SIZE_SCALE + SIZE_SCALE / 2n, MARK, "Buy", 0.1, 0.05);
     expect(r.notional).toBe(150_000n * QUOTE_SCALE);
+  });
+});
+
+describe("initialMarginRequired mirrors the engine's rounding and floor", () => {
+  it("rounds the notional and the ratio product up", () => {
+    // 1 BTC at $123.45678901: notional 123,456,789.01 µUSD rounds up to 123,456,790;
+    // 3% of that is 3,703,703.7 µUSD, which rounds up to 3,703,704 (floor would give 3,703,703).
+    expect(initialMarginRequired(SIZE_SCALE, 12_345_678_901n, 0.03)).toBe(3_703_704n);
+    // an exact product is unchanged: 0.0002 BTC at $100k = $20 ⇒ $2 at 10%
+    expect(initialMarginRequired(SIZE_SCALE / 5_000n, MARK, 0.1)).toBe(2n * QUOTE_SCALE);
+  });
+
+  it("never asks less than $1 for an open position, and nothing for a flat one", () => {
+    // 0.00001 BTC at $100k = $1 notional: 10% is $0.10, lifted to the $1 floor
+    expect(initialMarginRequired(SIZE_SCALE / 100_000n, MARK, 0.1)).toBe(QUOTE_SCALE);
+    // a single base unit still needs the floor
+    expect(initialMarginRequired(1n, MARK, 0.1)).toBe(QUOTE_SCALE);
+    expect(initialMarginRequired(0n, MARK, 0.1)).toBe(0n);
+    expect(initialMarginRequired(SIZE_SCALE, 0n, 0.1)).toBe(0n);
+  });
+
+  it("shows the floor in the order preview, with the lower effective leverage", () => {
+    // 0.00005 BTC at $100k = $5 notional: 10% would be $0.50, the floor lifts it to $1
+    const r = orderRisk(SIZE_SCALE / 20_000n, MARK, "Buy", 0.1, 0.05);
+    expect(r.notional).toBe(5n * QUOTE_SCALE);
+    expect(r.margin).toBe(QUOTE_SCALE);
+    expect(r.leverage).toBeCloseTo(5, 5);
   });
 });

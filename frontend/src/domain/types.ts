@@ -169,6 +169,12 @@ export type SystemMode = "Normal" | "CloseOnly";
 export interface AccountState {
   /// free, settled shielded balance (quote-scaled) — withdrawable
   settledBalance: bigint;
+  /// Free balance per market id (quote-scaled), when the source reports it
+  /// (`marketFree` of `GET /v1/accounts/me`). A withdrawal takes from the selected
+  /// market's free balance, and only a request for all of it may be below the
+  /// minimum. Absent for a single-pool source (the demo mock), where the settled
+  /// balance is that pool.
+  marketFree?: Record<number, bigint>;
   positions: Position[];
 }
 

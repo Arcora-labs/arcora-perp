@@ -14,6 +14,12 @@
 //! replay. Run `forge build --root contracts`, then the ignored test below. All
 //! wallets, contracts, ports and snapshots are disposable; no configured chain is
 //! used.
+//!
+//! The run reads no wall clock and no OS entropy where they reach the engine
+//! state: the gateway runs on an injected clock and an injected entropy stream
+//! (`injected_inputs`), and the owned chain starts at the same epoch and advances
+//! exactly one second per block. Two runs therefore export byte-identical witnesses,
+//! and on one host a byte-identical `lifecycle.json` (it carries no run timing).
 use super::*;
 use k256::sha2::{Digest as _, Sha256};
 use serde_json::{json, Value};
@@ -41,6 +47,17 @@ const ANCHOR_TIMEOUT_MS: u64 = 3_600_000;
 /// The sequencer bond posted before the first deposit. Deposit capacity is about
 /// 20 times the bond.
 const BOND: u128 = 4_000 * 1_000_000;
+/// The epoch of the injected clock, 2026-01-01T00:00:00Z. The owned chain's genesis
+/// block carries it (`anvil --timestamp`), every later block is
+/// `BLOCK_INTERVAL_SECS` after the one before it, and after each transaction or
+/// mined block the gateway's clock moves to the latest block's timestamp. Recorded
+/// in the exported `lifecycle.json`.
+const CLOCK_EPOCH_MS: u64 = 1_767_225_600_000;
+/// Seconds between consecutive blocks of the owned chain.
+const BLOCK_INTERVAL_SECS: u64 = 1;
+/// The seed of the injected entropy stream: account wallet seeds, API keys and
+/// deposit blinds.
+const ENTROPY_SEED: [u8; 32] = [0x6c; 32];
 const DEPOSIT_SIG: &str = "deposit(uint256,bytes32,uint64,bytes)";
 const REFUND_SIG: &str = "refundDeposit(uint64,address,bytes32,uint256,address)";
 const CHALLENGE_SIG: &str = "challengeInclusion(bytes32,uint64,uint64,uint64,address,bytes)";
@@ -192,6 +209,7 @@ impl Evm {
                 "--slots-in-an-epoch",
                 "1",
             ])
+            .args(["--timestamp", &(CLOCK_EPOCH_MS / 1000).to_string()])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -215,7 +233,30 @@ impl Evm {
             "owned Anvil exited"
         );
         evm.url = format!("http://127.0.0.1:{port}");
+        // Fixed block spacing: a block's timestamp depends only on how many blocks
+        // precede it, never on when it was mined.
+        evm.rpc(
+            "anvil_setBlockTimestampInterval",
+            &[json!(BLOCK_INTERVAL_SECS)],
+        );
+        evm.sync_clock();
         evm
+    }
+    /// Move the gateway's injected clock to the latest block's timestamp. Called
+    /// after every transaction and mined block, so the gateway acts at the chain
+    /// time of the block before its next transaction, and its operations stay within
+    /// the clock policy of the registration that follows them.
+    fn sync_clock(&self) {
+        let block = self.rpc("eth_getBlockByNumber", &[json!("latest"), json!(false)]);
+        let secs = u64::from_str_radix(
+            block["timestamp"]
+                .as_str()
+                .unwrap()
+                .trim_start_matches("0x"),
+            16,
+        )
+        .unwrap();
+        injected_inputs::advance_clock_to(secs * 1000);
     }
     fn cast(&self, args: &[&str]) -> Output {
         let mut all = vec![args[0], "--rpc-url", &self.url];
@@ -245,6 +286,7 @@ impl Evm {
     fn mine(&self, blocks: u64) {
         if blocks > 0 {
             self.rpc("anvil_mine", &[json!(format!("0x{blocks:x}"))]);
+            self.sync_clock();
         }
     }
     fn fund(&self, user: &User) {
@@ -268,7 +310,9 @@ impl Evm {
         }
         all.extend([to, signature]);
         all.extend(args.iter().map(String::as_str));
-        self.cast(&all)
+        let output = self.cast(&all);
+        self.sync_clock();
+        output
     }
     fn send_value(
         &self,
@@ -361,14 +405,16 @@ impl Evm {
             input.extend(args.iter().map(String::as_str));
             code.push_str(successful(command("cast", &input)).trim_start_matches("0x"));
         }
-        self.cast(&[
+        let output = self.cast(&[
             "send",
             "--json",
             "--private-key",
             &user.private_hex(),
             "--create",
             &code,
-        ])
+        ]);
+        self.sync_clock();
+        output
     }
     fn deploy(
         &self,
@@ -861,8 +907,7 @@ async fn settle(
         max_window_ms: CLOCK_WINDOW_MS,
         clock_skew_ms: CLOCK_SKEW_MS,
     };
-    let mut bytes = perp_core::clock::WIRE_MAGIC.to_vec();
-    bytes.extend(postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, clock)).unwrap());
+    let bytes = prover::encode_clock_witness(&w.pre_state, &w.ops, &w.manifest, &clock);
     let public = prover::public_from_witness(&bytes).unwrap();
     assert_eq!(public.commitment::<Keccak256>(), clock.commitment());
     // The adapter must reject a legacy (unbound) commitment, even though the
@@ -1015,6 +1060,14 @@ fn real_http_evm_funds_lifecycle_with_native_mock_proof() {
 
 async fn run_lifecycle() {
     let started = std::time::Instant::now();
+    // This process runs only this test (the parent re-executes it alone), so the
+    // process-wide injection reaches no other test.
+    assert_eq!(
+        std::env::var("ARCORA_FUNDS_LIFECYCLE_CHILD").as_deref(),
+        Ok("1")
+    );
+    injected_inputs::advance_clock_to(CLOCK_EPOCH_MS);
+    injected_inputs::inject_entropy(ENTROPY_SEED);
     let evm = Evm::start();
     let mut operator = User::fixture(0x11);
     let mut alice = User::fixture(0x21);
@@ -1849,6 +1902,13 @@ async fn run_lifecycle() {
         "operatorOutageClaims": {"gatewayStoppedBeforeClaims":true,"retainedClaimData":true,"successfulClaims":2,"scope":"Previously published roots and saved proof data only; no new exit or production service loss claim"},
         "clockRegistration": "real owned-Anvil registration and adapter verification; test inner verifier; no target finality or production L1 reader claim",
         "clockPolicyMs": { "maxWindow": CLOCK_WINDOW_MS, "skew": CLOCK_SKEW_MS, "anchorTimeout": ANCHOR_TIMEOUT_MS },
+        "injectedClock": {
+            "epochMs": CLOCK_EPOCH_MS,
+            "blockIntervalSecs": BLOCK_INTERVAL_SECS,
+            "chainGenesisTimestamp": CLOCK_EPOCH_MS / 1000,
+            "gatewayClock": "the latest block's timestamp after each transaction or mined block; no wall clock",
+            "entropy": "a keccak256 stream of a fixed test seed for account seeds, API keys and deposit blinds; no OS entropy"
+        },
         "negativeCases": [
             "settlement with a verifier that is not a clock adapter", "settlement with progressBatches outside 1..16",
             "vault that does not name the settlement", "deposit before any bond (gateway 409 and vault BondCapacityExceeded)",
@@ -1866,12 +1926,19 @@ async fn run_lifecycle() {
     });
     if let Some(dir) = std::env::var_os("ARCORA_FUNDS_WITNESS_DIR") {
         use std::io::Write as _;
+        // The exported manifest carries no run timing, so two runs on one host
+        // export identical bytes; the timing stays in the evidence report and the
+        // printed line below.
+        let mut exported = report.clone();
+        let fields = exported.as_object_mut().unwrap();
+        fields.remove("elapsedSeconds").unwrap();
+        fields.remove("timingScope").unwrap();
         std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)
             .open(PathBuf::from(dir).join("lifecycle.json"))
             .unwrap()
-            .write_all(&serde_json::to_vec_pretty(&report).unwrap())
+            .write_all(&serde_json::to_vec_pretty(&exported).unwrap())
             .unwrap();
     }
     if let Ok(path) = std::env::var("ARCORA_FUNDS_EVIDENCE") {

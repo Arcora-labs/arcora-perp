@@ -32,6 +32,10 @@ GATEWAY_ALERTS = (
     "stale_anchor",
     "liveness_low",
     "permit_gc_stalled",
+    "engine_close_only",
+    "admission_cap_reached",
+    "withdraw_nonce_repaired",
+    "deposit_blocked_at_cap",
 )
 # Monitor conditions (episodic) and one-shot unit failures. The monitor's own L1
 # reads also raise liveness_low (the gateway's name for the same condition).

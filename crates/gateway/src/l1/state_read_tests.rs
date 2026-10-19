@@ -561,6 +561,7 @@ fn boot_posture_reads_every_term_from_one_snapshot() {
             current_root: [3; 32],
             enclave_signer: me,
             sequencer: me,
+            governance: me,
         }
     );
     let error = read(Fault::Word(14), Fault::Word(14)).unwrap_err();
@@ -572,6 +573,7 @@ fn boot_posture_reads_every_term_from_one_snapshot() {
         Fault::Word(21),
         Fault::Word(30),
         Fault::Word(31),
+        Fault::Word(32),
         Fault::Failure(4),
     ] {
         assert!(read(Fault::None, f).is_err(), "witness {f:?}");

@@ -1,13 +1,19 @@
 //! Versioned settlement-chain clock binding. Operation times are DERIVED from
 //! the immutable log; the chain authenticates registration time and policy.
 //! On Base this is L2 time, not an Ethereum L1-origin timestamp.
-use crate::commitment::DerivedRoots;
+use crate::commitment::{derive_roots, DerivedRoots};
 use crate::engine::BatchOp;
-use crate::{Digest, EngineError};
+use crate::hash::Keccak256;
+use crate::order::BatchManifest;
+use crate::{DefaultState, Digest, EngineError};
 use alloc::vec::Vec;
 use tiny_keccak::{Hasher as _, Keccak};
 
-pub const WIRE_MAGIC: &[u8; 8] = b"DPCLK2\0\0";
+/// Framing magic of the one witness encoding the guest accepts:
+/// `WIRE_MAGIC ‖ postcard(ClockWitness)`, with no trailing bytes. Input without
+/// this exact prefix is refused before any decode. `DPCLK3` is the
+/// chainlink-oracle candidate framing and is never reused here.
+pub const WIRE_MAGIC: &[u8; 8] = b"DPCLK4\0\0";
 pub const DOMAIN_TEXT: &[u8] = b"arcora:clock-bound-proof:v2";
 
 pub fn keccak(bytes: &[u8]) -> Digest {
@@ -112,6 +118,12 @@ impl ClockContext {
             abi_u64(self.clock_skew_ms),
         ])
     }
+    /// `bind_commitment(self.base_commitment, self.receipt())`: this context's
+    /// own base commitment bound to its receipt. It derives no root and checks
+    /// nothing, so the value stands for a transition only once
+    /// [`Self::validate`] has accepted this context against that transition's
+    /// derived roots. [`bind_transition`] does both in one step and is the way
+    /// to produce a public commitment.
     pub fn commitment(&self) -> Digest {
         bind_commitment(self.base_commitment, self.receipt())
     }
@@ -145,6 +157,38 @@ impl ClockContext {
     }
 }
 
+/// A clock-bound batch transition: the derived roots, the clock receipt, and the
+/// public commitment `bind_commitment(roots.commitment(), receipt)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BoundTransition {
+    pub roots: DerivedRoots,
+    pub receipt: Digest,
+    pub commitment: Digest,
+}
+
+/// The one transition the guest and its native twin both run. In order: execute
+/// the batch and derive its roots, check the clock context against those roots and
+/// the op times, compute the receipt, and bind the base commitment to it. There is
+/// no unbound variant. Mutates `state` to the post-state; on error the caller must
+/// discard `state`.
+pub fn bind_transition(
+    state: &mut DefaultState,
+    ops: &[BatchOp],
+    manifest: &BatchManifest,
+    clock: &ClockContext,
+) -> Result<BoundTransition, EngineError> {
+    let roots = derive_roots(state, ops, manifest)?;
+    clock.validate(manifest.batch_id, &roots, ops)?;
+    let receipt = clock.receipt();
+    let commitment = bind_commitment(roots.commitment::<Keccak256>(), receipt);
+    Ok(BoundTransition {
+        roots,
+        receipt,
+        commitment,
+    })
+}
+
+/// Decoded body of a [`WIRE_MAGIC`]-framed witness.
 #[cfg(feature = "serde")]
 pub type ClockWitness = (
     crate::DefaultState,

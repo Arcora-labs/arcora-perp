@@ -3,6 +3,9 @@
 
 Existing Cargo cache is reused. This is NOT an independent/cold build or proof.
 Output directory must not exist. No reviewed ELF, vkey or source pin is replaced.
+
+Frozen candidate lane: the candidate is not rebuilt against the current
+perp-core, so the CLI refuses before any build.
 """
 import argparse
 import datetime
@@ -17,6 +20,8 @@ from verify_clock_proof import verify_guest_source
 
 ROOT = Path(__file__).resolve().parents[2]
 RUSTC_SHA = "985c33069083f55ed42b68ef51a8528d0cb1632e43428ffdb5c489306154f964"
+FROZEN_LANE = ("frozen candidate lane: the Chainlink candidate guest is kept as history "
+               "and is not rebuilt against the current perp-core")
 
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -29,6 +34,8 @@ def inputs():
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(paths)}
 
 def main():
+    raise SystemExit(FROZEN_LANE)
+    # Unreachable: the former build, kept unchanged as the provenance of the committed candidate ELF.
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cargo", type=Path, required=True)
     parser.add_argument("--rustc", type=Path, required=True)

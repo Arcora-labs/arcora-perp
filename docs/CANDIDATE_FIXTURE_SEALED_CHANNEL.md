@@ -4,8 +4,10 @@ This is a `cfg(test)` software-key-possession and message-binding boundary for t
 owned candidate HTTP fixture. It does not start a production route/backend,
 create an approved service/attestation identity, generate an SP1 proof or permit
 candidate submission. **PRODUCTION HOLD** remains. Production public identities
-remain self-reported/unattested; the existing prover remains legacy/DPCLK2 and
-its public preflight refuses DPCLK3 candidate compatibility.
+remain self-reported/unattested; the existing prover accepts only the clock-bound
+`DPCLK4` framing and its public preflight refuses DPCLK3 candidate compatibility.
+The candidate lane itself is frozen: its ELF, setup key and fixtures are kept
+byte-identical as history.
 
 `FixtureTransport::new` retains the separate plain fixture behavior.
 `with_sealed_channel` explicitly attaches an independently configured fixture

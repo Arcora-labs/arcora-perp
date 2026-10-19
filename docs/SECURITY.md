@@ -134,7 +134,7 @@ no single failure is catastrophic.
 | **Sequencer censors an order** | a user's order is withheld | each receipt carries an enclave-signed L1 challenge authorization; an unanswered challenge pays a capped fine from the bond to the account's beneficiary once later batches settle, and settlement continues. Rejected-root membership does not prove a truthful rejection reason; fairness remains an explicit limitation |
 | **Gateway custody-key compromise** | unauthorized guest-valid operations can affect funds | vault roots constrain direct payout; guest validity alone does not authenticate user intent independently of server-held keys |
 | **Prover sees the witness** (bare prover farm, §10b) | positions/fills/margins leak to the prover | the intended boundary is attestation-gated key release; the development prover is inside the current privacy trust boundary. Hardware deployment and full witness-copy cleanup remain unverified |
-| **Oracle manipulation** (§8) | bad liquidations / funding | signature, freshness, confidence and backup-deviation checks run in-guest, but one publisher signs both price and backup and can lie consistently; external price truth is still trusted |
+| **Oracle manipulation** (§8) | bad liquidations / funding / wind-down settlement price | signature, freshness, confidence and backup-deviation checks run in-guest, but one publisher signs both price and backup and can lie consistently; external price truth is still trusted. `SettleAll` closes open positions at the last price recorded in the settled state, which that same key signed |
 | **Invalid state transition** (any of the above) | — | ZK validity proof: the L1 verifier rejects it, the root never advances (§3, `IZkVerifier`) |
 | **User loses device** | — | seed → view-key → scan the encrypted note archive → recover notes/positions (§7, `note-archive`) |
 
@@ -160,6 +160,13 @@ proof alone does not independently establish user intent or external market trut
 - Rejection membership and order hashes are committed, but truthful rejection
   reasons and matching fairness are not proven. See
   [the current rejection review](audits/2026-10-09-rejection-boundary.md).
+- The wind-down settlement price is the last validated price recorded in the
+  settled state. The operator's own oracle key signs it, and the operator chooses
+  which signed transcript, within the staleness window, each op carries.
+  Governance chooses when close-only starts; in the shipped flow governance is the
+  hot sequencer key (§ Funding, wind-down settlement and witness binding).
+- The guest bounds funding (rate clamp, mark band, one-hour cap per gap, exact
+  carry), but the sequencer chooses the funding mark and the timing of ops.
 
 The older phase notes below describe historical design work, not fresh deployment
 or release acceptance. Current task state is in
@@ -244,6 +251,87 @@ take effect only on a fresh deployment (`docs/REDEPLOY-CC-RUNBOOK.md`).
 5. **No bound address, no L1 challenge authorization.** Receipts for an account
    without a bound deposit address carry `l1Challenge: null`.
 
+## Funding, wind-down settlement and witness binding (2026-10-18)
+
+These rules are part of the zkVM guest program in this source. They take effect only
+with a newly built guest, a new program key and a fresh deployment.
+
+**Witness framing.** The guest accepts exactly one input:
+`b"DPCLK4\0\0" ‖ postcard(state, ops, manifest, clock context)`, with no trailing
+bytes, and always binds the commitment to the L1 clock receipt
+(`perp_core::clock::bind_transition`). Input without that prefix is refused before
+any decode. The native replay and the prover service accept the same framing only,
+and the gateway's HTTP prover client sends nothing for an unbound witness. `DPCLK3`
+remains the separate Chainlink candidate framing. On L1, `ClockBoundVerifier` passes
+the inner `SP1ZkVerifier` the bound commitment
+`keccak256(abi.encode(DOMAIN, baseCommitment, receipt))`, which is exactly the 32 bytes
+the guest commits. The `SP1ZkVerifier` NatSpec that equates the public values with the
+settlement's `publicCommitment` predates clock binding; the contracts stay
+byte-identical, so the correction lives here.
+
+**Every serialized field is bound.** Each field of the decoded pre-state is either
+bound into the anchored state root, derived on decode, or validated on decode:
+
+- the note-commitment tree is encoded as its depth and leaves; the empty-subtree
+  roots are derived, the depth must be 1 to 64, the leaves must fit the capacity and
+  must be distinct;
+- the nullifier set is encoded as its insertion-order log (§ Post-audit remediation
+  residuals);
+- each market's funding state is range-checked (rate within the clamp, carry
+  strictly inside its divisor, a non-negative recorded price, no recorded time
+  without a price), and the funding and market keys must match;
+- each position's stored owner and market must equal its key.
+
+The state root and every state sub-digest start with a distinct role-tag word, so no
+two of them share a preimage format. A mutated field therefore gives a decode error,
+a shape error or a different root.
+
+**Withdrawal leaf nonces are bound to state.** The state root records the nonce of
+the last real L1 withdrawal (`last_withdrawal_nonce`). A real withdrawal, ordinary or
+wind-down, must carry a strictly greater nonce, by at most `2^32`, and becomes the new
+last one. An internal burn must carry nonce 0. Every settle path on L1 requires the
+proven previous root to equal `currentStateRoot()`, so every published withdrawal leaf
+carries a distinct nonce across all batches and phases, and `claimed[leaf]` on the
+vault makes each one single-use. The gateway assigns leaf nonces above the last
+recorded one; on boot and restore it moves a lagging counter forward and raises an
+alert.
+
+**Funding.** Each span is charged at the rate stored at its start, to the positions
+that existed during it, for at most one hour per gap, with an exact carry
+(`docs/ECONOMIC_SECURITY.md`, Q8). The guest proves those bounds, the rate clamp and
+the mark band. The funding mark and the op timing are the sequencer's choice, so
+time-correctness assumes an honest sequencer.
+
+**Wind-down settlement.** `SettleAll` closes open positions at each market's last
+recorded validated price (entry price for a market that never recorded one), covers
+deficits from the clearing pool, insurance and the treasury, applies a global
+pro-rata haircut only to what remains, and pays the reserves left over as one
+withdrawal leaf to the wind-down recipient. The recipient is an L1 address bound into
+the state root at genesis and immutable afterwards. `darkperp-gateway
+--print-genesis-root` prints the root together with the recipient and the oracle
+signer it binds, and the release manifest carries those three values from that run.
+`observe-target` checks that the deployed `currentStateRoot()` equals the declared
+root while no batch has settled, `validate --check-process-env` ties the gateway's
+`WIND_DOWN_RECIPIENT` to the declared recipient, and at boot the gateway checks that
+its state root, on a fresh genesis the one it computes from its own configuration,
+continues the settlement's. Given the release's gateway binary (`--gateway-bin`),
+`release_manifest.py` `create`, `validate` and `observe-target` and
+`deploy_clock_stack.py` also recompute the root from the declared recipient and
+oracle signer and refuse unless it is the declared root; without it, the root is
+not recomputed and those two addresses rest on the output that listed them with it.
+On a chain id other than a local test chain (31337 or 1337), neither address may be
+one of the published default development accounts. See
+`docs/FINAL_SETTLE_RUNBOOK.md`.
+
+**Deposits after an engine trip.** Once the engine is close-only, the guest refuses
+`Deposit`, and the gateway stops permits and crediting. Such deposits stay
+unconsumed on L1 and are refunded at principal after L1 close-only. The gateway
+records each one that landed under its permits, and the account view lists it as
+refundable once L1 close-only is observed.
+
+**Fresh stack.** Off-chain byte formats from before this change (witnesses, gateway
+snapshots and rollback journals) are refused by their format magic, not migrated.
+
 ## Residual / honestly-acknowledged leakage
 
 - **Market-level liquidation pressure is visible** (§9): per-position liquidations
@@ -253,12 +341,14 @@ take effect only on a fresh deployment (`docs/REDEPLOY-CC-RUNBOOK.md`).
   denomination can't be bucketed and are reported explicitly (`bridge`).
 - **Confidentiality depends on hardware** until the committee/MPC hardening lands;
   a compromised gateway also retains the custody and oracle risks described above.
-- **Insurance fund is a one-way penalty sink** (Phase 0): liquidation penalties flow
-  *into* it, but it is not yet drawn on to socialize bad debt. A gap-down past the
-  maintenance buffer parks the shortfall as negative collateral, absorbed by the
-  vault clearing pool — so conservation and vault solvency hold (a 10th review pass
-  verified and pinned this with `bad_debt_liquidation_conserves_and_cannot_be_escaped`),
-  but a production system needs the insurance back-stop + auto-deleverage cascade.
+- **Bad debt has a fixed live waterfall.** A liquidation's shortfall is covered by
+  the insurance fund, then the treasury, then auto-deleverage of the market's
+  winners, each capped so that it keeps collateral at or above zero and equity at or
+  above maintenance margin. Whatever is still uncovered stays parked on the closed
+  position, inside the conservation identity, and trips the system to close-only.
+  From then on the guest refuses new deposits, so they cannot absorb the earlier
+  shortfall (`docs/ECONOMIC_SECURITY.md`, Q3/Q7). What reaches users through ADL or
+  the wind-down haircut is attributable, never silent.
 
 ## Known design limitations (flagged for input, not yet fixed)
 
@@ -281,11 +371,18 @@ take effect only on a fresh deployment (`docs/REDEPLOY-CC-RUNBOOK.md`).
   local characterization and refund tests, with their scope limits. Current
   source and local evidence do not establish a live deployment or independent
   proof/custody acceptance.
-- **Vault `withdrawalsRoot` must be cumulative (P6) — NOW WIRED.** `CollateralVault.publishWithdrawals`
-  *overwrites* the root each settled batch, so the published root must be the
-  cumulative set of all authorized-but-unclaimed withdrawals — not just the new ones
-  — or a user who hasn't yet `claim`ed an older withdrawal is stranded when the next
-  batch publishes. The mechanism is sound (claims are gated on the proven root, never
+- **Vault `withdrawalsRoot` must be cumulative (P6) — NOW WIRED, later relaxed.**
+  `CollateralVault.publishWithdrawals` overwrites `withdrawalsRoot` each settled batch,
+  but it also records every published non-zero root (`rootPublished`), and `claim`
+  accepts a proof against any of them (audit DP-012). A later root that omits a leaf
+  therefore no longer strands it. The NatSpec on `publishWithdrawals` that still
+  calls the cumulative root a MUST predates that change; the contract source is kept
+  byte-identical, so the correction lives here. The guest commits each batch's own
+  withdrawal leaves; the phase-1 wind-down root holds at most the one reserve-payout
+  leaf, claimable with an empty proof. The historical rationale follows: a single
+  overwritten root had to be the cumulative set of all authorized-but-unclaimed
+  withdrawals, or a user who hadn't yet `claim`ed an older withdrawal would be
+  stranded when the next batch published. The mechanism is sound (claims are gated on the proven root, never
   the operator; double-claim is blocked by `claimed[leaf]`), and the cumulative
   invariant is a *prover obligation* not enforceable on-chain. **As of 2026-06-28 this
   is implemented** in the gateway bridge (`crates/gateway/src/withdrawals.rs` +
@@ -383,11 +480,14 @@ also closed:
   bound — it is append-only) is now an O(1) running hash-chain advanced on each insert, instead
   of an O(N)-in-history re-hash (audit DP-002 perf follow-up, `crates/perp-core/src/nullifier.rs`).
   A naive commutative accumulator (XOR/sum) was rejected — it would have reintroduced a collision
-  weakness, undoing DP-002. The chain is order-dependent, which is SOUND here because the sole
-  insert path is `consume_note` in deterministic transition order (identical native + zkVM guest)
-  and the field is serialized into the witness (never rebuilt by re-insert). The unspent-note
-  digest stays O(M) but M is bounded by *current* unspent notes (removed on spend), not chain
-  history, so it does not grow without bound.
+  weakness, undoing DP-002. The chain is order-dependent, and the set is serialized as its
+  insertion-order log and nothing else: decode rebuilds the membership index and the chain by
+  inserting the log in order, and a repeated entry fails the decode. Two sets therefore have
+  equal digests exactly when they hold the same nullifiers inserted in the same order (barring a
+  hash collision), so the state root binds every encoded byte of the set. The sole insert path is
+  `consume_note`, in deterministic transition order (identical native + zkVM guest). The
+  unspent-note digest stays O(M) but M is bounded by *current* unspent notes (removed on spend),
+  not chain history, so it does not grow without bound.
 
 ## SEC-021 / SEC-021b — withdrawal authorization (2026-07, FIXED)
 

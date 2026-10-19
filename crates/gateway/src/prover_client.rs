@@ -66,9 +66,10 @@ pub struct ProveOutcome {
 }
 
 #[derive(Debug)]
-// All variants are live (Derive by MockProverClient; Seal/Http/Decode by HttpProverClient
-// and its helpers), but their payloads are only ever read via `{e:?}` in prove_and_prepare,
-// and dead-code analysis does not count derived-Debug as a read — hence the allow.
+// All variants are live (Derive by MockProverClient; Seal/Http/Decode/Unbound by
+// HttpProverClient and its helpers), but their payloads are only ever read via `{e:?}`
+// in prove_and_prepare, and dead-code analysis does not count derived-Debug as a read —
+// hence the allow.
 #[allow(dead_code)]
 pub enum ProverClientError {
     /// The window witness failed to replay (should not happen for a live-sealed window).
@@ -84,6 +85,10 @@ pub enum ProverClientError {
     /// re-handshakes ONCE and retries; a second 401 (or no re-handshake wired)
     /// surfaces here and proving stays closed (fail-closed).
     Unauthorized,
+    /// The remote prover accepts only clock-bound witnesses
+    /// (`prover::encode_clock_witness`). A window without a clock context is
+    /// refused locally: nothing is sealed and no request is sent.
+    Unbound,
 }
 
 /// SEC-020 Task 5 / C4: re-runs the mutual-attestation handshake with the prover
@@ -331,9 +336,10 @@ fn widest_clock_context(w: &WindowWitness, phase: u8) -> perp_core::clock::Clock
 }
 
 /// Refuse a window whose clock-bound sealed `/prove` request would exceed
-/// `body_limit` bytes. Counted without allocating the encoding. Run before the
-/// window is registered: a registered window that no prover accepts leaves an
-/// anchor that only `cancel` can clear.
+/// `body_limit` bytes. Counted without allocating the encoding, over the same
+/// framing [`prover::encode_clock_witness`] produces. Run before the window is
+/// registered: a registered window that no prover accepts leaves an anchor that
+/// only `cancel` can clear.
 pub fn check_sealed_body(w: &WindowWitness, phase: u8, body_limit: usize) -> Result<(), String> {
     let limit = plaintext_byte_limit(body_limit).map_err(|e| e.to_string())?;
     let magic = perp_core::clock::WIRE_MAGIC;
@@ -516,12 +522,13 @@ pub(crate) fn seal_nonce(seal_root: &[u8; 32], plaintext: &[u8]) -> Digest {
     Keccak256::hash_words(Domain::SealNonce, &[*seal_root, plaintext_hash])
 }
 
-/// Seal a window witness exactly as the prover-service's seal-client does, so the service
-/// (same seal params) can open it. Plaintext is the postcard-encoded `(pre_state, ops,
-/// manifest)` triple; the nonce is the secret-keyed `seal_nonce(root, plaintext)`
-/// (content-derived and reuse-proof across rollback re-seals, but keyed with `root` so
-/// the clear nonce can't confirm a guessed witness). Returns 0x-prefixed hex of the
-/// postcard-encoded SealedWitness.
+/// Seal a clock-bound window witness so the prover-service (same seal params) can
+/// open it. The plaintext is the one encoding the guest accepts,
+/// [`prover::encode_clock_witness`] over `(pre_state, ops, manifest, clock)`;
+/// there is no unbound variant. The nonce is the secret-keyed
+/// `seal_nonce(root, plaintext)` (content-derived and reuse-proof across rollback
+/// re-seals, but keyed with `root` so the clear nonce can't confirm a guessed
+/// witness). Returns 0x-prefixed hex of the postcard-encoded SealedWitness.
 ///
 /// SEC-020 Task 6: fail-closed seal-provider selection, MIRRORING the prover-service:
 /// - `session_secret = Some` (an attested session) ⇒ `AttestedSealProvider`, so the seal
@@ -536,18 +543,9 @@ pub fn seal_witness(
     root: &[u8; 32],
     measurement: &Digest,
     session_secret: Option<&[u8; 32]>,
+    clock: &perp_core::clock::ClockContext,
 ) -> Result<String, ProverClientError> {
-    seal_witness_with_clock(w, root, measurement, session_secret, None)
-}
-
-fn seal_witness_with_clock(
-    w: &WindowWitness,
-    root: &[u8; 32],
-    measurement: &Digest,
-    session_secret: Option<&[u8; 32]>,
-    clock: Option<&perp_core::clock::ClockContext>,
-) -> Result<String, ProverClientError> {
-    seal_witness_with_clock_and_body_limit(
+    seal_witness_with_body_limit(
         w,
         root,
         measurement,
@@ -557,26 +555,38 @@ fn seal_witness_with_clock(
     )
 }
 
-/// Count the borrowed witness before allocating its plaintext output. Accepted
-/// witnesses take two serialization passes; this is not a CPU or total-RSS limit.
-fn seal_witness_with_clock_and_body_limit(
+/// The clock-bound plaintext, `prover::encode_clock_witness(...)`, counted over
+/// the borrowed witness before the output is allocated. Accepted witnesses take
+/// two serialization passes; this is not a CPU or total-RSS limit.
+fn encode_clock_plaintext(
+    w: &WindowWitness,
+    clock: &perp_core::clock::ClockContext,
+    body_limit: usize,
+) -> Result<Vec<u8>, ProverClientError> {
+    preflight_then_encode_plaintext(
+        &(&w.pre_state, &w.ops, &w.manifest, clock),
+        perp_core::clock::WIRE_MAGIC,
+        body_limit,
+        || {
+            Ok(prover::encode_clock_witness(
+                &w.pre_state,
+                &w.ops,
+                &w.manifest,
+                clock,
+            ))
+        },
+    )
+}
+
+fn seal_witness_with_body_limit(
     w: &WindowWitness,
     root: &[u8; 32],
     measurement: &Digest,
     session_secret: Option<&[u8; 32]>,
-    clock: Option<&perp_core::clock::ClockContext>,
+    clock: &perp_core::clock::ClockContext,
     body_limit: usize,
 ) -> Result<String, ProverClientError> {
-    let bytes = match clock {
-        None => {
-            encode_plaintext_with_body_limit(&(&w.pre_state, &w.ops, &w.manifest), &[], body_limit)
-        }
-        Some(c) => encode_plaintext_with_body_limit(
-            &(&w.pre_state, &w.ops, &w.manifest, c),
-            perp_core::clock::WIRE_MAGIC,
-            body_limit,
-        ),
-    }?;
+    let bytes = encode_clock_plaintext(w, clock, body_limit)?;
     let predicted_body_bytes = sealed_request_json_bytes(bytes.len())
         .map_err(|e| ProverClientError::Http(e.to_string()))?;
     crate::curl_transport::check_request_body_bytes(predicted_body_bytes, body_limit)
@@ -766,16 +776,23 @@ impl postcard::ser_flavors::Flavor for &mut PlaintextCount {
     }
 }
 
-/// Private seam for the known immutable witness tuples. Counting creates no
-/// output buffer; arbitrary Serialize implementations may still allocate or drift.
+/// Test seam over arbitrary values: `prefix ‖ postcard(value)`, counted first.
+/// Counting creates no output buffer; arbitrary Serialize implementations may
+/// still allocate or drift.
+#[cfg(test)]
 fn encode_plaintext_with_body_limit<T: serde::Serialize + ?Sized>(
     value: &T,
     prefix: &[u8],
     body_limit: usize,
 ) -> Result<Vec<u8>, ProverClientError> {
-    preflight_then_encode_plaintext(value, prefix, body_limit, || postcard::to_allocvec(value))
+    preflight_then_encode_plaintext(value, prefix, body_limit, || {
+        postcard::to_extend(value, prefix.to_vec())
+    })
 }
 
+/// Count `prefix ‖ postcard(value)` against the plaintext budget of `body_limit`,
+/// then call `encode`, which must return exactly those bytes, prefix included.
+/// A length that differs from the count is refused.
 fn preflight_then_encode_plaintext<T, F>(
     value: &T,
     prefix: &[u8],
@@ -805,14 +822,7 @@ where
             ProverClientError::Decode(format!("witness encode: {e}"))
         }
     })?;
-    let body = encode().map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
-    let bytes = if prefix.is_empty() {
-        body
-    } else {
-        let mut bytes = prefix.to_vec();
-        bytes.extend(body);
-        bytes
-    };
+    let bytes = encode().map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
     // Length drift is caught after allocation; same-length content drift is not.
     // Only the fixed borrowed witness types have the pre-allocation size guarantee.
     if bytes.len() != counted {
@@ -1020,6 +1030,8 @@ struct SessionState {
 }
 
 /// The real transport: seal the window and POST it to the attested prover-service.
+/// Clock-bound windows only: [`ProverClient::prove`] fails closed without a
+/// request, and the gateway reaches this client through `ClockProverClient`.
 pub struct HttpProverClient {
     url: String,
     seal_root: [u8; 32],
@@ -1141,15 +1153,18 @@ fn prove_with_reauth(
 }
 
 impl ProverClient for HttpProverClient {
-    fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
-        self.prove_http(w, None)
+    /// Fails closed: the prover-service accepts only clock-bound witnesses, so an
+    /// unbound window is refused here. Nothing is sealed and no request is sent.
+    /// The clock route (`ClockProverClient`) calls [`Self::prove_clocked`].
+    fn prove(&self, _w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+        Err(ProverClientError::Unbound)
     }
     fn prove_clocked(
         &self,
         w: &WindowWitness,
         c: &perp_core::clock::ClockContext,
     ) -> Result<RemoteProveResp, ProverClientError> {
-        self.prove_http(w, Some(c))
+        self.prove_http(w, c)
     }
     /// Fetched with short bounds and cached for `IDENTITY_CACHE`. The clock
     /// client reads it before admission pauses, so the fetch is not spent from
@@ -1194,7 +1209,7 @@ impl HttpProverClient {
     fn prove_http(
         &self,
         w: &WindowWitness,
-        clock: Option<&perp_core::clock::ClockContext>,
+        clock: &perp_core::clock::ClockContext,
     ) -> Result<RemoteProveResp, ProverClientError> {
         // Snapshot the token (lock released at the end of this statement — never
         // held across the multi-minute POST). `None` ⇒ no bearer sent ⇒ the
@@ -1209,16 +1224,13 @@ impl HttpProverClient {
                 // the retry must seal under the REFRESHED secret, or the rebooted
                 // prover (new secret) rejects the stale-keyed seal (C4).
                 let secret = self.session.lock().unwrap().secret;
-                let sealed_hex = match clock {
-                    None => seal_witness(w, &self.seal_root, &self.measurement, secret.as_ref())?,
-                    Some(c) => seal_witness_with_clock(
-                        w,
-                        &self.seal_root,
-                        &self.measurement,
-                        secret.as_ref(),
-                        Some(c),
-                    )?,
-                };
+                let sealed_hex = seal_witness(
+                    w,
+                    &self.seal_root,
+                    &self.measurement,
+                    secret.as_ref(),
+                    clock,
+                )?;
                 let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
                 let resp = http_post(&self.url, &body, self.timeout_secs, bearer)?;
                 parse_prove_resp(&resp)
@@ -2078,8 +2090,7 @@ mod clock_pipeline_tests {
             w: &WindowWitness,
             c: &ClockContext,
         ) -> Result<RemoteProveResp, ProverClientError> {
-            let mut wire = perp_core::clock::WIRE_MAGIC.to_vec();
-            wire.extend(postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, c)).unwrap());
+            let wire = prover::encode_clock_witness(&w.pre_state, &w.ops, &w.manifest, c);
             let p = prover::public_from_witness(&wire).unwrap();
             let mut commitment = p.commitment::<Keccak256>();
             if self.tamper {
@@ -2368,7 +2379,7 @@ mod request_body_tests {
             let calls = Cell::new(0);
             let accepted = preflight_then_encode_plaintext(value, prefix, budget, || {
                 calls.set(calls.get() + 1);
-                postcard::to_allocvec(value)
+                postcard::to_extend(value, prefix.to_vec())
             })
             .unwrap();
             assert_eq!(calls.get(), 1);
@@ -2381,10 +2392,19 @@ mod request_body_tests {
             tests_support::sample_window_no_deposits().0,
         ] {
             let clock = fixture_clock(&witness);
-            check(&(&witness.pre_state, &witness.ops, &witness.manifest), &[]);
             check(
                 &(&witness.pre_state, &witness.ops, &witness.manifest, &clock),
                 perp_core::clock::WIRE_MAGIC,
+            );
+            // The counted plaintext is the guest's encoding, byte for byte.
+            assert_eq!(
+                encode_clock_plaintext(&witness, &clock, MAX_PROVE_REQUEST_BODY_BYTES).unwrap(),
+                prover::encode_clock_witness(
+                    &witness.pre_state,
+                    &witness.ops,
+                    &witness.manifest,
+                    &clock
+                )
             );
         }
     }
@@ -2473,43 +2493,30 @@ mod request_body_tests {
             tests_support::sample_window_no_deposits().0,
         ] {
             let clock = fixture_clock(&witness);
-            for clock in [None, Some(&clock)] {
-                // Independent pre-change encoder; does not call the new seam.
-                let reference = match clock {
-                    None => postcard::to_allocvec(&(
+            {
+                // Independent framing; does not call the seam or the prover crate.
+                let mut reference = perp_core::clock::WIRE_MAGIC.to_vec();
+                reference.extend(
+                    postcard::to_allocvec(&(
                         &witness.pre_state,
                         &witness.ops,
                         &witness.manifest,
+                        &clock,
                     ))
                     .unwrap(),
-                    Some(c) => {
-                        let mut bytes = perp_core::clock::WIRE_MAGIC.to_vec();
-                        bytes.extend(
-                            postcard::to_allocvec(&(
-                                &witness.pre_state,
-                                &witness.ops,
-                                &witness.manifest,
-                                c,
-                            ))
-                            .unwrap(),
-                        );
-                        bytes
-                    }
-                };
-                let actual = match clock {
-                    None => encode_plaintext_with_body_limit(
-                        &(&witness.pre_state, &witness.ops, &witness.manifest),
-                        &[],
-                        MAX_PROVE_REQUEST_BODY_BYTES,
-                    ),
-                    Some(c) => encode_plaintext_with_body_limit(
-                        &(&witness.pre_state, &witness.ops, &witness.manifest, c),
-                        perp_core::clock::WIRE_MAGIC,
-                        MAX_PROVE_REQUEST_BODY_BYTES,
-                    ),
-                }
-                .unwrap();
+                );
+                let actual =
+                    encode_clock_plaintext(&witness, &clock, MAX_PROVE_REQUEST_BODY_BYTES).unwrap();
                 assert_eq!(actual, reference);
+                // The strict native decoder reads it back exactly.
+                let (state, ops, manifest, decoded) =
+                    prover::decode_clock_witness(&reference).unwrap();
+                assert_eq!(
+                    postcard::to_allocvec(&(&state, &ops, &manifest)).unwrap(),
+                    postcard::to_allocvec(&(&witness.pre_state, &witness.ops, &witness.manifest))
+                        .unwrap()
+                );
+                assert_eq!(decoded, clock);
                 let root = [0x71; 32];
                 let measurement = [0x21; 32];
                 let secret = [0x42; 32];
@@ -2538,14 +2545,9 @@ mod request_body_tests {
                         "0x{}",
                         out.iter().map(|b| format!("{b:02x}")).collect::<String>()
                     );
-                    let actual = seal_witness_with_clock(
-                        &witness,
-                        &root,
-                        &measurement,
-                        session_secret,
-                        clock,
-                    )
-                    .unwrap();
+                    let actual =
+                        seal_witness(&witness, &root, &measurement, session_secret, &clock)
+                            .unwrap();
                     assert_eq!(actual, expected);
                 }
             }
@@ -2611,12 +2613,6 @@ mod request_body_tests {
         .enumerate()
         {
             let clock = fixture_clock(witness);
-            measure(
-                &(&witness.pre_state, &witness.ops, &witness.manifest),
-                &[],
-                fixture,
-                false,
-            );
             measure(
                 &(&witness.pre_state, &witness.ops, &witness.manifest, &clock),
                 perp_core::clock::WIRE_MAGIC,
@@ -2688,7 +2684,7 @@ mod request_body_tests {
     }
 
     #[test]
-    fn small_witness_exact_budgets_preserve_legacy_and_clocked_seals() {
+    fn small_witness_exact_budgets_preserve_clocked_seals() {
         use perp_core::clock::{ClockContext, TimeBounds};
         let (witness, _) = tests_support::sample_window();
         let mut post = witness.pre_state.clone();
@@ -2712,35 +2708,68 @@ mod request_body_tests {
         let root = [0x71; 32];
         let measurement = [0x21; 32];
         let secret = [0x42; 32];
-        for clock in [None, Some(&clock)] {
-            for session_secret in [None, Some(&secret)] {
-                let expected =
-                    seal_witness_with_clock(&witness, &root, &measurement, session_secret, clock)
-                        .unwrap();
-                let budget = serde_json::json!({"sealed": &expected}).to_string().len();
-                let actual = seal_witness_with_clock_and_body_limit(
-                    &witness,
-                    &root,
-                    &measurement,
-                    session_secret,
-                    clock,
-                    budget,
-                )
-                .unwrap();
-                assert_eq!(actual, expected);
-                let error = seal_witness_with_clock_and_body_limit(
-                    &witness,
-                    &root,
-                    &measurement,
-                    session_secret,
-                    clock,
-                    budget - 1,
-                )
-                .unwrap_err();
-                assert!(matches!(error, ProverClientError::Http(ref message)
-                    if message == "HTTP request exceeds byte limit"));
-            }
+        for session_secret in [None, Some(&secret)] {
+            let expected =
+                seal_witness(&witness, &root, &measurement, session_secret, &clock).unwrap();
+            let budget = serde_json::json!({"sealed": &expected}).to_string().len();
+            let actual = seal_witness_with_body_limit(
+                &witness,
+                &root,
+                &measurement,
+                session_secret,
+                &clock,
+                budget,
+            )
+            .unwrap();
+            assert_eq!(actual, expected);
+            let error = seal_witness_with_body_limit(
+                &witness,
+                &root,
+                &measurement,
+                session_secret,
+                &clock,
+                budget - 1,
+            )
+            .unwrap_err();
+            assert!(matches!(error, ProverClientError::Http(ref message)
+                if message == "HTTP request exceeds byte limit"));
         }
+    }
+
+    /// The remote client never sends an unbound window: `prove` refuses before
+    /// sealing, and `prove_and_prepare` over the bare client (no clock context)
+    /// stops at the same refusal. The listener sees no connection either way.
+    #[test]
+    fn http_prove_without_a_clock_context_fails_closed_with_no_request() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let client = HttpProverClient {
+            url: format!("http://{}", listener.local_addr().unwrap()),
+            seal_root: [0x71; 32],
+            measurement: [0x21; 32],
+            timeout_secs: 5,
+            session: std::sync::Mutex::new(SessionState {
+                token: Some("session".into()),
+                secret: None,
+                not_after: 0,
+            }),
+            rehandshake: Some(Box::new(|| {
+                panic!("an unbound window must not reach the transport")
+            })),
+            identity: std::sync::Mutex::new(None),
+        };
+        let (witness, ww) = tests_support::sample_window();
+        assert!(!client.clock_enabled());
+        assert!(matches!(
+            client.prove(&witness),
+            Err(ProverClientError::Unbound)
+        ));
+        let error = prove_and_prepare(&client, &witness, &ww).unwrap_err();
+        assert!(error.contains("Unbound"), "{error}");
+        assert!(matches!(
+            listener.accept(),
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+        ));
     }
 }
 
@@ -2774,8 +2803,7 @@ mod preflight_tests {
     #[test]
     fn sealed_body_check_is_a_tight_upper_bound_of_the_real_request() {
         let (w, _) = tests_support::sample_window();
-        let sealed =
-            seal_witness_with_clock(&w, &[1; 32], &[2; 32], None, Some(&real_clock(&w))).unwrap();
+        let sealed = seal_witness(&w, &[1; 32], &[2; 32], None, &real_clock(&w)).unwrap();
         let real = serde_json::json!({ "sealed": sealed }).to_string().len();
         assert!(
             check_sealed_body(&w, 0, crate::curl_transport::MAX_PROVE_REQUEST_BODY_BYTES).is_ok()
@@ -2823,7 +2851,7 @@ mod preflight_tests {
         };
         let (w, _) = tests_support::sample_window();
         let real = serde_json::json!({
-            "sealed": seal_witness_with_clock(&w, &[1; 32], &[2; 32], None, Some(&real_clock(&w)))
+            "sealed": seal_witness(&w, &[1; 32], &[2; 32], None, &real_clock(&w))
                 .unwrap()
         })
         .to_string()

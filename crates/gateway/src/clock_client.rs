@@ -74,13 +74,28 @@ impl ClockProverClient {
     /// window, read before admission pauses: in production with a remote prover,
     /// its program against the on-chain SP1 adapter (whose vkey is read once),
     /// then the clock binding, batch count and wind-down phase at the latest block.
+    ///
+    /// In production a remote prover whose identity cannot be read registers
+    /// nothing: its program is compared before every registration, so the sealed
+    /// window is rolled back without being registered, as after a refused
+    /// preflight, and the settle loop retries. An in-process client has no identity
+    /// and nothing to compare. Outside production a failed identity read only means
+    /// the request-size check falls back to the transport limit.
     pub(crate) fn register_preconditions_with(
         &self,
         production: bool,
     ) -> Result<RegisterPreconditions, PreflightRefusal> {
-        // A transient identity failure is not a property of the window: the size
-        // check then falls back to the transport limit.
-        let identity = self.inner.public_identity().ok().flatten();
+        let identity = match self.inner.public_identity() {
+            Ok(identity) => identity,
+            Err(e) if production => {
+                return Err(PreflightRefusal::Refused(format!(
+                    "the prover's identity could not be read ({e}); its program and guest \
+                     ELF are compared before a window registers, so the window is not \
+                     registered"
+                )))
+            }
+            Err(_) => None,
+        };
         if production {
             if let Some(identity) = &identity {
                 check_program_identity(
@@ -103,17 +118,43 @@ impl ClockProverClient {
     }
 }
 
-/// `PROVER_EXPECTED_ELF_SHA256` (64 hex): the guest ELF hash of the release or
-/// candidate route in use. Optional; when set the prover must report it.
+pub(crate) const EXPECTED_ELF_VAR: &str = "PROVER_EXPECTED_ELF_SHA256";
+
+/// `PROVER_EXPECTED_ELF_SHA256` (64 hex): the guest ELF hash of the release
+/// route in use. When set, the prover must report it before a window registers;
+/// production boot with a remote prover requires it (see
+/// [`require_expected_elf_at_boot`]).
 fn expected_elf_sha256() -> Result<Option<[u8; 32]>, PreflightRefusal> {
-    match std::env::var("PROVER_EXPECTED_ELF_SHA256") {
-        Err(_) => Ok(None),
-        Ok(v) if v.is_empty() => Ok(None),
-        Ok(v) => crate::parse_hex32(&format!("0x{}", v.trim_start_matches("0x")))
+    parse_expected_elf_sha256(std::env::var(EXPECTED_ELF_VAR).ok().as_deref())
+        .map_err(PreflightRefusal::Refused)
+}
+
+/// Unset or empty is `None`; anything else must be 32-byte hex, with or
+/// without `0x`.
+pub(crate) fn parse_expected_elf_sha256(value: Option<&str>) -> Result<Option<[u8; 32]>, String> {
+    match value {
+        None | Some("") => Ok(None),
+        Some(v) => crate::parse_hex32(&format!("0x{}", v.trim_start_matches("0x")))
             .map(Some)
-            .ok_or_else(|| {
-                PreflightRefusal::Refused("PROVER_EXPECTED_ELF_SHA256 is not 32-byte hex".into())
-            }),
+            .ok_or_else(|| format!("{EXPECTED_ELF_VAR} is not 32-byte hex")),
+    }
+}
+
+/// The boot check for the expected guest ELF hash. `required` is strict
+/// production with a remote prover and real proofs, the posture in which the
+/// registration preflight compares the prover's reported ELF hash with it: the
+/// value must then be set and valid. Otherwise it may be unset, but a value that
+/// is set must still parse.
+pub(crate) fn require_expected_elf_at_boot(
+    required: bool,
+    value: Option<&str>,
+) -> Result<(), String> {
+    match parse_expected_elf_sha256(value)? {
+        None if required => Err(format!(
+            "{EXPECTED_ELF_VAR} must be set in production with a remote prover: the reviewed \
+             guest ELF hash the prover has to report before any window registers"
+        )),
+        _ => Ok(()),
     }
 }
 
@@ -180,7 +221,7 @@ pub(crate) fn classify(
 /// Version gate for the exact-resume path, hoisted out of `resume_exact` so it
 /// is unit-testable without an L1 handle. The reviewed v2 resume re-submits the
 /// window through the v2 prover/L1 (`prove_and_prepare` → `settle_proved`); a
-/// candidate-bound journal (DPRBJL6 envelope) must NOT take that path until real
+/// candidate-bound journal (DPRBJL8 envelope) must NOT take that path until real
 /// v3 submission is wired — reject it and let the caller HOLD with the WAL kept.
 pub(crate) fn ensure_resume_supported(
     envelope: Option<&crate::rollback_journal::ArchiveEnvelope>,
@@ -279,5 +320,72 @@ mod tests {
             client.preflight(&w, 0, None),
             Err(PreflightRefusal::Refused(e)) if e.contains("before the seal")
         ));
+    }
+
+    /// A remote prover whose identity read fails.
+    struct UnreadableIdentity;
+    impl ProverClient for UnreadableIdentity {
+        fn prove(&self, _: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+            unreachable!("registration preconditions never prove")
+        }
+        fn public_identity(
+            &self,
+        ) -> Result<Option<crate::prover_client::ProverPublicIdentity>, String> {
+            Err("prover identity: timed out".into())
+        }
+    }
+
+    /// In production a prover whose identity cannot be read registers no window:
+    /// the refusal names the identity and comes before any L1 read. Outside
+    /// production the failed read is tolerated and the preconditions go on to L1
+    /// (here a closed port, so they stop there instead).
+    #[test]
+    fn production_registers_nothing_without_the_prover_identity() {
+        let client = ClockProverClient {
+            inner: Arc::new(UnreadableIdentity),
+            l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+        };
+        match client.register_preconditions_with(true) {
+            Err(PreflightRefusal::Refused(e)) => {
+                assert!(e.contains("identity could not be read"), "{e}");
+                assert!(e.contains("timed out"), "{e}");
+            }
+            other => panic!("expected an identity refusal, got {other:?}"),
+        }
+        match client.register_preconditions_with(false) {
+            Err(PreflightRefusal::Refused(e)) => {
+                assert!(!e.contains("identity"), "tolerated outside production: {e}")
+            }
+            other => panic!("expected the L1 read to fail, got {other:?}"),
+        }
+        // An in-process client has no identity to compare and is not refused for it.
+        let local = ClockProverClient {
+            inner: Arc::new(MockProverClient),
+            l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+        };
+        match local.register_preconditions_with(true) {
+            Err(PreflightRefusal::Refused(e)) => assert!(!e.contains("identity"), "{e}"),
+            other => panic!("expected the L1 read to fail, got {other:?}"),
+        }
+    }
+
+    /// Production with a remote prover refuses to boot without the expected
+    /// guest ELF hash; a malformed value is refused in every posture.
+    #[test]
+    fn production_boot_requires_the_expected_guest_elf_hash() {
+        let hash = "ab".repeat(32);
+        for value in [None, Some("")] {
+            let refused = require_expected_elf_at_boot(true, value).unwrap_err();
+            assert!(refused.contains(EXPECTED_ELF_VAR), "{refused}");
+            require_expected_elf_at_boot(false, value).unwrap();
+        }
+        for required in [true, false] {
+            require_expected_elf_at_boot(required, Some(&hash)).unwrap();
+            require_expected_elf_at_boot(required, Some(&format!("0x{hash}"))).unwrap();
+            assert!(require_expected_elf_at_boot(required, Some("0x12")).is_err());
+            assert!(require_expected_elf_at_boot(required, Some(&"zz".repeat(32))).is_err());
+        }
+        assert_eq!(parse_expected_elf_sha256(Some(&hash)), Ok(Some([0xab; 32])));
+        assert_eq!(parse_expected_elf_sha256(None), Ok(None));
     }
 }

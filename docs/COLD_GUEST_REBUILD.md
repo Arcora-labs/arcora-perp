@@ -5,11 +5,11 @@
 `cold_rebuild_reviewed_guest.py`, mevcut ARM64 Mac tarifini yeni Cargo cache,
 HOME, geçici dizin ve build target ile çalıştırır. Yerel kurulu SP1 toolchain'i
 kullanmaz: resmi `succinct-1.93.0-64bit` arşivini bağımsız SHA-256 piniyle açar.
-Tüm guest kaynakları, ELF ve program key önceki reviewed kimliklerinde kalır.
+Tüm guest kaynakları, ELF ve program key `REVIEWED_GUEST` pinlerinde kalır.
 
 Başarı ölçütü derlenen ELF'in SHA-256 değerinin
-`df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5`
-olmasıdır. Beklenen boyut 525824 bayttır. Başarıya ulaşmak için ELF, kaynak,
+`a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df`
+olmasıdır. Beklenen boyut 535904 bayttır. Başarıya ulaşmak için ELF, kaynak,
 program key veya pin değiştirilmez. Derleme çıktısı fixture'dan kopyalanmaz.
 
 ## Araçlar ve bağımlılıklar
@@ -40,6 +40,32 @@ arşiv üyeleriyle byte/hash bazında eşleşmelidir. Ek build script/modül ve 
 reddedilir; yalnız Cargo'nun `.cargo-ok` işaretçisine izin verilir. Bu kontrol
 derlemeden önce ve sonra yapılır.
 
+Tek istisna guest'in commit ile pinlenmiş git bağımlılığıdır: Succinct'in
+tiny-keccak 2.0.2 yaması (`patch-2.0.2-sp1-6.0.0` etiketi, SP1 >= 6.0.0 ve < 6.2
+için). zkVM hedefinde keccak-f'i SP1'in `KECCAK_PERMUTE` precompile'ı ile çalıştırır;
+host kod yolu değişmez. Kimliği `check_sp1_release.GUEST_GIT_DEPENDENCY` içindedir:
+
+```text
+repository: https://github.com/sp1-patches/tiny-keccak
+commit:     957430a459f7a2332ab5bab4a12f9b473bb95c87
+kaynak ağacı SHA-256 (33 dosya): 6bff63bc9c6a4cc1405d13a824992d3a4485f9b810bda9fe817571710af20b9d
+```
+
+Guest manifest'i bu bağımlılığı yalnız `[patch.crates-io]` altında bu URL ve
+`rev` ile almalı, lock'taki kaynak da tam bu URL ve commit olmalıdır. Başka git
+kaynağı, başka commit, tag/branch ile seçim, checksum taşıyan git girdisi veya ikinci
+bir git paketi reddedilir (`check_sp1_release.py`, `registry_inventory`). `cargo fetch`
+bu commit'i yeni cache'e klonlar ve checkout eder. Cache'in `git/` dizininde yalnız bu
+bağımlılığın veritabanı, tek checkout'u ve Cargo'nun `CACHEDIR.TAG` işaretçisi
+bulunabilir. Checkout'taki dosyalar (`.git` meta verisi ve `.cargo-ok` hariç, symlink
+yok) yukarıdaki kaynak ağacı özetiyle eşleşmelidir; özet, `{yol: sha256}`
+haritasının sıralı JSON'unun SHA-256'sıdır. Bu kontrol de derlemeden önce ve sonra
+yapılır. cargo-audit git kaynaklı bu paketi lock'taki haliyle crates.io danışma
+kayıtlarıyla eşleştirmez; kimliğini commit ve kaynak ağacı pini taşır. Bu yüzden
+`a11-release-evidence.yml` guest lock'unu bir kez daha denetler: bu paketi upstream
+crates.io kimliğiyle yazan bir kopya (`check_sp1_release.py --upstream-audit-lock`)
+`cargo audit`'ten geçer.
+
 Asıl compile `--locked --offline` ile çalışır. Bu Cargo'nun offline modudur;
 process seviyesinde ağ sandbox'ı değildir. Bağımlılık build script'leri veya
 compromised host için tam izolasyon iddia edilmez.
@@ -47,8 +73,10 @@ compromised host için tam izolasyon iddia edilmez.
 ## Kontrollü normalizasyon
 
 Önceki reviewed tarifteki iki workspace crate metadata değeri ve checkout yolu
-korunur. Ayrıca yeni Cargo cache yolu, reviewed ELF'te gömülü registry yollarına
-normalize edilir. Dependency crate metadata'sı değiştirilmez; host derlemelerine
+korunur. Ayrıca yeni Cargo cache yolu, reviewed ELF'te gömülü registry ve git
+checkout yollarına normalize edilir. Git checkout dizininin adı
+(`git/checkouts/tiny-keccak-39e1bab27f4c71da/957430a`) Cargo'nun URL özetinden ve
+kısa commit'ten gelir; aynı Cargo sürümü aynı yolu üretir. Dependency crate metadata'sı değiştirilmez; host derlemelerine
 bu hedef normalizasyonu uygulanmaz. Önceden gelen remap argümanları reddedilir.
 Her değiştirilmiş compiler çağrısı asıl ve normalize argümanlarıyla kaydedilir.
 Bu source-path normalizasyonudur, ELF üzerinde sonradan binary yaması değildir.
@@ -77,8 +105,12 @@ olarak kabul edilmez. Ön kontrol hatasında henüz çıktı dizini oluşmamış
 
 `guest-cold-rebuild.yml`, standart `macos-14` ARM64 GitHub-hosted runner kullanır.
 Build cache restore etmez; yalnız `contents: read` izni vardır. Repository key,
-cloud/GPU hesabı veya wallet gerektirmez. Bu ek workflow mevcut 11 zorunlu
-kontrolü, review kararını veya dal korumalarını değiştirmez.
+cloud/GPU hesabı veya wallet gerektirmez. Bu ek workflow zorunlu kontrolleri,
+review kararını veya dal korumalarını değiştirmez. Önerilen ruleset şablonu
+([.github/main-ruleset.json](../.github/main-ruleset.json)) 12 zorunlu kontrol
+listeler (`reviewed guest execution (CPU)` dahil); GitHub'da uygulanan ruleset bu
+yeni kontrolü, depo sahibi şablonu ayrıca uygulayana kadar zorunlu kılmaz
+([REPOSITORY_POLICY_STATE.md](REPOSITORY_POLICY_STATE.md)).
 
 Artifact yalnız ELF, build/fetch logları, compiler çağrıları, doğrulama kaydı ve
 runner-context içerir. Toolchain/cache dizinleri artifact'e alınmaz. Runner-context

@@ -32,6 +32,23 @@ describe("OrderTicket", () => {
     expect(screen.getByText(/est\. liquidation/i)).toBeTruthy();
   });
 
+  it("warns about and refuses an opening order below the $10 minimum", () => {
+    renderTicket();
+    // 0.00001 BTC is well under $10 of notional at any plausible BTC index
+    fireEvent.change(screen.getByLabelText(/^size \(/i), { target: { value: "0.00001" } });
+    expect(screen.getByText(/below the \$10 minimum order size/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /buy btc\/usdc/i }));
+    expect(screen.getByRole("alert").textContent).toMatch(/minimum order size is \$10/i);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("exempts a reduce-only order from the minimum", () => {
+    renderTicket();
+    fireEvent.change(screen.getByLabelText(/^size \(/i), { target: { value: "0.00001" } });
+    fireEvent.click(screen.getByLabelText(/reduce-only/i));
+    expect(screen.queryByText(/below the \$10 minimum order size/i)).toBeNull();
+  });
+
   it("hides the risk preview when reduce-only is checked", () => {
     renderTicket();
     fireEvent.change(screen.getByLabelText(/^size \(/i), { target: { value: "1" } });

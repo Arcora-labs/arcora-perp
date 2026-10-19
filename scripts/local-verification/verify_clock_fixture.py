@@ -55,8 +55,10 @@ def main():
               "proof_sha256": clock.PROOF_FIXTURE["proof_sha256"], "guest_elf_sha256": clock.PROOF_FIXTURE["elf"],
               "program_vkey": clock.PROOF_FIXTURE["vkey"], "public_commitment": clock.PROOF_FIXTURE["commitment"],
               **clock.identities(),
-              # Same value under the existing key and under the record's name.
-              "guest_source_sha256": source_hashes, "reviewed_guest_source_sha256": source_hashes,
+              # The existing key pairs with guest_elf_sha256: the proof's own guest. The
+              # checkout's pins (verified above) are under the reviewed record's name.
+              "guest_source_sha256": dict(clock.PROOF_FIXTURE["sources"]),
+              "reviewed_guest_source_sha256": source_hashes,
               "scope": "Actual SP1 verifier, clock adapter, settlement and synthetic vault withdrawal; not full HTTP/order/production lifecycle.",
               "identity_scope": clock.IDENTITY_SCOPE}
     (output / "verification.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")

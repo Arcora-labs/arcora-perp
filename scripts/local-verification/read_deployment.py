@@ -268,8 +268,7 @@ def observe(config, witness_url=None, config_path=None):
                        for name, item in result["contracts"].items()
                        for signature, call in item["calls"].items() if "error" in call]
         result.update(status="PARTIAL" if call_errors else "OBSERVED",
-                      # The existing label is kept as recorded; the record it now reads is named beside it.
-                      local_guest_reference="reviewed clock-v2 guest (verify_clock_proof.EXPECTED_VKEY)",
+                      local_guest_reference="reviewed guest (verify_clock_proof.REVIEWED_GUEST)",
                       local_guest_record="verify_clock_proof.REVIEWED_GUEST[\"vkey\"]",
                       local_guest_vkey=local_key, deployed_vkey=key,
                       vkey_matches_local=key == local_key,

@@ -321,8 +321,9 @@ fn band_arithmetic_overflow_rejects_without_panicking() {
 
 /// A fill must not succeed leaving a CLOSED leg with negative collateral: nothing revisits
 /// a flat position. Both `op_liquidate` and the sequencer's maintenance pass require
-/// `is_open()` (`engine.rs:667`, `sequencer/src/lib.rs:744`), and `auto_deleverage` skips
-/// `!pos.is_open()` — so the debt is parked forever while the winner withdraws normally.
+/// `is_open()` (`engine.rs:667`, `sequencer/src/lib.rs:744`), and
+/// `auto_deleverage_plan` skips `!pos.is_open()` — so the debt is parked forever while
+/// the winner withdraws normally.
 #[test]
 fn closed_leg_with_negative_collateral_is_rejected() {
     let mut s = state_with(Market::conservative(0));
@@ -519,11 +520,9 @@ fn close_landing_at_exactly_zero_collateral_is_accepted() {
         now_ms: 2_000,
     })
     .expect("a break-even close landing at exactly zero collateral must be accepted");
-    let pos = s.position(&a, 0).unwrap();
-    assert_eq!(pos.size, 0, "fully closed");
-    assert_eq!(
-        pos.collateral, 0,
-        "landed at exactly zero — and was accepted"
+    assert!(
+        s.position(&a, 0).is_none(),
+        "fully closed at exactly zero collateral — accepted, and the entry removed"
     );
 }
 

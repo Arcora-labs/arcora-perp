@@ -22,7 +22,7 @@ def build():
 
 def program():
     return {"sdk_version": "6.1.0", "elf_sha256": "bb" * 32, "elf_bytes": 100,
-            "program_vkey": "0x" + "cc" * 32, "supported_witness_domains": ["legacy", "DPCLK2"]}
+            "program_vkey": "0x" + "cc" * 32, "supported_witness_domains": ["DPCLK4"]}
 
 
 def gateway_config():
@@ -114,11 +114,31 @@ class PreflightTests(unittest.TestCase):
         for field, value in (("elf_sha256", "dd" * 32), ("elf_bytes", 101), ("elf_bytes", True),
                              ("elf_bytes", 0), ("program_vkey", "0x" + "dd" * 32),
                              ("sdk_version", "6.2.0"), ("supported_witness_domains", ["DPCLK3"]),
-                             ("supported_witness_domains", ["DPCLK2", "legacy"]),
-                             ("supported_witness_domains", ["legacy", "DPCLK2", "DPCLK2"])):
+                             ("supported_witness_domains", ["legacy"]),
+                             ("supported_witness_domains", ["DPCLK2"]),
+                             ("supported_witness_domains", ["legacy", "DPCLK2"]),
+                             ("supported_witness_domains", ["legacy", "DPCLK4"]),
+                             ("supported_witness_domains", ["DPCLK4", "DPCLK4"]),
+                             ("supported_witness_domains", ["DPCLK4\0\0"]),
+                             ("supported_witness_domains", [])):
             self.negative(lambda e, g, p, f=field, v=value: p["program"].update({f: v}))
         self.negative(lambda e, g, p: g.update(program=program()))
         self.negative(lambda e, g, p: p.update(program=None))
+
+    def test_witness_domain_is_the_reviewed_clock_framing(self):
+        # Read from perp-core's WIRE_MAGIC; the unframed tuple is never a domain.
+        self.assertEqual(preflight.witness_domains(), ["DPCLK4"])
+        self.assertNotIn("legacy", preflight.witness_domains())
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / preflight.CLOCK_SOURCE
+            source.parent.mkdir(parents=True)
+            source.write_text('pub const WIRE_MAGIC: &[u8; 8] = b"DPCLK9\\0\\0";\n')
+            self.assertEqual(preflight.witness_domains(directory), ["DPCLK9"])
+            for text in ('pub const WIRE_MAGIC: &[u8; 8] = b"\\0\\0\\0\\0\\0\\0\\0\\0";\n',
+                         'pub const WIRE_MAGIC: &[u8; 8] = b"DP\\0CLK4\\0";\n', "no definition\n"):
+                source.write_text(text)
+                with self.subTest(text=text), self.assertRaises(ValueError):
+                    preflight.witness_domains(directory)
 
     def test_hash_is_recomputed_before_comparing_independent_expectation(self):
         self.negative(lambda e, g, p: g["public_config"].update(chain_id=8453))

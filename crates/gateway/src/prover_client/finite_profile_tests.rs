@@ -53,11 +53,12 @@ pub(super) fn native_fixture(case: usize) -> (WindowWitness, Vec<Withdrawal>) {
 
 fn fixture(case: usize) -> Fixture {
     let (name, count, withdrawal_count) = CASES[case];
-    // PR65's unchanged native, funded Sequencer. Only value-preserving native
-    // Unbind/Withdraw and a signed funding tick are added. No fabricated deposits.
+    // The frozen seal-window baseline's native, funded Sequencer, unchanged. Only
+    // value-preserving native Unbind/Withdraw and a signed funding tick are added.
+    // No fabricated deposits.
     let mut seq: Sequencer = postcard::from_bytes(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/audits/2026-10-14-seal-window-ownership/baseline-export/",
+        "/testdata/seal-window-pkg3/",
         "normal-00-before_first_seal_seq.bin"
     )))
     .unwrap();
@@ -234,15 +235,10 @@ fn assert_prepared(f: &Fixture, actual: &PreparedSettle, clocked: Option<bool>) 
     }
 }
 
-fn sealed_hex(f: &Fixture, clocked: bool) -> String {
-    seal_witness_with_clock(
-        &f.witness,
-        &SEAL_ROOT,
-        &MEASUREMENT,
-        None,
-        clocked.then_some(&f.clock),
-    )
-    .unwrap()
+/// The remote prover accepts only clock-bound witnesses, so only the clocked
+/// frame is sealed.
+fn sealed_hex(f: &Fixture) -> String {
+    seal_witness(&f.witness, &SEAL_ROOT, &MEASUREMENT, None, &f.clock).unwrap()
 }
 
 fn frame_sizes(f: &Fixture) -> serde_json::Value {
@@ -259,18 +255,14 @@ fn frame_sizes(f: &Fixture) -> serde_json::Value {
     ] {
         sizes.insert(name.into(), value.into());
     }
-    for clocked in [false, true] {
-        let prefix = if clocked { "clocked" } else { "legacy" };
-        let wire = if clocked {
-            [
-                perp_core::clock::WIRE_MAGIC,
-                bytes(&(&w.pre_state, &w.ops, &w.manifest, &f.clock)).as_slice(),
-            ]
-            .concat()
-        } else {
-            bytes(&(&w.pre_state, &w.ops, &w.manifest))
-        };
-        let hexed = sealed_hex(f, clocked);
+    {
+        let prefix = "clocked";
+        let wire = [
+            perp_core::clock::WIRE_MAGIC,
+            bytes(&(&w.pre_state, &w.ops, &w.manifest, &f.clock)).as_slice(),
+        ]
+        .concat();
+        let hexed = sealed_hex(f);
         let (pairs, remainder) = hexed
             .strip_prefix("0x")
             .unwrap()
@@ -305,7 +297,7 @@ fn frame_sizes(f: &Fixture) -> serde_json::Value {
         );
         sizes.insert(format!("{prefix}_request_json_bytes"), body.len().into());
     }
-    // Actual in-memory v5 journal frame, validated by the production decoder.
+    // Actual in-memory plain journal frame, validated by the production decoder.
     // No write/fsync/recovery acceptance is inferred from this codec exercise.
     let journal = crate::rollback_journal::RollbackJournal {
         batch_id: w.batch_id,
@@ -313,7 +305,7 @@ fn frame_sizes(f: &Fixture) -> serde_json::Value {
         ww: f.withdrawals.clone(),
         prepared: Some(f.prepared.clone()),
     };
-    let plain = [b"DPRBJL5\0".as_slice(), bytes(&journal).as_slice()].concat();
+    let plain = [b"DPRBJL7\0".as_slice(), bytes(&journal).as_slice()].concat();
     let sealed = crate::snapshot::seal(&plain, &[0x44; 32]);
     match crate::rollback_journal::open_versioned(&sealed, &[0x44; 32]).unwrap() {
         crate::rollback_journal::OpenedJournal::Legacy(decoded) => {
@@ -528,19 +520,16 @@ mod observation {
                 );
                 assert_eq!(client.contexts.load(Ordering::Relaxed), 51);
                 assert_eq!(client.proves.load(Ordering::Relaxed), 51);
-                let reference = sealed_hex(&f, clocked);
-                let phase = if clocked {
-                    "clocked_software_seal_hex"
-                } else {
-                    "legacy_software_seal_hex"
-                };
-                measure(
-                    &f,
-                    phase,
-                    || &f,
-                    |f| sealed_hex(f, clocked),
-                    |v| assert_eq!(*v, reference),
-                );
+                if clocked {
+                    let reference = sealed_hex(&f);
+                    measure(
+                        &f,
+                        "clocked_software_seal_hex",
+                        || &f,
+                        sealed_hex,
+                        |v| assert_eq!(*v, reference),
+                    );
+                }
             }
             assert_eq!(bytes(&(&f.witness, &f.withdrawals)), before);
         }

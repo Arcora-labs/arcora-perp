@@ -128,6 +128,25 @@ function pAccount(a: WireState["account"]): AccountState {
   return { settledBalance: B(a.settledBalance), positions: a.positions.map(pPosition) };
 }
 /**
+ * `marketFree` of `GET /v1/accounts/me`: `[{ marketId, free }]`, `free` a decimal
+ * string of quote units. Strict, like the balance beside it: a malformed row
+ * throws, so the refresh degrades whole.
+ */
+function pMarketFree(raw: unknown): Record<number, bigint> {
+  if (!Array.isArray(raw)) throw new Error("/v1/accounts/me: malformed marketFree");
+  const out: Record<number, bigint> = {};
+  for (const row of raw as unknown[]) {
+    const r = (typeof row === "object" && row !== null ? row : {}) as { marketId?: unknown; free?: unknown };
+    const id = r.marketId;
+    if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0
+        || typeof r.free !== "string" || !/^(0|[1-9][0-9]*)$/.test(r.free)) {
+      throw new Error("/v1/accounts/me: malformed marketFree");
+    }
+    out[id] = BigInt(r.free);
+  }
+  return out;
+}
+/**
  * Map the flat `GET /v1/orders` wire shape into the UI's nested TrackedOrder.
  *
  * Receipt — SEC-025-E1 decision (c): the gateway serves the stored acceptance
@@ -1333,22 +1352,27 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   /**
-   * The account's settled balance from the authenticated `GET /v1/accounts/me`.
-   * The brief mandates positions come from `GET /v1/positions`, and no other
-   * /v1 surface serves `settledBalance` — so the balance is a THIRD fetch here
-   * rather than collapsing the positions read into /v1/accounts/me (which also
-   * carries positions). Throws on absence/malformation: a refresh that cannot
-   * source the balance must degrade WHOLE, never overlay positions alone.
+   * The account's settled balance from the authenticated `GET /v1/accounts/me`,
+   * with the per-market free balances (`marketFree`) when the gateway reports
+   * them. The brief mandates positions come from `GET /v1/positions`, and no
+   * other /v1 surface serves `settledBalance` — so the balance is a THIRD fetch
+   * here rather than collapsing the positions read into /v1/accounts/me (which
+   * also carries positions). Throws on absence/malformation: a refresh that
+   * cannot source the balance must degrade WHOLE, never overlay positions alone.
    */
-  private async getSettledBalance(account?: SealingAccount): Promise<bigint> {
+  private async getSettledBalance(
+    account?: SealingAccount,
+  ): Promise<{ settledBalance: bigint; marketFree?: Record<number, bigint> }> {
     const acct = account ?? await this.ensureAccount();
     const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": acct.apiKey } });
     if (!res.ok) throw new Error(`/v1/accounts/me ${res.status}`);
-    const j = (await res.json()) as { settledBalance?: unknown };
+    const j = (await res.json()) as { settledBalance?: unknown; marketFree?: unknown };
     if (typeof j !== "object" || j === null || typeof j.settledBalance !== "string") {
       throw new Error("/v1/accounts/me: missing settledBalance");
     }
-    return B(j.settledBalance); // throws on a non-decimal string ⇒ same whole-degrade
+    const settledBalance = B(j.settledBalance); // throws on a non-decimal string ⇒ same whole-degrade
+    if (j.marketFree === undefined) return { settledBalance };
+    return { settledBalance, marketFree: pMarketFree(j.marketFree) };
   }
 
   /**
@@ -1401,7 +1425,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     try {
       const account = await this.ensureAccount();
       const startEpoch = this.credentialEpoch;
-      const [orders, positions, settledBalance] = await Promise.all([
+      const [orders, positions, balances] = await Promise.all([
         this.getOrders(account),
         this.getPositions(account),
         this.getSettledBalance(account),
@@ -1412,7 +1436,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       // it in whole, so the balance shown beside these positions is always the
       // same account's. All three reads degrade together (Promise.all): a
       // partial overlay would resurrect the mixed-account view.
-      this.ownAccount = { settledBalance, positions };
+      this.ownAccount = { ...balances, positions };
       if (this.state) this.setState(this.state);
     } catch (e) {
       console.warn(

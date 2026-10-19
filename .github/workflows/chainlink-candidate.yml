@@ -5,6 +5,14 @@ on:
     branches: [main]
 permissions:
   contents: read
+# Frozen candidate lane. The candidate ELF, setup key, fixtures and chainlink-oracle
+# sources stay byte-identical as history; they were built against an earlier
+# perp-core witness wire, so nothing here regenerates, replays or rebuilds them
+# (run_chainlink_replay.py and build_chainlink_candidate.py refuse). What still
+# runs: formatting and typecheck, the unit tests that do not re-encode the committed
+# corpus, the frozen identity pins, and the drills that deploy and observe the
+# unchanged contracts or exercise the gateway's frozen-lane refusals. None of these
+# jobs is a required check of the reviewed clock guest.
 jobs:
   candidate:
     name: Chainlink candidate core (not live verification)
@@ -20,18 +28,60 @@ jobs:
         run: |
           cargo fmt --manifest-path crates/chainlink-oracle/Cargo.toml --check
           cargo fmt --manifest-path crates/sp1-chainlink-guest/Cargo.toml --check
-      - name: Explicit standalone tests and no_std check
+      - name: Standalone typecheck (std and no_std) and lint
         run: |
-          cargo test --locked --manifest-path crates/chainlink-oracle/Cargo.toml
+          cargo check --locked --manifest-path crates/chainlink-oracle/Cargo.toml
           cargo check --locked --manifest-path crates/chainlink-oracle/Cargo.toml --no-default-features
           cargo clippy --locked --manifest-path crates/chainlink-oracle/Cargo.toml --all-targets -- -D warnings
-      - name: Preserve reviewed v2 inputs
+      - name: Standalone tests, except the frozen corpus regeneration
+        # committed_synthetic_vectors_match_native_regeneration re-encodes the
+        # committed replay corpus with the current perp-core witness wire. The
+        # corpus is frozen history, so that test is skipped here, never edited.
+        run: |
+          cargo test --locked --manifest-path crates/chainlink-oracle/Cargo.toml -- \
+            --skip committed_synthetic_vectors_match_native_regeneration
+      - name: Frozen candidate identity (lock coherence, ELF, runtime sources, replay corpus)
         run: |
           python3 scripts/local-verification/check_sp1_release.py
           python3 scripts/local-verification/check_chainlink_candidate.py
-          python3 -c 'import sys;sys.path.insert(0,"scripts/local-verification");from verify_clock_proof import verify_guest_source;print(len(verify_guest_source()))'
-      - name: Replay evidence parser guards (offline synthetic test reports)
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "scripts/local-verification")
+          import run_chainlink_replay as frozen
+          elf = frozen.ROOT / "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf"
+          assert frozen.sha(frozen.read_regular(elf)) == frozen.ELF_SHA, "frozen candidate ELF changed"
+          print(len(frozen.candidate_sources()), "candidate runtime sources and",
+                len(frozen.fixture_manifest()["cases"]), "replay cases unchanged")
+          PY
+      - name: Replay evidence parser guards and frozen-lane refusals (offline)
         run: python3 -m unittest discover -s scripts/local-verification -p 'test_chainlink_replay.py' -v
+
+  frozen-drills:
+    name: Chainlink candidate drills (frozen lane; not live verification)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Build the unchanged contracts and vendored SP1 verifier
+        run: |
+          forge build --root contracts
+          forge build --root contracts/vendor/sp1-contracts
+          mkdir -p /tmp/arcora-candidate-drills
+      - name: Candidate target identity against owned seven-contract Anvil stack
+        run: |
+          ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-candidate-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v
+      - name: Candidate fixture HTTP transport, frozen-lane form (not live service)
+        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-candidate-drills/checks candidate-fixture-http -- cargo test --locked -p gateway --bin gateway candidate_fixture_transport_tests -- --nocapture
+      - name: Candidate signed sealed fixture channel, frozen-lane form (not approved service)
+        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-candidate-drills/checks candidate-fixture-sealed -- cargo test --locked -p gateway --bin gateway candidate_fixture_seal_tests -- --nocapture
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chainlink-candidate-frozen-drills
+          path: /tmp/arcora-candidate-drills
 
   rest-client:
     name: Chainlink REST client (runtime regressions)

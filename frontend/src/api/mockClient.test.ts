@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MockDarkPerpClient } from "./mockClient";
 import type { OrderEvent } from "./client";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "../domain/types";
+import { MIN_ORDER_NOTIONAL } from "../domain/minimums";
 
 // The mock advances finality on timers (MATCH at 900ms); drive it deterministically.
 const MATCH_MS = 900;
@@ -417,5 +418,61 @@ describe("MockDarkPerpClient withdrawals", () => {
     const bal = c.getState().account.settledBalance;
     await expect(c.requestWithdrawal(bal + 1n)).rejects.toThrow(/exceeds SETTLED/i);
     await expect(c.requestWithdrawal(0n)).rejects.toThrow(/positive/i);
+  });
+});
+
+describe("MockDarkPerpClient size minimums (gateway admission policy)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const px = 100_000n * PRICE_SCALE;
+
+  // The smallest size whose notional at the market's oracle price reaches $10.
+  function minimumSize(c: MockDarkPerpClient): bigint {
+    const oracle = c.getState().oracle.price;
+    const raw = MIN_ORDER_NOTIONAL * ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
+    return (raw + oracle - 1n) / oracle;
+  }
+
+  it("refuses an opening order below $10 of notional and accepts $10", async () => {
+    const c = new MockDarkPerpClient();
+    const floor = minimumSize(c);
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Buy", size: floor - 1n, limitPrice: px, tif: "Gtc", reduceOnly: false }),
+    ).rejects.toThrow(/minimum order size is \$10/i);
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Buy", size: floor, limitPrice: px, tif: "Gtc", reduceOnly: false }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("measures the minimum at the oracle price, not the limit", async () => {
+    const c = new MockDarkPerpClient();
+    const floor = minimumSize(c);
+    // A bid far below the market is still $10 of notional at the oracle price.
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Buy", size: floor, limitPrice: PRICE_SCALE, tif: "Gtc", reduceOnly: false }),
+    ).resolves.toBeTruthy();
+    // An ask far above it does not reach $10 there, whatever its limit.
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Sell", size: floor - 1n, limitPrice: 1_000n * px, tif: "Gtc", reduceOnly: false }),
+    ).rejects.toThrow(/minimum order size is \$10/i);
+  });
+
+  it("lets a small order reduce an existing position", async () => {
+    const c = new MockDarkPerpClient();
+    await c.placeOrder({ marketId: 0, side: "Buy", size: SIZE_SCALE, limitPrice: px, tif: "Gtc", reduceOnly: false });
+    await vi.advanceTimersByTimeAsync(MATCH_MS);
+    // $1 of notional, opposite side: a pure reduction, so no minimum applies
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Sell", size: 1_000n, limitPrice: px, tif: "Gtc", reduceOnly: false }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("refuses a withdrawal under 1 USDC unless it empties the free balance", async () => {
+    const c = new MockDarkPerpClient();
+    await expect(c.requestWithdrawal(QUOTE_SCALE / 2n)).rejects.toThrow(/minimum withdrawal is 1 USDC/i);
+    const balance = c.getState().account.settledBalance;
+    await c.requestWithdrawal(balance - QUOTE_SCALE / 2n);
+    await expect(c.requestWithdrawal(QUOTE_SCALE / 2n)).resolves.toBeUndefined();
+    expect(c.getState().account.settledBalance).toBe(0n);
   });
 });

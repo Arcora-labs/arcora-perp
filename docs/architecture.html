@@ -238,7 +238,8 @@
       <li>valid nullifiers (double-spend yok)</li>
       <li>fill sonrası margin yeterliliği</li>
       <li>oracle freshness + confidence (§8)</li>
-      <li>funding formülü · liquidation threshold</li>
+      <li>funding: span başındaki saklı rate, kesin carry, her pozisyon op'unda settle, boşluk başına en fazla 1 saat · liquidation threshold</li>
+      <li>margin yukarı yuvarlanır, açık pozisyonda initial margin ≥ $1 · çekim nonce'u state'e bağlı ve kesin artan</li>
     </ul>
   </div>
   <div class="card">
@@ -256,8 +257,8 @@
 <!-- 5 -->
 <h2 id="riskcore"><span class="n">§5–9 ·</span> Risk · likidasyon · forced-exit · recovery · oracle</h2>
 <div class="grid2">
-  <div class="card"><h3>Likidasyon (§5)</h3><p>Enclave plaintext pozisyonları public oracle'a karşı sürekli değerlendirir → <strong>anında</strong> tetikler. Liveness varsayımı yok: kullanıcı offline olsa da likide edilir. Public'e per-position açıklama yok; yalnızca aggregate + ZK proof.</p></div>
-  <div class="card"><h3>Forced-exit (§6)</h3><p>Root <code>livenessTimeoutBlocks</code> boyunca ilerlemezse, en eski tüketilmemiş deposit o süreden eskiyse ya da governance isterse sistem geri dönüşsüz <strong>CLOSE-ONLY</strong> moduna girer. Tüketilmemiş deposit'ler vault'tan anapara olarak iade edilir; settle edilmiş bakiyeler yayımlanmış köklerden claim edilir; açık pozisyonlar governance wind-down'ı ile kapanır. Açık pozisyon collateral'ı kapatılmadan çekilemez.</p></div>
+  <div class="card"><h3>Likidasyon (§5)</h3><p>Enclave plaintext pozisyonları public oracle'a karşı sürekli değerlendirir → <strong>anında</strong> tetikler. Liveness varsayımı yok: kullanıcı offline olsa da likide edilir. Public'e per-position açıklama yok; yalnızca aggregate + ZK proof. Açık önce insurance, sonra treasury, sonra sınırlı ADL ile kapatılır (her kazanan collateral ≥ 0 ve equity ≥ MM kalır); kalan açık sistemi close-only'ye geçirir ve o andan sonra deposit reddedilir.</p></div>
+  <div class="card"><h3>Forced-exit (§6)</h3><p>Root <code>livenessTimeoutBlocks</code> boyunca ilerlemezse, en eski tüketilmemiş deposit o süreden eskiyse ya da governance isterse sistem geri dönüşsüz <strong>CLOSE-ONLY</strong> moduna girer. Tüketilmemiş deposit'ler vault'tan anapara olarak iade edilir; settle edilmiş bakiyeler yayımlanmış köklerden claim edilir; açık pozisyonlar governance wind-down'ı ile kapanır: <code>SettleAll</code> her marketin settled state'te kayıtlı son oracle fiyatından (hiç yoksa giriş fiyatından) kapatır, açığı clearing pool → insurance → treasury ile karşılar, kalanı pro-rata haircut'lar ve artan rezervleri genesis'e bağlı wind-down alıcısına tek bir çekim leaf'i olarak öder. Açık pozisyon collateral'ı kapatılmadan çekilemez.</p></div>
   <div class="card"><h3>Note recovery (§7)</h3><p>4844 blob'ları geçici. <strong>Encrypted Note Archive</strong> zorunlu: public ciphertext arşivi, view-key ile taranır (<code>batch_id → note_commitment → ciphertext</code>). Cihaz kaybında: seed → view-key → arşivi tara → pozisyonu yeniden kur.</p></div>
   <div class="card"><h3>Oracle (§8)</h3><p>Transcript: <code>signed_price, publish_time, confidence, max_staleness, max_deviation_vs_backup</code>. ZK doğrular: zamanda; confidence ≤ threshold; |primary − backup_twap| ≤ sanity. Pyth-primary + TWAP backup + anomalide close-only breaker.</p></div>
 </div>

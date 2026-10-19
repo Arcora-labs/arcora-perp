@@ -12,6 +12,14 @@ Yeni `replay-chainlink-lifecycle` ve CI exporter adımı için kaynak, fixture v
 CPU çıktıları: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-price-lifecycle/README.md).
 Bu beş vaka yeni proof veya canlı rapor doğrulaması değildir.
 
+18 Ekim 2026 güncellemesi: aday hat dondurulmuştur. Aday ELF, setup key ve
+19-case replay kümesi tarihçe olarak bayt-bayt aynı tutulur ve mevcut perp-core'a
+karşı yürütülmez. `run_chainlink_replay.py` ve `build_chainlink_candidate.py`
+herhangi bir yürütme veya derlemeden önce "frozen candidate lane" ile reddeder;
+aşağıdaki tekrar çalıştırma ve yeniden derleme komutları yalnız kayıt içindir.
+Sabit kimlik, kilit tutarlılığı ve replay kümesi `chainlink-candidate.yml`
+içinde çevrimdışı olarak denetlenmeye devam eder.
+
 ## Sabit aday kimliği
 
 - SP1 SDK ve aday guest ailesi: `6.1.0`.
@@ -50,6 +58,11 @@ exact normal-wallet witness'ın yeni gerçek proof eksikliği ayrıca devam eder
 
 ## Tekrar çalıştırma
 
+Aşağıdaki komutlar 18 Ekim 2026 öncesi kaydıdır. Aday hat dondurulduğundan
+`run_chainlink_replay.py` ve `build_chainlink_candidate.py` bugün herhangi bir
+yürütme, derleme veya çıktı klasörü oluşturmadan önce "frozen candidate lane"
+ile reddeder.
+
 Host derlemesi `protoc` ve kilitli SP1 bağımlılıklarını gerektirir:
 
 ```sh
@@ -84,13 +97,17 @@ kanıt, bağımsız denetçi imzası veya uzak attestation değildir.
 
 ## CI ayrımı
 
-Standalone Chainlink job'ı native yeniden üretim, no_std/lint ve Python evidence
-guard testlerini çalıştırır. Mevcut `prover crates (excluded, typecheck)` job'ına
-ayrı adayın gerçek CPU yürütmesi de eklenmiştir; job'ın eski adındaki typecheck,
-bu yeni adımın yalnız typecheck olduğu anlamına gelmez. CI kontrolünün gerçekten
-çalışıp bitmesi ayrıca doğrulanmalıdır; workflow dosyası eklemek başarı kanıtı değildir.
+Aday hat dondurulduğundan adayın CPU yürütmesi zorunlu `prover crates (excluded,
+typecheck)` job'ından çıkarılmıştır; zorunlu job yalnız reviewed clock guest'i
+yürütür. `chainlink-candidate.yml` donmuş hattı ayrı ve zorunlu olmayan job'larda
+denetler: standalone biçim, std/no_std typecheck ve lint; kayıtlı corpus'u güncel
+perp-core wire'ıyla yeniden kodlayan test dışındaki standalone testler; sabit
+kimlik (kilit tutarlılığı, ELF, runtime kaynakları, replay kümesi); evidence
+parser guard'ları ile donmuş hat retleri; değişmemiş sözleşmeler üzerindeki aday
+drill'leri. Hiçbiri aday ELF'i yürütmez veya yeniden derlemez. CI kontrolünün
+gerçekten çalışıp bitmesi ayrıca doğrulanmalıdır; workflow dosyası eklemek başarı
+kanıtı değildir.
 
-CI, depodaki ayrı aday ELF'i yürütür; kendi guest derlemesini yaptığını iddia etmez.
 Başarılı yerel run, sonraki CI veya başka makine koşusu yerine geçmez.
 
 ## Açık kalan bağlar

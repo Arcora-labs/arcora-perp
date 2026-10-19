@@ -1,6 +1,9 @@
-//! Seal-client for the prover-service e2e: builds the deterministic Slice-1 test witness,
-//! seals it to the service's stand-in measurement/root (SoftwareSeal), prints `SEALED=0x<hex>`
-//! for `POST /prove`. No sp1-sdk — just builds + seals the witness.
+//! Seal-client for the prover-service e2e: builds the deterministic Slice-1 test witness
+//! in the clock-bound `DPCLK4` encoding the guest accepts, seals it to the service's
+//! stand-in measurement/root (SoftwareSeal), prints `SEALED=0x<hex>` for `POST /prove`.
+//! No sp1-sdk — just builds + seals the witness.
+use perp_core::clock::{ClockContext, TimeBounds};
+use perp_core::commitment::derive_roots;
 use perp_core::engine::BatchOp;
 use perp_core::hash::Keccak256;
 use perp_core::market::Market;
@@ -10,7 +13,7 @@ use perp_core::DefaultState;
 use prover::{SealedWitness, SoftwareSealProvider};
 
 fn main() {
-    // Same deterministic witness as the guest / sp1-host prove path (Slice 1).
+    // The synthetic Slice-1 deposit and withdrawal.
     let spend_key = [3u8; 32];
     let owner = owner_from_spend_key::<Keccak256>(&spend_key);
     let blind = [9u8; 32];
@@ -49,8 +52,27 @@ fn main() {
         enclave_measurement: [0u8; 32],
         sequencer_pubkey_epoch: 0,
     };
-    let witness: (DefaultState, Vec<BatchOp>, BatchManifest) = (state, ops, manifest);
-    let bytes = postcard::to_allocvec(&witness).unwrap();
+    // Public synthetic clock policy. Both operations are untimed, so the batch has
+    // no timed bounds and the anchor time is not compared.
+    let roots = derive_roots(&mut state.clone(), &ops, &manifest).expect("valid synthetic batch");
+    let bounds = TimeBounds::derive(&ops).expect("untimed operations");
+    let clock = ClockContext {
+        chain_id: 84532,
+        verifier: [0x11; 20],
+        settlement: [0x22; 20],
+        batch_id: manifest.batch_id,
+        previous_root: roots.prev_state_root,
+        base_commitment: roots.commitment::<Keccak256>(),
+        phase: roots.wind_down_phase,
+        first_ms: bounds.first_ms,
+        last_ms: bounds.last_ms,
+        timed_ops: bounds.count,
+        anchored_at_ms: 0,
+        max_window_ms: 10_000,
+        clock_skew_ms: 2_000,
+    };
+    let bytes = prover::encode_clock_witness(&state, &ops, &manifest, &clock);
+    prover::public_from_witness(&bytes).expect("the service accepts this witness");
 
     // Seal to the service's stand-in measurement (0xAB..) + seal root (0x5E.. default). Must match
     // crates/prover-service/src/main.rs `measurement()` / `seal_root()`.

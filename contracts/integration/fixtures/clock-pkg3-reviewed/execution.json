@@ -1,0 +1,251 @@
+{
+  "cases": [
+    {
+      "commitment": "0xd1d933cad0323ca4b7a0dca2017da7b7a6007f4bfc4e6e4fd57f8be72c9f15d2",
+      "cycles": 2971773,
+      "guest_exit": 0,
+      "name": "epoch-price-refresh",
+      "native_guest_equal": true,
+      "phase": 0,
+      "witness_sha256": "b83319577b2db742eb13f6939a078ed8b7f0d93ddd2dcb8e2397b6b20827f5e7"
+    },
+    {
+      "commitment": "0x6bec4bfbe9e7d2dd917f402502556d6e3d854105cdd293dbde2b46cbc2501cea",
+      "cycles": 5740006,
+      "guest_exit": 0,
+      "name": "pause-reopen-fill",
+      "native_guest_equal": true,
+      "phase": 0,
+      "witness_sha256": "a4759a507b6945bc7c2fc812096475fbe02794b38a428ce3f10c753e5a2904ea"
+    },
+    {
+      "commitment": "0x05d29866e9ebf45f62aec2f7e16c2c94a85a2a32a91ddfddd00d540d16564db8",
+      "cycles": 2981347,
+      "guest_exit": 0,
+      "name": "bad-debt-treasury-adl",
+      "native_guest_equal": true,
+      "phase": 0,
+      "witness_sha256": "5e9e4268cf9a9a5487191282419b3289ee11e24201e6a07d9975afbc577c559f"
+    },
+    {
+      "commitment": "0xcb0c459aa520bc736e9cd88405ae59daf4dd1b466a797c475c2574d81883b032",
+      "cycles": 252270,
+      "guest_exit": 0,
+      "name": "debt-top-up-prune",
+      "native_guest_equal": true,
+      "phase": 0,
+      "witness_sha256": "4cdb2225a4136ea06e1b8c8b39b9416bd81dbcee3785cecc50e4cb9447e3898c"
+    },
+    {
+      "commitment": "0xb813ecfd08db2557ec763e2ffb6ec335f45044b906e61fe2a92fa1f882e68f66",
+      "cycles": 2972380,
+      "guest_exit": 0,
+      "name": "debt-top-up-next-batch",
+      "native_guest_equal": true,
+      "phase": 0,
+      "witness_sha256": "c9becc2b21847c1b0efd3854dc934ecdad2a7d90b9f6956fc1f82f22666be559"
+    },
+    {
+      "commitment": "0x6fb83abf2a8f2e17f3785ed6b11ab978848fe53e22e32ece14f30782cfe0ab12",
+      "cycles": 5755654,
+      "guest_exit": 0,
+      "name": "full-exit-prune",
+      "native_guest_equal": true,
+      "phase": 0,
+      "witness_sha256": "ce73e851598af145075a36bdf19c29a3ab6fd23129b57c7ada3c9b0e37d98a00"
+    },
+    {
+      "commitment": "0x5045303a589c01e45d962855ee6639ae4f4a38f34985dd0a554e3cf9111e043a",
+      "cycles": 251800,
+      "guest_exit": 0,
+      "name": "empty-keepalive",
+      "native_guest_equal": true,
+      "phase": 0,
+      "witness_sha256": "5a95daffab5531f5aa2a400a392be7f5dbbaca11da4b3b43c9ea95c4ec1a29ce"
+    },
+    {
+      "commitment": "0xedc4c0a86b495f1cdbcb00636ed96faca085f9710cc868e0a2336780762b8aa7",
+      "cycles": 290552,
+      "guest_exit": 0,
+      "name": "settle-all-two-markets",
+      "native_guest_equal": true,
+      "phase": 1,
+      "witness_sha256": "fa7c07195d89b5ace497336f611a2d4032be4c44704b5af35de9f96385bfe07f"
+    },
+    {
+      "commitment": "0xbf98b0229914a4654ba1f53aa49dad00169aae718d430bb4464fc0bc50b714b4",
+      "cycles": 318416,
+      "guest_exit": 0,
+      "name": "phase-two-exit",
+      "native_guest_equal": true,
+      "phase": 2,
+      "witness_sha256": "6b0690c798b55ce5b3e2fd14b8253af158428ccce7039c24bac04de9bb117a01"
+    }
+  ],
+  "commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab",
+  "cycles": 5750329,
+  "elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+  "kind": "clock-pkg3-native-guest",
+  "native_guest_equal": true,
+  "negatives": [
+    {
+      "guest_exit": 1,
+      "name": "wrong-bounds",
+      "native_error": "Transition(ClockMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "cb9174c67eccb190aa94f952e62ac767acfa1bd51356923eddbefac2cd57fd6b"
+    },
+    {
+      "guest_exit": 1,
+      "name": "wrong-count",
+      "native_error": "Transition(ClockMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "c0e211d721459f6076a68fb94044eccad767a52dcb87283604a3a27ae374e81e"
+    },
+    {
+      "guest_exit": 1,
+      "name": "wrong-batch",
+      "native_error": "Transition(ClockMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "d308e98fea20da6c25f77b0a75d5182763581c386c86fe09938e3d0a91314520"
+    },
+    {
+      "guest_exit": 1,
+      "name": "wrong-base",
+      "native_error": "Transition(ClockMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "2d118241670e93d3b46cd9be4f711986a5bd43345dc7c3c87220f4950bde59c5"
+    },
+    {
+      "guest_exit": 1,
+      "name": "backdated",
+      "native_error": "Transition(ClockMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "b94ee21774e8047f32d95e5c12293bbbd87139f36d3de32ab62b13a7fe36d4b3"
+    },
+    {
+      "guest_exit": 1,
+      "name": "bad-manifest",
+      "native_error": "Transition(ManifestMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "c572b38d672a01dadd99f428310fd8b5c75a7ff8e6537268b0731df6725c0314"
+    },
+    {
+      "guest_exit": 1,
+      "name": "unauthorized-withdrawal",
+      "native_error": "Transition(BadSpendKey)",
+      "public_bytes": 0,
+      "witness_sha256": "765b222c711697700dc39942c5fa60c3bde7e4042bbe7195dd471135bd32135e"
+    },
+    {
+      "guest_exit": 1,
+      "name": "market-id-not-map-key",
+      "native_error": "Transition(MarketIdMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "849dc44beff8bb3c1d4f8a4a941575f9da12cfbcee7613b7fe5cc27cc75408b0"
+    },
+    {
+      "guest_exit": 1,
+      "name": "forged-nullifier-log",
+      "native_error": "Transition(ManifestMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "fb483e26e9b4619e3fb76858845f2e9e4f3418c37df7ad856a2aa53bb57909af"
+    },
+    {
+      "guest_exit": 1,
+      "name": "erased-tree-history",
+      "native_error": "Transition(ManifestMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "94a7c18009573fd98fc0e4760300a44a0697e7aea6813afc996af9252c7fb473"
+    },
+    {
+      "guest_exit": 1,
+      "name": "depth-64-tree",
+      "native_error": "Transition(ManifestMismatch)",
+      "public_bytes": 0,
+      "witness_sha256": "dfa78adb977a6a1b932acaf4b31dea7801e63d0531fa7e27df612aa660c4aa56"
+    },
+    {
+      "guest_exit": 1,
+      "name": "overfull-tree",
+      "native_error": "WitnessDecode",
+      "public_bytes": 0,
+      "witness_sha256": "70d0601451d4932a3eed02dee991bd5ffa8291daf8b4e62d4fb0def01ff7553a"
+    },
+    {
+      "guest_exit": 1,
+      "name": "duplicate-withdrawal-nonce",
+      "native_error": "Transition(WithdrawalNonceNotIncreasing)",
+      "public_bytes": 0,
+      "witness_sha256": "9d288f47546f1d75a3ddf8177ec702a8b014884070416faeb08e34c09cb6902b"
+    },
+    {
+      "guest_exit": 1,
+      "name": "unfunded-dust-fill",
+      "native_error": "Transition(Risk { source: InsufficientMargin, leg: Some(Taker) })",
+      "public_bytes": 0,
+      "witness_sha256": "406037b43dd759a5ba263b415aacb42eef0fd6877791112dea2b2248f1d94769"
+    },
+    {
+      "guest_exit": 1,
+      "name": "under-floor-fill",
+      "native_error": "Transition(Risk { source: InsufficientMargin, leg: Some(Taker) })",
+      "public_bytes": 0,
+      "witness_sha256": "31433a9d6ecff1f58ee643a060b572f0e832c7d7fc31fd39440e6759073339bc"
+    },
+    {
+      "guest_exit": 1,
+      "name": "deposit-in-close-only",
+      "native_error": "Transition(CloseOnly)",
+      "public_bytes": 0,
+      "witness_sha256": "3f79ad7ea77105bb9f71f63a56ff1b2903944a9151ad795fb94e362c9b56f678"
+    },
+    {
+      "guest_exit": 1,
+      "name": "legacy-tuple",
+      "native_error": "UnboundWitness",
+      "public_bytes": 0,
+      "witness_sha256": "1dde2f621b7d6f04fc910e5b61015315fedb51de4a36d40cbee55ab4c344f929"
+    },
+    {
+      "guest_exit": 1,
+      "name": "empty-input",
+      "native_error": "UnboundWitness",
+      "public_bytes": 0,
+      "witness_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "guest_exit": 1,
+      "name": "seven-byte-magic",
+      "native_error": "UnboundWitness",
+      "public_bytes": 0,
+      "witness_sha256": "c9b279fdf496b7b8306d1dd2b4d354a7056f3f178434dc7bcffc4b570378dcde"
+    },
+    {
+      "guest_exit": 1,
+      "name": "dpclk2-magic",
+      "native_error": "UnboundWitness",
+      "public_bytes": 0,
+      "witness_sha256": "b842e66fde09c47c99312091f79d236931b57a50907eda8366911f37041816a6"
+    },
+    {
+      "guest_exit": 1,
+      "name": "dpclk3-magic",
+      "native_error": "UnboundWitness",
+      "public_bytes": 0,
+      "witness_sha256": "061cc6adfc6e5c5262b2ff0d6c9d274f49a9d19b81b5fdb0e00ae4462a52af26"
+    },
+    {
+      "guest_exit": 1,
+      "name": "trailing-byte",
+      "native_error": "WitnessDecode",
+      "public_bytes": 0,
+      "witness_sha256": "2f46c18bd27c21be3342c047f455cba2278272ac3b28b1ede0bbb18d1045d552"
+    }
+  ],
+  "proof_generated": false,
+  "sdk_version": "6.1.0",
+  "setup_performed": false,
+  "target_contract_verified": false,
+  "witness_sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a"
+}

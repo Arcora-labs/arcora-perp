@@ -4,10 +4,14 @@
 use perp_core::hash::Keccak256;
 use serde_json::{json, Value};
 use sp1_host::{groth16_payload_for_verification, hex, sha256};
-use sp1_sdk::{include_elf, Elf, SP1Proof, SP1ProofWithPublicValues, SP1PublicValues};
+use sp1_sdk::{SP1Proof, SP1ProofWithPublicValues, SP1PublicValues};
 use sp1_verifier::ProofBn254;
 use std::{fs, path::PathBuf};
-const ELF: Elf = include_elf!("perp-core-guest");
+
+/// REVIEWED_GUEST["elf"] in scripts/local-verification/verify_clock_proof.py. The
+/// execution directory's guest must be that ELF, whatever ELF a build script put
+/// into this binary (a skipped guest build embeds an empty stub).
+const REVIEWED_ELF: &str = "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df";
 
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
@@ -24,9 +28,9 @@ fn main() {
     let witness = fs::read(original.join("clock.witness.bin")).unwrap();
     let elf = fs::read(original.join("guest.elf")).unwrap();
     assert_eq!(
-        elf.as_slice(),
-        &*ELF,
-        "wrapper must belong to this exact rebuilt guest"
+        sha256(&elf),
+        REVIEWED_ELF,
+        "wrapper must belong to the reviewed guest ELF"
     );
     let expected = prover::public_from_witness(&witness)
         .unwrap()
@@ -72,7 +76,7 @@ fn main() {
     let vkey_hex = format!("0x{}", hex(&vkey));
     assert_eq!(
         vkey_hex,
-        "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+        "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec"
     );
     assert_eq!(record["program_vkey"], vkey_hex);
     let embedded_vk: &[u8] = &sp1_verifier::GROTH16_VK_BYTES;

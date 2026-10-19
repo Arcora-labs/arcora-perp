@@ -111,7 +111,7 @@ jobs:
         run: cargo test --locked --manifest-path crates/sp1-host/Cargo.toml --lib
       - name: typecheck prover-service
         run: cargo check --locked --manifest-path crates/prover-service/Cargo.toml
-      # The four reviewed witnesses execute about 98 million guest cycles.
+      # The four lifecycle wallet windows execute about 40 million guest cycles.
       # Optimize the host executor so debug-mode overhead does not dominate CI.
       # clock-proof requires --elf and refuses an ELF whose SHA-256 is not the
       # reviewed pin. vkey prints the setup key of the ELF given with --elf (or of
@@ -120,64 +120,25 @@ jobs:
       - name: Build optimized exact synthetic funds replay host (guest build skipped)
         env:
           CARGO_BUILD_JOBS: '2'
-        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds --bin replay-chainlink --bin replay-chainlink-lifecycle --bin vkey --bin clock-proof
+        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds --bin vkey --bin clock-proof
       - name: Reject incomplete or substituted normal-wallet witnesses
         run: |
           python3 scripts/local-verification/verify_funds_replay.py \
             --binary crates/sp1-host/target/release/replay-funds \
-            --elf contracts/integration/fixtures/clock-v2-verified/guest.elf \
-            --witness-dir docs/audits/2026-10-09-followup/clock-lifecycle/witnesses \
+            --elf contracts/integration/fixtures/clock-pkg3-reviewed/guest.elf \
+            --witness-dir contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle \
             --output-dir /tmp/arcora-funds-replay-guards
       - name: Execute reviewed SP1 guest on all four exact wallet witnesses (not proof generation)
         env:
           RAYON_NUM_THREADS: '2'
         run: |
           crates/sp1-host/target/release/replay-funds \
-            docs/audits/2026-10-09-followup/clock-lifecycle/witnesses \
+            contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle \
             /tmp/arcora-funds-guest-execution \
-            --elf contracts/integration/fixtures/clock-v2-verified/guest.elf
-      - name: Execute separately pinned Chainlink candidate (synthetic, no DON or proof)
-        run: |
-          python3 scripts/local-verification/run_chainlink_replay.py \
-            --binary crates/sp1-host/target/release/replay-chainlink \
-            --elf contracts/integration/fixtures/chainlink-candidate-v1/guest.elf \
-            --output-dir /tmp/arcora-chainlink-candidate-replay
-      - name: Execute real gateway price lifecycle in candidate guest (synthetic, no DON or proof)
-        timeout-minutes: 10
-        env:
-          CARGO_BUILD_JOBS: '2'
-          RAYON_NUM_THREADS: '2'
-          TOKIO_WORKER_THREADS: '2'
-          ARCORA_CHAINLINK_PRICE_LIFECYCLE_EXPORT: ${{ runner.temp }}/arcora-chainlink-lifecycle-inputs
-        run: |
-          cargo test --locked -p gateway --bin gateway \
-            price_lifecycle_tests::export_candidate_price_lifecycle_for_cpu -- --ignored --exact --nocapture
-          lifecycle_manifest_sha=$(python3 -c 'import hashlib,os,pathlib;print(hashlib.sha256((pathlib.Path(os.environ["ARCORA_CHAINLINK_PRICE_LIFECYCLE_EXPORT"])/"manifest.json").read_bytes()).hexdigest())')
-          set -o pipefail
-          crates/sp1-host/target/release/replay-chainlink-lifecycle \
-            --elf contracts/integration/fixtures/chainlink-candidate-v1/guest.elf \
-            --input-dir "$ARCORA_CHAINLINK_PRICE_LIFECYCLE_EXPORT" \
-            --manifest-sha256 "$lifecycle_manifest_sha" \
-            --output-dir "$RUNNER_TEMP/arcora-chainlink-lifecycle-execution" \
-            2>&1 | tee "$RUNNER_TEMP/arcora-chainlink-lifecycle-execution.log"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: chainlink-gateway-price-lifecycle
-          path: |
-            ${{ runner.temp }}/arcora-chainlink-lifecycle-inputs
-            ${{ runner.temp }}/arcora-chainlink-lifecycle-execution
-            ${{ runner.temp }}/arcora-chainlink-lifecycle-execution.log
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: chainlink-candidate-guest-replay
-          path: |
-            /tmp/arcora-chainlink-candidate-replay/verification.json
-            /tmp/arcora-chainlink-candidate-replay/execution/manifest.json
-            /tmp/arcora-chainlink-candidate-replay/execution/*.public-values.bin
-            /tmp/arcora-chainlink-candidate-replay/execution.log
-            /tmp/arcora-chainlink-candidate-replay/guards/*.log
+            --elf contracts/integration/fixtures/clock-pkg3-reviewed/guest.elf
+      # The frozen Chainlink candidate lane (its ELF, setup key, fixtures and
+      # chainlink-oracle sources stay byte-identical history) is checked in
+      # chainlink-candidate.yml, outside this required job.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -185,6 +146,56 @@ jobs:
           path: |
             /tmp/arcora-funds-replay-guards
             /tmp/arcora-funds-guest-execution
+
+  reviewed-guest-execution:
+    # The committed reviewed guest ELF (REVIEWED_GUEST["identity_dir"]) executed on
+    # CPU: its setup key, its normal fixture, every case witness and every negative
+    # must reproduce the REVIEWED_GUEST and REVIEWED_FIXTURE pins in
+    # scripts/local-verification/verify_clock_proof.py. The checker also requires
+    # the checkout's guest sources to be REVIEWED_GUEST's. No proof is generated,
+    # and no ELF comes from a build script (that guest build is skipped and stubbed).
+    name: reviewed guest execution (CPU)
+    runs-on: ubuntu-latest
+    # Its own budget: an optimized sp1-host build, a CPU setup-key derivation and
+    # guest execution of the fixture, the cases and the negatives.
+    timeout-minutes: 60
+    env:
+      SP1_SKIP_PROGRAM_BUILD: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/sp1-host
+      - name: install protoc (sp1-prover-types build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Require the patched coherent SP1 release
+        run: python3 scripts/local-verification/check_sp1_release.py
+      - name: Regenerate the real SP1 native runner after cache restore
+        run: cargo clean --locked --manifest-path crates/sp1-host/Cargo.toml --package sp1-core-executor-runner
+      - name: stub the build-script guest ELF (vkey's include_elf! fallback; never executed here)
+        run: |
+          mkdir -p crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release
+          touch crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest
+      - name: Build the vkey and clock-proof hosts (guest build skipped)
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin vkey --bin clock-proof
+      - name: Derive the setup key and execute the fixture, cases and negatives (not proof generation)
+        env:
+          RAYON_NUM_THREADS: '2'
+        run: |
+          python3 scripts/local-verification/check_reviewed_guest_execution.py \
+            --vkey-bin crates/sp1-host/target/release/vkey \
+            --clock-proof-bin crates/sp1-host/target/release/clock-proof \
+            --output-dir "$RUNNER_TEMP/arcora-reviewed-guest-execution"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reviewed-guest-execution
+          path: ${{ runner.temp }}/arcora-reviewed-guest-execution
 
   contracts:
     name: contracts (foundry)

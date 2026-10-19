@@ -35,7 +35,9 @@
 
 extern crate alloc;
 
-#[cfg(feature = "std")]
+// Unit tests use `std` (a thread-local test hook in `engine`) even in
+// `--no-default-features` builds; the library itself only with the feature.
+#[cfg(any(feature = "std", test))]
 extern crate std;
 
 pub mod commitment;

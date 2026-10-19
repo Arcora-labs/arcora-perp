@@ -30,8 +30,8 @@ use sha2::{Digest as _, Sha256};
 use std::io::{Read, Write};
 use std::path::Path;
 
-/// File magic + format version. Bump the trailing digit on layout changes so an
-/// old binary refuses a new snapshot (and vice versa) instead of misreading it.
+/// File magic + format version. Bump the version (and `VERSION`) on layout changes
+/// so an old binary refuses a new snapshot (and vice versa) instead of misreading it.
 /// v2: SEC-022 added `Market.max_fill_deviation_ratio`, which sits inside the
 /// sealed payload (`Gw.seq.state.markets`); postcard is positional, so a v1
 /// snapshot read by a v2 binary would shift by one `i128` per market — and
@@ -59,15 +59,25 @@ use std::path::Path;
 /// a cross-version read. 025-A already took v4 for `Gw.bootstrap`, and two pieces
 /// claiming one magic means whichever lands second changes the positional schema
 /// without changing its guard — the exact misread the magic exists to refuse.
-// v6: explicit A01 extension; the legacy Gw/Account positional encoding is frozen.
-// v7: A05 execution metadata wraps the unchanged A01 v6 payload.
-// Version-bound v7/v8/v9 MACs; authenticated v5/v6 remain readable losslessly.
-// Formats older than v5 remain refused; no automatic wipe or downgrade.
-const MAGIC: &[u8; 8] = b"DPSNAP9\0";
-const A07_MAGIC: &[u8; 8] = b"DPSNAP8\0";
-const A05_MAGIC: &[u8; 8] = b"DPSNAP7\0";
-const A01_MAGIC: &[u8; 8] = b"DPSNAP6\0";
-const LEGACY_MAGIC: &[u8; 8] = b"DPSNAP5\0";
+/// v6-v9: the A01 deposit, A05 execution, A07 recovery and wind-down layers.
+/// v10: the engine state the payload carries changed (the note tree and
+/// nullifier log wire, the funding state, the last withdrawal nonce and the
+/// wind-down recipient) and the sequencer's own serialized state. Every earlier
+/// file is refused, envelope and payload alike: there is no reader for v5-v9 and
+/// no automatic wipe, downgrade or migration. A v10 stack starts from a fresh
+/// genesis.
+const MAGIC: &[u8; 8] = b"DPSNAP10";
+
+/// The version bound into the MAC of every snapshot this binary seals or opens,
+/// so a header rewritten to another version fails authentication.
+const VERSION: u64 = 10;
+
+/// The authenticated payload's own header, at the start of the plaintext: the
+/// wind-down flag, the `(Gw, market dynamics, deposit state)` postcard body, the
+/// execution extension and the recovery extension follow it, in that order. A
+/// rollback journal sealed with the same envelope starts with its own magic, so
+/// one is never read as the other.
+pub const PAYLOAD_MAGIC: &[u8] = b"\xffDP-GATEWAY-STATE-v10\0";
 
 /// Operational resource limit, shared by disk intake, parser and atomic writer.
 /// This is not a wire-format change: oversized files are preserved and refused
@@ -215,7 +225,7 @@ fn mac(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8]) -> Digest {
     Keccak256::hash_words(Domain::SnapshotSealMac, &words)
 }
 
-/// The v7 domain binds the version as well as the entire authenticated v6 payload.
+/// The versioned tag: the version word bound over the tag of the ciphertext.
 fn mac_version(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8], version: u64) -> Digest {
     let tag = mac(seed, nonce, ciphertext);
     Keccak256::hash_words(Domain::SnapshotSealMac, &[word_u64(version), tag])
@@ -244,7 +254,7 @@ pub fn seal(plain: &[u8], seed: &[u8; 32]) -> Vec<u8> {
 
     let ks = keystream(seed, &nonce, plain.len());
     let ciphertext: Vec<u8> = plain.iter().zip(ks).map(|(p, k)| p ^ k).collect();
-    let tag = mac_version(seed, &nonce, &ciphertext, 9);
+    let tag = mac_version(seed, &nonce, &ciphertext, VERSION);
 
     let mut out = Vec::with_capacity(8 + 32 + 32 + ciphertext.len());
     out.extend_from_slice(MAGIC);
@@ -263,28 +273,15 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     if sealed.len() < 8 + 32 + 32 {
         return Err("snapshot too short".into());
     }
-    if &sealed[..8] != MAGIC
-        && &sealed[..8] != A07_MAGIC
-        && &sealed[..8] != A05_MAGIC
-        && &sealed[..8] != A01_MAGIC
-        && &sealed[..8] != LEGACY_MAGIC
-    {
-        return Err("snapshot magic/version mismatch".into());
+    if &sealed[..8] != MAGIC {
+        return Err("snapshot magic/version mismatch (this gateway reads only DPSNAP10)".into());
     }
     let mut nonce = [0u8; 32];
     nonce.copy_from_slice(&sealed[8..40]);
     let mut tag = [0u8; 32];
     tag.copy_from_slice(&sealed[40..72]);
     let ciphertext = &sealed[72..];
-    let expected = if &sealed[..8] == MAGIC {
-        mac_version(seed, &nonce, ciphertext, 9)
-    } else if &sealed[..8] == A07_MAGIC {
-        mac_version(seed, &nonce, ciphertext, 8)
-    } else if &sealed[..8] == A05_MAGIC {
-        mac_version(seed, &nonce, ciphertext, 7)
-    } else {
-        mac(seed, &nonce, ciphertext)
-    };
+    let expected = mac_version(seed, &nonce, ciphertext, VERSION);
     if !ct_eq(&expected, &tag) {
         return Err("snapshot authentication failed (wrong seed or tampered file)".into());
     }
@@ -471,20 +468,103 @@ mod tests {
         assert_eq!(open(&sealed, &seed).unwrap(), plain);
     }
 
+    /// Every earlier envelope is refused, including one a genuine earlier binary
+    /// would have authenticated: v7-v9 under their versioned tag, v5/v6 under the
+    /// unversioned one. Nothing before v10 is read.
     #[test]
-    fn v9_authenticates_its_version_and_still_reads_v8() {
+    fn v10_authenticates_its_version_and_refuses_every_earlier_envelope() {
         let seed = [42; 32];
-        let mut sealed = seal(b"legacy v8 plaintext", &seed);
-        assert_eq!(&sealed[..8], MAGIC);
-        sealed[..8].copy_from_slice(A07_MAGIC);
-        assert!(
-            open(&sealed, &seed).is_err(),
-            "header downgrade must invalidate the MAC"
+        let sealed = seal(b"an earlier plaintext", &seed);
+        assert_eq!(&sealed[..8], b"DPSNAP10");
+        assert_eq!(open(&sealed, &seed).unwrap(), b"an earlier plaintext");
+        let nonce: Digest = sealed[8..40].try_into().unwrap();
+        for (magic, version) in [
+            (b"DPSNAP9\0", Some(9)),
+            (b"DPSNAP8\0", Some(8)),
+            (b"DPSNAP7\0", Some(7)),
+            (b"DPSNAP6\0", None),
+            (b"DPSNAP5\0", None),
+            (b"DPSNAP4\0", None),
+        ] {
+            let mut old = sealed.clone();
+            old[..8].copy_from_slice(magic);
+            assert!(open(&old, &seed).is_err(), "{magic:?} header rewrite");
+            let tag = match version {
+                Some(v) => mac_version(&seed, &nonce, &old[72..], v),
+                None => mac(&seed, &nonce, &old[72..]),
+            };
+            old[40..72].copy_from_slice(&tag);
+            assert!(
+                open(&old, &seed).is_err(),
+                "{magic:?} authentic earlier file"
+            );
+        }
+        // A v10 header over an earlier version's tag fails authentication.
+        let mut downgraded = sealed.clone();
+        downgraded[40..72].copy_from_slice(&mac_version(&seed, &nonce, &sealed[72..], 9));
+        assert!(open(&downgraded, &seed).is_err());
+    }
+
+    /// Test-side only: authenticate a genuine earlier file under its own version's
+    /// tag (v7-v9 versioned, v5/v6 unversioned) and decrypt it. `open` has no such
+    /// path; this exists to show what the refused files carry.
+    fn open_earlier(sealed: &[u8], seed: &[u8; 32], version: Option<u64>) -> Vec<u8> {
+        let nonce: Digest = sealed[8..40].try_into().unwrap();
+        let ciphertext = &sealed[72..];
+        let tag = match version {
+            Some(v) => mac_version(seed, &nonce, ciphertext, v),
+            None => mac(seed, &nonce, ciphertext),
+        };
+        assert!(ct_eq(&tag, &sealed[40..72].try_into().unwrap()));
+        let ks = keystream(seed, &nonce, ciphertext.len());
+        ciphertext.iter().zip(ks).map(|(c, k)| c ^ k).collect()
+    }
+
+    /// Every frozen v5-v9 file is refused by its envelope magic. The payloads they
+    /// authenticate under their own versions are no v10 layout either: re-sealed
+    /// under the current envelope, each snapshot payload is refused by its header
+    /// and the v9 journal by its magic, so nothing earlier is ever decoded.
+    #[test]
+    fn frozen_earlier_payloads_are_refused_by_their_headers_too() {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/snapshots");
+        let read = |name: &str| std::fs::read(fixtures.join(name)).unwrap();
+        let legacy: Vec<u8> = include_str!("deposit_ingestion/legacy-v5.hex")
+            .trim()
+            .as_bytes()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect();
+        let refused = "snapshot magic/version mismatch (this gateway reads only DPSNAP10)";
+        for (name, sealed, seed, version) in [
+            ("legacy-v5.hex", legacy, [42; 32], None),
+            ("v5", read("v5/sealed.bin"), [0xC3; 32], None),
+            ("v6", read("v6/sealed.bin"), [0xC3; 32], None),
+            ("v7", read("v7/sealed.bin"), [0xC3; 32], Some(7)),
+            ("v8", read("v8/sealed.bin"), [0xC3; 32], Some(8)),
+            ("v9", read("v9/state.snapshot"), [0x65; 32], Some(9)),
+        ] {
+            assert_eq!(open(&sealed, &seed).unwrap_err(), refused, "{name}");
+            let plain = open_earlier(&sealed, &seed, version);
+            let current = open(&seal(&plain, &seed), &seed).unwrap();
+            match crate::Gw::boot_restored(&current) {
+                Err(error) => assert_eq!(
+                    error,
+                    "snapshot payload is not the v10 gateway state layout; earlier layouts are not read",
+                    "{name}"
+                ),
+                Ok(_) => panic!("{name}: an earlier payload was decoded"),
+            }
+        }
+        let journal = read("v9/state.snapshot.rollback");
+        assert_eq!(&journal[..8], b"DPSNAP9\0");
+        let plain = open_earlier(&journal, &[0x65; 32], Some(9));
+        assert_eq!(&plain[..8], b"DPRBJL5\0");
+        assert_eq!(
+            crate::rollback_journal::open(&seal(&plain, &[0x65; 32]), &[0x65; 32]).err(),
+            Some("journal magic/version mismatch".to_string())
         );
-        let nonce = sealed[8..40].try_into().unwrap();
-        let tag = mac_version(&seed, &nonce, &sealed[72..], 8);
-        sealed[40..72].copy_from_slice(&tag);
-        assert_eq!(open(&sealed, &seed).unwrap(), b"legacy v8 plaintext");
     }
 
     #[test]
@@ -501,21 +581,18 @@ mod tests {
         assert!(open(&sealed, &[9u8; 32]).is_err());
     }
 
-    /// SEC-025-D: pin the MAGIC VALUE, not just that some magic is checked. The sibling
-    /// test XORs a byte, which passes under any value — so reverting DPSNAP5 to DPSNAP4
-    /// left the whole suite green. 025-A already ships DPSNAP4 on `main`, so a revert here
-    /// would make a v4 snapshot from that build decode positionally into a v5 `Gw` and
-    /// shift every field after `trading_gate`.
+    /// Pin the MAGIC VALUE, not just that some magic is checked: a revert of the
+    /// constant would make an earlier build's well-formed file decode positionally
+    /// into this layout. The magic lives in the SEALED ENVELOPE
+    /// (`MAGIC ‖ nonce ‖ tag ‖ ciphertext`); the rollback journal additionally
+    /// carries its own magic inside a snapshot-sealed body.
     #[test]
     fn a_stale_snapshot_magic_is_refused() {
+        assert_eq!(MAGIC, b"DPSNAP10");
+        assert_eq!(VERSION, 10);
         let seed = [42u8; 32];
-        // The magic lives in the SEALED ENVELOPE (`MAGIC ‖ nonce ‖ tag ‖ ciphertext`),
-        // not in the payload — unlike the rollback journal, which carries its own magic
-        // inside a snapshot-sealed body. So overwrite the envelope's first eight bytes
-        // with the previous value; the body stays a perfectly valid v5 snapshot, which is
-        // exactly the hazard: a v4 build's file is well-formed, just differently shaped.
         let mut sealed = seal(b"a valid payload", &seed);
-        sealed[..8].copy_from_slice(b"DPSNAP4\0");
+        sealed[..8].copy_from_slice(b"DPSNAP9\0");
         assert!(
             open(&sealed, &seed).is_err(),
             "a snapshot under the previous magic must be refused, not decoded"

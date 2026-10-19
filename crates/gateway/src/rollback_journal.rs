@@ -47,14 +47,19 @@ use std::path::{Path, PathBuf};
 /// decoded by a post-025-D binary would misparse the outcome — and a roll-forward
 /// re-submits those roots to `_requireDepositPrefix`, so this must be a versioned
 /// refusal, never a silent misparse.
-const MAGIC: &[u8; 8] = b"DPRBJL5\0";
+/// v7: the journaled `WindowWitness.pre_state` carries the new engine state
+/// wire (note tree and nullifier log, funding state, last withdrawal nonce,
+/// wind-down recipient), so v5 and v6 journals are refused; there is no reader
+/// for them.
+const MAGIC: &[u8; 8] = b"DPRBJL7\0";
 
-/// Candidate (opt-in Chainlink report archive) journal magic. A v6 journal is a
-/// v5 `RollbackJournal` PLUS an authenticated `ArchiveEnvelope`; the distinct magic
-/// keeps the legacy v5 read/write path byte-identical and makes a pre-candidate
-/// binary refuse this journal (and a candidate-required boot refuse a legacy-only
-/// journal) as a versioned mismatch, never a silent postcard misparse.
-const CANDIDATE_MAGIC: &[u8; 8] = b"DPRBJL6\0";
+/// Candidate (opt-in Chainlink report archive) journal magic. A v8 journal is a
+/// v7 `RollbackJournal` PLUS an authenticated `ArchiveEnvelope`; the distinct magic
+/// keeps the plain journal read/write path byte-identical and makes a pre-candidate
+/// binary refuse this journal (and a candidate-required boot refuse a plain
+/// journal) as a versioned mismatch, never a silent postcard misparse. It moved
+/// from v6 to v8 with the v7 bump of the journal it wraps.
+const CANDIDATE_MAGIC: &[u8; 8] = b"DPRBJL8\0";
 
 /// One oracle-bearing op's exact binding to an immutable archived report pair:
 /// the op's (market_id, now_ms) plus the archive record's content hash. Repeated
@@ -67,7 +72,7 @@ pub struct ArchiveRef {
     pub archive_id: chainlink_streams_client::report_archive::ArchiveId,
 }
 
-/// The candidate envelope sealed inside the v6 journal. `policy_binding` is
+/// The candidate envelope sealed inside the candidate journal. `policy_binding` is
 /// `chainlink_streams_client::report_pair::policy_binding` of the operator-pinned
 /// policy; recovery refuses a journal whose envelope does not match the configured
 /// policy, and every referenced record must decode and re-normalize to the exact
@@ -78,14 +83,14 @@ pub struct ArchiveEnvelope {
     pub refs: Vec<ArchiveRef>,
 }
 
-/// The sealed candidate payload: the unchanged v5 journal plus its archive envelope.
+/// The sealed candidate payload: the unchanged plain journal plus its archive envelope.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct CandidateJournalV6 {
     journal: RollbackJournal,
     envelope: ArchiveEnvelope,
 }
 
-/// Serialize the same v6 fields without copying the full recovery state. Decode
+/// Serialize the same candidate fields without copying the full recovery state. Decode
 /// still uses the owned payload above, so no borrowed data escapes recovery.
 #[derive(serde::Serialize)]
 struct CandidateJournalV6Ref<'a> {
@@ -95,9 +100,9 @@ struct CandidateJournalV6Ref<'a> {
 
 /// Boot-facing decode result: which authenticated envelope the sealed bytes carry.
 pub enum OpenedJournal {
-    /// Legacy v5 journal — no archive binding. Refused in archive-required mode.
+    /// Plain journal (`MAGIC`) — no archive binding. Refused in archive-required mode.
     Legacy(RollbackJournal),
-    /// Candidate v6 journal with its archive envelope.
+    /// Candidate journal (`CANDIDATE_MAGIC`) with its archive envelope.
     Candidate {
         journal: RollbackJournal,
         envelope: ArchiveEnvelope,
@@ -134,7 +139,7 @@ pub fn journal_path(state_path: &Path) -> PathBuf {
 /// torn journal). `Err` means durability was not acknowledged. The live settle
 /// loop must stop before proving/broadcasting when configured persistence fails;
 /// it must not delete the existing recovery record or treat the write as success.
-/// Legacy v5 write path — the exact pre-candidate bytes. Retained for the
+/// Plain write path — the exact pre-candidate bytes. Retained for the
 /// existing tests and any non-candidate tooling; production writes go through
 /// [`write_versioned`].
 #[allow(dead_code)]
@@ -142,8 +147,8 @@ pub fn write(path: &Path, j: &RollbackJournal, seed: &[u8; 32]) -> Result<(), St
     write_versioned(path, j, None, seed)
 }
 
-/// Versioned persistence: `None` writes exactly the legacy v5 envelope;
-/// `Some` writes the candidate v6 envelope (same seal, same atomic write).
+/// Versioned persistence: `None` writes exactly the plain journal envelope;
+/// `Some` writes the candidate envelope (same seal, same atomic write).
 pub fn write_versioned(
     path: &Path,
     j: &RollbackJournal,
@@ -180,13 +185,11 @@ pub fn write_versioned(
 /// postcard note: `postcard::from_bytes` SILENTLY DISCARDS a remaining suffix
 /// (postcard 1.x docs) — a body that decodes cleanly but carries trailing bytes
 /// must be refused, not truncated-accepted. Both versions therefore decode with
-/// `take_from_bytes` and require an EMPTY remainder; the candidate v6 body must
+/// `take_from_bytes` and require an EMPTY remainder; the candidate body must
 /// ALSO re-encode to exactly the input bytes (postcard's encoding is canonical,
-/// so a decodable-but-differently-encoded body is treated as corrupt). v5 gets
-/// the trailing-byte check only: its writers are `to_allocvec`-canonical by
-/// construction, and a re-encode equality check on the legacy path could refuse
-/// a historical journal this binary never wrote — v5 compatibility is
-/// deliberate, limited to what `write` has always produced.
+/// so a decodable-but-differently-encoded body is treated as corrupt). The plain
+/// journal gets the trailing-byte check only: its writers are
+/// `to_allocvec`-canonical by construction.
 pub fn open_versioned(sealed: &[u8], seed: &[u8; 32]) -> Result<OpenedJournal, String> {
     let plain = snapshot::open(sealed, seed).map_err(|e| format!("journal open: {e}"))?;
     if let Some(body) = plain.strip_prefix(CANDIDATE_MAGIC.as_slice()) {
@@ -252,15 +255,14 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<RollbackJournal, String> {
         .ok_or("journal magic/version mismatch")?;
     // `from_bytes` would silently discard a remaining suffix (postcard 1.x):
     // a journal that decodes cleanly but carries trailing bytes is refused, so
-    // a v6 payload (or anything else) concatenated after a valid v5 body can
-    // never read as an accepted legacy journal. Valid v5 payloads — everything
-    // `write` has ever produced, `to_allocvec`-canonical with no suffix — are
-    // unaffected; this is the deliberate extent of the v5 tightening.
+    // a candidate payload (or anything else) concatenated after a valid plain
+    // body can never read as an accepted plain journal. Everything `write`
+    // produces is `to_allocvec`-canonical with no suffix.
     let (j, rest): (RollbackJournal, &[u8]) =
         postcard::take_from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
     if !rest.is_empty() {
         return Err(format!(
-            "journal decode: {} trailing bytes after the v5 payload",
+            "journal decode: {} trailing bytes after the journal payload",
             rest.len()
         ));
     }
@@ -1231,31 +1233,35 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
-    /// The DPRBJL5 bump's whole claim, made executable: a journal written under the
-    /// PREVIOUS magic must be refused as a versioned mismatch, never handed to
-    /// postcard under the new layout (a pre-025-D `ProveOutcome` would misparse, and
-    /// a roll-forward re-submits those roots to `_requireDepositPrefix`). No prior
-    /// bump (v2/v3/v4) pinned this; each relied on the constant alone.
+    /// Each journal bump's claim, made executable: a journal written under an
+    /// EARLIER magic is refused as a versioned mismatch, never handed to postcard
+    /// under the current layout. v5 and v6 are the plain and candidate journals of
+    /// the earlier engine state wire, which this binary no longer reads.
     #[test]
     fn journal_with_a_stale_magic_is_refused() {
+        assert_eq!(MAGIC, b"DPRBJL7\0");
+        assert_eq!(CANDIDATE_MAGIC, b"DPRBJL8\0");
         let seed = [42u8; 32];
-        let path = scratch_path("stale-magic");
-        // A well-formed v4-era payload is unnecessary: the magic check runs BEFORE
-        // postcard, so any body under the old magic must already be refused.
-        let mut plain = Vec::new();
-        plain.extend_from_slice(b"DPRBJL4\0");
-        plain.extend_from_slice(&[0u8; 16]);
-        let sealed = snapshot::seal(&plain, &seed);
-        snapshot::write_atomic(&path, &sealed).expect("write");
-        let err = match read(&path, &seed) {
-            Err(e) => e,
-            Ok(_) => panic!("a stale-magic journal must be refused"),
-        };
-        // Under a reverted MAGIC this dies either way: the old-magic journal then
-        // strips cleanly and yields Ok (panic above) or a postcard decode error
-        // (which does not name the magic) — never this exact refusal.
-        assert!(err.contains("magic"), "unexpected error: {err}");
-        std::fs::remove_file(&path).ok();
+        for stale in [b"DPRBJL4\0", b"DPRBJL5\0", b"DPRBJL6\0"] {
+            let path = scratch_path("stale-magic");
+            // A well-formed earlier payload is unnecessary: the magic check runs
+            // BEFORE postcard, so any body under an earlier magic is refused.
+            let mut plain = Vec::new();
+            plain.extend_from_slice(stale);
+            plain.extend_from_slice(&[0u8; 16]);
+            let sealed = snapshot::seal(&plain, &seed);
+            snapshot::write_atomic(&path, &sealed).expect("write");
+            let err = match read(&path, &seed) {
+                Err(e) => e,
+                Ok(_) => panic!("a stale-magic journal must be refused"),
+            };
+            // Under a reverted MAGIC this dies either way: the old-magic journal then
+            // strips cleanly and yields Ok (panic above) or a postcard decode error
+            // (which does not name the magic) — never this exact refusal.
+            assert!(err.contains("magic"), "{stale:?}: unexpected error: {err}");
+            assert!(open_versioned(&sealed, &seed).is_err(), "{stale:?}");
+            std::fs::remove_file(&path).ok();
+        }
     }
 
     /// No journal file = the common clean-shutdown boot: Ok(None), not an error.

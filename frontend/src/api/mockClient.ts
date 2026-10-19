@@ -10,7 +10,8 @@
 
 import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
 import { fetchLiveQuotes } from "./oracleFeed";
-import { liquidationPrice } from "../domain/risk";
+import { initialMarginRequired, liquidationPrice } from "../domain/risk";
+import { increasesExposure, marketFreeBalance, orderMinimumError, withdrawalMinimumError } from "../domain/minimums";
 import {
   PRICE_SCALE,
   QUOTE_SCALE,
@@ -339,6 +340,19 @@ export class MockDarkPerpClient implements DarkPerpClient {
     if (input.reduceOnly && opening) {
       throw new Error("Reduce-only order would open or increase a position — rejected.");
     }
+    // Admission minimum, as the gateway applies it: an order that adds exposure
+    // needs $10 of notional, measured on the whole order at the oracle price (not
+    // its limit); reduce-only orders and pure reductions are exempt.
+    {
+      const held = this.state.account.positions.find((p) => p.marketId === input.marketId)?.size ?? 0n;
+      const px = this.priceOf(input.marketId);
+      const tooSmall = orderMinimumError(
+        (input.size * px) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE),
+        input.reduceOnly,
+        increasesExposure(held, input.side, input.size),
+      );
+      if (tooSmall) throw new Error(tooSmall);
+    }
     // Buying-power guard: a fresh open or a same-direction increase locks new margin
     // out of the free balance, so it must be affordable. (Flips net-release margin —
     // old side closes before the new opens — so they are not gated here.)
@@ -503,11 +517,10 @@ export class MockDarkPerpClient implements DarkPerpClient {
   }
 
   private requiredMargin(size: bigint, price: bigint, marketId: number): bigint {
-    // initial margin = notional × the market's initial-margin ratio (same basis as
-    // domain/risk.orderRisk), not a hard-coded 10× — so a non-10× market is correct.
-    const notional = (size * price) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
-    const imrBp = BigInt(Math.round(this.data.get(marketId)!.market.initialMarginRatio * 10_000));
-    return (notional * imrBp) / 10_000n;
+    // initial margin = notional × the market's initial-margin ratio, rounded up and
+    // never below the engine's $1 floor (same function as domain/risk.orderRisk), not
+    // a hard-coded 10× — so a non-10× market is correct.
+    return initialMarginRequired(size, price, this.data.get(marketId)!.market.initialMarginRatio);
   }
   private pnl(size: bigint, entry: bigint, mark: bigint): bigint {
     return (size * (mark - entry)) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
@@ -534,6 +547,9 @@ export class MockDarkPerpClient implements DarkPerpClient {
     if (amountQuote > this.state.account.settledBalance) {
       throw new Error("Not withdrawable: amount exceeds SETTLED balance (§3).");
     }
+    // One pool: the mock account reports no per-market balance.
+    const tooSmall = withdrawalMinimumError(amountQuote, marketFreeBalance(this.state.account, this.selectedMarketId));
+    if (tooSmall) throw new Error(tooSmall);
     this.state.account = { ...this.state.account, settledBalance: this.state.account.settledBalance - amountQuote };
     this.emit();
   }

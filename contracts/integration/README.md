@@ -21,13 +21,18 @@ python3 scripts/local-verification/verify_real_proof.py \
   --output-dir /tmp/arcora-real-proof-verification-new
 ```
 
-Both output directories must be new. The proof directory must be a successful
-`sp1-host` `prove --output-dir` run: witness, ELF, program key, proof, 32-byte public
-commitment, SDK proof JSON, and their completion manifest. Missing artifacts,
-hash mismatches, a mock or wrong-version payload, missing SDK verification, failed
-tests, and skipped tests fail the runner. There is no fallback fixture.
+Both output directories must be new. The proof directory must hold an ordinary
+(not clock-bound) proof's artifacts as the earlier `sp1-host` `prove --output-dir`
+binary wrote them: witness, ELF, program key, proof, 32-byte public commitment, SDK
+proof JSON, and their completion manifest. That binary is retired, so such
+artifacts are historical. A new clock-bound proof comes from
+`clock-proof --elf <reviewed ELF> --prove` (`crates/sp1-host/src/bin/clock-proof.rs`)
+and is checked by `scripts/local-verification/verify_clock_proof.py`. Missing
+artifacts, hash mismatches, a mock or wrong-version payload, missing SDK
+verification, failed tests, and skipped tests fail the runner. There is no fallback
+fixture.
 
-The runner also pins the current Arcora guest ELF SHA256 and program key from
+The runner also pins the legacy Arcora guest ELF SHA256 and program key from
 `docs/audits/2026-09-28-post-merge/release-manifest.json`; the ELF has a separate
 clean-rebuild record in that directory's `elf-reproducibility.json`. A different
 ELF or key is rejected even if an input manifest supplies matching replacement

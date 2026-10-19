@@ -107,5 +107,35 @@ class ReplayEvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError): replay.fixture_manifest()
 
 
+class FrozenLaneTests(unittest.TestCase):
+    """The candidate lane is history: its tools refuse before executing or building."""
+
+    def test_replay_refuses_before_touching_any_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing"
+            output = Path(directory) / "output"
+            with self.assertRaisesRegex(ValueError, "frozen candidate lane"):
+                replay.run(missing, missing, output)
+            self.assertFalse(output.exists())
+        with patch("sys.argv", ["run_chainlink_replay.py"]), self.assertRaises(SystemExit) as raised:
+            replay.main()
+        self.assertIn("frozen candidate lane", str(raised.exception.code))
+
+    def test_candidate_build_refuses_before_parsing_or_building(self):
+        import build_chainlink_candidate as build
+        with patch("sys.argv", ["build_chainlink_candidate.py", "--cargo", "/nonexistent"]), \
+                patch.object(build.subprocess, "run") as run, self.assertRaises(SystemExit) as raised:
+            build.main()
+        self.assertIn("frozen candidate lane", str(raised.exception.code))
+        run.assert_not_called()
+
+    def test_frozen_identity_pins_hold(self):
+        # The committed candidate ELF, runtime sources and replay corpus are unchanged.
+        elf = replay.ROOT / "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf"
+        self.assertEqual(replay.sha(replay.read_regular(elf)), replay.ELF_SHA)
+        self.assertEqual(len(replay.candidate_sources()), 9)
+        self.assertEqual(len(replay.fixture_manifest()["cases"]), 19)
+
+
 if __name__ == "__main__":
     unittest.main()

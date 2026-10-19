@@ -3,8 +3,6 @@ use super::*;
 use k256::elliptic_curve::bigint::{Encoding, U256};
 use std::collections::BTreeMap;
 
-pub(super) const SNAPSHOT_V7: &[u8] = b"\xffDPA05-SNAPSHOT-v7\0";
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub(super) enum Status {
@@ -292,9 +290,8 @@ pub(super) fn cancel(
     Ok(amount)
 }
 
-// Keep the old (Gw, markets) payload as a prefix. New fields on GwOrder are
-// serde-skipped, and a versioned trailer carries them without duplicating ledger
-// schemas. DPSNAP7 prevents older software from silently dropping this trailer.
+// Execution fields on GwOrder are serde-skipped from the positional body; this
+// typed extension, which every snapshot carries, holds them.
 const EXT: &[u8; 8] = b"DPEXEC2\0";
 pub(super) fn append_snapshot(gw: &Gw, bytes: &mut Vec<u8>) {
     let records: Vec<_> = gw
@@ -306,26 +303,6 @@ pub(super) fn append_snapshot(gw: &Gw, bytes: &mut Vec<u8>) {
     bytes.extend_from_slice(EXT);
     bytes.extend_from_slice(&postcard::to_allocvec(&records).expect("execution snapshot encode"));
 }
-pub(super) fn restore_snapshot(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
-    if trailer.is_empty() {
-        // Explicit v5/v6 migration: preserve every ledger/account/receipt byte, but
-        // do not invent execution history that the old program never recorded.
-        for o in gw
-            .orders
-            .iter_mut()
-            .chain(gw.accounts.values_mut().flat_map(|a| &mut a.orders))
-        {
-            ensure_record(o, &gw.seq);
-        }
-        return Ok(());
-    }
-    let (records, rest) = decode_snapshot_records(gw, trailer)?;
-    if !rest.is_empty() {
-        return Err("trailing execution snapshot bytes".into());
-    }
-    restore_snapshot_records(gw, records)
-}
-
 /// Consume one typed extension, returning its actual postcard boundary. Marker
 /// bytes inside a digest or string are payload, never framing delimiters.
 pub(super) fn restore_snapshot_prefix<'a>(

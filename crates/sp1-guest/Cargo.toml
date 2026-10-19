@@ -13,5 +13,11 @@ sp1-zkvm = "=6.1.0"
 perp-core = { path = "../perp-core", default-features = false, features = ["serde"] }
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 
+# Keccak through the SP1 precompile: Succinct's patch of tiny-keccak 2.0.2
+# (tag patch-2.0.2-sp1-6.0.0), pinned by commit. It changes only how the
+# permutation runs in the zkVM, not its output.
+[patch.crates-io]
+tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", rev = "957430a459f7a2332ab5bab4a12f9b473bb95c87" }
+
 # standalone: not part of the host workspace
 [workspace]

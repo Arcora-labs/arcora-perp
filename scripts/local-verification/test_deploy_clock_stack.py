@@ -15,6 +15,10 @@ import release_manifest as release
 
 GENESIS = "0x" + "4d" * 32
 OWNER = "0x" + "f1" * 20
+# Synthetic genesis addresses, distinct from every policy and public dev account.
+RECIPIENT = "0x" + "5a" * 20
+ORACLE_SIGNER = "0x" + "6b" * 20
+ANVIL0 = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
 
 
 def policy():
@@ -45,7 +49,8 @@ LAUNCH_CLOCK = {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_
 
 
 def plan_config(**overrides):
-    value = {"chain_id": 31337, "genesis_root": GENESIS, "sp1_gateway": None,
+    value = {"chain_id": 31337, "genesis_root": GENESIS, "wind_down_recipient": RECIPIENT,
+             "oracle_signer_address": ORACLE_SIGNER, "sp1_gateway": None,
              "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000, "anchor_timeout_ms": 60000},
              "operator_policy": policy(), "deposit_permit_ttl_secs": 1800}
     value.update(overrides)
@@ -88,6 +93,23 @@ FAKE_CAST = textwrap.dedent("""\
 
 
 class CastFixture(unittest.TestCase):
+    def proof_status(self, status, sources_reviewed=True):
+        """Fix the shared on-disk real proof status for this test, and whether the
+        checkout's guest sources are the reviewed ones."""
+        patcher = unittest.mock.patch.object(release.clock, "proof_status", return_value=status)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.guest_sources(sources_reviewed)
+
+    def guest_sources(self, reviewed):
+        """Fix the result of the checkout's guest-source check for this test."""
+        def check(root):
+            if not reviewed:
+                raise ValueError("guest source changed; rebuild and reprove: crates/perp-core/src/clock.rs")
+        patcher = unittest.mock.patch.object(release, "verify_reviewed_guest", side_effect=check)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
@@ -126,7 +148,8 @@ class Guards(CastFixture):
         self.assertFalse(self.output.exists())
 
     def test_public_dev_gateway_signer_is_refused_off_anvil(self):
-        anvil0 = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        self.proof_status(release.clock.PROVEN)
+        anvil0 = ANVIL0
         config = policy()
         config["vault"]["gateway_signer"] = anvil0
         self.write_config(chain_id=84532, operator_policy=config)
@@ -147,6 +170,67 @@ class Guards(CastFixture):
         self.write_config(genesis_root="0x" + "00" * 32)
         self.assertEqual(self.run_cli(), 2)
         self.assertEqual(self.sends(), [])
+
+    def test_genesis_addresses_are_required_nonzero_and_independent(self):
+        for key in ("wind_down_recipient", "oracle_signer_address"):
+            config = plan_config()
+            del config[key]
+            with self.subTest(missing=key):
+                self.config.write_text(json.dumps(config))
+                self.assertEqual(self.run_cli(), 2)
+            for bad in ("0x" + "00" * 20, "0x" + "5a" * 19, None, 5):
+                with self.subTest(key=key, value=bad):
+                    self.write_config(**{key: bad})
+                    self.assertEqual(self.run_cli(), 2)
+        self.write_config(oracle_signer_address=RECIPIENT.upper().replace("0X", "0x"))
+        self.assertEqual(self.run_cli(), 2)
+        self.assertEqual(self.sends(), [])
+
+    def test_genesis_addresses_differ_from_every_operator_address(self):
+        operators = [(role, name) for role, fields in release.OPERATOR_ADDRESSES.items() for name in fields]
+        self.assertEqual(len(operators), 6)
+        for key in ("wind_down_recipient", "oracle_signer_address"):
+            for role, name in operators:
+                config = policy()
+                config[role][name] = plan_config()[key]
+                with self.subTest(key=key, operator=role + "." + name):
+                    self.write_config(operator_policy=config)
+                    self.assertEqual(self.run_cli(), 2)
+        self.assertEqual(self.sends(), [])
+
+    def test_public_dev_genesis_addresses_are_refused_off_anvil(self):
+        self.proof_status(release.clock.PROVEN)
+        for key in ("wind_down_recipient", "oracle_signer_address"):
+            with self.subTest(key=key):
+                self.write_config(**launch_config(**{key: ANVIL0}))
+                self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 2)
+                self.assertEqual(self.sends(), [])
+                self.assertFalse(self.output.exists())
+                # A local or forked Anvil may use the published accounts.
+                self.write_config(**{key: ANVIL0})
+                self.assertEqual(self.run_cli(), 0)
+                self.output.unlink()
+                self.log.write_text("")
+
+    def test_a_given_gateway_must_print_the_configured_genesis_root(self):
+        import test_release_manifest as manifest_tests
+        gateway = manifest_tests.fake_gateway(self.tmp)
+        self.write_config()
+        # The synthetic GENESIS is not the root the gateway computes.
+        self.assertEqual(self.run_cli(extra=["--gateway-bin", str(gateway)]), 2)
+        self.assertEqual(self.sends(), [])
+        self.write_config(genesis_root=manifest_tests.fake_root(RECIPIENT, ORACLE_SIGNER))
+        self.assertEqual(self.run_cli(extra=["--gateway-bin", str(gateway)]), 0)
+        record = json.loads(self.output.with_suffix(".deployment.json").read_text())
+        self.assertIs(record["genesis_recomputed"], True)
+        self.output.unlink()
+        self.assertEqual(self.run_cli(), 0)
+        self.assertIs(json.loads(self.output.with_suffix(".deployment.json").read_text())["genesis_recomputed"],
+                      False)
+
+    def test_public_dev_accounts_are_the_release_tool_set(self):
+        # One list: the release config refuses the same accounts off a local chain.
+        self.assertIs(deploy.PUBLIC_DEV_ADDRESSES, release.PUBLIC_DEV_ADDRESSES)
 
     def test_program_key_is_not_configurable(self):
         self.write_config(program_vkey="0x" + "ab" * 32)
@@ -201,6 +285,12 @@ class Guards(CastFixture):
 
 
 class BaseFloors(CastFixture):
+    """The floors, on a target that is deployable only once the real proof is PROVEN."""
+
+    def setUp(self):
+        super().setUp()
+        self.proof_status(release.clock.PROVEN)
+
     def test_launch_defaults_pass_the_floors_on_a_public_chain(self):
         self.write_config(**launch_config())
         self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 0)
@@ -247,7 +337,7 @@ class BaseFloors(CastFixture):
         self.assertEqual(self.sends(), [])
 
     def test_explicit_owned_test_chain_flag(self):
-        # A non-Anvil chain the operator owns may waive the floors explicitly.
+        # Once PROVEN, a non-Anvil chain the operator owns may waive the floors explicitly.
         self.write_config(chain_id=900)
         own = {"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}
         self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=own), 2)
@@ -274,8 +364,16 @@ class ProofStatusGate(CastFixture):
         self.addCleanup(patcher.stop)
         self.assertEqual(release.clock.proof_status(), release.clock.PENDING_REPROOF)
 
-    def test_status_is_proven_today(self):
-        self.assertEqual(release.clock.proof_status(), release.clock.PROVEN)
+    def test_status_is_the_shared_on_disk_reading(self):
+        # No dict edit or flag changes it; the deploy tool asks the one shared function.
+        self.assertIn(release.clock.proof_status(), {release.clock.PROVEN, release.clock.PENDING_REPROOF})
+        self.write_config(**launch_config())
+        self.guest_sources(True)
+        for status, code in ((release.clock.PENDING_REPROOF, 2), (release.clock.PROVEN, 0)):
+            with self.subTest(status=status), \
+                    unittest.mock.patch.object(release.clock, "proof_status", return_value=status) as reading:
+                self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), code)
+                reading.assert_called_once_with()
 
     def test_non_owned_target_is_refused_until_proven(self):
         self.pending()
@@ -287,12 +385,42 @@ class ProofStatusGate(CastFixture):
         self.assertEqual(self.sends(), [])
         self.assertFalse(self.output.exists())
 
+    def test_a_proven_status_does_not_cover_changed_guest_sources(self):
+        # The committed proof files pass, but this checkout builds another program.
+        self.proof_status(release.clock.PROVEN, sources_reviewed=False)
+        self.write_config(**launch_config())
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 2)
+        self.write_config(chain_id=900)
+        own = {"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain", "--owned-test-chain"], env=own), 2)
+        self.assertEqual(self.sends(), [])
+        self.assertFalse(self.output.exists())
+        self.assertEqual(release.deployable_status()[0], release.clock.PENDING_REPROOF)
+        self.assertIn("guest source changed", release.deployable_status()[1])
+        # An owned Anvil target still deploys.
+        self.write_config()
+        self.assertEqual(self.run_cli(), 0)
+
+    def test_declared_owned_chain_must_be_local_while_pending(self):
+        self.pending()
+        for chain_id in (900, 84532, 8453):
+            with self.subTest(chain_id=chain_id):
+                self.write_config(chain_id=chain_id)
+                self.assertEqual(self.run_cli(extra=["--allow-public-chain", "--owned-test-chain"],
+                                              env={"FAKE_CHAIN": str(chain_id), "FAKE_CLIENT": "Geth/v1.14"}), 2)
+        self.assertEqual(self.sends(), [])
+        self.assertFalse(self.output.exists())
+
     def test_owned_targets_deploy_while_pending(self):
         self.pending()
+        geth = "Geth/v1.14"
+        declared = ["--allow-public-chain", "--owned-test-chain"]
         cases = [({}, [], 31337),
                  # The candidate harness and the fork dry run use Anvil with chain id 84532.
                  ({"FAKE_CHAIN": "84532"}, [], 84532),
-                 ({"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}, ["--allow-public-chain", "--owned-test-chain"], 900)]
+                 # A declared non-Anvil owned chain must use a local chain id.
+                 ({"FAKE_CHAIN": "31337", "FAKE_CLIENT": geth}, declared, 31337),
+                 ({"FAKE_CHAIN": "1337", "FAKE_CLIENT": geth}, declared, 1337)]
         for env, extra, chain_id in cases:
             with self.subTest(chain_id=chain_id):
                 self.write_config(chain_id=chain_id)
@@ -365,10 +493,17 @@ class Order(CastFixture):
         self.assertEqual(public["gateway"]["L1_SETTLEMENT"], public["addresses"]["settlement"])
         self.assertEqual(public["gateway"]["L1_ALLOW_MOCK_PROOF"], "0")
         self.assertEqual(public["gateway"]["DEPOSIT_PERMIT_TTL_SECS"], "1800")
+        self.assertEqual(public["gateway"]["WIND_DOWN_RECIPIENT"], RECIPIENT)
+        self.assertEqual(public["gateway"]["PROVER_EXPECTED_ELF_SHA256"], release.clock.REVIEWED_GUEST["elf"])
+        self.assertEqual(set(public["gateway"]), release.GATEWAY_KEYS)
+        self.assertEqual(public["genesis"], {"root": GENESIS, "wind_down_recipient": RECIPIENT,
+                                             "oracle_signer": ORACLE_SIGNER})
         self.assertEqual(public["clock"]["anchor_timeout_ms"], 60000)
         self.assertEqual(set(public["operator_policy"]["settlement"]),
                          {"sequencer", "enclave_signer", "governance"} | set(release.SETTLEMENT_POLICY))
         record = json.loads(self.output.with_suffix(".deployment.json").read_text())
+        self.assertEqual((record["genesis_root"], record["wind_down_recipient"], record["oracle_signer_address"]),
+                         (GENESIS, RECIPIENT, ORACLE_SIGNER))
         self.assertEqual(len(record["transactions"]), 10)
         # Fake cast mines send n at block 100 + n; the settlement is the 6th send.
         self.assertEqual(record["deploy_block"], 101)
@@ -463,7 +598,8 @@ class OwnedAnvil(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
         config = tmp / "deploy.json"
-        config.write_text(json.dumps({"chain_id": 31337, "genesis_root": GENESIS, "sp1_gateway": None,
+        config.write_text(json.dumps({"chain_id": 31337, "genesis_root": GENESIS, "wind_down_recipient": RECIPIENT,
+                                      "oracle_signer_address": ORACLE_SIGNER, "sp1_gateway": None,
                                       "clock": {"max_window_ms": 30000, "clock_skew_ms": 10000,
                                                 "anchor_timeout_ms": 3_600_000},
                                       "operator_policy": operator_policy, "deposit_permit_ttl_secs": 1800}))
@@ -484,7 +620,12 @@ class OwnedAnvil(unittest.TestCase):
         self.assertEqual(observed["status"], "VERIFIED_AT_FINALIZED_BLOCK", observed)
         self.assertEqual(len(observed["contracts"]), 6)
         self.assertTrue(observed["scope"]["operator_and_settlement_policy_matches"])
+        # The settlement holds the configured genesis root before its first batch.
+        self.assertTrue(observed["scope"]["genesis_root_verified"])
+        self.assertEqual(public["genesis"], {"root": GENESIS, "wind_down_recipient": RECIPIENT,
+                                             "oracle_signer": ORACLE_SIGNER})
         getters = observed["contracts"]["settlement"]["getters"]
+        self.assertEqual((getters["batchCount()"], getters["currentStateRoot()"]), (0, GENESIS))
         self.assertEqual(getters["ABI_VERSION()"], release.SETTLEMENT_ABI_VERSION)
         self.assertEqual(getters["progressBatches()"], 2)
         self.assertEqual(getters["slashPayoutCap()"], 1_000_000_000)

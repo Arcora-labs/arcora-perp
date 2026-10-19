@@ -1,13 +1,15 @@
 //! Replay the exact four synthetic normal-wallet inputs exported by the owned
 //! HTTP/Anvil lifecycle. No proving network, proof generation, or chain writes.
-use perp_core::{clock::ClockWitness, commitment::derive_roots, hash::Keccak256};
+//! Each input must be exactly the guest's encoding: it decodes strictly and
+//! re-encodes to the same bytes through `sp1_host::encode_clock_witness`.
+use perp_core::{clock::bind_transition, hash::Keccak256};
 use serde_json::{json, Value};
-use sp1_host::{hex, sha256, Artifacts};
+use sp1_host::{decode_clock_witness, encode_clock_witness, hex, sha256, Artifacts};
 use sp1_sdk::{include_elf, Elf, Prover, ProverClient, SP1Stdin, StatusCode};
 use std::{path::Path, time::Instant};
 
 const ELF: Elf = include_elf!("perp-core-guest");
-const REVIEWED_ELF: &str = "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5";
+const REVIEWED_ELF: &str = "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df";
 
 fn file(dir: &Path, name: &str) -> Vec<u8> {
     let path = dir.join(name);
@@ -57,12 +59,13 @@ fn inputs(dir: &Path) -> (Vec<u8>, Vec<(Vec<u8>, [u8; 32], Value)>) {
             format!("0x{}", sha256(&bytes))
         );
         assert_eq!(batch["clock"]["witnessBytes"], bytes.len());
-        let body = bytes
-            .strip_prefix(perp_core::clock::WIRE_MAGIC)
-            .expect("clock-v2 input required");
-        let ((mut state, ops, manifest, clock), rest): (ClockWitness, _) =
-            postcard::take_from_bytes(body).unwrap();
-        assert!(rest.is_empty(), "no trailing witness bytes");
+        let (mut state, ops, manifest, clock) =
+            decode_clock_witness(&bytes).expect("exact clock-bound witness required");
+        assert_eq!(
+            encode_clock_witness(&state, &ops, &manifest, &clock),
+            bytes,
+            "canonical clock-bound encoding"
+        );
         assert_eq!(manifest.batch_id, index as u64);
         assert_eq!(state.next_batch_id, index as u64);
         assert_eq!(clock.chain_id, 31337);
@@ -79,10 +82,11 @@ fn inputs(dir: &Path) -> (Vec<u8>, Vec<(Vec<u8>, [u8; 32], Value)>) {
         }
         assert!(state.conservation_holds());
         let started = Instant::now();
-        let roots = derive_roots(&mut state, &ops, &manifest).unwrap();
-        clock.validate(index as u64, &roots, &ops).unwrap();
+        let bound = bind_transition(&mut state, &ops, &manifest, &clock).unwrap();
+        let roots = bound.roots;
         let public = prover::public_from_witness(&bytes).unwrap();
         let commitment = public.commitment::<Keccak256>();
+        assert_eq!(commitment, bound.commitment);
         assert_eq!(commitment, clock.commitment());
         assert_eq!(
             batch["clock"]["commitment"],

@@ -47,6 +47,7 @@
     <li>The <strong>zk prover currently runs on a development workstation and is NOT yet TEE-attested</strong>. The witness leaves the sequencer enclave sealed, but the prover machine's measurement is a stub. Roadmap: attestation-gated key release to an x86_64 TDX prover.</li>
     <li><strong>Operator liveness is a single point of failure.</strong> If the sequencer goes down, trading halts. Existing published withdrawal claims remain usable with their Merkle data, and once close-only begins, deposits that no settled window consumed are refunded from the vault. New exits for other balances still need operator/prover service and, during final wind-down, governance. The liveness timeout does not make account balances or positions independently withdrawable.</li>
     <li><strong>Ordering fairness is not yet zk-proven.</strong> The proof attests correct <em>execution</em> of the sequenced operations; the sequencing itself is enclave-attested only. A matching-fairness proof (&ldquo;Proof v2&rdquo;) is on the roadmap.</li>
+    <li><strong>Prices and funding inputs are operator-chosen within bounds.</strong> The operator's oracle key signs every price the engine uses, including the price at which the final wind-down closes open positions, and the operator chooses which signed price, within the staleness window, each operation carries. The guest bounds funding (rate clamp, mark band, at most one hour charged per gap), but the sequencer chooses the funding mark and the timing of operations. Governance, which in the shipped flow is the hot sequencer key, chooses when close-only starts.</li>
     <li><strong>Proof cadence:</strong> historical 10&ndash;20 minute observations are not a current clock-mode capacity guarantee — one proof per window, with a full-state witness. A sparse-witness redesign (proof cost independent of total account count) is on the roadmap.</li>
     <li>The contracts are <strong>internally audited</strong> (multi-agent adversarial audits; 13 findings remediated pre-alpha) but there is <strong>no third-party audit yet</strong>.</li>
   </ol>
@@ -58,6 +59,7 @@
   <li><strong>Operator bond &mdash; deposits close at bond capacity.</strong> The vault admits a deposit only while 5% of its TVL (<code>requiredBond()</code>, BOND_BPS = 500) stays within the posted bond. Settlement never depends on the bond, so a short bond closes the deposit entrance instead of halting exits.</li>
   <li><strong>Inclusion challenges</strong>: each receipt carries an enclave-signed L1 challenge authorization bound to your deposit address. An hour after the order was received, anyone holding it can open a challenge (stake 0.01 ETH). Anyone can answer it with a settled window's proof. If no answer lands after two further windows settle plus a two-hour grace, the operator's bond pays a capped fine (up to 1,000 USDC on the testnet) to your deposit address, and settlement continues. Opening a challenge publicly links that address to the order hash.</li>
   <li><strong>Close-only and refunds</strong>: if the state root stops progressing for about 24 hours, or a landed deposit stays unconsumed for that long, anyone can put the system into close-only. Unconsumed deposits are then refunded at principal straight from the vault. Existing published withdrawal claims are independent; other exits retain the operator/prover and governance dependencies described above.</li>
+  <li><strong>Bad-debt waterfall</strong>: a liquidation's shortfall is covered by the insurance fund, then the protocol treasury, then auto-deleveraging of that market's winners, each of which gives at most its gain net of funding and keeps its maintenance margin. Whatever remains switches the system to close-only, after which no new deposit is credited. At wind-down, positions close at each market's last recorded oracle price and the leftover reserves are paid to a recipient address fixed at genesis.</li>
 </ul>
 
 <h2>Historical contract addresses (Base Sepolia, chain ID 84532)</h2>
@@ -93,6 +95,10 @@
     <tr><td>Liveness window (close-only)</td><td>43,200 blocks (~24 h)</td></tr>
     <tr><td>Insurance fund seed</td><td>25,000 USDC</td></tr>
     <tr><td>Order rate limit</td><td>10/s per account</td></tr>
+    <tr><td>Minimum order notional</td><td>$10 for orders that open, grow or flip a position (reduce-only exempt)</td></tr>
+    <tr><td>Minimum deposit / withdrawal</td><td>10 USDC per deposit permit / 1 USDC per withdrawal, unless it takes the entire free balance in that market</td></tr>
+    <tr><td>Initial-margin floor</td><td>$1 per open position; margin rounded up</td></tr>
+    <tr><td>Funding</td><td>clamped to &plusmn;0.05% per hour; each gap charged for at most 1 h</td></tr>
     <tr><td>Proof cadence</td><td>~10&ndash;20 minutes per window</td></tr>
     <tr><td>Scales</td><td>price/size &times;1e8, quote (USDC) &times;1e6</td></tr>
   </tbody>

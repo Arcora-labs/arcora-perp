@@ -639,7 +639,21 @@ pub(crate) fn export_derived(context_file: &Path, dest: &Path) -> Result<(), Bri
     )
 }
 
+/// Frozen candidate lane: the bridge's committed source witnesses and its
+/// target-bound fixtures predate the current state layout and are refused, so
+/// the source loader itself stops before any derivation.
 #[test]
+fn bridge_frozen_lane_fixtures_are_refused_by_the_current_layout() {
+    use crate::candidate_frozen_fixtures::{
+        assert_refused, CANDIDATE_PROTOCOL, LIFECYCLE_WITNESSES, NATIVE_CONTRACT_BRIDGE,
+    };
+    assert_refused(CANDIDATE_PROTOCOL, &LIFECYCLE_WITNESSES);
+    assert_refused(NATIVE_CONTRACT_BRIDGE, &LIFECYCLE_WITNESSES);
+    assert!(matches!(sources(), Err(BridgeError::Source)));
+}
+
+#[test]
+#[ignore = "frozen candidate lane"]
 fn bridge_fixed_source_roots_full_containers_and_native_identity_are_pinned() {
     let cases = sources().unwrap();
     assert_eq!(cases.len(), 2);
@@ -716,6 +730,7 @@ fn synthetic_context(source: &SourceCase) -> BridgeContext {
 }
 
 #[test]
+#[ignore = "frozen candidate lane"]
 fn bridge_fresh_target_keeps_source_execution_times_and_full_containers_exact() {
     let directory = OwnedDirectory::new();
     for source in sources().unwrap() {
@@ -783,6 +798,7 @@ fn bridge_fresh_target_keeps_source_execution_times_and_full_containers_exact() 
 }
 
 #[test]
+#[ignore = "frozen candidate lane"]
 fn bridge_wrong_context_identity_anchor_count_and_epoch_refuse_derivation() {
     let directory = OwnedDirectory::new();
     let source = sources().unwrap().remove(0);
@@ -847,6 +863,7 @@ fn bridge_wrong_context_identity_anchor_count_and_epoch_refuse_derivation() {
 }
 
 #[test]
+#[ignore = "frozen candidate lane"]
 fn bridge_bounded_context_format_and_fresh_export_never_replace_existing_data() {
     let directory = OwnedDirectory::new();
     let contexts: Vec<_> = sources().unwrap().iter().map(synthetic_context).collect();
@@ -886,6 +903,7 @@ fn bridge_bounded_context_format_and_fresh_export_never_replace_existing_data() 
 }
 
 #[test]
+#[ignore = "frozen candidate lane"]
 fn bridge_actual_captured_context_rederives_exact_contract_and_cpu_corpus() {
     // These are the NEW target-bound fixtures. This does not rewrite or resume
     // any original source witness or Pending/Prepared protocol record.

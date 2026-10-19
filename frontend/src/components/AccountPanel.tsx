@@ -4,6 +4,7 @@ import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { RefundableDeposit, TrackedOrder, WithdrawalEntry } from "../domain/types";
 import { validateWithdrawal } from "../domain/withdrawal";
+import { depositMinimumError, marketFreeBalance, withdrawalMinimumError } from "../domain/minimums";
 import { validateRefund } from "../domain/refund";
 import {
   buildClaimBundle,
@@ -150,6 +151,12 @@ export function AccountPanel() {
     setErr(null);
     const v = parseUsd(amount);
     if (v === null || v <= 0n) return setErr("Enter a valid amount.");
+    if (kind === "withdraw") {
+      // The gateway exempts a request for the selected market's whole free
+      // balance, not the account-wide one.
+      const tooSmall = withdrawalMinimumError(v, marketFreeBalance(state.account, state.selectedMarketId));
+      if (tooSmall) return setErr(tooSmall);
+    }
     setBusy(kind);
     try {
       if (kind === "deposit") {
@@ -198,6 +205,7 @@ export function AccountPanel() {
         <span className="field__label">Amount (USD)</span>
         <input className="field__input" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
       </label>
+      <p className="muted small">Minimum withdrawal: 1 USDC, unless you withdraw your entire free balance in the selected market.</p>
       {authCapable && auth !== undefined && (
         auth.callerSigned ? (
           <p className="muted small">
@@ -334,6 +342,11 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
     if (!address || active.current) return;
     const v = original?.amount ?? parseUsd(amount);
     if (v === null || v <= 0n) return setErr("Enter a valid amount.");
+    // A resumed deposit already holds its permit; only a new one meets the minimum.
+    if (!original) {
+      const tooSmall = depositMinimumError(v);
+      if (tooSmall) return setErr(tooSmall);
+    }
     active.current = true;
     setErr(null); setOk(null); setRunning(true);
     const assertView = () => {
@@ -395,6 +408,7 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
               disabled={running || !!original}
             />
           </label>
+          <p className="muted small">Minimum deposit: 10 USDC.</p>
           {!statusOnly && <button type="button" className="btn btn--ghost" onClick={run} disabled={running || !!issue}>
             {running ? "Working…" : original ? "Resume original deposit" : "Deposit"}
           </button>}

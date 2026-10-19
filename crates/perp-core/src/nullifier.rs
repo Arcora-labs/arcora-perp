@@ -5,38 +5,120 @@
 //! the circuit this becomes a non-membership proof against the nullifier
 //! accumulator; in Phase 0 we model it as an explicit set so the accounting tests
 //! are unambiguous.
+//!
+//! # Serialized form
+//!
+//! A set is encoded as its insertion-order log and nothing else. The membership
+//! index and the running digest are rebuilt on every decode by inserting the log
+//! entries in order, and a repeated entry fails the decode. The digest is a hash
+//! chain over the log, so two sets have equal digests exactly when they hold the
+//! same nullifiers inserted in the same order (barring a hash collision). The
+//! state root commits the digest, so it binds every encoded byte of the set.
 
+use crate::error::WireError;
 use crate::hash::{Digest, Domain, Hasher};
 use alloc::collections::BTreeSet;
+use alloc::vec::Vec;
 
-/// Append-only set of revealed nullifiers.
-#[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct NullifierSet {
+/// Append-only set of revealed nullifiers, generic over the state hasher that
+/// advances its digest.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "", try_from = "NullifierSetWire"))]
+pub struct NullifierSet<H: Hasher> {
+    /// Every nullifier ever inserted, in insertion order. The only serialized field.
+    log: Vec<Digest>,
+    /// Membership index over `log`. Derived; never serialized.
     spent: BTreeSet<Digest>,
-    /// Running hash-chain over the nullifiers in insertion order, so `digest()` is O(1) instead
-    /// of re-hashing the whole append-only set every call (audit DP-002 perf follow-up; the set
-    /// only ever grows). Order-dependent by construction — SOUND because the sole insert path is
-    /// `consume_note` in deterministic transition order (identical native + zkVM guest), and this
-    /// field is serialized into the witness, so a deserialized pre-state carries the exact chain
-    /// (the set is never rebuilt by re-inserting members in a different order).
+    /// Hash chain over `log`: `chain_0 = 0`, `chain_{i+1} = H(StateRoot, [chain_i,
+    /// log[i]])`. Maintained on each insert so `digest()` is O(1); derived on decode
+    /// by replaying the log; never serialized.
     chain: Digest,
+    _h: core::marker::PhantomData<H>,
 }
 
-impl NullifierSet {
+/// The serialized shape of [`NullifierSet`] on decode. Every decode goes through
+/// [`NullifierSet::from_log`], which replays the log and refuses a repeat.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(rename = "NullifierSet", deny_unknown_fields)]
+struct NullifierSetWire {
+    log: Vec<Digest>,
+}
+
+/// The serialized shape of [`NullifierSet`] on encode, borrowing the log.
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize)]
+#[serde(rename = "NullifierSet")]
+struct NullifierSetWireRef<'a> {
+    log: &'a [Digest],
+}
+
+#[cfg(feature = "serde")]
+impl<H: Hasher> TryFrom<NullifierSetWire> for NullifierSet<H> {
+    type Error = WireError;
+
+    fn try_from(w: NullifierSetWire) -> Result<Self, WireError> {
+        Self::from_log(w.log)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<H: Hasher> serde::Serialize for NullifierSet<H> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let wire = NullifierSetWireRef { log: &self.log };
+        serde::Serialize::serialize(&wire, serializer)
+    }
+}
+
+impl<H: Hasher> Default for NullifierSet<H> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<H: Hasher> NullifierSet<H> {
     pub fn new() -> Self {
         Self {
+            log: Vec::new(),
             spent: BTreeSet::new(),
             chain: [0u8; 32],
+            _h: core::marker::PhantomData,
         }
     }
 
+    /// Rebuild a set from its insertion-order log, exactly as if each entry were
+    /// passed to [`NullifierSet::insert`] in order (the same membership rule and the
+    /// same chain step), reusing the log's allocation. Refuses a repeated entry:
+    /// `insert` refuses one, so no honest log contains it.
+    pub fn from_log(log: Vec<Digest>) -> Result<Self, WireError> {
+        let mut spent = BTreeSet::new();
+        let mut chain = [0u8; 32];
+        for nf in &log {
+            if !spent.insert(*nf) {
+                return Err(WireError("repeated nullifier"));
+            }
+            chain = Self::link(&chain, nf);
+        }
+        Ok(Self {
+            log,
+            spent,
+            chain,
+            _h: core::marker::PhantomData,
+        })
+    }
+
+    /// One step of the digest chain.
+    fn link(chain: &Digest, nf: &Digest) -> Digest {
+        H::hash_words(Domain::StateRoot, &[*chain, *nf])
+    }
+
     pub fn len(&self) -> usize {
-        self.spent.len()
+        self.log.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.spent.is_empty()
+        self.log.is_empty()
     }
 
     /// Has this nullifier already been revealed?
@@ -44,25 +126,28 @@ impl NullifierSet {
         self.spent.contains(nf)
     }
 
+    /// Every nullifier revealed so far, in insertion order.
+    pub fn log(&self) -> &[Digest] {
+        &self.log
+    }
+
     /// Insert a nullifier. Returns `false` (and does not mutate) on double-spend.
-    /// Generic over the state hasher so the running digest chain can be advanced with the
-    /// same `H` the state root uses.
     #[must_use]
-    pub fn insert<H: Hasher>(&mut self, nf: Digest) -> bool {
+    pub fn insert(&mut self, nf: Digest) -> bool {
         if !self.spent.insert(nf) {
-            return false; // double-spend: leave the set and the chain untouched
+            return false; // double-spend: leave the log, the index and the chain untouched
         }
         // advance the running chain by this nullifier (O(1)); binds its contents + order
-        self.chain = H::hash_words(Domain::StateRoot, &[self.chain, nf]);
+        self.chain = Self::link(&self.chain, &nf);
+        self.log.push(nf);
         true
     }
 
-    /// A deterministic digest binding the full spent-set CONTENTS (not just the count), committed
-    /// into the state root so a forged pre-state cannot swap which notes were spent while
-    /// preserving the size (audit DP-002). O(1): returns the running chain (maintained on each
-    /// `insert`) rather than re-hashing the whole set — see the `chain` field for why the
-    /// insertion-order dependence is sound. `H` matches the state hasher the chain was built with.
-    pub fn digest<H: Hasher>(&self) -> Digest {
+    /// The digest committed into the state root: the running hash chain over the
+    /// insertion-order log (see the module docs). O(1). Binds the set's contents
+    /// and its insertion order, so a forged pre-state cannot change which notes
+    /// were spent without changing the root (audit DP-002).
+    pub fn digest(&self) -> Digest {
         self.chain
     }
 }
@@ -72,45 +157,100 @@ mod tests {
     use super::*;
     use crate::hash::Keccak256;
 
+    type Set = NullifierSet<Keccak256>;
+
     #[test]
     fn double_spend_rejected() {
-        let mut s = NullifierSet::new();
+        let mut s = Set::new();
         let nf = [1u8; 32];
-        assert!(s.insert::<Keccak256>(nf), "first spend ok");
-        assert!(!s.insert::<Keccak256>(nf), "second spend rejected");
+        assert!(s.insert(nf), "first spend ok");
+        assert!(!s.insert(nf), "second spend rejected");
         assert_eq!(s.len(), 1);
+        assert_eq!(s.log(), &[nf]);
     }
 
     // audit DP-002 perf follow-up: the digest is a running hash-chain (O(1), not an O(N) re-hash
     // of the whole append-only set), so it reflects insertion ORDER, not just the set members.
-    // Two sets with the same members inserted in a different order have different digests. This is
-    // sound because the only insert path is the deterministic transition (identical native + zkVM
-    // guest order) and the field is serialized, never rebuilt by re-insert.
+    // Two sets with the same members inserted in a different order have different digests, and
+    // the serialized form is that order itself.
     #[test]
     fn digest_is_an_incremental_chain_over_insertion_order() {
-        let mut a = NullifierSet::new();
-        assert!(a.insert::<Keccak256>([1u8; 32]));
-        assert!(a.insert::<Keccak256>([2u8; 32]));
-        let mut b = NullifierSet::new();
-        assert!(b.insert::<Keccak256>([2u8; 32]));
-        assert!(b.insert::<Keccak256>([1u8; 32]));
+        let mut a = Set::new();
+        assert!(a.insert([1u8; 32]));
+        assert!(a.insert([2u8; 32]));
+        let mut b = Set::new();
+        assert!(b.insert([2u8; 32]));
+        assert!(b.insert([1u8; 32]));
         assert_ne!(
-            a.digest::<Keccak256>(),
-            b.digest::<Keccak256>(),
+            a.digest(),
+            b.digest(),
             "the running chain binds insertion order, not just the sorted set",
         );
 
         // a double-spend does not advance the chain (rejected insert leaves the digest unchanged)
-        let before = a.digest::<Keccak256>();
-        assert!(!a.insert::<Keccak256>([1u8; 32]));
+        let before = a.digest();
+        assert!(!a.insert([1u8; 32]));
         assert_eq!(
-            a.digest::<Keccak256>(),
+            a.digest(),
             before,
             "a rejected insert must not move the chain"
         );
 
         // contents are still bound: adding a new member changes the digest (DP-002 preserved)
-        assert!(a.insert::<Keccak256>([3u8; 32]));
-        assert_ne!(a.digest::<Keccak256>(), before);
+        assert!(a.insert([3u8; 32]));
+        assert_ne!(a.digest(), before);
+    }
+
+    /// The chain formula: `chain_{i+1} = H(StateRoot, [chain_i, nf_i])` from zero.
+    #[test]
+    fn digest_formula_is_the_hash_chain_over_the_log() {
+        let log = [[5u8; 32], [3u8; 32], [9u8; 32]];
+        let mut s = Set::new();
+        let mut chain = [0u8; 32];
+        assert_eq!(s.digest(), chain);
+        for nf in log {
+            assert!(s.insert(nf));
+            chain = Keccak256::hash_words(Domain::StateRoot, &[chain, nf]);
+            assert_eq!(s.digest(), chain);
+        }
+    }
+
+    #[test]
+    fn from_log_replays_inserts_in_order() {
+        let mut honest = Set::new();
+        for nf in [[5u8; 32], [3u8; 32], [9u8; 32]] {
+            assert!(honest.insert(nf));
+        }
+        let rebuilt = Set::from_log(honest.log().to_vec()).expect("valid log");
+        assert_eq!(rebuilt.log(), honest.log());
+        assert_eq!(rebuilt.digest(), honest.digest());
+        assert_eq!(rebuilt.spent, honest.spent);
+        assert_eq!(Set::from_log(Vec::new()).unwrap().digest(), [0u8; 32]);
+    }
+
+    #[test]
+    fn from_log_refuses_a_repeated_entry() {
+        let log = alloc::vec![[5u8; 32], [3u8; 32], [5u8; 32]];
+        assert_eq!(
+            Set::from_log(log).err(),
+            Some(WireError("repeated nullifier"))
+        );
+    }
+
+    /// The encoding is exactly `postcard(log)`; the index and the chain add nothing.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn encoding_is_the_insertion_order_log() {
+        let mut s = Set::new();
+        for nf in [[5u8; 32], [3u8; 32]] {
+            assert!(s.insert(nf));
+        }
+        let bytes = postcard::to_allocvec(&s).unwrap();
+        assert_eq!(bytes, postcard::to_allocvec(&s.log().to_vec()).unwrap());
+        let back: Set = postcard::from_bytes(&bytes).unwrap();
+        assert_eq!(back.digest(), s.digest());
+        assert!(back.contains(&[5u8; 32]) && back.contains(&[3u8; 32]));
+        let repeated = postcard::to_allocvec(&alloc::vec![[5u8; 32], [5u8; 32]]).unwrap();
+        assert!(postcard::from_bytes::<Set>(&repeated).is_err());
     }
 }

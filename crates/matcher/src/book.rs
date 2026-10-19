@@ -10,6 +10,7 @@
 
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::vec::Vec;
+use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::Digest;
 use perp_core::market::MarketId;
 use perp_core::note::PubKey;
@@ -68,6 +69,37 @@ pub struct SubmitOutcome {
     pub status: SubmitStatus,
 }
 
+/// One resting order as [`OrderBook::impact_price`] shows it to its depth filter:
+/// its hash, the maker, its price, its unfilled size and whether it is
+/// reduce-only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RestingQuote {
+    pub order_hash: Digest,
+    pub owner: PubKey,
+    pub price: i128,
+    pub remaining: i128,
+    pub reduce_only: bool,
+}
+
+/// The part of one side of a book that [`OrderBook::impact_price_within`] walks:
+/// the price levels inside `lo..=hi`, and at most `max_orders` resting orders of
+/// them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImpactWindow {
+    pub lo: i128,
+    pub hi: i128,
+    pub max_orders: usize,
+}
+
+impl ImpactWindow {
+    /// Every level and every order of the side.
+    pub const UNBOUNDED: Self = Self {
+        lo: i128::MIN,
+        hi: i128::MAX,
+        max_orders: usize::MAX,
+    };
+}
+
 /// A resting order on the book.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -83,7 +115,6 @@ struct Resting {
     /// to settlement, which enforces it against position state.
     #[allow(dead_code)]
     seq: u64,
-    #[allow(dead_code)]
     reduce_only: bool,
     /// Good-till-time bound carried from the order (0 = no expiry). A resting maker
     /// whose expiry has passed relative to the batch clock is void and must not
@@ -143,6 +174,132 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             .sum()
     }
 
+    /// The average price at which `notional` (quote-scaled, micro-USD) would fill
+    /// against the resting `side` — the bids for [`Side::Buy`], the asks for
+    /// [`Side::Sell`] — walking it best price first, as a taker sweeping that side
+    /// would. Makers expired at `now_ms` are skipped, as matching skips them.
+    ///
+    /// Only the resting orders `counts` accepts are depth. It sees each live order
+    /// once, in the order a sweeping taker would meet them (best price first, then
+    /// arrival order within a level), so it may keep state across calls, such as a
+    /// per-maker running total. The sequencer uses it to count only orders the
+    /// engine could actually fill.
+    ///
+    /// `None` when `notional` is not positive, when the accepted orders on the
+    /// side hold less than `notional` at positive prices, or on arithmetic overflow.
+    /// It is an internal aggregate for the sequencer's funding mark, not a public
+    /// depth view.
+    ///
+    /// Integer arithmetic only, exact up to one final division: the walk counts
+    /// value in raw `size · price` units, so the level the remaining notional
+    /// exhausts gives the fractional base it needs, and the result is the
+    /// notional divided by the base consumed, in price scale, rounded down.
+    pub fn impact_price(
+        &self,
+        side: Side,
+        notional: i128,
+        now_ms: u64,
+        counts: impl FnMut(&RestingQuote) -> bool,
+    ) -> Option<i128> {
+        self.impact_price_within(side, notional, now_ms, ImpactWindow::UNBOUNDED, counts)
+    }
+
+    /// [`Self::impact_price`] over the part of the side inside `window`: only the
+    /// price levels in `window.lo..=window.hi` are walked (best price first, as a
+    /// sweeping taker meets them; the levels outside are never visited), and a
+    /// walk that would visit more than `window.max_orders` resting orders before
+    /// reaching `notional` gives `None`, as a side without the depth does. So the
+    /// cost of one call is bounded by `window.max_orders`, however many orders rest
+    /// outside the window or ahead of the depth `counts` accepts.
+    pub fn impact_price_within(
+        &self,
+        side: Side,
+        notional: i128,
+        now_ms: u64,
+        window: ImpactWindow,
+        counts: impl FnMut(&RestingQuote) -> bool,
+    ) -> Option<i128> {
+        if notional <= 0 || window.lo > window.hi {
+            return None;
+        }
+        let prices = window.lo..=window.hi;
+        let max_orders = window.max_orders;
+        match side {
+            Side::Buy => Self::sweep_average(
+                self.bids.range(prices).rev(),
+                notional,
+                now_ms,
+                max_orders,
+                counts,
+            ),
+            Side::Sell => Self::sweep_average(
+                self.asks.range(prices),
+                notional,
+                now_ms,
+                max_orders,
+                counts,
+            ),
+        }
+    }
+
+    /// [`Self::impact_price`] over `levels`, given best price first, visiting at
+    /// most `max_orders` resting orders.
+    fn sweep_average<'a>(
+        levels: impl Iterator<Item = (&'a i128, &'a VecDeque<Resting>)>,
+        notional: i128,
+        now_ms: u64,
+        max_orders: usize,
+        mut counts: impl FnMut(&RestingQuote) -> bool,
+    ) -> Option<i128> {
+        // `size · price` carries this much scale beyond QUOTE_SCALE (see
+        // `perp_core::fixed::notional_quote`).
+        const NOTIONAL_DIVISOR: i128 = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
+        let target = notional.checked_mul(NOTIONAL_DIVISOR)?;
+        let mut left = target;
+        // base taken from the levels already used up, size-scaled
+        let mut base: i128 = 0;
+        // resting orders visited so far, live or not
+        let mut visited: usize = 0;
+        for (&price, queue) in levels {
+            if price <= 0 {
+                return None;
+            }
+            let mut size: i128 = 0;
+            for r in queue {
+                if visited == max_orders {
+                    return None;
+                }
+                visited += 1;
+                if resting_expired(r, now_ms) || r.remaining <= 0 {
+                    continue;
+                }
+                let quote = RestingQuote {
+                    order_hash: r.order_hash,
+                    owner: r.owner,
+                    price: r.price,
+                    remaining: r.remaining,
+                    reduce_only: r.reduce_only,
+                };
+                if counts(&quote) {
+                    size = size.checked_add(r.remaining)?;
+                }
+            }
+            if size == 0 {
+                continue;
+            }
+            let value = size.checked_mul(price)?;
+            if value >= left {
+                // This level gives `left / price` more base, so the average is
+                // target / (base + left / price) = target · price / (base · price + left).
+                let denominator = base.checked_mul(price)?.checked_add(left)?;
+                return target.checked_mul(price)?.checked_div(denominator);
+            }
+            base = base.checked_add(size)?;
+            left -= value;
+        }
+        None
+    }
+
     /// Internal execution lookup. Public depth remains undisclosed.
     pub fn remaining(&self, hash: &Digest) -> Option<i128> {
         self.bids
@@ -151,6 +308,15 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             .flat_map(|q| q.iter())
             .find(|o| &o.order_hash == hash)
             .map(|o| o.remaining)
+    }
+
+    /// The hashes of every order resting on this book, live or not yet reaped.
+    pub(crate) fn resting_order_hashes(&self) -> impl Iterator<Item = Digest> + '_ {
+        self.bids
+            .values()
+            .chain(self.asks.values())
+            .flat_map(|q| q.iter())
+            .map(|r| r.order_hash)
     }
 
     /// Owner-scoped remaining quantity, for cancellation eligibility. This is

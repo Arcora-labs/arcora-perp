@@ -57,11 +57,38 @@ ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-funds-witness-NEW \
 ```
 
 The export directory must not already exist. It contains only generated test data:
-four exact v2 witness byte streams, the keepalive's empty window
+four exact clock-bound witness byte streams (`DPCLK4` framing), the keepalive's empty window
 (`keepalive-batch-4.witness.bin`, listed under `keepalive`) and a final
 `lifecycle.json` linking their hashes to each local transaction, commitment and root. This export is available only in
 the test harness; it does not add witness export to the production gateway.
 The 60-second window/skew is a test policy, not a production recommendation.
+
+**Reproducible export.** The run reads neither the wall clock nor OS entropy
+wherever they reach the engine state. The gateway runs on an injected clock and an
+injected entropy stream, both test-only (`crates/gateway/src/injected_inputs.rs`)
+and set only in the test's own child process:
+
+- The owned Anvil's genesis block is at the epoch 2026-01-01T00:00:00Z
+  (`--timestamp 1767225600`), and every later block is exactly one second after the
+  one before it (`anvil_setBlockTimestampInterval`), so a block's timestamp depends
+  only on how many blocks precede it.
+- After every transaction and every mined block, the gateway's clock moves to the
+  latest block's timestamp. Order receipts, oracle publish times, permit deadlines
+  and every timed operation therefore follow the chain, and each window stays within
+  the clock policy of the registration that follows it.
+- Account wallet seeds, API keys and deposit blinds come from a keccak256 stream of
+  a fixed test seed.
+
+Two exports into two fresh directories hold byte-identical witness files. The
+exported `lifecycle.json` carries no run timing (`elapsedSeconds` is only in the
+`ARCORA_FUNDS_EVIDENCE` report and the printed `FUNDS_LIFECYCLE` line), so on one
+host the whole export is byte-identical; its `host` block names the machine, so
+exports from two machines differ only there. `lifecycle.json` records the epoch and
+the block spacing under `injectedClock`.
+
+One such export is committed in `contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle/`,
+with its provenance in that directory's README. `verify_funds_replay.py` pins
+each of its files and refuses that directory if a file is changed, missing or added.
 
 `replay-funds` checks the complete four-window sequence, witness hashes, normal
 phase, chain and contract identity, empty deposit genesis, state-root continuity,
@@ -79,23 +106,29 @@ do not set `SP1_SKIP_PROGRAM_BUILD` when claiming a fresh source build.
 CARGO_BUILD_JOBS=2 cargo +1.99.0 build --manifest-path crates/sp1-host/Cargo.toml \
   --locked --offline --release --bin replay-funds
 crates/sp1-host/target/release/replay-funds \
-  /tmp/arcora-funds-witness-NEW /tmp/arcora-funds-replay-NEW \
-  --elf contracts/integration/fixtures/clock-v2-verified/guest.elf
+  contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle /tmp/arcora-funds-replay-NEW \
+  --elf contracts/integration/fixtures/clock-pkg3-reviewed/guest.elf
 python3 scripts/local-verification/verify_funds_replay.py \
   --binary crates/sp1-host/target/release/replay-funds \
-  --elf contracts/integration/fixtures/clock-v2-verified/guest.elf \
-  --witness-dir /tmp/arcora-funds-witness-NEW \
+  --elf contracts/integration/fixtures/clock-pkg3-reviewed/guest.elf \
+  --witness-dir contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle \
   --output-dir /tmp/arcora-funds-replay-guards-NEW
 ```
+
+These replay the committed export with the reviewed guest's committed ELF, as CI
+does; for a fresh export, pass its directory instead. On the committed export the
+four wallet windows execute about 40 million guest cycles.
 
 `--elf` explicitly selects a reviewed artifact, still requiring its exact pinned
 hash. The report labels it as an explicit artifact; that is not a source build
 claim. Without `--elf`, the host's freshly built embedded guest is used and must
-match the same pin. The first new-checkout and path-remapped builds differed from
-the reviewed ELF. Investigation found both embedded source paths and Cargo's
-path-dependent crate metadata identities. A later clean-target build normalized
-only the two reviewed workspace crate identities and paths, reproduced the exact
-reviewed ELF, and a fresh CPU setup derived the same pinned program key.
+match the same pin. The current reviewed guest's two byte-exact rebuilds and its
+setup key are recorded in `contracts/integration/fixtures/clock-pkg3-reviewed/README.md`.
+For the earlier clock-v2 guest, the first new-checkout and path-remapped builds
+differed from the reviewed ELF. Investigation found both embedded source paths
+and Cargo's path-dependent crate metadata identities. A later clean-target build
+normalized only the two reviewed workspace crate identities and paths, reproduced
+the exact reviewed ELF, and a fresh CPU setup derived the same pinned program key.
 The [reproduction evidence](audits/2026-10-09-followup/clock-lifecycle/reproducible-build/README.md)
 preserves both initial mismatches and the successful compiler arguments. This is
 a same-machine build using cached dependencies, not an independent cold build or
@@ -104,6 +137,12 @@ a fresh proof. The replay tool never changes the ELF/vkey pins.
 The separate recipe requires Python 3.11+, Cargo 1.99.0 and the recorded ARM64
 macOS SP1 compiler. It verifies all 21 source pins, the exact source layout and
 absence of extra build/config inputs before normalization and again after build.
+It also requires the guest's dependency sources to be crates.io plus the
+commit-pinned tiny-keccak precompile patch (`check_sp1_release.GUEST_GIT_DEPENDENCY`).
+Because the build is offline, that patch must already be checked out in
+`CARGO_HOME` (once: `cargo fetch --locked --manifest-path crates/sp1-guest/Cargo.toml`),
+and the recipe compares the checked-out files with the pinned source tree before and
+after the build.
 It uses `--locked --offline`, creates an exclusive empty target outside the source
 checkout, preserves existing targets, and writes its success manifest only after
 the independently pinned ELF hash matches. Select a new output path each time:
@@ -182,6 +221,26 @@ Python tests come from `cast`.
   FINAL_SETTLE_RUNBOOK.md). Deposits that no settled batch consumed do not: in
   close-only they are refunded from the vault (next section).
 - This is not a data-availability archive.
+
+## Amounts and nonces a wallet sees
+
+- **Deposit permits** are issued for at least 10 USDC (10,000,000 base units).
+- **Withdrawals** are at least 1 USDC, unless they take the entire free balance in
+  that market (`marketFree` in `GET /v1/accounts/me`), which the account panel checks
+  for the selected market.
+- **Orders** that open, grow or flip a position need at least $10 of notional;
+  reduce-only orders are exempt (`docs/API.md`, § REST).
+- **Withdrawal leaf nonces** (`nonce` in each claim bundle) are assigned by the
+  gateway and strictly increase across every withdrawal of the deployment. The settled
+  state records the last one, and the proof refuses a leaf whose nonce does not exceed
+  it, so two leaves never share a nonce. A leaf's nonce is not the account's signed
+  withdrawal-authorization nonce.
+- **The wind-down's reserve payout** is one more leaf of this kind, paid to the
+  deployment's wind-down recipient with the next nonce. Its root holds only that leaf,
+  so its Merkle proof is empty. The gateway publishes its claim data (`reserveSink`
+  in the `POST /v1/admin/wind-down` response and in `GET /v1/system/status`) as an
+  `arcora.claim-bundle.v1` object with `chainId` and `vault`, so saved to a file it
+  is a bundle `claim_withdrawal.py` checks as it is (`docs/FINAL_SETTLE_RUNBOOK.md`).
 
 ## Challenge kit for an order the sequencer never settles
 
@@ -304,6 +363,16 @@ Close-only can start in three ways, and every one makes refunds available:
 A deposit the gateway had already credited off-chain, but that no settled batch
 consumed, is also refunded at principal. Trades in windows that never settled are
 discarded with it; only settled state is withdrawable.
+
+A deposit can also land while the **engine** is close-only but the settlement is not
+yet: the engine trips on its own when a liquidation's shortfall exceeds insurance,
+the treasury and auto-deleverage. The proven transition then refuses every deposit,
+and the gateway issues no permits and credits nothing. Such a deposit stays
+unconsumed and becomes refundable as soon as the settlement enters close-only, through
+governance or through the deposit-inclusion timeout (trigger 2 above). The gateway
+records each deposit that landed under one of its permits, and from then on the
+account view lists it under `refundableDeposits`. The same holds for a deposit that
+lands while the hard admission cap is reached (`docs/API.md`, § Admission cap).
 
 **Claims cannot consume refundable principal.** `claim` reverts
 `ReservedForUncredited` if paying it would leave the vault holding less than

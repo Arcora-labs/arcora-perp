@@ -3,21 +3,6 @@
 //! compare under the gateway lock so an in-flight seal cannot use a stale read.
 use super::*;
 
-pub(super) const SNAPSHOT_V9: &[u8] = b"\xffDP-WIND-DOWN-v9\0";
-
-pub(super) fn snapshot_payload(plain: &[u8]) -> Result<(&[u8], Option<bool>), String> {
-    let Some(payload) = plain.strip_prefix(SNAPSHOT_V9) else {
-        return Ok((plain, None));
-    };
-    let (flag, rest) = payload
-        .split_first()
-        .ok_or("missing wind-down snapshot flag")?;
-    if *flag > 1 || !rest.starts_with(account_recovery::SNAPSHOT_V8) {
-        return Err("invalid wind-down snapshot prefix".into());
-    }
-    Ok((rest, Some(*flag == 1)))
-}
-
 impl Gw {
     pub(super) fn refuse_if_wind_down_started(&self) -> Result<(), String> {
         if self.wind_down_started {
@@ -25,7 +10,121 @@ impl Gw {
         }
         Ok(())
     }
+
+    /// Record the phase-1 reserve leaf `SettleAll` produced: in the open window's
+    /// withdrawal set (which the window's withdrawals root must match) and in the
+    /// pending list the claim views read. The engine committed it under the nonce
+    /// one past its last, so the withdrawal counter moves past it too.
+    pub(super) fn record_reserve_sink(&mut self, leaf: Withdrawal) {
+        self.next_withdraw_nonce = self.next_withdraw_nonce.max(leaf.nonce.saturating_add(1));
+        self.pending_withdrawals.push(leaf.clone());
+        self.window_withdrawals.push(leaf);
+    }
+
+    /// The reserve leaves this gateway holds (at most one per deployment), with
+    /// their claim data once the phase-1 root is published on L1.
+    pub(super) fn reserve_sink_json(&self) -> Vec<serde_json::Value> {
+        self.pending_withdrawals
+            .iter()
+            .filter(|w| w.owner == RESERVE_SINK_OWNER)
+            .map(|w| {
+                let mut bundle = reserve_sink_bundle(w, self.chain_id, &self.vault);
+                let published = self.withdraw_proofs.get(&w.leaf());
+                bundle["claimable"] = serde_json::json!(published.is_some());
+                if let Some((root, proof)) = published {
+                    bundle["root"] = serde_json::json!(hex0x(root));
+                    bundle["proof"] =
+                        serde_json::json!(proof.iter().map(|n| hex0x(n)).collect::<Vec<_>>());
+                }
+                bundle
+            })
+            .collect()
+    }
+
+    /// The public wind-down read-out: whether it started, the recipient the genesis
+    /// bound, the reserve leaf, and each market's last committed signed price (the
+    /// price `SettleAll` settles open positions at) with its publish time.
+    pub(super) fn wind_down_status_json(&self) -> serde_json::Value {
+        let markets: Vec<_> = self
+            .seq
+            .state
+            .funding
+            .iter()
+            .map(|(id, f)| {
+                serde_json::json!({
+                    "marketId": id,
+                    "lastPrice": f.last_price.to_string(),
+                    "lastPriceMs": f.last_price_ms,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "started": self.wind_down_started,
+            "engineCloseOnly": self.seq.state.mode == Mode::CloseOnly,
+            "recipient": hex0x(&self.seq.state.wind_down_recipient),
+            "reserveSink": self.reserve_sink_json(),
+            "markets": markets,
+        })
+    }
 }
+
+/// The off-chain owner tag of the phase-1 reserve leaf. It is not an account (no
+/// account's owner is this constant) and is not part of the leaf, which is the
+/// ordinary `(to, amount, nonce)` withdrawal leaf; it only keeps the leaf out of
+/// every account's withdrawal list.
+pub(crate) const RESERVE_SINK_OWNER: [u8; 32] = *b"dp.wind-down.reserve-sink.leaf..";
+
+/// The reserve leaf among a `SettleAll`'s batch outputs: none, or exactly one with
+/// a positive amount. Anything else is an engine invariant violation and refuses
+/// the wind-down before anything is mutated.
+pub(crate) fn reserve_sink_leaf(
+    outputs: &[perp_core::engine::WithdrawalOut],
+) -> Result<Option<Withdrawal>, String> {
+    match outputs {
+        [] => Ok(None),
+        [out] => {
+            let amount = u128::try_from(out.amount)
+                .ok()
+                .filter(|a| *a > 0)
+                .ok_or("SettleAll produced a reserve leaf with a non-positive amount")?;
+            Ok(Some(Withdrawal {
+                owner: RESERVE_SINK_OWNER,
+                to: out.to,
+                amount,
+                nonce: out.nonce,
+            }))
+        }
+        _ => Err("SettleAll produced more than one withdrawal".into()),
+    }
+}
+
+/// The claim bundle of a reserve leaf before the phase-1 root is published: the
+/// phase-1 withdrawal tree holds only this leaf, so its root is the leaf itself and
+/// `CollateralVault.claim(to, amount, nonce, root, [])` takes an empty proof. It is
+/// an `arcora.claim-bundle.v1` object, the shape `scripts/claim/claim_withdrawal.py`
+/// and the web client's claim bundles use, bound to the deployment's chain and
+/// vault.
+pub(crate) fn reserve_sink_bundle(
+    w: &Withdrawal,
+    chain_id: u64,
+    vault: &[u8; 20],
+) -> serde_json::Value {
+    let leaf = w.leaf();
+    serde_json::json!({
+        "schema": CLAIM_BUNDLE_SCHEMA,
+        "chainId": chain_id,
+        "vault": hex0x(vault),
+        "to": hex0x(&w.to),
+        "amount": w.amount.to_string(),
+        "nonce": w.nonce,
+        "leaf": hex0x(&leaf),
+        "root": hex0x(&leaf),
+        "proof": Vec::<String>::new(),
+    })
+}
+
+/// The schema tag of a self-contained withdrawal claim bundle.
+pub(crate) const CLAIM_BUNDLE_SCHEMA: &str = "arcora.claim-bundle.v1";
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Observation {
@@ -105,11 +204,13 @@ impl Gw {
     /// the open window is discarded and the gateway returns to the L1-settled
     /// state: the engine state, the deposit ledger (credits with an id at or above
     /// `consumedDepositCount` become refund records; the vault refunds them) and
-    /// the withdrawals requested in the discarded window. Permits that have not
-    /// landed are dropped with their blinds, since the vault refuses every deposit
-    /// in close-only. Every precondition is checked before anything changes; the
-    /// result must equal L1's root and counts. Returns the discarded window's order
-    /// hashes, which the wind-down publishes as rejected (`MarketCloseOnly`).
+    /// the withdrawals requested in the discarded window. Every outstanding permit
+    /// is dropped with its blind, since the vault refuses every deposit in
+    /// close-only. A permitted deposit that landed and was never credited keeps its
+    /// record in `uncredited` (with the permit's route), which the account view
+    /// lists as refundable. Every precondition is checked before anything changes;
+    /// the result must equal L1's root and counts. Returns the discarded window's
+    /// order hashes, which the wind-down publishes as rejected (`MarketCloseOnly`).
     ///
     /// A window sealed but not settled must be resolved first (boot recovery
     /// returns a dead phase-0 window to the open window).
@@ -620,6 +721,204 @@ mod tests {
         }
     }
 
+    /// A signed withdrawal request from the account `sk` controls.
+    fn signed_withdraw(
+        gw: &Gw,
+        key: &[u8; 32],
+        sk: &k256::ecdsa::SigningKey,
+        amount: i128,
+        to: [u8; 20],
+    ) -> (u64, [u8; 65]) {
+        let (owner, auth_nonce) = {
+            let a = &gw.accounts[key];
+            (a.wallet.owner, a.last_withdraw_nonce + 1)
+        };
+        let digest =
+            withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, auth_nonce);
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let mut wire = [0u8; 65];
+        wire[..64].copy_from_slice(&sig.to_bytes());
+        wire[64] = 27 + recid.to_byte();
+        (auth_nonce, wire)
+    }
+
+    /// Leaf nonces across a close-only rebase, the reserve leaf and a phase-2
+    /// withdrawal. The rebase voids a withdrawal no settled batch carries (its leaf
+    /// is never published); the reserve leaf takes the nonce one past the settled
+    /// state's last; the phase-2 leaf goes above both it and the gateway counter,
+    /// which never moves back. Every published leaf nonce strictly increases.
+    #[tokio::test]
+    async fn leaf_nonces_increase_across_the_rebase_the_reserve_leaf_and_phase_two() {
+        let _env = ADMIN_ENV_LOCK.lock().await;
+        let previous = std::env::var_os("FIN_ADMIN_KEY");
+        std::env::set_var("FIN_ADMIN_KEY", "local-wind-down-test");
+        let recipient = [0xC0; 20];
+        // The demo genesis seeds the insurance fund, so phase 1 pays a reserve leaf.
+        let mut gw = Gw::boot_genesis(GenesisMode::Demo, recipient);
+        let sk = k256::ecdsa::SigningKey::from_slice(&[0x52; 32]).unwrap();
+        let public = sk.verifying_key().to_encoded_point(false);
+        let address: [u8; 20] = RawKeccak::digest(&public.as_bytes()[1..])[12..]
+            .try_into()
+            .unwrap();
+        let (key, _) = gw.register_account(Some(address));
+        gw.account_deposit(&key, 0, 100 * QUOTE_SCALE).unwrap();
+        let mut published: Vec<Withdrawal> = Vec::new();
+        let mut counters = vec![gw.next_withdraw_nonce];
+        // Window 0 settles one withdrawal.
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
+        gw.account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+            .unwrap();
+        counters.push(gw.next_withdraw_nonce);
+        let (w0, ww0) = gw.begin_window_settle(0).unwrap().unwrap();
+        published.extend(ww0.iter().cloned());
+        let prepared =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &w0, &ww0).unwrap();
+        gw.commit_window_settle(
+            w0.batch_id,
+            w0.manifest.ordered.clone(),
+            Vec::new(),
+            prepared,
+            L1Status::default(),
+            trading_gate::GateObservation::StaysClosed,
+        );
+        let settled_root = gw.seq.state.state_root();
+        assert_eq!(gw.last_settled_root, settled_root);
+        let settled_last = gw.seq.state.last_withdrawal_nonce;
+        assert!(settled_last > 0);
+        let consumed = gw.seq.state.consumed_deposit_count;
+        // Window 1 never settles: its withdrawal is voided by the rebase.
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
+        let voided = gw
+            .account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+            .unwrap();
+        assert_eq!(voided.nonce, settled_last + 1);
+        counters.push(gw.next_withdraw_nonce);
+        let window = gw.seq.current_window_id();
+        let initial = Observation {
+            block: 100,
+            close_only: true,
+            settled: false,
+            batch_count: window,
+            root: settled_root,
+        };
+        let rpc_state: RebaseRpcState =
+            Arc::new(std::sync::Mutex::new((initial, consumed, Vec::new())));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let rpc_app = Router::new()
+            .route("/", post(rebase_rpc))
+            .with_state(rpc_state.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, rpc_app).await.unwrap();
+        });
+        let mut app = crate::tests::test_app();
+        let inner = Arc::get_mut(&mut app).unwrap();
+        inner.gw = Mutex::new(gw);
+        inner.prover = Some(Arc::new(prover_client::MockProverClient));
+        let mut l1 = L1::test_reader(format!("http://{addr}"));
+        l1.settlement = format!("0x{}", "11".repeat(20));
+        inner.l1 = Some(l1);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        inner.snapshot_req = Some(tx);
+        let writer = tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                let _ = ack.send(true);
+            }
+        });
+        let body = request_json(&app, StatusCode::ACCEPTED).await;
+        let sink_nonce = body["reserveSink"]["nonce"].as_u64().unwrap();
+        assert_eq!(
+            sink_nonce,
+            settled_last + 1,
+            "one past the settled state's last"
+        );
+        let (witness, ww) = {
+            let mut gw = app.gw.lock().await;
+            assert!(gw
+                .pending_withdrawals
+                .iter()
+                .all(|w| w.leaf() != voided.leaf()));
+            counters.push(gw.next_withdraw_nonce);
+            gw.begin_window_settle(window).unwrap().unwrap()
+        };
+        assert!(matches!(witness.ops.as_slice(), [BatchOp::SettleAll]));
+        assert_eq!(ww.len(), 1);
+        assert_eq!(ww[0].nonce, sink_nonce);
+        published.extend(ww.iter().cloned());
+        let phase1 =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &witness, &ww)
+                .unwrap();
+        assert_eq!(phase1.outcome.wind_down_phase, 1);
+        let settled = Observation {
+            settled: true,
+            batch_count: witness.batch_id + 1,
+            root: phase1.outcome.new_root,
+            ..initial
+        };
+        rpc_state.lock().unwrap().0 = settled;
+        app.gw.lock().await.commit_window_settle(
+            witness.batch_id,
+            witness.manifest.ordered,
+            witness
+                .manifest
+                .rejected
+                .into_iter()
+                .map(|(hash, _)| hash)
+                .collect(),
+            phase1,
+            L1Status::default(),
+            trading_gate::GateObservation::StaysClosed,
+        );
+        // A phase-2 withdrawal through the HTTP route.
+        let (nonce, sig) = signed_withdraw(&*app.gw.lock().await, &key, &sk, QUOTE_SCALE, address);
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/accounts/withdraw")
+            .header("x-api-key", hex0x(&key))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::json!({"marketId":0,"amount":QUOTE_SCALE.to_string(),
+                "to":hex0x(&address),"nonce":nonce,"signature":hex0x(&sig)})
+                .to_string(),
+            ))
+            .unwrap();
+        let response = build_router(app.clone(), false).oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let (exit, ww2) = {
+            let mut gw = app.gw.lock().await;
+            counters.push(gw.next_withdraw_nonce);
+            gw.begin_window_settle(settled.batch_count)
+                .unwrap()
+                .unwrap()
+        };
+        let phase2 =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &exit, &ww2)
+                .unwrap();
+        assert_eq!(phase2.outcome.wind_down_phase, 2);
+        assert_eq!(ww2.len(), 1);
+        assert!(ww2[0].nonce > sink_nonce);
+        assert!(
+            ww2[0].nonce >= counters[counters.len() - 2],
+            "never below the counter"
+        );
+        published.extend(ww2.iter().cloned());
+        let nonces: Vec<u64> = published.iter().map(|w| w.nonce).collect();
+        assert!(
+            nonces.windows(2).all(|pair| pair[0] < pair[1]),
+            "published leaf nonces strictly increase: {nonces:?}"
+        );
+        assert!(
+            counters.windows(2).all(|pair| pair[0] <= pair[1]),
+            "the counter never moves back: {counters:?}"
+        );
+        writer.abort();
+        server.abort();
+        match previous {
+            Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),
+            None => std::env::remove_var("FIN_ADMIN_KEY"),
+        }
+    }
+
     #[tokio::test]
     async fn unknown_account_is_rejected_before_l1_reads() {
         let app = crate::tests::test_app();
@@ -645,34 +944,259 @@ mod tests {
         assert!(String::from_utf8_lossy(&body).contains("Unknown account"));
     }
 
+    async fn request_json(app: &Shared, expected: StatusCode) -> serde_json::Value {
+        let response = build_router(app.clone(), false)
+            .oneshot(admin_request())
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        assert_eq!(status, expected, "{}", String::from_utf8_lossy(&body));
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    /// Phase 1 pays the reserves left after every deficit to the recipient the
+    /// genesis bound, as the window's only withdrawal leaf: the window's withdrawals
+    /// root is that leaf, it survives a restart, and once phase 1 settles it is
+    /// claimable with an empty proof. No account lists it.
+    #[tokio::test]
+    async fn phase_one_pays_the_reserves_to_the_bound_recipient_as_one_leaf() {
+        let _env = ADMIN_ENV_LOCK.lock().await;
+        let previous = std::env::var_os("FIN_ADMIN_KEY");
+        std::env::set_var("FIN_ADMIN_KEY", "local-wind-down-test");
+        let recipient = [0xC0; 20];
+        // The demo genesis seeds the insurance fund, so there is a reserve to pay.
+        let mut gw = Gw::boot_genesis(GenesisMode::Demo, recipient);
+        let (key, _) = gw.register_account(None);
+        let reserves =
+            gw.seq.state.vault_pool + gw.seq.state.insurance_fund + gw.seq.state.treasury;
+        assert!(reserves > 0);
+        let last = gw.seq.state.last_withdrawal_nonce;
+        gw.next_withdraw_nonce = 7;
+        gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+        gw.seq.seal_genesis_baseline();
+        gw.last_settled_root = gw.seq.state.state_root();
+        let initial = Observation {
+            block: 100,
+            close_only: true,
+            settled: false,
+            batch_count: gw.seq.current_window_id(),
+            root: gw.last_settled_root,
+        };
+        let rpc_state = Arc::new(std::sync::Mutex::new(initial));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let rpc_app = Router::new()
+            .route("/", post(rpc))
+            .with_state(rpc_state.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, rpc_app).await.unwrap();
+        });
+        let mut app = crate::tests::test_app();
+        let inner = Arc::get_mut(&mut app).unwrap();
+        inner.gw = Mutex::new(gw);
+        inner.prover = Some(Arc::new(prover_client::MockProverClient));
+        let mut l1 = L1::test_reader(format!("http://{addr}"));
+        l1.settlement = format!("0x{}", "11".repeat(20));
+        inner.l1 = Some(l1);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+        inner.snapshot_req = Some(tx);
+        let writer_app = app.clone();
+        let persisted = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let capture = persisted.clone();
+        let writer = tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                *capture.lock().unwrap() = writer_app.gw.lock().await.snapshot_plain();
+                ack.send(true).unwrap();
+            }
+        });
+
+        let body = request_json(&app, StatusCode::ACCEPTED).await;
+        let sink = Withdrawal {
+            owner: RESERVE_SINK_OWNER,
+            to: recipient,
+            amount: reserves as u128,
+            nonce: last + 1,
+        };
+        let leaf = hex0x(&sink.leaf());
+        let (chain_id, vault) = {
+            let gw = app.gw.lock().await;
+            (gw.chain_id, hex0x(&gw.vault))
+        };
+        assert_eq!(
+            body["reserveSink"],
+            serde_json::json!({
+                "schema": CLAIM_BUNDLE_SCHEMA,
+                "chainId": chain_id,
+                "vault": vault,
+                "to": hex0x(&recipient),
+                "amount": reserves.to_string(),
+                "nonce": last + 1,
+                "leaf": leaf,
+                "root": leaf,
+                "proof": [],
+            })
+        );
+        {
+            let gw = app.gw.lock().await;
+            assert_eq!(gw.seq.state.last_withdrawal_nonce, last + 1);
+            assert_eq!(
+                gw.seq.state.vault_pool + gw.seq.state.insurance_fund + gw.seq.state.treasury,
+                0,
+                "the reserves left the engine"
+            );
+            assert_eq!(gw.window_withdrawals.len(), 1);
+            assert_eq!(gw.window_withdrawals[0].leaf(), sink.leaf());
+            assert_eq!(gw.next_withdraw_nonce, 7, "the counter was already ahead");
+            assert!(gw.v1_withdrawals_json(&key).unwrap()["withdrawals"]
+                .as_array()
+                .unwrap()
+                .is_empty());
+            let status = gw.v1_status_json();
+            assert_eq!(status["windDown"]["recipient"], hex0x(&recipient));
+            assert_eq!(status["windDown"]["reserveSink"][0]["claimable"], false);
+        }
+        // The leaf is durable with the queued SettleAll.
+        let restored = Gw::boot_restored(&persisted.lock().unwrap()).unwrap();
+        assert_eq!(restored.window_withdrawals.len(), 1);
+        assert_eq!(restored.pending_withdrawals.len(), 1);
+        *app.gw.lock().await = restored;
+        let (witness, withdrawals) = app
+            .gw
+            .lock()
+            .await
+            .begin_window_settle(initial.batch_count)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(witness.ops.as_slice(), [BatchOp::SettleAll]));
+        let prepared = prover_client::prove_and_prepare(
+            &prover_client::MockProverClient,
+            &witness,
+            &withdrawals,
+        )
+        .unwrap();
+        assert_eq!(prepared.outcome.wind_down_phase, 1);
+        assert_eq!(prepared.outcome.withdrawals_root, sink.leaf());
+        app.gw.lock().await.commit_window_settle(
+            witness.batch_id,
+            witness.manifest.ordered,
+            witness
+                .manifest
+                .rejected
+                .into_iter()
+                .map(|(hash, _)| hash)
+                .collect(),
+            prepared,
+            L1Status::default(),
+            trading_gate::GateObservation::StaysClosed,
+        );
+        let gw = app.gw.lock().await;
+        assert_eq!(
+            gw.withdraw_proofs.get(&sink.leaf()),
+            Some(&(sink.leaf(), Vec::new()))
+        );
+        let claim = &gw.v1_status_json()["windDown"]["reserveSink"][0];
+        assert_eq!(claim["claimable"], true);
+        assert_eq!(claim["root"], leaf);
+        assert_eq!(claim["proof"], serde_json::json!([]));
+        drop(gw);
+        drop(app);
+        writer.abort();
+        server.abort();
+        match previous {
+            Some(value) => std::env::set_var("FIN_ADMIN_KEY", value),
+            None => std::env::remove_var("FIN_ADMIN_KEY"),
+        }
+    }
+
+    /// The reserve leaf's claim data is an `arcora.claim-bundle.v1` object with
+    /// every field `scripts/claim/claim_withdrawal.py` requires, typed as it
+    /// requires them: the schema tag, a positive chain id, the vault and recipient
+    /// as 20-byte lowercase hex, the amount as a decimal string, an integer nonce,
+    /// and a root that is the leaf itself with an empty proof. The status read-out
+    /// carries the same object plus `claimable`.
     #[test]
-    fn snapshot_migrates_legacy_close_only_and_validates_the_terminal_latch() {
+    fn the_reserve_claim_data_is_a_claim_bundle() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.chain_id = 84_532;
+        gw.vault = [0xAB; 20];
+        let sink = Withdrawal {
+            owner: RESERVE_SINK_OWNER,
+            to: [0xC0; 20],
+            amount: 1_234_567,
+            nonce: 3,
+        };
+        let bundle = reserve_sink_bundle(&sink, gw.chain_id, &gw.vault);
+        let leaf = hex0x(&sink.leaf());
+        // `claim_withdrawal.withdrawal_leaf(to, 1234567, 3)`, which the tool's
+        // `check_bundle` requires the bundle's leaf to equal.
+        assert_eq!(
+            leaf,
+            "0x9b70005e6c1a4d420bac265b81fa429cd6fa2dae864e709fff695e4f5330ea3e"
+        );
+        assert_eq!(bundle["schema"], "arcora.claim-bundle.v1");
+        assert_eq!(bundle["chainId"], 84_532);
+        assert_eq!(bundle["vault"], format!("0x{}", "ab".repeat(20)));
+        assert_eq!(bundle["to"], format!("0x{}", "c0".repeat(20)));
+        assert_eq!(bundle["amount"], "1234567");
+        assert_eq!(bundle["nonce"], 3);
+        assert_eq!(bundle["leaf"], leaf);
+        assert_eq!(bundle["root"], leaf);
+        assert_eq!(bundle["proof"], serde_json::json!([]));
+        assert_ne!(sink.leaf(), [0; 32], "a zero root is never claimable");
+        gw.pending_withdrawals.push(sink);
+        let status = gw.reserve_sink_json();
+        let mut listed = status[0].clone();
+        assert_eq!(listed["claimable"], false);
+        listed.as_object_mut().unwrap().remove("claimable");
+        assert_eq!(listed, bundle);
+    }
+
+    /// With no recipient bound (tests and demos), phase 1 leaves the reserves in
+    /// place and publishes no leaf.
+    #[test]
+    fn without_a_recipient_phase_one_produces_no_leaf() {
+        let gw = Gw::boot();
+        let mut preview = gw.seq.state.clone();
+        preview.apply_op(&BatchOp::EnterCloseOnly).unwrap();
+        let outputs = preview.apply_batch(&[BatchOp::SettleAll]).unwrap();
+        assert!(matches!(reserve_sink_leaf(&outputs.withdrawals), Ok(None)));
+        assert!(preview.insurance_fund > 0, "the reserves stay");
+        let out = perp_core::engine::WithdrawalOut {
+            to: [1; 20],
+            amount: 0,
+            nonce: 1,
+        };
+        assert!(reserve_sink_leaf(&[out]).is_err());
+        assert!(reserve_sink_leaf(&[out, out]).is_err());
+    }
+
+    #[test]
+    fn snapshot_validates_the_terminal_latch() {
         let mut gw = Gw::boot_with(GenesisMode::Production);
         let normal = gw.snapshot_plain();
+        let flag = snapshot::PAYLOAD_MAGIC.len();
+        assert_eq!(normal[flag], 0);
         let mut invalid = normal.clone();
-        invalid[SNAPSHOT_V9.len()] = 1;
+        invalid[flag] = 1;
         assert!(
             Gw::boot_restored(&invalid).is_err(),
             "normal state cannot carry a terminal latch"
         );
-        invalid[SNAPSHOT_V9.len()] = 2;
+        invalid[flag] = 2;
         assert!(Gw::boot_restored(&invalid).is_err());
-        assert!(Gw::boot_restored(SNAPSHOT_V9).is_err());
+        assert!(Gw::boot_restored(snapshot::PAYLOAD_MAGIC).is_err());
         gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
         gw.seq.seal_genesis_baseline();
         gw.last_settled_root = gw.seq.state.state_root();
         let current = gw.snapshot_plain();
+        let restored = Gw::boot_restored(&current).unwrap();
         assert!(
-            !Gw::boot_restored(&current).unwrap().wind_down_started,
-            "v9 distinguishes pre-phase-1 CloseOnly from the terminal latch"
+            !restored.wind_down_started,
+            "the flag distinguishes pre-phase-1 CloseOnly from the terminal latch"
         );
-        let (old_v8, _) = snapshot_payload(&current).unwrap();
-        let restored = Gw::boot_restored(old_v8).unwrap();
-        assert!(
-            restored.wind_down_started,
-            "ambiguous old CloseOnly freezes ordinary ops"
-        );
-        assert_eq!(restored.seq.state.state_root(), gw.seq.state.state_root());
         let observation = Observation {
             block: 100,
             close_only: true,
@@ -682,8 +1206,12 @@ mod tests {
         };
         assert!(
             observation.check_start(&restored).is_ok(),
-            "migration does not prevent first phase-1"
+            "a restored pre-phase-1 CloseOnly can still start phase 1"
         );
+        gw.wind_down_started = true;
+        let latched = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+        assert!(latched.wind_down_started);
+        assert_eq!(latched.seq.state.state_root(), gw.seq.state.state_root());
     }
 
     #[test]
@@ -721,19 +1249,15 @@ mod tests {
     }
 
     #[test]
-    fn legacy_ordinary_noop_stays_idle_across_migration_and_restart() {
+    fn latched_ordinary_noop_stays_idle_across_restart() {
         let mut gw = Gw::boot_with(GenesisMode::Production);
         gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
         gw.seq.seal_genesis_baseline();
         gw.last_settled_root = gw.seq.state.state_root();
         gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
-        let bytes = gw.snapshot_plain();
-        let (v8, _) = snapshot_payload(&bytes).unwrap();
-        let mut restored = Gw::boot_restored(v8).unwrap();
-        assert!(
-            restored.wind_down_started,
-            "legacy ambiguity freezes ingress only"
-        );
+        gw.wind_down_started = true;
+        let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+        assert!(restored.wind_down_started, "the latch freezes ingress only");
         for _ in 0..2 {
             let before = restored.snapshot_plain();
             assert!(restored
@@ -765,15 +1289,14 @@ mod tests {
     }
 
     #[test]
-    fn legacy_root_neutral_phase_one_survives_failed_proof_retry() {
+    fn latched_root_neutral_phase_one_survives_failed_proof_retry() {
         let mut gw = Gw::boot_with(GenesisMode::Production);
         gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
         gw.seq.seal_genesis_baseline();
         gw.last_settled_root = gw.seq.state.state_root();
         gw.seq.apply(&BatchOp::SettleAll).unwrap();
-        let bytes = gw.snapshot_plain();
-        let (v8, _) = snapshot_payload(&bytes).unwrap();
-        let mut restored = Gw::boot_restored(v8).unwrap();
+        gw.wind_down_started = true;
+        let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
         let batch = restored.seq.current_window_id();
         for _ in 0..2 {
             restored.tick();
@@ -793,16 +1316,15 @@ mod tests {
     }
 
     #[test]
-    fn legacy_mixed_phase_window_remains_rejected() {
+    fn latched_mixed_phase_window_remains_rejected() {
         let mut gw = Gw::boot_with(GenesisMode::Production);
         gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
         gw.seq.seal_genesis_baseline();
         gw.last_settled_root = gw.seq.state.state_root();
         gw.seq.apply(&BatchOp::SettleAll).unwrap();
         gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
-        let bytes = gw.snapshot_plain();
-        let (v8, _) = snapshot_payload(&bytes).unwrap();
-        let mut restored = Gw::boot_restored(v8).unwrap();
+        gw.wind_down_started = true;
+        let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
         let (witness, ww) = restored
             .begin_window_settle(restored.seq.current_window_id())
             .unwrap()

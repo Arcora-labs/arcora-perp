@@ -4,13 +4,6 @@ use crate::deposit_rpc::{Block, Cursor, Domain as DepositDomain, Error, Event, P
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-// Prefix is authenticated inside the snapshot ciphertext, unlike the outer magic.
-/// The earlier deposit layout, without permit deadlines. Read only, and only when
-/// it holds no outstanding permit: those were signed for the earlier vault ABI.
-pub const SNAPSHOT_V6: &[u8] = b"\xffDPA01-SNAPSHOT-v6\0";
-/// The current deposit layout: every route carries its permit deadline.
-pub const SNAPSHOT_V7: &[u8] = b"\xffDPA01-SNAPSHOT-v7\0";
-
 /// A held permit is re-issued only while at least this many seconds remain before
 /// its deadline; otherwise a fresh permit is issued.
 pub const PERMIT_REUSE_MARGIN_SECS: u64 = 60;
@@ -18,6 +11,11 @@ pub const PERMIT_REUSE_MARGIN_SECS: u64 = 60;
 /// Returned once ingestion sees the settlement in close-only. Deposits that no
 /// settled batch consumed are refunded by the vault instead of credited.
 pub const CLOSE_ONLY_INTAKE: &str = "the settlement is in close-only: deposits it has not consumed are refunded by the vault (refundDeposit) and are not credited";
+
+/// Deposit blocks one ingestion pass reads past the page it did not credit, to
+/// record the further landed deposits that are not credited either
+/// (`scan_uncredited`).
+pub const UNCREDITED_SCAN_PAGES: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,8 +31,7 @@ pub struct Route {
     pub market: u64,
     pub purpose: Purpose,
     /// The permit deadline (unix seconds) the gateway signed. The vault refuses the
-    /// deposit in any block whose timestamp is later. 0 on credits restored from a
-    /// v6 snapshot, whose permits had no deadline.
+    /// deposit in any block whose timestamp is later.
     pub valid_until: u64,
 }
 impl Route {
@@ -69,6 +66,13 @@ pub struct DepositState {
     /// them. The vault refunds them (`refundDeposit`); they stay here for the
     /// confirm and account views.
     pub refunds: BTreeMap<u64, Credit>,
+    /// Deposits that landed on L1 under a permit this gateway holds and were not
+    /// credited: crediting was refused (the engine in close-only, the hard
+    /// admission cap) or the settlement was already in close-only. Keyed by deposit
+    /// id, with the permit's route. A row leaves when its deposit is credited; once
+    /// L1 close-only is observed the account view lists it as refundable. The
+    /// close-only rebase keeps every row, although it drops the routes.
+    pub uncredited: BTreeMap<u64, Credit>,
     // Runtime barriers. A loaded snapshot is already durable, but its L1 prefix
     // must be revalidated before production trading/settlement resumes.
     #[serde(skip)]
@@ -93,118 +97,20 @@ pub struct DepositState {
     /// `PERMIT_GC_STALL_BLOCKS` more blocks the operator is alerted.
     #[serde(skip)]
     pub gc_unverified_since: Option<u64>,
+    /// Where the search for landed but uncredited deposits continues: past the last
+    /// deposit block it read. It is not persisted; it restarts from the page
+    /// ingestion is stopped at.
+    #[serde(skip)]
+    pub uncredited_scan: Option<Cursor>,
+    /// Set once, after L1 close-only, the search reached the finalized head: no
+    /// deposit can land any more, so every landed deposit has been read.
+    #[serde(skip)]
+    pub uncredited_scan_done: bool,
 }
 
 /// Finalized blocks (one hour of 2 s blocks) of headers that do not re-hash
 /// before `PermitGcStalled` is raised.
 pub const PERMIT_GC_STALL_BLOCKS: u64 = 1_800;
-
-/// The v6 route, without the permit deadline.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct RouteV6 {
-    key: [u8; 32],
-    from: [u8; 20],
-    amount: u128,
-    market: u64,
-    purpose: Purpose,
-}
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct CreditV6 {
-    route: RouteV6,
-    event: Event,
-}
-/// The v6 positional deposit layout (`DepositState` before permit deadlines).
-#[derive(Default, Serialize, Deserialize)]
-pub struct DepositStateV6 {
-    domain: Option<DepositDomain>,
-    legacy_prefix: Option<(u64, [u8; 32])>,
-    routes: BTreeMap<[u8; 32], RouteV6>,
-    credits: BTreeMap<u64, CreditV6>,
-    anchor: Option<Block>,
-    halt: Option<String>,
-}
-impl DepositStateV6 {
-    /// Upgrade to the current layout. Refused while any permit is outstanding: it
-    /// was signed without a deadline for the earlier vault ABI. Landed credits keep
-    /// their receipts, with deadline 0.
-    pub fn upgrade(self) -> Result<DepositState, String> {
-        if !self.routes.is_empty() {
-            return Err("v6 snapshot holds outstanding deposit permits signed for the earlier vault ABI; this gateway needs a fresh deployment".into());
-        }
-        let credits = self
-            .credits
-            .into_iter()
-            .map(|(id, c)| {
-                let RouteV6 {
-                    key,
-                    from,
-                    amount,
-                    market,
-                    purpose,
-                } = c.route;
-                (
-                    id,
-                    Credit {
-                        route: Route {
-                            key,
-                            from,
-                            amount,
-                            market,
-                            purpose,
-                            valid_until: 0,
-                        },
-                        event: c.event,
-                    },
-                )
-            })
-            .collect();
-        Ok(DepositState {
-            domain: self.domain,
-            legacy_prefix: self.legacy_prefix,
-            routes: BTreeMap::new(),
-            credits,
-            anchor: self.anchor,
-            halt: self.halt,
-            ..DepositState::default()
-        })
-    }
-    /// Drop every route, for fixtures that test the rest of a v6 migration.
-    #[cfg(test)]
-    pub fn clear_routes(&mut self) {
-        self.routes.clear();
-    }
-    /// The v6 encoding of `state`, for migration tests.
-    #[cfg(test)]
-    pub fn from_current(state: &DepositState) -> Self {
-        let route = |r: &Route| RouteV6 {
-            key: r.key,
-            from: r.from,
-            amount: r.amount,
-            market: r.market,
-            purpose: r.purpose,
-        };
-        Self {
-            domain: state.domain.clone(),
-            legacy_prefix: state.legacy_prefix,
-            routes: state.routes.iter().map(|(c, r)| (*c, route(r))).collect(),
-            credits: state
-                .credits
-                .iter()
-                .map(|(id, c)| {
-                    (
-                        *id,
-                        CreditV6 {
-                            route: route(&c.route),
-                            event: c.event.clone(),
-                        },
-                    )
-                })
-                .collect(),
-            anchor: state.anchor.clone(),
-            halt: state.halt.clone(),
-        }
-    }
-}
 
 /// How a credit stands against the settlement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -298,6 +204,18 @@ impl Gw {
                 return Err("inconsistent persisted deposit refund record".into());
             }
         }
+        // So do uncredited deposits, which were never credited or refunded.
+        for (id, landed) in &self.deposits.uncredited {
+            if *id < count
+                || landed.event.id != *id
+                || landed.route.from != landed.event.from
+                || landed.route.amount != landed.event.amount
+                || self.deposits.refunds.contains_key(id)
+                || !self.accounts.contains_key(&landed.route.key)
+            {
+                return Err("inconsistent persisted uncredited deposit record".into());
+            }
+        }
         for (commit, route) in &self.deposits.routes {
             let a = self
                 .accounts
@@ -320,7 +238,7 @@ impl Gw {
             vault: self.vault,
         }
     }
-    fn deposit_cursor(&self) -> Cursor {
+    pub(crate) fn deposit_cursor(&self) -> Cursor {
         Cursor {
             domain: self.deposit_domain(),
             count: self.seq.state.consumed_deposit_count,
@@ -514,20 +432,73 @@ impl Gw {
             _ => CreditStatus::Credited,
         }
     }
-    /// The account's credits that the vault refunds after close-only, including
-    /// those the close-only rebase already removed from the credit ledger.
+    /// The account's deposits that the vault refunds after close-only: credits no
+    /// settled batch consumed, including those the close-only rebase already
+    /// removed from the credit ledger, and, once L1 close-only is observed, the
+    /// deposits that landed and were never credited.
     pub(super) fn refundable_credits(&self, key: &[u8; 32]) -> Vec<&Credit> {
-        self.deposits
+        let uncredited = self
+            .deposits
+            .uncredited
+            .values()
+            .filter(|_| self.l1_close_only_observed());
+        let mut refundable: Vec<&Credit> = self
+            .deposits
             .credits
             .values()
-            .filter(|c| c.route.key == *key && self.credit_status(c) == CreditStatus::Refundable)
-            .chain(
-                self.deposits
-                    .refunds
-                    .values()
-                    .filter(|c| c.route.key == *key),
-            )
-            .collect()
+            .filter(|c| self.credit_status(c) == CreditStatus::Refundable)
+            .chain(self.deposits.refunds.values())
+            .chain(uncredited)
+            .filter(|c| c.route.key == *key)
+            .collect();
+        refundable.sort_by_key(|c| c.event.id);
+        refundable
+    }
+    /// Record the deposits of `page` that landed under a permit this gateway holds
+    /// and are not credited (`DepositState::uncredited`). Only events that chain
+    /// from the page start are read, and only those that match their permit's payer
+    /// and amount are recorded; credited and refunded ids are skipped. Returns how
+    /// many rows are new.
+    pub(super) fn record_uncredited(&mut self, page: &Page) -> usize {
+        let (mut next, mut tip) = (page.start.count, page.start.tip);
+        let mut added = 0;
+        for event in &page.events {
+            tip = perp_core::merkle::deposit_chain_fold(
+                &tip,
+                &perp_core::merkle::deposit_leaf(
+                    &event.from,
+                    &event.commit,
+                    event.amount,
+                    event.id,
+                ),
+            );
+            if event.id != next || tip != event.tip {
+                break;
+            }
+            next += 1;
+            if self.deposits.credits.contains_key(&event.id)
+                || self.deposits.refunds.contains_key(&event.id)
+                || self.deposits.uncredited.contains_key(&event.id)
+            {
+                continue;
+            }
+            let Some(route) = self.deposits.routes.get(&event.commit) else {
+                continue;
+            };
+            if route.from != event.from
+                || route.amount != event.amount
+                || !self.accounts.contains_key(&route.key)
+            {
+                continue;
+            }
+            let landed = Credit {
+                route: route.clone(),
+                event: event.clone(),
+            };
+            self.deposits.uncredited.insert(event.id, landed);
+            added += 1;
+        }
+        added
     }
     /// Record a settled or observed `consumedDepositCount()`. It never decreases on
     /// L1, so an older observation cannot lower it.
@@ -560,10 +531,15 @@ impl Gw {
     }
     /// Commit one complete block, including replay ops and all consumption records,
     /// under the gateway lock. Preparation and engine errors leave money untouched.
-    fn apply_deposit_page(&mut self, page: Page) -> Result<usize, String> {
+    pub(crate) fn apply_deposit_page(&mut self, page: Page) -> Result<usize, String> {
         self.refuse_if_wind_down_started()?;
         if self.deposits.l1_close_only {
             return Err(CLOSE_ONLY_INTAKE.into());
+        }
+        if !page.events.is_empty() {
+            if let Some(refusal) = self.credit_refusal(self.page_credit_size(&page)) {
+                return Err(refusal.into());
+            }
         }
         if self.deposit_cursor() != page.start {
             return Err("stale deposit page; retry".into());
@@ -696,6 +672,7 @@ impl Gw {
                 .remove(&credit.event.commit);
             self.deposits.routes.remove(&credit.event.commit);
             self.processed_deposit_txs.insert(hex0x(&credit.event.tx)); // legacy read compatibility, NOT the new dedup key
+            self.deposits.uncredited.remove(&credit.event.id);
             self.deposits.credits.insert(credit.event.id, credit);
         }
         if insurance {
@@ -744,7 +721,9 @@ impl Gw {
 /// the durable ACK. Do not hold Gw across RPC or disk I/O. Cancellation leaves the
 /// dirty barrier armed; the next caller retries persistence before doing more work.
 pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
-    let _admission = app.clock_admission.enter().map_err(str::to_string)?;
+    // Held while a page can be applied; dropped before the read for uncredited
+    // deposits, which applies no operation.
+    let admission = app.clock_admission.enter().map_err(str::to_string)?;
     let _serial = app.deposit_serial.lock().await;
     if app.snapshot_req.is_none() {
         return Err("state persistence is required for deposit intake".into());
@@ -754,12 +733,19 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         app.gw.lock().await.deposits.dirty = false;
     }
     // After L1 close-only nothing more is credited, and the consumed prefix was
-    // verified by the fetch that found it; there is nothing left to poll for.
-    {
+    // verified by the fetch that found it. What is left is to finish reading the
+    // deposits that landed and were never credited (no deposit can land any more);
+    // after that there is nothing left to poll for.
+    let latched = {
         let gw = app.gw.lock().await;
-        if gw.deposits.l1_close_only && gw.deposits.ready {
-            return Ok(0);
+        (gw.deposits.l1_close_only && gw.deposits.ready).then_some(gw.deposits.uncredited_scan_done)
+    };
+    if let Some(done) = latched {
+        if let (false, Some(source)) = (done, app.deposit_source.clone()) {
+            drop(admission);
+            scan_uncredited(app, &source, None).await;
         }
+        return Ok(0);
     }
     let source = app
         .deposit_source
@@ -782,7 +768,8 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         }
         gw.deposit_cursor()
     };
-    let fetched = match tokio::task::spawn_blocking(move || source.fetch(cursor)).await {
+    let read = source.clone();
+    let fetched = match tokio::task::spawn_blocking(move || read.fetch(cursor)).await {
         Ok(result) => result,
         Err(e) => Err(Error::Retry(format!("deposit reader task failed: {e}"))),
     };
@@ -837,22 +824,69 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         false
     };
     if close_only {
-        let mut gw = app.gw.lock().await;
-        let first = !gw.deposits.l1_close_only;
-        gw.deposits.l1_close_only = true;
-        // The fetch checked the consumed prefix against the finalized vault.
-        gw.deposits.ready = true;
-        gw.deposits.last_error = Some(CLOSE_ONLY_INTAKE.into());
+        let first = {
+            let mut gw = app.gw.lock().await;
+            let first = !gw.deposits.l1_close_only;
+            gw.deposits.l1_close_only = true;
+            gw.note_engine_close_only();
+            gw.ops_alerts
+                .recover(crate::ops_alerts::AlertKind::DepositBlockedAtCap);
+            // The fetch checked the consumed prefix against the finalized vault.
+            gw.deposits.ready = true;
+            gw.deposits.last_error = Some(CLOSE_ONLY_INTAKE.into());
+            first
+        };
+        // The page's deposits landed and will never be credited: list them, and
+        // read on for the ones that landed after them.
+        drop(admission);
+        scan_uncredited(app, &source, Some(&page)).await;
         return if first {
             Err(CLOSE_ONLY_INTAKE.into())
         } else {
             Ok(0)
         };
     }
+    let refused = {
+        let mut gw = app.gw.lock().await;
+        // The engine in close-only, or a state beyond a provable-history bound: the
+        // page's deposits are not credited. The fetch verified the consumed prefix
+        // against the finalized vault, so trading and settlement continue; the
+        // deposits stay unconsumed on L1 for the vault to refund, and are recorded
+        // so the account view can list them once the settlement is in close-only.
+        // The admission cap never refuses the deposit of a permit it counted.
+        let refusal = if page.events.is_empty() {
+            None
+        } else {
+            gw.credit_refusal(gw.page_credit_size(&page))
+        };
+        if let Some(refusal) = refusal {
+            gw.deposits.ready = true;
+            gw.deposits.last_error = Some(refusal.into());
+            // Beyond a bound a permitted deposit now holds the deposit queue, and
+            // the settlement's deposit-inclusion timeout runs from its block.
+            if refusal == crate::admission::HISTORY_CAP_INTAKE {
+                gw.ops_alerts
+                    .activate(crate::ops_alerts::AlertKind::DepositBlockedAtCap);
+            } else {
+                gw.ops_alerts
+                    .recover(crate::ops_alerts::AlertKind::DepositBlockedAtCap);
+            }
+        }
+        refusal
+    };
+    if let Some(refusal) = refused {
+        drop(admission);
+        scan_uncredited(app, &source, Some(&page)).await;
+        return Err(refusal.into());
+    }
     let applied = {
         let mut gw = app.gw.lock().await;
         match gw.apply_deposit_page(page) {
-            Ok(n) => n,
+            Ok(n) => {
+                gw.ops_alerts
+                    .recover(crate::ops_alerts::AlertKind::DepositBlockedAtCap);
+                n
+            }
             Err(e) => {
                 gw.deposits.ready = false;
                 gw.deposits.last_error = Some(e.clone());
@@ -873,6 +907,92 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
             .send(serde_json::to_string(&WsMsg::State { state: snapshot }).unwrap());
     }
     Ok(applied)
+}
+
+/// Record the uncredited deposits of `refused` (a page ingestion did not credit),
+/// then read up to `UNCREDITED_SCAN_PAGES` further deposit blocks past the last
+/// one read and record theirs, so every deposit that lands while crediting is
+/// refused is listed, not only the oldest. Without `refused` the read continues
+/// from where it stopped, or from the consumed prefix. Best effort: a failed read
+/// is logged and retried on the next pass, and nothing here changes what is
+/// credited or whether intake is ready. New rows are persisted with a snapshot.
+async fn scan_uncredited(
+    app: &Shared,
+    source: &Arc<dyn crate::deposit_rpc::DepositSource>,
+    refused: Option<&Page>,
+) {
+    let mut added = 0;
+    let mut cursor = {
+        let mut gw = app.gw.lock().await;
+        if let Some(page) = refused {
+            added += gw.record_uncredited(page);
+            let after = cursor_after(page);
+            if gw
+                .deposits
+                .uncredited_scan
+                .as_ref()
+                .is_none_or(|c| c.domain != after.domain || c.count < after.count)
+            {
+                gw.deposits.uncredited_scan = Some(after);
+            }
+        }
+        gw.deposits
+            .uncredited_scan
+            .clone()
+            .unwrap_or_else(|| gw.deposit_cursor())
+    };
+    for _ in 0..UNCREDITED_SCAN_PAGES {
+        let (read, at) = (source.clone(), cursor.clone());
+        let page = match tokio::task::spawn_blocking(move || read.fetch(at)).await {
+            Ok(Ok(page)) if page.start == cursor => page,
+            Ok(Ok(_)) => {
+                eprintln!("[deposits] uncredited deposit read returned another cursor; retrying next pass");
+                break;
+            }
+            Ok(Err(e)) => {
+                eprintln!("[deposits] uncredited deposit read will retry: {e}");
+                break;
+            }
+            Err(e) => {
+                eprintln!("[deposits] uncredited deposit reader task failed: {e}");
+                break;
+            }
+        };
+        let mut gw = app.gw.lock().await;
+        added += gw.record_uncredited(&page);
+        cursor = cursor_after(&page);
+        gw.deposits.uncredited_scan = Some(cursor.clone());
+        if page.events.is_empty() {
+            // The finalized head: after L1 close-only nothing more can land.
+            if gw.deposits.l1_close_only {
+                gw.deposits.uncredited_scan_done = true;
+            }
+            break;
+        }
+    }
+    if added > 0 {
+        // The rows can be read again from L1 while their permits are held, so a
+        // failed write only delays them; it does not hold intake.
+        if let Err(e) = snapshot_now(&app.snapshot_req).await {
+            eprintln!("[deposits] {added} uncredited deposit record(s) not yet durable: {e}");
+        }
+    }
+}
+
+/// The cursor just past `page`: its deposits read, anchored at its end block.
+fn cursor_after(page: &Page) -> Cursor {
+    let (count, tip) = page
+        .events
+        .last()
+        .map_or((page.start.count, page.start.tip), |e| {
+            (e.id.saturating_add(1), e.tip)
+        });
+    Cursor {
+        domain: page.start.domain.clone(),
+        count,
+        tip,
+        anchor: Some(page.end.clone()),
+    }
 }
 
 pub fn authorize_purpose(

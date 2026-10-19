@@ -6,9 +6,17 @@
 //! arithmetic and is re-proven in ZK (Proof-v1: post-fill margin sufficiency,
 //! liquidation threshold correctness).
 
-use crate::fixed::{abs, apply_rate, notional_quote};
+use crate::fixed::{abs, apply_rate_ceil, notional_quote, notional_quote_ceil, QUOTE_SCALE};
 use crate::market::{Market, MarketId};
 use crate::note::PubKey;
+
+/// The smallest initial margin an open position requires, quote-scaled: $1. It
+/// applies wherever initial margin is checked (opening, increasing or flipping a
+/// position, and unbinding from one that stays open), so every live position is
+/// backed by real collateral however small its notional. Reductions, closes,
+/// liquidation and wind-down check maintenance margin or nothing, and are
+/// unaffected.
+pub const MIN_INITIAL_MARGIN: i128 = QUOTE_SCALE;
 
 /// An open perpetual position.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,9 +75,24 @@ impl Position {
         self.size != 0
     }
 
-    /// Absolute notional at `mark`, quote-scaled.
+    /// True when the entry carries nothing: zero size and zero collateral. Such an
+    /// entry is equivalent to no entry at all (its funding owed is zero, and a later
+    /// fill re-seeds its entry price and funding index), so the engine removes it
+    /// rather than storing it.
+    pub fn is_empty(&self) -> bool {
+        self.size == 0 && self.collateral == 0
+    }
+
+    /// Absolute notional at `mark`, quote-scaled, rounded toward zero. Fees and
+    /// penalties are charged on this value.
     pub fn notional(&self, mark: i128) -> Option<i128> {
         notional_quote(abs(self.size), mark)
+    }
+
+    /// Absolute notional at `mark`, quote-scaled, rounded up. Margin requirements
+    /// are computed from this value. `None` for a negative mark or on overflow.
+    fn notional_ceil(&self, mark: i128) -> Option<i128> {
+        notional_quote_ceil(abs(self.size), mark)
     }
 
     /// The delta-hedging signal for this position at `mark` (audit Q5): net
@@ -106,14 +129,24 @@ impl Position {
         self.collateral.checked_add(pnl)?.checked_sub(funding)
     }
 
-    /// Maintenance margin required at `mark`.
+    /// Maintenance margin required at `mark`: the notional and the ratio product
+    /// are both rounded up, so any non-zero size at a positive mark requires a
+    /// positive maintenance margin. `None` for a negative mark or ratio, or on
+    /// overflow; every caller treats `None` as fail-closed.
     pub fn maintenance_required(&self, market: &Market, mark: i128) -> Option<i128> {
-        apply_rate(self.notional(mark)?, market.maintenance_margin_ratio)
+        apply_rate_ceil(self.notional_ceil(mark)?, market.maintenance_margin_ratio)
     }
 
-    /// Initial margin required at `mark` (to open / increase).
+    /// Initial margin required at `mark` (to open / increase): zero for a flat
+    /// position, otherwise the rounded-up `initial_margin_ratio` share of the
+    /// rounded-up notional, and never less than [`MIN_INITIAL_MARGIN`]. `None` for a
+    /// negative mark or ratio, or on overflow.
     pub fn initial_required(&self, market: &Market, mark: i128) -> Option<i128> {
-        apply_rate(self.notional(mark)?, market.initial_margin_ratio)
+        if self.size == 0 {
+            return Some(0);
+        }
+        let im = apply_rate_ceil(self.notional_ceil(mark)?, market.initial_margin_ratio)?;
+        Some(im.max(MIN_INITIAL_MARGIN))
     }
 
     /// Is the position liquidatable: equity < maintenance margin (§5).
@@ -126,6 +159,40 @@ impl Position {
             // overflow ⇒ conservatively NOT auto-liquidate; close-only handles it
             _ => false,
         }
+    }
+
+    /// The most auto-deleverage may take from this position's collateral at `mark`
+    /// and funding index `funding_index_now`:
+    ///
+    /// `max(0, min(P − F, C⁺, E − MM))`
+    ///
+    /// with `P` the unrealized price PnL, `F` the signed funding owed (positive =
+    /// the position pays), `C⁺` the non-negative part of its collateral, `E` its
+    /// equity and `MM` its maintenance margin — the same values
+    /// [`Self::is_liquidatable`] compares. Taking at most this much:
+    ///
+    /// * takes only a gain net of funding (funding still owed reduces it, funding
+    ///   still receivable counts towards it);
+    /// * keeps collateral at or above zero, so no new bad debt is created;
+    /// * keeps `E ≥ MM`, so a position that is not liquidatable stays so, and one
+    ///   that already is gives nothing.
+    ///
+    /// `None` on overflow; callers treat it as fail-closed.
+    pub fn adl_clawable(
+        &self,
+        market: &Market,
+        mark: i128,
+        funding_index_now: i128,
+    ) -> Option<i128> {
+        let pnl = self.unrealized_pnl(mark)?;
+        let funding = self.funding_owed(funding_index_now)?;
+        let net_gain = pnl.checked_sub(funding)?;
+        let headroom = self
+            .collateral
+            .checked_add(pnl)?
+            .checked_sub(funding)?
+            .checked_sub(self.maintenance_required(market, mark)?)?;
+        Some(net_gain.min(self.collateral.max(0)).min(headroom).max(0))
     }
 
     /// Does applying `delta_size` open new directional exposure — i.e. anything
@@ -278,8 +345,10 @@ impl Position {
             // reducing or flipping: realize PnL on the closed portion
             let closed = core::cmp::min(abs(delta_size), abs(self.size));
             let signed_closed = if self.size > 0 { closed } else { -closed };
-            realized = notional_quote(signed_closed, fill_price - self.entry_price)
+            let price_move = fill_price
+                .checked_sub(self.entry_price)
                 .ok_or(RiskError::Overflow)?;
+            realized = notional_quote(signed_closed, price_move).ok_or(RiskError::Overflow)?;
             self.collateral = self
                 .collateral
                 .checked_add(realized)
@@ -473,6 +542,89 @@ mod tests {
             empty.fits_initial_after(&m, -SIZE_SCALE / 2, mark, 0),
             "reducing always allowed"
         );
+    }
+
+    #[test]
+    fn margin_requirements_round_up() {
+        // IM 10%, MM 5%
+        let m = Market::conservative(0);
+        // 1e-8 base at $150: exact notional 1.5 micro-USD, so 5% and 10% of it are
+        // fractions of a micro-USD; both requirements round up.
+        let tiny = pos(1, 150 * PRICE_SCALE, 0);
+        let mark = 150 * PRICE_SCALE;
+        assert_eq!(tiny.maintenance_required(&m, mark), Some(1));
+        assert_eq!(tiny.initial_required(&m, mark), Some(MIN_INITIAL_MARGIN));
+        // a short of the same size needs the same margin
+        let short = pos(-1, 150 * PRICE_SCALE, 0);
+        assert_eq!(short.maintenance_required(&m, mark), Some(1));
+        assert_eq!(short.initial_required(&m, mark), Some(MIN_INITIAL_MARGIN));
+        // exact values are unchanged: 1 BTC at $100k → MM $5k, IM $10k
+        let btc = pos(SIZE_SCALE, 100_000 * PRICE_SCALE, 0);
+        let mark = 100_000 * PRICE_SCALE;
+        assert_eq!(
+            btc.maintenance_required(&m, mark),
+            Some(5_000 * QUOTE_SCALE)
+        );
+        assert_eq!(btc.initial_required(&m, mark), Some(10_000 * QUOTE_SCALE));
+        // 1.00000001 base at $100: notional 100.000001 USD, so 5% and 10% of it carry
+        // a fractional micro-USD and round up by one
+        let mark = 100 * PRICE_SCALE;
+        let p1 = pos(SIZE_SCALE + 1, mark, 0);
+        assert_eq!(p1.maintenance_required(&m, mark), Some(5 * QUOTE_SCALE + 1));
+        assert_eq!(p1.initial_required(&m, mark), Some(10 * QUOTE_SCALE + 1));
+    }
+
+    #[test]
+    fn initial_margin_is_floored_at_one_dollar_for_open_positions_only() {
+        let m = Market::conservative(0);
+        let mark = 100 * PRICE_SCALE;
+        // $5 of notional: 10% is $0.50, so the $1 floor applies
+        let small = pos(5 * SIZE_SCALE / 100, mark, 0);
+        assert_eq!(small.initial_required(&m, mark), Some(MIN_INITIAL_MARGIN));
+        // $20 of notional: 10% is $2, above the floor
+        let larger = pos(SIZE_SCALE / 5, mark, 0);
+        assert_eq!(larger.initial_required(&m, mark), Some(2 * QUOTE_SCALE));
+        // a flat position needs nothing
+        let flat = pos(0, 0, 0);
+        assert_eq!(flat.initial_required(&m, mark), Some(0));
+        assert_eq!(flat.maintenance_required(&m, mark), Some(0));
+        // the floor gates initial margin: $0.999999 fails, $1 passes
+        let mut p = pos(1, mark, MIN_INITIAL_MARGIN - 1);
+        assert_eq!(
+            p.check_initial_margin(&m, mark, 0),
+            Err(RiskError::InsufficientMargin)
+        );
+        p.collateral = MIN_INITIAL_MARGIN;
+        assert_eq!(p.check_initial_margin(&m, mark, 0), Ok(()));
+        // maintenance carries no floor
+        p.collateral = 1;
+        assert_eq!(p.check_maintenance_margin(&m, mark, 0), Ok(()));
+    }
+
+    #[test]
+    fn margin_requirements_fail_closed_on_negative_inputs() {
+        let m = Market::conservative(0);
+        let p = pos(SIZE_SCALE, 100 * PRICE_SCALE, 10 * QUOTE_SCALE);
+        assert_eq!(p.maintenance_required(&m, -1), None);
+        assert_eq!(p.initial_required(&m, -1), None);
+        let mut bad = m;
+        bad.maintenance_margin_ratio = -1;
+        bad.initial_margin_ratio = -1;
+        assert_eq!(p.maintenance_required(&bad, 100 * PRICE_SCALE), None);
+        assert_eq!(p.initial_required(&bad, 100 * PRICE_SCALE), None);
+        assert_eq!(
+            p.check_maintenance_margin(&bad, 100 * PRICE_SCALE, 0),
+            Err(RiskError::Overflow)
+        );
+        assert!(!p.is_liquidatable(&bad, 100 * PRICE_SCALE, 0));
+    }
+
+    #[test]
+    fn empty_means_zero_size_and_zero_collateral() {
+        assert!(Position::empty(word_u64(1), 0).is_empty());
+        assert!(!pos(1, PRICE_SCALE, 0).is_empty());
+        assert!(!pos(0, 0, 1).is_empty());
+        assert!(!pos(0, 0, -1).is_empty());
     }
 
     #[test]

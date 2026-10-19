@@ -62,7 +62,7 @@ def source_identity():
     for name in (
         "scripts/local-verification/finite_preparation_profile.py",
         "scripts/local-verification/test_finite_preparation_profile.py",
-        "docs/audits/2026-10-14-seal-window-ownership/baseline-export/normal-00-before_first_seal_seq.bin",
+        "crates/gateway/testdata/seal-window-pkg3/normal-00-before_first_seal_seq.bin",
     ):
         files[name] = sha((ROOT / name).read_bytes())
     return {

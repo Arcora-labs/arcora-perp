@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/gateway-binary.yml'
+      - 'crates/gateway/**'
+      - 'Cargo.lock'
 permissions:
   contents: read
 jobs:
@@ -57,16 +59,31 @@ jobs:
           PY
           cat dist/build.json
       - name: Smoke the packaged binary
+        env:
+          # --print-genesis-root requires a wind-down recipient. A fixed nonzero test
+          # address that is no development account, so each refusal below is the
+          # oracle key's own (the error text is checked).
+          WIND_DOWN_RECIPIENT: '0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0'
         run: |
           set -euo pipefail
           # Refuses the built-in dev oracle key without touching L1 or disk.
-          if ./dist/darkperp-gateway --print-genesis-root; then exit 1; fi
+          if out=$(./dist/darkperp-gateway --print-genesis-root 2>&1); then exit 1; fi
+          grep -q 'set ORACLE_SIGNER_KEY' <<<"$out"
           # Refuses an explicitly set default Anvil key (#0) too: it is public.
-          if ORACLE_SIGNER_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-            ./dist/darkperp-gateway --print-genesis-root; then exit 1; fi
-          # A non-public test scalar (not an operator key) prints the root.
+          if out=$(ORACLE_SIGNER_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+            ./dist/darkperp-gateway --print-genesis-root 2>&1); then exit 1; fi
+          grep -q 'public development key' <<<"$out"
+          # Refuses a missing recipient, with an otherwise acceptable oracle key.
+          if out=$(env -u WIND_DOWN_RECIPIENT \
+            ORACLE_SIGNER_KEY=1111111111111111111111111111111111111111111111111111111111111111 \
+            ./dist/darkperp-gateway --print-genesis-root 2>&1); then exit 1; fi
+          grep -q 'set WIND_DOWN_RECIPIENT' <<<"$out"
+          # A non-public test scalar (not an operator key) prints the root and the
+          # recipient it binds.
           ORACLE_SIGNER_KEY=1111111111111111111111111111111111111111111111111111111111111111 \
-            ./dist/darkperp-gateway --print-genesis-root | grep -E '^GENESIS_ROOT=0x[0-9a-f]{64}$'
+            ./dist/darkperp-gateway --print-genesis-root > genesis.txt
+          grep -E '^GENESIS_ROOT=0x[0-9a-f]{64}$' genesis.txt
+          grep -Fx "WIND_DOWN_RECIPIENT=$WIND_DOWN_RECIPIENT" genesis.txt
       - uses: actions/upload-artifact@v4
         with:
           name: darkperp-gateway-linux-x86_64

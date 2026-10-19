@@ -52,6 +52,10 @@
             "integration_id": 15368
           },
           {
+            "context": "reviewed guest execution (CPU)",
+            "integration_id": 15368
+          },
+          {
             "context": "contracts (foundry)",
             "integration_id": 15368
           },

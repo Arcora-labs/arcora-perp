@@ -214,8 +214,11 @@ fn a01_bootstrap_then_customer_prefix_and_rollback_proof_replay_agree() {
         3
     );
 }
+/// The genuine file an A01-era (v5) binary wrote is refused: its envelope is not
+/// DPSNAP10, and its bytes under the current header fail authentication. The
+/// current writer's output restores byte-for-byte.
 #[test]
-fn a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit() {
+fn a01_actual_frozen_v5_fixture_is_refused() {
     let encoded = include_str!("legacy-v5.hex").trim();
     let bytes: Vec<u8> = encoded
         .as_bytes()
@@ -225,33 +228,14 @@ fn a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit() {
         .map(|c| (hex_nibble(c[0]).unwrap() << 4) | hex_nibble(c[1]).unwrap())
         .collect();
     assert_eq!(&bytes[..8], b"DPSNAP5\0");
-    let plain = snapshot::open(&bytes, &[42; 32]).unwrap();
-    let gw = Gw::boot_restored(&plain).unwrap();
-    assert_eq!(gw.accounts.len(), 1);
-    let account = gw.accounts.values().next().unwrap();
-    assert_eq!(
-        (
-            account.last_signed_nonce,
-            account.last_sealed_nonce,
-            account.rebind_counter
-        ),
-        (17, 19, 3)
-    );
-    assert_eq!(account.deposit_counter, 1);
-    assert_eq!(account.deposit_authorizations.len(), 1);
-    assert!(gw.deposits.routes.is_empty());
-    assert!(gw.deposits.credits.is_empty());
-    assert_eq!(gw.seq.state.consumed_deposit_count, 1);
-    // Gw's old positional fields, all secrets, replay ops, notes and market prices
-    // serialize byte-for-byte to the genuine old binary's plaintext.
-    let prices: Vec<_> = gw
-        .mkts
-        .iter()
-        .map(|m| (m.id, m.reference_price, m.px, m.live))
-        .collect();
-    assert_eq!(postcard::to_allocvec(&(&gw, prices)).unwrap(), plain);
+    let error = snapshot::open(&bytes, &[42; 32]).unwrap_err();
+    assert!(error.contains("DPSNAP10"), "{error}");
+    let mut relabelled = bytes.clone();
+    relabelled[..8].copy_from_slice(b"DPSNAP10");
+    assert!(snapshot::open(&relabelled, &[42; 32]).is_err());
+    let gw = fresh();
     let new = snapshot::seal(&gw.snapshot_plain(), &[42; 32]);
-    assert_eq!(&new[..8], b"DPSNAP9\0");
+    assert_eq!(&new[..8], b"DPSNAP10");
     let restored = Gw::boot_restored(&snapshot::open(&new, &[42; 32]).unwrap()).unwrap();
     assert_eq!(gw.snapshot_plain(), restored.snapshot_plain());
 }
@@ -447,7 +431,7 @@ async fn a01_cancellation_at_ack_keeps_barrier_and_retry_never_recredits() {
     );
 }
 #[test]
-fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
+fn a01_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
     let mut gw = fresh();
     let (key, c) = permit(
         &mut gw,
@@ -479,13 +463,14 @@ fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
         deposit_id: 0,
     };
     gw.accounts.get_mut(&key).unwrap().deposit_counter = 1;
-    let prices: Vec<_> = gw
-        .mkts
-        .iter()
-        .map(|m| (m.id, m.reference_price, m.px, m.live))
-        .collect();
-    let legacy = postcard::to_allocvec(&(&gw, prices)).unwrap();
-    let mut gw = Gw::boot_restored(&legacy).unwrap();
+    // The half-transferred bootstrap consumed its deposit outside a receipt-
+    // recording page; the ledger carries it as its inherited prefix.
+    gw.deposits.legacy_prefix = Some((
+        gw.seq.state.consumed_deposit_count,
+        gw.seq.state.consumed_deposit_tip,
+    ));
+    gw.deposits.routes.clear();
+    let mut gw = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
     let p = Page {
         start: gw.deposit_cursor(),
         end: Block {
@@ -528,32 +513,21 @@ fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
     assert!(state.conservation_holds());
 }
 
-/// The v6 layout (no permit deadlines) is still readable when no permit is
-/// outstanding: its credits, secrets and replay bytes carry over, landed credits
-/// get deadline 0, and the next snapshot is written in the current layout.
+/// Credits, the consumed prefix and the replay op-log survive a v10 round trip;
+/// the same state behind the earlier deposit-layer header is refused.
 #[test]
-fn a05_a01_v6_migration_preserves_credits_secrets_and_replay_bytes() {
+fn credits_and_replay_survive_restore_and_the_v6_layout_is_refused() {
     let mut gw = fresh();
     let (_, credited) = permit(&mut gw, 5_000_000, Purpose::Collateral, 1);
     let block = page(&gw, &[credited]);
     gw.apply_deposit_page(block).unwrap();
-    let prices: Vec<_> = gw
-        .mkts
-        .iter()
-        .map(|m| (m.id, m.reference_price, m.px, m.live))
-        .collect();
-    let v6_of = |gw: &Gw| {
-        let legacy = DepositStateV6::from_current(&gw.deposits);
-        let mut v6 = SNAPSHOT_V6.to_vec();
-        v6.extend_from_slice(&postcard::to_allocvec(&(gw, &prices, &legacy)).unwrap());
-        v6
-    };
     let root = gw.seq.state.state_root();
     let prefix = (
         gw.seq.state.consumed_deposit_count,
         gw.seq.state.consumed_deposit_tip,
     );
-    let mut restored = Gw::boot_restored(&v6_of(&gw)).unwrap();
+    let current = gw.snapshot_plain();
+    let mut restored = Gw::boot_restored(&current).unwrap();
     assert_eq!(restored.seq.state.state_root(), root);
     assert_eq!(
         (
@@ -563,16 +537,8 @@ fn a05_a01_v6_migration_preserves_credits_secrets_and_replay_bytes() {
         prefix
     );
     assert_eq!(restored.deposits.credits.len(), 1);
-    let mut expected = gw.deposits.credits[&0].clone();
-    expected.route.valid_until = 0;
-    assert_eq!(restored.deposits.credits[&0], expected);
-    let current = restored.snapshot_plain();
-    assert!(current.starts_with(crate::wind_down::SNAPSHOT_V9));
-    assert!(current.windows(SNAPSHOT_V7.len()).any(|w| w == SNAPSHOT_V7));
-    assert_eq!(
-        Gw::boot_restored(&current).unwrap().snapshot_plain(),
-        current
-    );
+    assert_eq!(restored.deposits.credits[&0], gw.deposits.credits[&0]);
+    assert_eq!(restored.snapshot_plain(), current);
     let witness = restored.seq.seal_window();
     let mut replay = witness.pre_state.clone();
     let roots =
@@ -580,14 +546,9 @@ fn a05_a01_v6_migration_preserves_credits_secrets_and_replay_bytes() {
     assert_eq!(roots.new_state_root, restored.seq.state.state_root());
     assert_eq!(replay.consumed_deposit_tip, prefix.1);
 
-    // An outstanding permit was signed for the earlier vault ABI: refused.
-    let (_, _pending) = permit(&mut gw, 7_000_000, Purpose::Collateral, 0);
-    let error = Gw::boot_restored(&v6_of(&gw)).err().unwrap();
-    assert!(error.contains("outstanding deposit permits"), "{error}");
-    // So is a blind-only permit without a route.
-    gw.deposits.routes.clear();
-    let error = Gw::boot_restored(&v6_of(&gw)).err().unwrap();
-    assert!(error.contains("outstanding deposit permits"), "{error}");
+    let mut v6 = b"\xffDPA01-SNAPSHOT-v6\0".to_vec();
+    v6.extend_from_slice(&current[snapshot::PAYLOAD_MAGIC.len() + 1..]);
+    assert!(Gw::boot_restored(&v6).is_err());
 }
 
 #[test]
@@ -793,13 +754,17 @@ fn close_only_stops_crediting_and_reports_unsettled_credits_as_refundable() {
     assert_eq!(before, gw.snapshot_plain());
 }
 
+/// After L1 close-only the first fetch verifies the consumed prefix, the deposits
+/// that landed but were never credited are read to the finalized head and listed
+/// as refundable, and then polling stops.
 #[tokio::test]
 async fn close_only_intake_verifies_the_prefix_once_then_stops_polling() {
     let mut gw = fresh();
-    let (_, c) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);
+    let (key, c) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);
     let p = page(&gw, &[c]);
     gw.deposits.l1_close_only = true;
-    let (app, source, _rx) = app_with_page(gw, p);
+    let (app, source, rx) = app_with_page(gw, p);
+    let writer = ack_every_snapshot(rx);
     assert!(app.gw.lock().await.deposits.check_ready().is_err());
     assert_eq!(ingest_once(&app).await.unwrap(), 0);
     {
@@ -810,9 +775,33 @@ async fn close_only_intake_verifies_the_prefix_once_then_stops_polling() {
         );
         assert!(gw.deposits.credits.is_empty());
         assert_eq!(gw.deposits.last_error.as_deref(), Some(CLOSE_ONLY_INTAKE));
+        assert!(gw.deposits.uncredited_scan_done);
+        assert_eq!(
+            gw.v1_account(&key).unwrap()["refundableDeposits"],
+            serde_json::json!([{
+                "id": 0,
+                "from": hex0x(&[0x42; 20]),
+                "ownerCommit": hex0x(&c),
+                "amount": "5000000",
+            }])
+        );
     }
+    // The page, then one read past it that found the finalized head.
+    assert_eq!(source.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     assert_eq!(ingest_once(&app).await.unwrap(), 0);
-    assert_eq!(source.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(source.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    writer.abort();
+}
+
+/// Acknowledge every durability request, as a healthy snapshot writer does.
+fn ack_every_snapshot(
+    mut rx: tokio::sync::mpsc::Receiver<SnapshotAck>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(ack) = rx.recv().await {
+            let _ = ack.send(true);
+        }
+    })
 }
 
 /// The close-only rebase returns a gateway to the finalized settled state: credits
@@ -923,4 +912,321 @@ fn close_only_rebase_keeps_only_the_settled_deposit_prefix() {
     assert_eq!(restored.seq.state.state_root(), settled_root);
     // A second rebase has nothing left to do and refuses nothing it needs.
     assert!(gw.rebase_to_settled(&l1).unwrap().is_empty());
+}
+
+/// Deposit blocks that chain on from `gw`'s consumed prefix: block `i` (number
+/// `i + 1`) holds the permitted deposits `blocks[i]`, in order. Returns each block
+/// keyed by the deposit count it starts at.
+fn chained_blocks(gw: &Gw, blocks: &[&[[u8; 32]]]) -> BTreeMap<u64, (Block, Vec<Event>)> {
+    let start = gw.deposit_cursor();
+    let (mut id, mut tip) = (start.count, start.tip);
+    let mut chain = BTreeMap::new();
+    for (i, commits) in blocks.iter().enumerate() {
+        let block = Block {
+            number: i as u64 + 1,
+            hash: [0x70 + i as u8; 32],
+            timestamp: None,
+        };
+        let first = id;
+        let events = commits
+            .iter()
+            .enumerate()
+            .map(|(log, commit)| {
+                let route = &gw.deposits.routes[commit];
+                tip = perp_core::merkle::deposit_chain_fold(
+                    &tip,
+                    &perp_core::merkle::deposit_leaf(&route.from, commit, route.amount, id),
+                );
+                let event = Event {
+                    id,
+                    from: route.from,
+                    commit: *commit,
+                    amount: route.amount,
+                    tip,
+                    tx: [0x90 + i as u8; 32],
+                    tx_index: 0,
+                    log_index: log as u64,
+                    block: block.clone(),
+                };
+                id += 1;
+                event
+            })
+            .collect();
+        chain.insert(first, (block, events));
+    }
+    chain
+}
+
+/// A finalized chain: each deposit block is read from the cursor at its start;
+/// past the last one the finalized head holds no further deposit.
+struct Blocks {
+    blocks: BTreeMap<u64, (Block, Vec<Event>)>,
+    head: Block,
+    calls: std::sync::atomic::AtomicUsize,
+}
+impl crate::deposit_rpc::DepositSource for Blocks {
+    fn fetch(&self, cursor: Cursor) -> Result<Page, Error> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (end, events) = self
+            .blocks
+            .get(&cursor.count)
+            .cloned()
+            .unwrap_or_else(|| (self.head.clone(), Vec::new()));
+        Ok(Page {
+            start: cursor,
+            end,
+            events,
+        })
+    }
+}
+
+fn app_with_blocks(
+    gw: Gw,
+    blocks: BTreeMap<u64, (Block, Vec<Event>)>,
+) -> (Shared, Arc<Blocks>, tokio::task::JoinHandle<()>) {
+    let mut app = crate::tests::test_app();
+    let a = Arc::get_mut(&mut app).unwrap();
+    let source = Arc::new(Blocks {
+        blocks,
+        head: Block {
+            number: 50,
+            hash: [0x50; 32],
+            timestamp: None,
+        },
+        calls: 0.into(),
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(4);
+    a.snapshot_req = Some(tx);
+    a.deposit_source = Some(source.clone());
+    a.gw = Mutex::new(gw);
+    a.gw.get_mut().deposits.required = true;
+    (app, source, ack_every_snapshot(rx))
+}
+
+/// While the engine is close-only no deposit is credited, and ingestion stays at
+/// the oldest landed deposit. That refusal leaves intake ready (the fetch verified
+/// the consumed prefix), and every permitted deposit that landed meanwhile, not
+/// only the oldest, is recorded with its permit. Once the settlement is in
+/// close-only each is listed with its exact `refundDeposit` arguments.
+#[tokio::test]
+async fn deposits_refused_in_engine_close_only_are_recorded_and_later_listed() {
+    let mut gw = fresh();
+    let (a, ca) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);
+    let (b, cb) = permit(&mut gw, 7_000_000, Purpose::Collateral, 1);
+    let (c, cc) = permit(&mut gw, 9_000_000, Purpose::Collateral, 0);
+    let blocks = chained_blocks(&gw, &[&[ca], &[cb, cc]]);
+    gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+    let cursor = gw.deposit_cursor();
+    let (app, source, writer) = app_with_blocks(gw, blocks);
+    for pass in 1..=2 {
+        assert_eq!(
+            ingest_once(&app).await.unwrap_err(),
+            crate::admission::ENGINE_CLOSE_ONLY_INTAKE,
+            "pass {pass}"
+        );
+        let gw = app.gw.lock().await;
+        assert!(gw.deposits.ready, "pass {pass}");
+        assert!(gw.deposits.check_ready().is_ok(), "pass {pass}");
+        assert_eq!(gw.deposit_cursor(), cursor, "the page is not consumed");
+        assert_eq!(gw.seq.state.consumed_deposit_count, 0);
+        assert!(gw.deposits.credits.is_empty());
+        assert_eq!(
+            gw.deposits.uncredited.keys().copied().collect::<Vec<_>>(),
+            vec![0, 1, 2],
+            "pass {pass}"
+        );
+        assert_eq!(gw.deposits.routes.len(), 3, "the permits stay held");
+        let alerts = gw.ops_alerts.active();
+        assert!(alerts.contains(&crate::ops_alerts::AlertKind::EngineCloseOnly));
+        assert!(!alerts.contains(&crate::ops_alerts::AlertKind::DepositBlockedAtCap));
+        // Not refundable before the settlement is in close-only.
+        assert!(gw.refundable_credits(&b).is_empty());
+        assert!(gw
+            .v1_account(&b)
+            .unwrap()
+            .get("refundableDeposits")
+            .is_none());
+    }
+    // First pass: the page, the block after it, and the head; second pass: the
+    // page again and the head again.
+    assert_eq!(source.calls.load(std::sync::atomic::Ordering::SeqCst), 5);
+    let mut gw = app.gw.lock().await;
+    let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    assert_eq!(restored.deposits.uncredited, gw.deposits.uncredited);
+    gw.deposits.l1_close_only = true;
+    for (key, id, commit, amount, market) in [
+        (a, 0, ca, "5000000", 0),
+        (b, 1, cb, "7000000", 1),
+        (c, 2, cc, "9000000", 0),
+    ] {
+        assert_eq!(
+            gw.v1_account(&key).unwrap()["refundableDeposits"],
+            serde_json::json!([{
+                "id": id,
+                "from": hex0x(&[0x42; 20]),
+                "ownerCommit": hex0x(&commit),
+                "amount": amount,
+            }])
+        );
+        assert_eq!(gw.deposits.uncredited[&id].route.market, market);
+    }
+    drop(gw);
+    writer.abort();
+}
+
+/// For a state beyond a provable-history bound (a bound lowered under it) a
+/// permitted deposit that landed is not credited: the page stays unconsumed, intake
+/// stays ready, a signed full exit is still accepted (a partial withdrawal is not),
+/// and the operator gets an alert of its own (the deposit now holds the deposit
+/// queue). Once the state is within the bound again, the same page is credited, the
+/// record goes and the alert recovers.
+#[tokio::test]
+async fn a_state_beyond_a_bound_holds_a_landed_deposit_with_its_own_alert_while_exits_work() {
+    use crate::ops_alerts::AlertKind::{AdmissionCapReached, DepositBlockedAtCap};
+    let mut gw = fresh();
+    let sk = k256::ecdsa::SigningKey::from_slice(&[0x61; 32]).unwrap();
+    let address = eth_address(&sk);
+    let (exiting, _) = gw.register_account(Some(address));
+    gw.account_deposit(&exiting, 0, 100 * QUOTE_SCALE).unwrap();
+    let (_, c) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);
+    let p = page(&gw, &[c]);
+    gw.admission_cap = crate::admission::AdmissionCap {
+        max_history: crate::admission::HistorySize::of(&gw.seq.state).history,
+        max_positions: 1_000,
+        max_notes: 1_000,
+    };
+    let cursor = gw.deposit_cursor();
+    let consumed = gw.seq.state.consumed_deposit_count;
+    let (app, _source, rx) = app_with_page(gw, p);
+    let writer = ack_every_snapshot(rx);
+    assert_eq!(
+        ingest_once(&app).await.unwrap_err(),
+        crate::admission::HISTORY_CAP_INTAKE
+    );
+    {
+        let mut gw = app.gw.lock().await;
+        assert!(gw.deposits.ready);
+        assert!(gw.deposits.check_ready().is_ok());
+        assert_eq!(gw.deposit_cursor(), cursor);
+        assert_eq!(gw.seq.state.consumed_deposit_count, consumed);
+        assert!(gw.deposits.uncredited.contains_key(&consumed));
+        let alerts = gw.ops_alerts.active();
+        assert!(alerts.contains(&DepositBlockedAtCap));
+        assert!(alerts.contains(&AdmissionCapReached));
+        // A full exit keeps working beyond the bound; a partial withdrawal does not.
+        let withdraw = |gw: &mut Gw, amount: i128| {
+            let (owner, auth_nonce) = {
+                let a = &gw.accounts[&exiting];
+                (a.wallet.owner, a.last_withdraw_nonce + 1)
+            };
+            let digest = withdraw_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                amount,
+                &address,
+                auth_nonce,
+            );
+            let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+            let mut wire = [0u8; 65];
+            wire[..64].copy_from_slice(&sig.to_bytes());
+            wire[64] = 27 + recid.to_byte();
+            gw.account_withdraw(&exiting, 0, amount, address, auth_nonce, &wire)
+        };
+        assert_eq!(
+            withdraw(&mut gw, QUOTE_SCALE).unwrap_err(),
+            crate::admission::HISTORY_CAP_EXIT
+        );
+        withdraw(&mut gw, 100 * QUOTE_SCALE).unwrap();
+        gw.admission_cap = crate::admission::measured_cap();
+    }
+    assert_eq!(ingest_once(&app).await.unwrap(), 1);
+    let gw = app.gw.lock().await;
+    assert_eq!(gw.seq.state.consumed_deposit_count, consumed + 1);
+    assert!(
+        gw.deposits.uncredited.is_empty(),
+        "the credit replaced the record"
+    );
+    assert!(!gw.ops_alerts.active().contains(&DepositBlockedAtCap));
+    drop(gw);
+    writer.abort();
+}
+
+/// The close-only rebase drops every outstanding permit, but a permitted deposit
+/// that landed and was never credited keeps its record: it is listed as
+/// refundable, and the record survives a restart.
+#[test]
+fn the_close_only_rebase_keeps_landed_uncredited_deposits() {
+    use crate::wind_down::SettledL1;
+    let mut gw = fresh();
+    let (_, ca) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);
+    gw.apply_deposit_page(page(&gw, &[ca])).unwrap();
+    gw.deposits.dirty = false;
+    let (w0, ww0) = gw.begin_window_settle(0).unwrap().unwrap();
+    let prepared =
+        crate::prover_client::prove_and_prepare(&crate::prover_client::MockProverClient, &w0, &ww0)
+            .unwrap();
+    gw.commit_window_settle(
+        w0.batch_id,
+        w0.manifest.ordered.clone(),
+        Vec::new(),
+        prepared,
+        L1Status::default(),
+        trading_gate::GateObservation::StaysClosed,
+    );
+    let settled_root = gw.seq.state.state_root();
+    // The engine trips in the unsettled window; a permitted deposit lands and is
+    // refused, and another permit never lands.
+    let (b, cb) = permit(&mut gw, 7_000_000, Purpose::Collateral, 0);
+    let (_, never) = permit(&mut gw, 1_000_000, Purpose::Collateral, 0);
+    gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+    let refused = page(&gw, &[cb]);
+    assert_eq!(
+        gw.apply_deposit_page(refused.clone()).unwrap_err(),
+        crate::admission::ENGINE_CLOSE_ONLY_INTAKE
+    );
+    assert_eq!(gw.record_uncredited(&refused), 1);
+    assert_eq!(gw.record_uncredited(&refused), 0, "recorded once");
+    let l1 = SettledL1 {
+        block: 9,
+        close_only: true,
+        settled: false,
+        batch_count: 1,
+        root: settled_root,
+        consumed_deposit_count: 1,
+    };
+    gw.rebase_to_settled(&l1).unwrap();
+    assert!(gw.deposits.routes.is_empty());
+    assert!(!gw.accounts[&b].deposit_authorizations.contains_key(&cb));
+    assert!(!gw
+        .deposits
+        .uncredited
+        .values()
+        .any(|r| r.event.commit == never));
+    assert_eq!(
+        gw.refundable_credits(&b)
+            .into_iter()
+            .map(refund_json)
+            .collect::<Vec<_>>(),
+        vec![serde_json::json!({
+            "id": 1,
+            "from": hex0x(&[0x42; 20]),
+            "ownerCommit": hex0x(&cb),
+            "amount": "7000000",
+        })]
+    );
+    let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    assert_eq!(restored.deposits.uncredited, gw.deposits.uncredited);
+    assert_eq!(restored.seq.state.state_root(), settled_root);
+    // A record below the consumed prefix, or one whose payer differs from its
+    // permit, does not validate.
+    let corruptions: [fn(&mut Credit); 2] = [|r| r.event.id = 0, |r| r.route.from = [0x43; 20]];
+    for corrupt in corruptions {
+        let mut bad = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+        let mut row = bad.deposits.uncredited.remove(&1).unwrap();
+        corrupt(&mut row);
+        bad.deposits.uncredited.insert(row.event.id, row);
+        assert!(bad.validate_deposit_state().is_err());
+    }
 }

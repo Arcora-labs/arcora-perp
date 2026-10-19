@@ -128,7 +128,7 @@ class DeploymentObservationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(result["local_guest_vkey"], REVIEWED_GUEST["vkey"])
         self.assertTrue(result["vkey_matches_local"])
-        self.assertIn("clock-v2", result["local_guest_reference"])
+        self.assertEqual(result["local_guest_reference"], "reviewed guest (verify_clock_proof.REVIEWED_GUEST)")
         self.assertEqual(result["local_guest_record"], 'verify_clock_proof.REVIEWED_GUEST["vkey"]')
         self.assertIn("NOT_PROVEN", result["deployment_matches_local_source"])
 

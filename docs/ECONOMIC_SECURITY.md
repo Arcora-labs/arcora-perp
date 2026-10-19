@@ -1,24 +1,26 @@
 # Economic security
 
 What stops a confidential perp from quietly insolvency-spiraling, and who pays
-when a position goes bad? This document answers seven hard liquidity- and
+when a position goes bad? This document answers nine hard liquidity- and
 economic-security questions head-on. Each answer states the **mechanism**, points
 at the **code** that enforces it, and is blunt about the **limits** — where the
 protocol guarantees something and where it does not.
 
 The honest one-line summary: the protocol guarantees that solvent value can always
 **exit**, and that protocol-level bad debt is absorbed by a capital stack
-(penalty → insurance → auto-deleverage → halt) before it can socialize silently.
+(penalty → insurance → treasury → capped auto-deleverage → halt) before it can
+socialize silently.
 It does **not** guarantee that a trader who loses a trade is made whole — that is
 not a property a perpetual can have, and any design that claims it is hiding a
 subsidy. The line between "recoverable" and "not recoverable" is drawn explicitly
 in Q2.
 
-All of the mechanisms below default to **off / zero** (`Market::conservative` sets
-both fee ratios to 0; the insurance fund starts empty; liquidations carry no fee
-unless configured), so enabling them never disturbs the byte-locked cross-layer
-proof vectors — `Market` is not part of the state digest, and liquidations are not
-committed to any proof or manifest.
+The fee and penalty mechanisms below default to **off / zero**
+(`Market::conservative` sets both fee ratios to 0; the insurance fund starts empty;
+liquidations carry no fee unless configured). Market parameters are bound into the
+state root (`markets_digest`), so a deployment fixes them at genesis.
+Liquidations (with their auto-deleverage), funding ticks and the wind-down are all
+ops of the proven transition.
 
 ---
 
@@ -98,13 +100,15 @@ the loss, because the protocol's obligation is different for each.
    (capacity) and funds the fines.
 2. **Protocol bad debt** (a position goes underwater faster than it can be
    liquidated, leaving a deficit). Recoverable up to the capital stack: the
-   insurance fund absorbs it first, and only a *true* depletion socializes — and
-   even then via the deterministic, attributable ADL path, never silently (Q3/Q7).
+   insurance fund absorbs it first, then the treasury, and only a *true* depletion
+   socializes — and even then via the deterministic, attributable ADL path, never
+   silently (Q3/Q7).
 3. **Counterparty/ADL haircut** (you were a winner clawed to cover someone else's
-   deficit). Bounded and attributable: ADL only ever claws *unrealized* profit
-   above your own collateral, pro-rata, in a deterministic order, and the system
-   goes close-only the moment the stack is exhausted so the haircut can't compound
-   in the dark (Q3/Q7).
+   deficit). Bounded and attributable: ADL only ever takes your gain net of funding,
+   never more than your collateral, and never so much that your equity falls below
+   maintenance margin. It is pro-rata and deterministic, and the system goes
+   close-only the moment the stack is exhausted so the haircut can't compound in
+   the dark (Q3/Q7).
 4. **Your own trading loss** (the market moved against your open position). **Not
    recoverable, by construction.** A perpetual is a zero-sum transfer between longs
    and shorts; "recovering" a trading loss would mean a counterparty or the
@@ -137,26 +141,65 @@ unchanged.
 
 ## Q3 / Q7 — What feeds the insurance fund, and what happens when it's empty?
 
-**Mechanism — the liquidation waterfall.** `op_liquidate` no longer just seizes a
-penalty and hopes. When a liquidation leaves a deficit (bad debt), the engine runs
-a fixed cascade:
+**Mechanism — the liquidation waterfall.** When a liquidation leaves a deficit
+(bad debt: the close left the position's collateral negative), the engine runs a
+fixed cascade, all inside the one `Liquidate` op:
 
-1. take the liquidation penalty out of the position's remaining collateral;
-2. draw `min(bad_debt, insurance_fund)` from the **insurance fund** to cover it;
-3. if a residual deficit remains, **auto-deleverage** (`auto_deleverage`) it onto
-   the winning side — collecting every counterparty whose clawable profit
-   (`min(unrealized_pnl, collateral)`) is positive and haircutting them
-   floor-pro-rata with a deterministic remainder pass (a `BTreeMap` keyed walk, so
-   the prover reproduces the exact same haircut);
-4. if *still* negative — the winners have already exited and there is nothing left
-   to claw — flip the whole market to `Mode::CloseOnly` (the depletion halt).
+1. take the liquidation penalty out of the position's remaining collateral, into the
+   insurance fund;
+2. draw `min(shortfall, insurance_fund)` from the **insurance fund**;
+3. draw `min(remaining shortfall, treasury)` from the **treasury**, the operator's
+   accrued fee revenue (Q4);
+4. if a shortfall remains, **auto-deleverage** the winners in the same market. Each
+   open position is weighted by what it can give,
+   `max(0, min(P − F, C⁺, E − MM))`: its price gain `P` net of the funding it owes
+   `F`, capped at its non-negative collateral `C⁺` and at the headroom of its equity
+   `E` above its maintenance margin `MM`. The covered amount, `min(shortfall,
+   Σ weights)`, is split floor-pro-rata over those weights, and the remainder is
+   handed out in key order without exceeding any weight, so the haircuts sum to the
+   covered amount exactly and the prover reproduces the same split;
+5. if the position is *still* negative — no winner had anything left to give — the
+   uncovered rest stays parked on the closed position and the whole system trips to
+   `Mode::CloseOnly` (the depletion halt).
 
-— `crates/perp-core/src/engine.rs`, tests in `crates/perp-core/tests/lifecycle.rs`
-(`insurance_backstop_absorbs_bad_debt`, `adl_covers_residual_after_insurance`,
-`bad_debt_is_clawed_from_the_winners_via_adl`,
+What the ADL cap guarantees:
+
+- a clawed winner keeps collateral `≥ 0` and equity `≥` its maintenance margin, so
+  ADL never creates new bad debt and never makes a position liquidatable;
+- only a gain net of funding is taken: funding a winner still owes reduces it, and
+  funding it is still owed counts towards it;
+- ADL takes collateral, not size: a clawed winner keeps its full exposure on a
+  thinner margin;
+- any arithmetic overflow while planning ADL means no haircut at all: the shortfall
+  stays parked and the system trips to close-only (fail closed).
+
+Once the engine is close-only, the guest refuses every new `Deposit`, so money that
+arrives after the trip never absorbs the earlier shortfall. Such deposits stay
+unconsumed on L1 and are refunded at principal after L1 close-only
+(`docs/FINAL_SETTLE_RUNBOOK.md`). Trading in close-only may only reduce exposure. The
+sequencer refuses an order that would open, grow or flip a position before it is
+matched (`MarketCloseOnly`). A resting order admitted before the trip that would add
+exposure is refused on its own when a closing order reaches it, and the close is
+matched again against the next order that can take it. At wind-down, `SettleAll`
+covers any deficit left from the clearing pool, insurance and the treasury before a
+global pro-rata haircut, and pays whatever reserves remain to the deployment's
+wind-down recipient (Q2, `docs/FINAL_SETTLE_RUNBOOK.md`).
+
+— `crates/perp-core/src/engine.rs` (`op_liquidate`, `auto_deleverage_plan`,
+`allocate_pro_rata`), `crates/perp-core/src/position.rs` (`adl_clawable`); tests in
+`crates/perp-core/tests/adl_health.rs` (for example
+`the_treasury_covers_the_shortfall_after_insurance_and_before_adl`,
+`adl_stops_at_the_maintenance_margin`,
+`a_winner_whose_funding_debt_exceeds_its_price_gain_gives_nothing`) and
+`crates/perp-core/tests/lifecycle.rs` (`insurance_backstop_absorbs_bad_debt`,
 `adl_distributes_pro_rata_across_multiple_winners`,
-`true_insolvency_trips_close_only_when_winners_have_exited`). Commits `5500cc5`,
-`c3f2930`.
+`true_insolvency_trips_close_only_when_winners_have_exited`).
+
+**Limit.** The trade-off of the cap is more frequent close-only trips: a winner near
+its maintenance margin gives little or nothing. Drawing the treasury before ADL
+offsets that. At wind-down, a deficit the reserves cannot cover is haircut across
+the positive collateral and notes of all markets, not first within the market that
+caused it.
 
 **What feeds the fund.** Two real inflows, not a hand-wave: an explicit
 capitalization op (`BatchOp::FundInsurance` / `op_fund_insurance`, SEC-024), which
@@ -184,11 +227,12 @@ arrived; that is the SEC-024 finding. The op is retained at ordinal 8 only as an
 always-rejected stub, so a legacy encoding fails loudly instead of mis-parsing
 under postcard's positional layout.)*
 
-**Conservation.** Every branch of the waterfall is collateral-neutral and is
-re-checked against the conservation identity after each op (`apply_batch`
-debug-asserts `Σnotes + Σcollateral + insurance + vault_pool == external_in −
-external_out`). An adversarial review confirmed the cascade and its conservation;
-the fixes from that pass are in commit `8aa3559`.
+**Conservation.** Every branch of the waterfall moves value only between balances
+inside the conservation identity and is re-checked after each op (`apply_batch`
+checks `Σnotes + Σcollateral + insurance + vault_pool + treasury == external_in −
+external_out`, with checked sums: an overflowing sum fails the identity rather than
+wrapping). An adversarial review confirmed the cascade and its conservation; the
+fixes from that pass are in commit `8aa3559`.
 
 ## Q4 — Why would a market-maker provide liquidity here?
 
@@ -198,7 +242,11 @@ the fixes from that pass are in commit `8aa3559`.
 taker is charged the fee on the fill notional **before** the margin check (so a
 taker who can't afford fee-plus-margin on an opening fill is rejected), the resting
 maker is credited the rebate (the actual incentive to quote), and the remainder
-(`taker_fee − maker_rebate`) funds insurance — which is the Q4→Q3 connection above.
+(`taker_fee − maker_rebate`) is split between the protocol treasury
+(`treasury_fee_ratio`) and the insurance fund — which is the Q4→Q3 connection above.
+The gateway's production markets charge 10 bps, of which 8 bps go to the treasury
+and 2 bps to insurance, so the treasury, the second layer of the waterfall, grows
+about four times as fast as the insurance fund.
 — `crates/perp-core/src/{market.rs,engine.rs}`, test
 `trading_fees_pay_the_maker_and_fund_insurance` (a 10/4 bps market pays the maker
 $40, charges the taker $100, funds insurance $60 on a $100k fill). Commits
@@ -273,6 +321,163 @@ impact. A determined observer still sees that *a* liquidation happened and can
 watch the price; what they can't do is single out *whose* position it was or build
 a hit list of soon-to-be-liquidated addresses.
 
+## Q8 — How is funding charged, and to whom?
+
+**Mechanism — rate in force, exact carry, settlement at every position touch.**
+Each market's funding state stores the clamped rate observed by its last funding
+tick and the time from which the not-yet-committed span runs.
+
+- **Pricing.** A span is always committed at the *stored* rate, so it is priced at
+  the rate observed at its start and never at one observed after it. A new premium
+  applies from the tick that observes it. A market's first tick charges nothing.
+- **Attribution.** `Fill`, `Liquidate` and `Unbind` first commit the market's open
+  span up to their own time, then read the index for every margin, PnL and
+  `funding_entry` computation. So each span is charged to exactly the positions that
+  existed during it, whatever order the ops of one batch arrive in: a position opened
+  at time `t` owes nothing for the time before `t`, and a position closed at `t` pays
+  for all of it.
+- **Gaps.** Each span between two settlements is charged at the pre-gap rate for at
+  most one funding interval (1 h). The rest of a longer gap, such as a pause or an
+  outage, is not charged.
+- **Rounding.** The carry is exact: the part of a span's funding too small to move the
+  index is kept as a remainder over `RATE_SCALE × FUNDING_INTERVAL_MS`, so many short
+  spans add up to exactly what one long span at the same rate would. The span's
+  notional is the validated index price at its end. Position-level `funding_owed`
+  still truncates toward zero; that residue stays in the clearing pool.
+- **Idle markets.** A tick that observes a zero rate while the stored rate is zero
+  changes nothing, so an idle market's ticks leave the state root unchanged.
+- **Wind-down.** `SettleAll` carries no time, so it settles the committed index only.
+  The span since the market's last settlement is not charged.
+
+**Bounds the guest proves.** The rate is clamped to ±0.05% per hour; the funding mark
+must lie within the market's mark band around the signed index
+(`max_mark_deviation_ratio`, 5% by default); each gap is charged for at most 1 h; and
+the carry is exact. The payment notional is always the validated index, so a
+manipulated mark can move the rate within the clamp but never scale the payment.
+
+**What the sequencer chooses.** The funding mark and the timing of ops. At launch
+the mark is an impact-notional mid: the midpoint of the average prices at which
+$1,000 of notional would fill on each side of the book, falling back to the oracle
+index when either side lacks that depth, and averaged over time across the open
+window. Three rules make it costly to move:
+
+- **Fillable depth only.** A resting order counts as depth only if the engine could
+  fill it now. Its price must lie inside the market's fill band around the signed
+  index (`max_fill_deviation_ratio`, 2% by default), and its maker must be able to
+  settle the fill within its margin. An order admitted below the order minimum
+  because it reduced the maker's position counts only while it still reduces, as
+  settlement fills it, so stacking such orders gives no depth beyond that position.
+  A quote no taker could trade against does not move the mark. The sample walks
+  only the fill band and at most 4,096 resting orders of a side
+  (`FUNDING_IMPACT_MAX_ORDERS`); a side that would need more counts as a side
+  without the depth, so its mark is the index.
+- **Sampled where takers trade.** The sequencer samples the book once per tick,
+  before that tick's batch is matched, so each sample is the book the tick's takers
+  face. Each sample prices the time since the previous tick. A quote withdrawn
+  before the next tick never counts, and a quote placed in a tick does not move
+  that tick's mark.
+- **Bounded weight.** Each sample, and the average, is capped at the premium at
+  which the rate already reaches its clamp (0.05% of the index). The average
+  divides by at least 7 s (`FUNDING_MARK_MIN_SPAN_MS`), so time before that counts
+  at the index. One 700 ms tick's sample therefore moves the rate by at most a
+  tenth of the clamp.
+
+So moving the rate takes depth that takers can trade against, held over the window,
+not one quote. Time-correctness of the attribution above assumes an honest
+sequencer.
+
+— `crates/perp-core/src/funding.rs` (`FundingState::settle_to`, `accrue`,
+`index_at`), `crates/perp-core/src/engine.rs`; tests in
+`crates/perp-core/tests/funding_attribution.rs` and the `funding.rs` unit tests. The
+sequencer's pre-trade check reads the index through `index_at`, so it agrees with
+the engine. The mark is built in `crates/sequencer/src/lib.rs`
+(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_IMPACT_MAX_ORDERS`,
+`FUNDING_MARK_MIN_SPAN_MS`);
+tests in `crates/sequencer/tests/admission_and_funding_mark.rs`.
+
+**Limit.** A pause is charged at the rate in force before it, for at most one hour.
+
+## Q9 — What stops dust positions and dust traffic?
+
+**Mechanism — rounding up and a floor, in the guest.** Maintenance and initial margin
+round the notional and the ratio product **up**, so any non-zero size at a positive
+mark needs a positive margin. Initial margin is never below **$1**
+(`MIN_INITIAL_MARGIN`). The floor applies wherever initial margin is checked:
+opening, increasing or flipping a position, and unbinding from one that stays open.
+Reductions, closes, liquidation and the wind-down check maintenance margin or
+nothing, so the floor never traps a position. Fees and penalties keep the
+floor-rounded notional.
+
+An entry with zero size and zero collateral is removed by the op that would leave
+it, so a closed and emptied position, a repaid debt or a full wind-down exit leaves
+the state.
+
+**Mechanism — admission minimums, off-chain.** The gateway and sequencer also
+enforce, as policy that can be tuned without a new program key:
+
+| What | Minimum | Exempt |
+|---|---|---|
+| Order notional | $10 | reduce-only orders and orders that only reduce a position; a resting remainder below $10 keeps matching |
+| Deposit permit | $10 | — |
+| Withdrawal | $1 | withdrawing the entire free balance in that market |
+
+An order below $10 is exempt only while it really reduces. In a batch, the sequencer
+measures it against its owner's position before the batch and after the owner's
+earlier orders of that batch fill in full, and exempts it only if it reduces against
+both. If its fill would still add exposure when it executes, in its own batch or
+later while it rests on the book, settlement refuses that fill and the order leaves
+the book. When the sequencer refuses an order for its size, the batch manifest
+records the reject reason `BelowMinimumSize`. The counter order the gateway's house
+market maker places against a taker has the taker's size, so it is not held to the
+minimum itself; the taker is. The gateway places no counter for a taker that the
+sequencer's pre-trade check refuses.
+
+The gateway refuses such an order at submission with the sequencer's own rule for an
+order on its own, applied to the committed position and the same validated oracle
+price. The sequencer can still refuse an order the gateway accepted: when the oracle
+price moves between submission and the seal, or when the owner's other orders change
+the position the order meets. The gateway's initial-margin check uses the engine's
+own `initial_required`. These minimums also slow the growth of the note tree and the
+nullifier log.
+
+— `crates/perp-core/src/position.rs` (`maintenance_required`, `initial_required`),
+`crates/perp-core/src/fixed.rs` (`notional_quote_ceil`, `apply_rate_ceil`),
+`crates/perp-core/src/order.rs` (`RejectReason::BelowMinimumSize`),
+`crates/sequencer/src/lib.rs` (`MIN_ORDER_NOTIONAL`, `below_minimum_order_notional`);
+tests in `crates/perp-core/tests/position_prune.rs`,
+`crates/sequencer/tests/admission_and_funding_mark.rs` and
+`crates/gateway/src/order_minimum_tests.rs`.
+
+**Mechanism — the provable-history admission cap, off-chain.** Every batch proof
+re-derives the whole note tree and nullifier log, so proving cost, the final
+wind-down's included, grows with the history the state has accumulated. The gateway
+bounds it:
+
+| What | Hard cap | Soft cap (80%) |
+|---|---:|---:|
+| Note-tree leaves plus spent nullifiers | 13,280 | 10,624 |
+| Open position entries | 1,328 | 1,063 |
+| Unspent notes | 2,656 | 2,125 |
+
+The cap counts the outstanding deposit permits as if credited and keeps room for one
+more exit of every position entry. At the soft cap it issues no new deposit permit
+that adds to the bound at it (a top-up adds no position entry), and it registers no
+new account while the state itself is at it; outstanding permits never close
+registration. An account with no position holds permits for one market at a time, so
+it reserves at most one entry. A withdrawal that would need more room than the bound
+leaves is refused unless it is a full exit (the whole balance of a closed position),
+so the deposit of every permit already signed is credited within the bound and funds
+can always leave. Only a state already beyond a bound credits no further deposit.
+Closes, full exits and claims keep working throughout. The bounds are measured on
+the guest with the Keccak precompile: the largest
+state whose costliest batch, a wind-down with a shortfall, still fits one proof within
+the prover budget at an assumed proving rate. They are re-derived from the measured
+proving rate before launch and change without a new program key.
+
+— `crates/gateway/src/admission.rs` (`MAX_PROVABLE_HISTORY`, `MAX_POSITIONS`,
+`MAX_NOTES`); evidence in `docs/audits/2026-10-19-pkg3-measurement-gate/`; behaviour
+in `docs/API.md` (§ Admission cap).
+
 ---
 
 ## Scorecard
@@ -285,9 +490,11 @@ a hit list of soon-to-be-liquidated addresses.
 | Q4 | MM incentive | **Done** + review hardening | `market.rs`/`engine.rs` (`7cb9eea`,`1c1c34a`) |
 | Q5 | MM hedge / inventory | **Done (protocol side)** — hedge signal; external keeper is the operator's | `perp-core/src/position.rs` + gateway/UI |
 | Q6 | Liquidation privacy | **Done** + review fix | `sequencer/src/lib.rs` (`7e9186d`,`8aa3559`) |
-| Q7 | Bad-debt attribution | **Done** (ADL + halt) | `engine.rs` (`c3f2930`) |
+| Q7 | Bad-debt attribution | **Done** (insurance → treasury → capped ADL → halt) | `engine.rs`, `position.rs` (`adl_clawable`) |
+| Q8 | Funding attribution | **Done** — stored rate, exact carry, settlement at every position touch | `funding.rs`, `engine.rs` |
+| Q9 | Dust | **Done** — rounded-up margin with a $1 floor; off-chain admission minimums and a measured history cap | `position.rs`, gateway, sequencer |
 
-All seven now have their protocol-owned mechanism in code with tests, each through
+All nine now have their protocol-owned mechanism in code with tests, each through
 an adversarial review pass. Q2's layered recovery rests on those mechanisms with the
 ADL transparency receipt built; Q5's hedging *signal* is built and the hedge
 *execution* is, by design, an external keeper the operator runs against that signal

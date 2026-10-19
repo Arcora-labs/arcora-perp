@@ -95,6 +95,71 @@ class ReviewedGuestRecipeTests(unittest.TestCase):
         source.symlink_to(recipe.ROOT / "crates/sp1-guest/src/main.rs")
         self.assert_source_rejected_before_execution(root)
 
+    def test_guest_dependency_source_is_checked_with_the_source_pins(self):
+        root = self.source_copy()
+        manifest = root / "crates/sp1-guest/Cargo.toml"
+        commit = recipe.check_sp1_release.GUEST_GIT_DEPENDENCY["commit"]
+        manifest.write_text(manifest.read_text().replace(commit, "0" * 40))
+        # Even with pins that match the changed copy, the source policy refuses it.
+        pins = {name: recipe.sha(root / name) for name in recipe.clock.REVIEWED_GUEST["sources"]}
+        with (patch.object(recipe, "ROOT", root),
+              patch.dict(recipe.clock.REVIEWED_GUEST, {"sources": pins})):
+            with self.assertRaisesRegex(ValueError, "unreviewed guest dependency source"):
+                recipe.reviewed_sources()
+
+    def checkout(self, home):
+        pin = recipe.check_sp1_release.GUEST_GIT_DEPENDENCY
+        checkout = home / "git/checkouts" / (pin["name"] + "-0123456789abcdef") / pin["commit"][:7]
+        (checkout / "src").mkdir(parents=True)
+        (checkout / "src/lib.rs").write_text("pub fn keccakf() {}\n")
+        (checkout / ".cargo-ok").write_text("")
+        (checkout / ".git").mkdir()
+        (checkout / ".git/HEAD").write_text("ref: refs/heads/master\n")
+        files = {"src/lib.rs": recipe.sha(checkout / "src/lib.rs")}
+        patcher = patch.dict(pin, {"files": 1, "source_tree_sha256": recipe.tree_digest(files)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return checkout
+
+    def test_git_dependency_checkout_must_hold_the_reviewed_tree(self):
+        home = self.base / "cargo-home"
+        with self.assertRaisesRegex(ValueError, "not checked out"):
+            recipe.git_checkout_inventory(home)
+        checkout = self.checkout(home)
+        self.assertEqual(list(recipe.git_checkout_inventory(home).values())[0]["files"], 1)
+        (checkout / ".git/index").write_text("git metadata is not compiled")
+        recipe.git_checkout_inventory(home)
+        for change in ("src/lib.rs", "build.rs"):
+            with self.subTest(change=change):
+                original = (checkout / "src/lib.rs").read_text()
+                (checkout / change).write_text("// unreviewed\n")
+                with self.assertRaisesRegex(ValueError, "differs from the reviewed source tree"):
+                    recipe.git_checkout_inventory(home)
+                (checkout / "src/lib.rs").write_text(original)
+                if change == "build.rs":
+                    (checkout / change).unlink()
+        # A second checkout of the same commit (another URL spelling) must match too.
+        other = home / "git/checkouts/tiny-keccak-fedcba9876543210" / checkout.name
+        (other / "src").mkdir(parents=True)
+        (other / "src/lib.rs").write_text("// unreviewed\n")
+        with self.assertRaisesRegex(ValueError, "differs from the reviewed source tree"):
+            recipe.git_checkout_inventory(home)
+
+    def test_build_refuses_without_the_checkout_before_creating_output(self):
+        args = argparse.Namespace(cargo=self.base / "cargo", rustc=self.base / "rustc",
+                                  output_dir=self.base / "output", timeout_seconds=1)
+        args.cargo.write_text("not executed")
+        args.rustc.write_text("not executed")
+        with (patch.object(recipe, "reviewed_sources", return_value={}),
+              patch.dict(recipe.os.environ, {"CARGO_HOME": str(self.base / "empty-cargo-home")}),
+              patch.object(recipe.subprocess, "check_output",
+                           side_effect=[recipe.CARGO_VERSION, recipe.RUSTC_VERSION]),
+              patch.object(recipe.subprocess, "Popen") as build):
+            with self.assertRaisesRegex(ValueError, "not checked out"):
+                recipe.build(args)
+            build.assert_not_called()
+        self.assertFalse(args.output_dir.exists())
+
     def test_output_is_exclusive_and_outside_checkout(self):
         existing = self.base / "existing"
         existing.mkdir()

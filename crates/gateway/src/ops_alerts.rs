@@ -33,12 +33,29 @@ pub enum AlertKind {
     /// deposit permits are not being removed. Intake and settlement continue; the
     /// header format probably gained a field this gateway does not know.
     PermitGcStalled,
+    /// The engine is in close-only (a liquidation's bad debt outran insurance, the
+    /// treasury and auto-deleverage) while the L1 settlement is not. No deposit
+    /// permit is issued and no deposit is credited; governance should call
+    /// `enterCloseOnly` so the wind-down can start.
+    EngineCloseOnly,
+    /// The provable-history admission cap is reached: new deposit permits and
+    /// registrations are refused. Exits keep working.
+    AdmissionCapReached,
+    /// At boot the withdrawal-leaf counter was at or behind the engine's last
+    /// withdrawal nonce and was moved forward. The restored snapshot's counter
+    /// lagged its engine state; find out which snapshot was restored.
+    WithdrawNonceRepaired,
+    /// A deposit landed on L1 under a permit and is not credited because the hard
+    /// admission cap is reached. Ingestion stops at it, so it is the oldest
+    /// unconsumed deposit, and once it is older than the settlement's
+    /// `livenessTimeoutBlocks` anyone can put the settlement in close-only.
+    DepositBlockedAtCap,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 10] = [
+    pub const ALL: [AlertKind; 14] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -49,6 +66,10 @@ impl AlertKind {
         AlertKind::StaleAnchor,
         AlertKind::LivenessLow,
         AlertKind::PermitGcStalled,
+        AlertKind::EngineCloseOnly,
+        AlertKind::AdmissionCapReached,
+        AlertKind::WithdrawNonceRepaired,
+        AlertKind::DepositBlockedAtCap,
     ];
 }
 

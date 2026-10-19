@@ -10,6 +10,15 @@
 //! Generic over [`Hasher`] so the same structure proves out under Keccak now and
 //! Poseidon in the circuit. Empty subtree roots are precomputed per level.
 //!
+//! # Serialized form
+//!
+//! A tree is encoded as `(depth, leaves)` and nothing else. The empty-subtree
+//! roots and the leaf-membership index are derived from those two fields on every
+//! decode, so the root of a decoded tree is a function of exactly the encoded
+//! fields: the leaves are bound by the root, and the depth is bound because it
+//! fixes the number of levels the root hashes. Decoding refuses a depth outside
+//! `1..=64`, more leaves than `2^depth`, and a repeated leaf.
+//!
 //! # L1-settlement trees (no_std)
 //!
 //! This module is also the SINGLE source of truth for the withdrawals, ordered, and
@@ -22,61 +31,89 @@
 //! withdrawal leaves. `crates/gateway/src/withdrawals.rs` re-exports these so
 //! off-chain and in-circuit trees are provably the same code.
 
+use crate::error::WireError;
 use crate::hash::{Digest, Domain, Hasher};
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 use tiny_keccak::{Hasher as _, Keccak};
 
+/// The depths a tree may have: at least one level, and a capacity (`2^depth`)
+/// that the `u128` capacity arithmetic represents exactly.
+fn depth_in_range(depth: u8) -> bool {
+    (1..=64).contains(&depth)
+}
+
+/// `empty[i]` = root of an all-empty subtree of height `i`, for `i` in
+/// `0..=depth`. The one definition both [`MerkleTree::new`] and decoding use.
+fn empty_roots<H: Hasher>(depth: u8) -> Vec<Digest> {
+    let mut empty = Vec::with_capacity(depth as usize + 1);
+    empty.push(H::hash_words(Domain::MerkleEmpty, &[[0u8; 32]]));
+    for i in 0..depth as usize {
+        let lower = empty[i];
+        empty.push(H::compress(Domain::MerkleNode, &lower, &lower));
+    }
+    empty
+}
+
 /// An append-only Merkle accumulator of fixed depth.
+///
+/// Serialized as `(depth, leaves)`; see the module docs.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(bound = "", from = "MerkleTreeWire"))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "", try_from = "MerkleTreeWire"))]
 pub struct MerkleTree<H: Hasher> {
     depth: u8,
-    /// Dense leaves appended so far.
+    /// Dense leaves appended so far, in append order. Root-bound.
     leaves: Vec<Digest>,
-    /// `empty[i]` = root of an all-empty subtree of height `i`.
+    /// `empty[i]` = root of an all-empty subtree of height `i`. Derived from
+    /// `depth`; never serialized.
     empty: Vec<Digest>,
     /// SEC-026: O(log n) membership index over `leaves` — "has this commitment EVER
-    /// been appended?". NEVER serialized (`serde(skip)`): the authoritative list is
-    /// `leaves` itself (dense, insertion-ordered, root-bound), and the index is
-    /// rebuilt from it on construction and on EVERY deserialize (all deserialization
-    /// is routed through [`MerkleTreeWire`], whose `From` conversion rebuilds it),
-    /// so it is structurally impossible for the index to diverge from its anchor —
-    /// or to arrive silently empty after a snapshot/witness restore.
-    #[cfg_attr(feature = "serde", serde(skip))]
+    /// been appended?". Derived from `leaves` on construction and on every decode;
+    /// never serialized, so it cannot diverge from the root-bound list.
     leaf_set: BTreeSet<Digest>,
-    #[cfg_attr(feature = "serde", serde(skip))]
     _h: core::marker::PhantomData<H>,
 }
 
-/// The exact serialized shape of [`MerkleTree`]: its three encoded fields, in
-/// declaration order (postcard is positional), byte-identical to the pre-SEC-026
-/// derived encoding. Deserialization goes THROUGH this type (`serde(from)`), which
-/// is what guarantees the SEC-026 leaf index is populated on every load path —
-/// gateway snapshot, rollback journal, prover witness, zkVM guest alike — before a
-/// tree value can exist at all.
+/// The serialized shape of [`MerkleTree`] on decode: its two encoded fields, in
+/// order (postcard is positional). Every decode, on every load path (gateway
+/// snapshot, rollback journal, prover witness, zkVM guest), goes through
+/// [`MerkleTree::from_leaves`], which validates them and derives the rest.
 #[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
+#[serde(rename = "MerkleTree", deny_unknown_fields)]
 struct MerkleTreeWire {
     depth: u8,
     leaves: Vec<Digest>,
-    empty: Vec<Digest>,
+}
+
+/// The serialized shape of [`MerkleTree`] on encode, borrowing the leaves so
+/// encoding never clones the tree. Field for field the same as [`MerkleTreeWire`].
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize)]
+#[serde(rename = "MerkleTree")]
+struct MerkleTreeWireRef<'a> {
+    depth: u8,
+    leaves: &'a [Digest],
 }
 
 #[cfg(feature = "serde")]
-impl<H: Hasher> From<MerkleTreeWire> for MerkleTree<H> {
-    fn from(w: MerkleTreeWire) -> Self {
-        // rebuild the SEC-026 membership index from the anchored leaf list — derived
-        // from the serialized truth, never trusted from the wire.
-        let leaf_set = w.leaves.iter().copied().collect();
-        Self {
-            depth: w.depth,
-            leaves: w.leaves,
-            empty: w.empty,
-            leaf_set,
-            _h: core::marker::PhantomData,
-        }
+impl<H: Hasher> TryFrom<MerkleTreeWire> for MerkleTree<H> {
+    type Error = WireError;
+
+    fn try_from(w: MerkleTreeWire) -> Result<Self, WireError> {
+        Self::from_leaves(w.depth, w.leaves)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<H: Hasher> serde::Serialize for MerkleTree<H> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let wire = MerkleTreeWireRef {
+            depth: self.depth,
+            leaves: &self.leaves,
+        };
+        serde::Serialize::serialize(&wire, serializer)
     }
 }
 
@@ -90,21 +127,51 @@ pub struct MerkleProof {
 
 impl<H: Hasher> MerkleTree<H> {
     /// Create an empty tree of the given depth (capacity `2^depth` leaves).
+    ///
+    /// Panics on a depth outside `1..=64`: this is a setup-time constructor. Decoding
+    /// never calls it; it goes through [`MerkleTree::from_leaves`], which refuses.
     pub fn new(depth: u8) -> Self {
-        assert!((1..=64).contains(&depth), "depth out of range");
-        let mut empty = Vec::with_capacity(depth as usize + 1);
-        empty.push(H::hash_words(Domain::MerkleEmpty, &[[0u8; 32]]));
-        for i in 0..depth as usize {
-            let lower = empty[i];
-            empty.push(H::compress(Domain::MerkleNode, &lower, &lower));
-        }
+        assert!(depth_in_range(depth), "depth out of range");
         Self {
             depth,
             leaves: Vec::new(),
-            empty,
+            empty: empty_roots::<H>(depth),
             leaf_set: BTreeSet::new(),
             _h: core::marker::PhantomData,
         }
+    }
+
+    /// Rebuild a tree from its serialized fields: the depth and the leaves in
+    /// append order. Refuses a depth outside `1..=64`, more leaves than the
+    /// capacity `2^depth` (compared in `u128`, so depth 64 is exact), and a
+    /// repeated leaf. The engine's only append path refuses duplicates, so no honest
+    /// tree contains one. The empty-subtree roots and the membership index are
+    /// derived here, never taken from input.
+    pub fn from_leaves(depth: u8, leaves: Vec<Digest>) -> Result<Self, WireError> {
+        if !depth_in_range(depth) {
+            return Err(WireError("tree depth out of range"));
+        }
+        if (leaves.len() as u128) > (1u128 << depth) {
+            return Err(WireError("tree leaves exceed its capacity"));
+        }
+        let mut leaf_set = BTreeSet::new();
+        for leaf in &leaves {
+            if !leaf_set.insert(*leaf) {
+                return Err(WireError("repeated tree leaf"));
+            }
+        }
+        Ok(Self {
+            depth,
+            leaves,
+            empty: empty_roots::<H>(depth),
+            leaf_set,
+            _h: core::marker::PhantomData,
+        })
+    }
+
+    /// The tree depth (capacity `2^depth` leaves).
+    pub fn depth(&self) -> u8 {
+        self.depth
     }
 
     /// Hash a stored leaf into its level-0 node under the dedicated leaf domain.
@@ -548,9 +615,8 @@ mod tests {
     }
 
     /// SEC-026 index/anchor consistency: deserializing a tree rebuilds the leaf
-    /// index EXACTLY from `leaves` (the property `NullifierSet` lacks — here the
-    /// index is derived from the anchored list, so divergence is structurally
-    /// impossible), and the index contributes zero bytes to the encoding.
+    /// index and the empty-subtree roots EXACTLY from `(depth, leaves)`, and neither
+    /// contributes a byte to the encoding.
     #[cfg(feature = "serde")]
     #[test]
     fn sec026_deserialize_rebuilds_leaf_index_exactly() {
@@ -573,17 +639,111 @@ mod tests {
             back.leaf_set, t.leaf_set,
             "index identical to the original's"
         );
+        assert_eq!(back.empty, t.empty, "empty roots derived from the depth");
         for i in 0..50u64 {
             assert!(back.contains_leaf(&word_u64(i + 1)));
         }
         assert!(!back.contains_leaf(&word_u64(999)));
         assert_eq!(back.root(), t.root(), "root unchanged by the round-trip");
-        // the index is serde(skip)ped: re-encoding reproduces the identical bytes
+        // only (depth, leaves) are encoded: re-encoding reproduces the identical bytes
         assert_eq!(
             postcard::to_allocvec(&back).expect("re-serialize tree"),
             bytes,
-            "the index must contribute zero bytes to the encoding"
+            "derived fields must contribute zero bytes to the encoding"
         );
+    }
+
+    /// The encoding is exactly `postcard((depth, leaves))`.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn encoding_is_depth_then_leaves() {
+        let mut t = T::new(5);
+        for i in 0..3u64 {
+            t.append(word_u64(i + 7)).unwrap();
+        }
+        let expected = postcard::to_allocvec(&(5u8, t.leaves.clone())).unwrap();
+        assert_eq!(postcard::to_allocvec(&t).unwrap(), expected);
+        assert_eq!(expected.len(), 1 + 1 + 3 * 32);
+    }
+
+    #[test]
+    fn from_leaves_matches_appending() {
+        for depth in [1u8, 2, 7, 24, 63, 64] {
+            let mut appended = T::new(depth);
+            let n = core::cmp::min(3u64, 1u64 << depth.min(2));
+            for i in 0..n {
+                appended.append(word_u64(i + 1)).unwrap();
+            }
+            let rebuilt = T::from_leaves(depth, appended.leaves.clone()).expect("valid");
+            assert_eq!(rebuilt.depth(), depth);
+            assert_eq!(rebuilt.root(), appended.root(), "depth {depth}");
+            assert_eq!(rebuilt.empty, appended.empty, "depth {depth}");
+            assert_eq!(rebuilt.leaf_set, appended.leaf_set, "depth {depth}");
+        }
+    }
+
+    #[test]
+    fn from_leaves_refuses_out_of_range_depth() {
+        for depth in [0u8, 65, 200, u8::MAX] {
+            assert_eq!(
+                T::from_leaves(depth, Vec::new()).err(),
+                Some(WireError("tree depth out of range")),
+                "depth {depth}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_leaves_refuses_more_leaves_than_capacity() {
+        for depth in [1u8, 2, 3] {
+            let cap = 1usize << depth;
+            let full: Vec<Digest> = (0..cap as u64).map(|i| word_u64(i + 1)).collect();
+            assert!(
+                T::from_leaves(depth, full.clone()).is_ok(),
+                "full at {depth}"
+            );
+            let mut over = full;
+            over.push(word_u64(1_000));
+            assert_eq!(
+                T::from_leaves(depth, over).err(),
+                Some(WireError("tree leaves exceed its capacity")),
+                "over capacity at {depth}"
+            );
+        }
+    }
+
+    /// The capacity of a depth-64 tree is `2^64`, computed in `u128`: a depth-64
+    /// tree with several leaves is within capacity and decodes like any other.
+    #[test]
+    fn depth_64_capacity_is_exact() {
+        let leaves: Vec<Digest> = (0..3u64).map(|i| word_u64(i + 1)).collect();
+        let t = T::from_leaves(64, leaves.clone()).expect("within capacity");
+        assert_eq!(t.capacity(), 1u128 << 64);
+        let mut appended = T::new(64);
+        for leaf in leaves {
+            appended.append(leaf).unwrap();
+        }
+        assert_eq!(t.root(), appended.root());
+    }
+
+    #[test]
+    fn from_leaves_refuses_a_repeated_leaf() {
+        let leaves = alloc::vec![word_u64(1), word_u64(2), word_u64(1)];
+        assert_eq!(
+            T::from_leaves(4, leaves).err(),
+            Some(WireError("repeated tree leaf"))
+        );
+    }
+
+    /// The depth is bound by the root: the same leaves at a neighbouring depth
+    /// give a different root.
+    #[test]
+    fn depth_is_bound_by_the_root() {
+        let leaves: Vec<Digest> = (0..3u64).map(|i| word_u64(i + 1)).collect();
+        let at = |d: u8| T::from_leaves(d, leaves.clone()).unwrap().root();
+        assert_ne!(at(16), at(15));
+        assert_ne!(at(16), at(17));
+        assert_ne!(T::new(16).root(), T::new(17).root());
     }
 }
 

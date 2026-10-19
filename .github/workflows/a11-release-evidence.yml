@@ -22,6 +22,8 @@ jobs:
           python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py
           python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
           python3 -m unittest discover -s scripts/local-verification -p test_pin_coherence.py
+          python3 -m unittest discover -s scripts/local-verification -p test_check_reviewed_guest_execution.py
+          python3 -m unittest discover -s scripts/local-verification -p test_verify_funds_replay.py
       - name: Release manifest and repository protection policy guards
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
@@ -48,6 +50,11 @@ jobs:
           cargo audit --deny unsound --json | tee cargo-audit.json
           cargo audit --deny unsound --file crates/sp1-host/Cargo.lock --json | tee cargo-audit-host.json
           cargo audit --deny unsound --file crates/sp1-guest/Cargo.lock --json | tee cargo-audit-guest.json
+          # cargo audit matches crates.io packages only: audit the guest lock once more
+          # with the commit-pinned tiny-keccak patch under its upstream identity.
+          mkdir "$RUNNER_TEMP/guest-upstream"
+          python3 scripts/local-verification/check_sp1_release.py --upstream-audit-lock "$RUNNER_TEMP/guest-upstream/Cargo.lock"
+          cargo audit --deny unsound --file "$RUNNER_TEMP/guest-upstream/Cargo.lock" --json | tee cargo-audit-guest-upstream.json
           cargo audit --deny unsound --file crates/prover-service/Cargo.lock --json | tee cargo-audit-prover.json
           cargo audit --deny unsound --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json
       - uses: pnpm/action-setup@v4
@@ -107,6 +114,12 @@ jobs:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: 'true'
           CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: 'true'
         run: cargo test --workspace --locked --release
+      # An ignored test with a counting global allocator, so it runs alone.
+      - name: Wind-down settlement copies neither the note tree nor the nullifier log
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: 'true'
+          CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: 'true'
+        run: cargo test -p gateway --locked --release --test settle_all_allocation -- --ignored
       - run: cargo build -p perp-core --no-default-features --features serde --locked
       - run: cargo build -p matcher --no-default-features --locked
   contracts:
@@ -121,7 +134,7 @@ jobs:
       - name: Real SP1 verifier guards (no application proof claim)
         working-directory: .
         run: python3 scripts/local-verification/verify_real_proof.py --guards-only --output-dir /tmp/arcora-real-verifier-guards
-      - name: Real clock-v2 proof through adapter, settlement and vault
+      - name: Committed real clock proof (PROOF_FIXTURE) through adapter, settlement and vault
         working-directory: .
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
@@ -137,9 +150,10 @@ jobs:
       - name: Reject incomplete clock artifacts and changed guest sources
         working-directory: .
         run: python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
+      # The artifact directory defaults to PROOF_FIXTURE["dir"] (verify_clock_proof.py).
       - name: Real clock proof through verifier, settlement and vault
         working-directory: .
-        run: python3 scripts/local-verification/verify_clock_proof.py --artifact-dir contracts/integration/fixtures/clock-v2-verified --output-dir /tmp/arcora-clock-complete-proof
+        run: python3 scripts/local-verification/verify_clock_proof.py --output-dir /tmp/arcora-clock-complete-proof
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -173,23 +187,29 @@ jobs:
         run: |
           forge build --root contracts
           ARCORA_FUNDS_EVIDENCE=/tmp/arcora-local-drills/funds-lifecycle.json ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-local-drills/funds-witnesses cargo test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture
+      # The committed witnesses the required replay executes are this export's:
+      # every witness is compared byte for byte (lifecycle.json names the host, so
+      # it is not compared). A change in the gateway's witness assembly fails here.
+      - name: Lifecycle export equals the committed lifecycle witnesses
+        run: |
+          set -euo pipefail
+          committed=contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle
+          fresh=/tmp/arcora-local-drills/funds-witnesses
+          diff <(cd "$committed" && ls ./*.witness.bin) <(cd "$fresh" && ls ./*.witness.bin)
+          for witness in "$committed"/*.witness.bin; do
+            cmp "$witness" "$fresh/$(basename "$witness")"
+          done
       - name: Gateway-free refund and challenge tools against owned Anvil (contracts built above)
         run: |
           ARCORA_RUN_CLAIM_ANVIL=1 ARCORA_CLAIM_ANVIL_EVIDENCE=/tmp/arcora-local-drills/claim-tools-anvil.json python3 -m unittest discover -s scripts/claim -p test_claim_tools_anvil.py -v
-      - name: Release manifest against owned six-contract Anvil stack
+      - name: Release manifest against owned six-contract Anvil stack and the built gateway's genesis
         run: |
           forge build --root contracts/vendor/sp1-contracts
-          ARCORA_RUN_MANIFEST_ANVIL=1 ARCORA_MANIFEST_ANVIL_EVIDENCE=/tmp/arcora-local-drills/manifest-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py -v
+          ARCORA_RUN_MANIFEST_ANVIL=1 ARCORA_MANIFEST_ANVIL_EVIDENCE=/tmp/arcora-local-drills/manifest-anvil.json ARCORA_GATEWAY_BIN="$PWD/target/debug/gateway" python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py -v
       - name: Clock-stack deploy tool against owned Anvil (release artifacts observed VERIFIED)
         run: |
           ARCORA_RUN_DEPLOY_ANVIL=1 ARCORA_DEPLOY_ANVIL_EVIDENCE=/tmp/arcora-local-drills/deploy-clock-stack-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_deploy_clock_stack.py -v
-      - name: Candidate target identity against owned seven-contract Anvil stack
-        run: |
-          ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-local-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v
-      - name: Candidate fixture HTTP transport and durable lost-ack recovery (not live service)
-        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks candidate-fixture-http -- cargo test --locked -p gateway --bin gateway candidate_fixture_transport_tests -- --nocapture
-      - name: Candidate signed sealed fixture channel and recovery (not approved service)
-        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks candidate-fixture-sealed -- cargo test --locked -p gateway --bin gateway candidate_fixture_seal_tests -- --nocapture
+      # The frozen Chainlink candidate drills run in chainlink-candidate.yml.
       - name: Real cast transport against owned RPC fixtures
         run: |
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1
@@ -231,7 +251,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum crates/sp1-guest/Cargo.toml crates/sp1-guest/src/main.rs crates/perp-core/src/*.rs Cargo.lock > a11-source-hashes.txt
+          sha256sum crates/sp1-guest/Cargo.toml crates/sp1-guest/Cargo.lock crates/sp1-guest/src/main.rs crates/perp-core/src/*.rs Cargo.lock > a11-source-hashes.txt
           python3 - <<'PY' > a11-deployment-pin.json
           import json
           from pathlib import Path
@@ -245,11 +265,13 @@ jobs:
           cat > a11-limitations.txt <<'EOF'
           This CI job does NOT build the SP1 guest ELF, derive its vkey, generate a Groth16 proof,
           query the live chain, or prove that the deployment record matches the current source.
-          PR #31 includes a source-pinned clock guest, native/guest parity and a real proof verified
-          by the Rust and Solidity verifiers (checked in the foundry release gate). That evidence
-          does not bind the July deployment to the new guest. A target rollout still requires a clean
-          reproducible release build, a manifest covering service config and compiled contracts,
-          and pinned-chain address, runtime bytecode, program-vkey and state-migration checks.
+          The foundry release gate verifies the committed real proof (PROOF_FIXTURE in
+          verify_clock_proof.py) through the Rust and Solidity verifiers; its evidence records
+          proof_matches_reviewed_guest, which says whether that proof is of the source-pinned
+          reviewed guest (REVIEWED_GUEST) this checkout builds. None of that evidence binds the July
+          deployment to the reviewed guest. A target rollout still requires a clean reproducible
+          release build, a manifest covering service config and compiled contracts, and
+          pinned-chain address, runtime bytecode, program-vkey and state-migration checks.
           EOF
       - uses: actions/upload-artifact@v4
         with:

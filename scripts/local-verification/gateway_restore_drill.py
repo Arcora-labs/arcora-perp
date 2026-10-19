@@ -181,7 +181,7 @@ def run(binary, out):
                 rows = ok(port, 'GET', '/v1/orders', key=old_key)['orders']
                 require(len(rows) == 1 and rows[0]['cancellable'], 'one unfilled order before checkpoint')
                 order_id = rows[0]['orderId']
-                permit_body = {'from': address, 'amount': '1000000', 'marketId': 0, 'purpose': 'collateral'}
+                permit_body = {'from': address, 'amount': '10000000', 'marketId': 0, 'purpose': 'collateral'}
                 permit = ok(port, 'POST', '/v1/accounts/deposit/authorize', permit_body, old_key)
                 require(type(permit.get('validUntil')) is int and permit['validUntil'] > 0,
                         'permit carries its validUntil deadline')

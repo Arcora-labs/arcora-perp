@@ -41,16 +41,54 @@ pub const RATE_SCALE: i128 = 1_000_000;
 /// exists to prevent.
 #[inline]
 pub fn notional_quote(size: i128, price: i128) -> Option<i128> {
-    // divisor = SIZE_SCALE * PRICE_SCALE / QUOTE_SCALE = 1e8 * 1e8 / 1e6 = 1e10
-    const DIVISOR: i128 = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
     let raw = size.checked_mul(price)?;
-    Some(raw / DIVISOR)
+    Some(raw / NOTIONAL_DIVISOR)
 }
+
+/// `SIZE_SCALE * PRICE_SCALE / QUOTE_SCALE = 1e8 * 1e8 / 1e6 = 1e10`: the scale a raw
+/// `size * price` product carries beyond [`QUOTE_SCALE`].
+const NOTIONAL_DIVISOR: i128 = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
 
 /// Multiply a quote amount by a [`RATE_SCALE`]-scaled fraction.
 #[inline]
 pub fn apply_rate(quote: i128, rate: i128) -> Option<i128> {
     quote.checked_mul(rate).map(|v| v / RATE_SCALE)
+}
+
+/// `a / d` rounded up, for `a >= 0` and `d > 0` (callers guarantee both). The `+ 1`
+/// cannot overflow: `a / d <= i128::MAX / 2` for every divisor used here.
+#[inline]
+fn div_ceil_non_negative(a: i128, d: i128) -> i128 {
+    a / d + i128::from(a % d != 0)
+}
+
+/// [`notional_quote`] rounded UP: the smallest quote amount that is at least the
+/// exact notional. Margin requirements use it, so a non-zero size at a positive
+/// price never needs zero margin.
+///
+/// Defined for non-negative inputs only: returns `None` when either input is
+/// negative, or when the product overflows.
+#[inline]
+pub fn notional_quote_ceil(size: i128, price: i128) -> Option<i128> {
+    if size < 0 || price < 0 {
+        return None;
+    }
+    let raw = size.checked_mul(price)?;
+    Some(div_ceil_non_negative(raw, NOTIONAL_DIVISOR))
+}
+
+/// [`apply_rate`] rounded UP: the smallest quote amount that is at least
+/// `quote * rate / RATE_SCALE`.
+///
+/// Defined for non-negative inputs only: returns `None` when either input is
+/// negative, or when the product overflows.
+#[inline]
+pub fn apply_rate_ceil(quote: i128, rate: i128) -> Option<i128> {
+    if quote < 0 || rate < 0 {
+        return None;
+    }
+    let raw = quote.checked_mul(rate)?;
+    Some(div_ceil_non_negative(raw, RATE_SCALE))
 }
 
 /// Absolute value that never panics (i128::MIN maps to i128::MAX).
@@ -82,6 +120,91 @@ mod tests {
         let size = SIZE_SCALE / 2;
         let price = 80_000 * PRICE_SCALE;
         assert_eq!(notional_quote(size, price), Some(40_000 * QUOTE_SCALE));
+    }
+
+    #[test]
+    fn notional_ceil_rounds_a_fractional_notional_up() {
+        // 1e-8 base at $50: the exact notional is 0.5 micro-USD.
+        assert_eq!(notional_quote(1, 50 * PRICE_SCALE), Some(0));
+        assert_eq!(notional_quote_ceil(1, 50 * PRICE_SCALE), Some(1));
+        // 1e-8 base at $150: 1.5 micro-USD.
+        assert_eq!(notional_quote(1, 150 * PRICE_SCALE), Some(1));
+        assert_eq!(notional_quote_ceil(1, 150 * PRICE_SCALE), Some(2));
+        // 1.5e-6 base at $1 is 1.5 micro-USD → 2; an exact multiple is unchanged.
+        assert_eq!(notional_quote_ceil(150, PRICE_SCALE), Some(2));
+        assert_eq!(notional_quote_ceil(200, PRICE_SCALE), Some(2));
+        assert_eq!(
+            notional_quote_ceil(SIZE_SCALE, 100_000 * PRICE_SCALE),
+            Some(100_000 * QUOTE_SCALE)
+        );
+        // zero stays zero
+        assert_eq!(notional_quote_ceil(0, 100_000 * PRICE_SCALE), Some(0));
+        assert_eq!(notional_quote_ceil(SIZE_SCALE, 0), Some(0));
+    }
+
+    #[test]
+    fn rate_ceil_rounds_a_fractional_product_up() {
+        // 5% of 1 micro-USD is 0.05 micro-USD → 1; floor gives 0.
+        assert_eq!(apply_rate(1, RATE_SCALE / 20), Some(0));
+        assert_eq!(apply_rate_ceil(1, RATE_SCALE / 20), Some(1));
+        // exact products are unchanged
+        assert_eq!(
+            apply_rate_ceil(40_000 * QUOTE_SCALE, 50_000),
+            Some(2_000 * QUOTE_SCALE)
+        );
+        assert_eq!(apply_rate_ceil(0, RATE_SCALE), Some(0));
+        assert_eq!(apply_rate_ceil(7, 0), Some(0));
+    }
+
+    #[test]
+    fn ceil_helpers_refuse_negative_inputs_and_overflow() {
+        assert_eq!(notional_quote_ceil(-1, PRICE_SCALE), None);
+        assert_eq!(notional_quote_ceil(1, -PRICE_SCALE), None);
+        assert_eq!(notional_quote_ceil(i128::MAX, 2), None);
+        assert_eq!(apply_rate_ceil(-1, RATE_SCALE), None);
+        assert_eq!(apply_rate_ceil(1, -1), None);
+        assert_eq!(apply_rate_ceil(i128::MAX, 2), None);
+        // the largest non-overflowing products still round without wrapping
+        assert_eq!(
+            notional_quote_ceil(i128::MAX, 1),
+            Some(i128::MAX / NOTIONAL_DIVISOR + 1)
+        );
+        assert_eq!(
+            apply_rate_ceil(i128::MAX, 1),
+            Some(i128::MAX / RATE_SCALE + 1)
+        );
+    }
+
+    /// Against the exact rational value: the ceil result is the smallest integer
+    /// at or above it, and differs from the floor result by at most one.
+    #[test]
+    fn ceil_helpers_match_the_exact_quotient() {
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for _ in 0..20_000 {
+            let size = (next() % (1 << 40)) as i128;
+            let price = (next() % (1 << 50)) as i128;
+            let raw = size * price;
+            let c = notional_quote_ceil(size, price).unwrap();
+            assert!(c * NOTIONAL_DIVISOR >= raw);
+            assert!(c == 0 || (c - 1) * NOTIONAL_DIVISOR < raw);
+            let f = notional_quote(size, price).unwrap();
+            assert!(c - f <= 1 && c >= f);
+
+            let quote = (next() % (1 << 60)) as i128;
+            let rate = (next() % (2 * RATE_SCALE as u64)) as i128;
+            let raw = quote * rate;
+            let c = apply_rate_ceil(quote, rate).unwrap();
+            assert!(c * RATE_SCALE >= raw);
+            assert!(c == 0 || (c - 1) * RATE_SCALE < raw);
+            let f = apply_rate(quote, rate).unwrap();
+            assert!(c - f <= 1 && c >= f);
+        }
     }
 
     #[test]

@@ -159,9 +159,13 @@ A ZK proof hides the witness from the **verifier**, never from the **prover**. A
 bare prover farm would see every position, fill, and margin in plaintext. So:
 
 - The witness is **sealed to the attested prover measurement** (`SealedWitness`).
-- `AttestedProver::prove_sealed` opens it **only if its measurement matches**, and
-  wipes its opened byte buffer on return or panic unwind. Decoded state and
-  SDK-owned copies are separate; process abort/SIGKILL cannot run the wipe guard.
+- `AttestedProver::prove_batch` opens it **only if its measurement matches**,
+  derives the public inputs from the opened witness with the native twin before
+  the backend runs, and wipes its opened byte buffer on return or panic unwind.
+  Decoded state and SDK-owned copies are separate; process abort/SIGKILL cannot
+  run the wipe guard. `prove_sealed`, which proves caller-supplied public inputs
+  without deriving them, exists only for the commitment stand-in
+  (`AttestedProver<CommitmentProver>`); a real backend has no such method.
 - A prover with the wrong measurement — e.g. a **public/outsourced GPU proving
   network (SP1/Risc0 marketplaces)** — gets `MeasurementMismatch` and cannot open
   the witness. Hence: *private batches require a self-hosted attested prover.*
