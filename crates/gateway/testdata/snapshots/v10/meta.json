@@ -1,0 +1,18 @@
+{
+  "schema": "arcora-public-snapshot-fixture/v10",
+  "synthetic_public_fixture": true,
+  "accounts": 2,
+  "orders": 2,
+  "pending_withdrawals": 1,
+  "nullifiers": 12,
+  "deposit_credits": 1,
+  "outstanding_permits": 1,
+  "plain_bytes": 12975,
+  "replay_key": "0x8fc397e9f77ab3fa93a174a5d00de1d355a9743985c9d352c7fe83bef325cbf7",
+  "withdraw_key": "0x3edf8547540892a3ecb11044bd2299c49e23c65a80dd2655715f24d1c720b7f6",
+  "recovery_owner": "0x9b3c43dff9c5476bf9902fd91c4728ae87e2b8dcf5e512541fce691622d0a564",
+  "recovery_authorizer": "0xfa17c5b66a985f44bc249c8e8fabd64767f414b1",
+  "recovery_nonce": 7,
+  "wind_down_recipient": "0x7777777777777777777777777777777777777777",
+  "scope": "Synthetic accounts and receipts under public test keys; never operational data or funds."
+}

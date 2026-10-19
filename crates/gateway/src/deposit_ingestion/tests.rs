@@ -1132,7 +1132,7 @@ async fn the_hard_cap_holds_a_landed_deposit_with_its_own_alert_while_exits_work
         wire[64] = 27 + recid.to_byte();
         gw.account_withdraw(&exiting, 0, QUOTE_SCALE, address, auth_nonce, &wire)
             .unwrap();
-        gw.admission_cap = crate::admission::provisional_cap();
+        gw.admission_cap = crate::admission::measured_cap();
     }
     assert_eq!(ingest_once(&app).await.unwrap(), 1);
     let gw = app.gw.lock().await;

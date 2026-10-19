@@ -53,11 +53,12 @@ pub(super) fn native_fixture(case: usize) -> (WindowWitness, Vec<Withdrawal>) {
 
 fn fixture(case: usize) -> Fixture {
     let (name, count, withdrawal_count) = CASES[case];
-    // PR65's unchanged native, funded Sequencer. Only value-preserving native
-    // Unbind/Withdraw and a signed funding tick are added. No fabricated deposits.
+    // The frozen seal-window baseline's native, funded Sequencer, unchanged. Only
+    // value-preserving native Unbind/Withdraw and a signed funding tick are added.
+    // No fabricated deposits.
     let mut seq: Sequencer = postcard::from_bytes(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/audits/2026-10-14-seal-window-ownership/baseline-export/",
+        "/testdata/seal-window-pkg3/",
         "normal-00-before_first_seal_seq.bin"
     )))
     .unwrap();

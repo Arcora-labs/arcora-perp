@@ -11,6 +11,11 @@ clock decoder refuses panics with `WITNESS_REFUSAL: <ProverError variant>`:
 a framed body that does not decode exactly. test_verify_funds_replay.py reads
 those texts from the Rust sources, so a message changed in the binary fails that
 test before this harness runs.
+
+The committed export (LIFECYCLE_DIR) is pinned file by file. A --witness-dir
+that names it is refused before any replay unless it holds exactly the pinned
+files with the pinned SHA-256 digests. Other directories, such as a fresh export,
+are not pinned.
 """
 import argparse
 import hashlib
@@ -18,6 +23,24 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+
+ROOT = Path(__file__).resolve().parents[2]
+# The committed funds-lifecycle export: the four wallet windows replay-funds
+# replays, the keepalive's empty window and their manifest. The gateway's funds
+# lifecycle test wrote them on its injected clock; the directory's README.md
+# records how. A re-export is a deliberate re-pin of these digests and of the
+# README's SHA-256 list (test_verify_funds_replay.py compares the two).
+LIFECYCLE_DIR = "contracts/integration/fixtures/clock-pkg3-reviewed/lifecycle"
+LIFECYCLE_MANIFEST_SHA256 = "fa4c04ae1b08b17d7beb56696fc2876b558f5042644f2fb224382a6bf9b1b1f3"
+LIFECYCLE_WITNESSES = {
+    "batch-0.witness.bin": "8d0f6c540bfe0624ab08204e1c3aebe9e24dff2306d34a7e3d47010ddfff1cb7",
+    "batch-1.witness.bin": "d5b0f13ae8925fe5975b2c67b324ab3869cbb0e94eb82c254d1dcf11226a2c98",
+    "batch-2.witness.bin": "79161f155882a14e9db392f8e07c6b8e7e3f74cef000d9ca851b1695eb43767b",
+    "batch-3.witness.bin": "97b3965c29aeeac57c8d28acadf968cc8dce871f35daa3b91a11bc5826115a57",
+    "keepalive-batch-4.witness.bin": "5c78b6e48ecd8d57e2006afb8e75100ac6840d4880e70a7df7dd51594333379a",
+}
+# The only unpinned file the committed directory may hold.
+LIFECYCLE_README = "README.md"
 
 # `perp_core::clock::WIRE_MAGIC`, the framing of the one witness encoding.
 WIRE_MAGIC = b"DPCLK4\0\0"
@@ -47,6 +70,23 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def check_committed_export(directory):
+    """Refuse `directory` unless it holds exactly the pinned committed export."""
+    pinned = dict(LIFECYCLE_WITNESSES, **{"lifecycle.json": LIFECYCLE_MANIFEST_SHA256})
+    names = {entry.name for entry in directory.iterdir()}
+    if names != set(pinned) | {LIFECYCLE_README}:
+        raise ValueError("committed lifecycle export changed: files differ from the pins")
+    for name, expected in sorted(pinned.items()):
+        path = directory / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("committed lifecycle export changed: not a regular file: " + name)
+        if digest(path) != expected:
+            raise ValueError("committed lifecycle export changed: " + name)
+    readme = directory / LIFECYCLE_README
+    if readme.is_symlink() or not readme.is_file():
+        raise ValueError("committed lifecycle export changed: not a regular file: " + LIFECYCLE_README)
+
+
 def witness_mutation(name, raw):
     """The rewritten bytes of a framed witness `raw` for decoder case `name`."""
     if not raw.startswith(WIRE_MAGIC):
@@ -72,6 +112,8 @@ def main():
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
     source = args.witness_dir.resolve(strict=True)
+    if source == (ROOT / LIFECYCLE_DIR).resolve():
+        check_committed_export(source)
     output = args.output_dir
     output.mkdir()  # Exclusive new evidence directory; preserve prior evidence.
     manifest = json.loads((source / "lifecycle.json").read_text())

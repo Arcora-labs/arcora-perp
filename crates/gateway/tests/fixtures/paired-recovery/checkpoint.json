@@ -3,13 +3,13 @@
   "synthetic_public_fixture": true,
   "created_os": "macos",
   "created_arch": "aarch64",
-  "snapshot_sha256": "a1d0036155f3cd37a2f65f45fe909a57918f2d2087423c0722da525db04ab73e",
-  "journal_sha256": "055c42499b46300e23f8ce5cd25d7d890e63d49d507f3d17db9c03622cc5ac18",
+  "snapshot_sha256": "27628b3a43f7044fba161e33d09a3e10b7fb0a456944472c8ea2ffdaa5766905",
+  "journal_sha256": "2b8cf07e9451738eaa9a2cf4b9a36d92e5fa19916b0a2ad72dcd16e5d5d19700",
   "cursor": {
     "chain": 84532,
     "vault": "0x0000000000000000000000000000000000000000",
     "count": 3,
-    "tip": "0x7d2bf6b41b8092d264af1f9f5077f49c3f456b0f98a17c1e5788acc3750a4a0a",
+    "tip": "0xf919ee4579b7a25eb890f55e40bf804f7f504a13fc12a113c9dc9c81681790fb",
     "anchor": {
       "number": 2,
       "hash": [

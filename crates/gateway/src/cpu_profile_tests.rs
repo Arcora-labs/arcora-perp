@@ -1,6 +1,7 @@
 //! Bounded diagnostic preparation measurements; no production instrumentation.
-//! The committed PR65 inputs are reused unchanged. No gateway boot, environment,
-//! service, filesystem archive, proof generation, or live clock registration.
+//! The frozen seal-window baseline inputs (testdata/seal-window-pkg3) are reused
+//! unchanged. No gateway boot, environment, service, filesystem archive, proof
+//! generation, or live clock registration.
 use crate::prover_client::{
     prepare_unproved, prove_and_prepare, PreparedSettle, ProverClient, ProverClientError,
     RemoteProveResp, RemoteRoots,
@@ -15,7 +16,7 @@ macro_rules! golden {
     ($name:literal) => {
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../docs/audits/2026-10-14-seal-window-ownership/baseline-export/",
+            "/testdata/seal-window-pkg3/",
             $name
         )) as &[u8]
     };

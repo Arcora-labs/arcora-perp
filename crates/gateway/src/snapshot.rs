@@ -505,6 +505,68 @@ mod tests {
         assert!(open(&downgraded, &seed).is_err());
     }
 
+    /// Test-side only: authenticate a genuine earlier file under its own version's
+    /// tag (v7-v9 versioned, v5/v6 unversioned) and decrypt it. `open` has no such
+    /// path; this exists to show what the refused files carry.
+    fn open_earlier(sealed: &[u8], seed: &[u8; 32], version: Option<u64>) -> Vec<u8> {
+        let nonce: Digest = sealed[8..40].try_into().unwrap();
+        let ciphertext = &sealed[72..];
+        let tag = match version {
+            Some(v) => mac_version(seed, &nonce, ciphertext, v),
+            None => mac(seed, &nonce, ciphertext),
+        };
+        assert!(ct_eq(&tag, &sealed[40..72].try_into().unwrap()));
+        let ks = keystream(seed, &nonce, ciphertext.len());
+        ciphertext.iter().zip(ks).map(|(c, k)| c ^ k).collect()
+    }
+
+    /// Every frozen v5-v9 file is refused by its envelope magic. The payloads they
+    /// authenticate under their own versions are no v10 layout either: re-sealed
+    /// under the current envelope, each snapshot payload is refused by its header
+    /// and the v9 journal by its magic, so nothing earlier is ever decoded.
+    #[test]
+    fn frozen_earlier_payloads_are_refused_by_their_headers_too() {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/snapshots");
+        let read = |name: &str| std::fs::read(fixtures.join(name)).unwrap();
+        let legacy: Vec<u8> = include_str!("deposit_ingestion/legacy-v5.hex")
+            .trim()
+            .as_bytes()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect();
+        let refused = "snapshot magic/version mismatch (this gateway reads only DPSNAP10)";
+        for (name, sealed, seed, version) in [
+            ("legacy-v5.hex", legacy, [42; 32], None),
+            ("v5", read("v5/sealed.bin"), [0xC3; 32], None),
+            ("v6", read("v6/sealed.bin"), [0xC3; 32], None),
+            ("v7", read("v7/sealed.bin"), [0xC3; 32], Some(7)),
+            ("v8", read("v8/sealed.bin"), [0xC3; 32], Some(8)),
+            ("v9", read("v9/state.snapshot"), [0x65; 32], Some(9)),
+        ] {
+            assert_eq!(open(&sealed, &seed).unwrap_err(), refused, "{name}");
+            let plain = open_earlier(&sealed, &seed, version);
+            let current = open(&seal(&plain, &seed), &seed).unwrap();
+            match crate::Gw::boot_restored(&current) {
+                Err(error) => assert_eq!(
+                    error,
+                    "snapshot payload is not the v10 gateway state layout; earlier layouts are not read",
+                    "{name}"
+                ),
+                Ok(_) => panic!("{name}: an earlier payload was decoded"),
+            }
+        }
+        let journal = read("v9/state.snapshot.rollback");
+        assert_eq!(&journal[..8], b"DPSNAP9\0");
+        let plain = open_earlier(&journal, &[0x65; 32], Some(9));
+        assert_eq!(&plain[..8], b"DPRBJL5\0");
+        assert_eq!(
+            crate::rollback_journal::open(&seal(&plain, &[0x65; 32]), &[0x65; 32]).err(),
+            Some("journal magic/version mismatch".to_string())
+        );
+    }
+
     #[test]
     fn wrong_seed_rejected() {
         let sealed = seal(b"state", &[9u8; 32]);

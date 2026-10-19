@@ -161,11 +161,11 @@ fn unbind(seq: &mut Sequencer, key: u8, amount: i128, blind: u8, at: u64) -> Not
 }
 
 fn fixture() -> (WindowWitness, Vec<Withdrawal>) {
-    // Actual PR65 old-source Sequencer bytes: funded positions and a real open
+    // Frozen seal-window baseline Sequencer bytes: funded positions and a real open
     // window, with fixed historical signed oracles and no new mint constructor.
     let mut seq: Sequencer = postcard::from_bytes(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/audits/2026-10-14-seal-window-ownership/baseline-export/",
+        "/testdata/seal-window-pkg3/",
         "normal-00-before_first_seal_seq.bin"
     )))
     .unwrap();
