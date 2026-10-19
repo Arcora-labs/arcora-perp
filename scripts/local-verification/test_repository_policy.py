@@ -87,6 +87,29 @@ class RepositoryPolicyTests(unittest.TestCase):
             with self.subTest(absent=marker):
                 self.assertNotIn(marker, frozen)
 
+    def test_cold_guest_rebuild_runs_when_a_guest_identity_input_changes(self):
+        workflow = (ROOT / ".github/workflows/guest-cold-rebuild.yml").read_text()
+        trigger, jobs = workflow.split("jobs:", 1)
+        for path in ("crates/sp1-guest/**", "crates/perp-core/**", "Cargo.toml",
+                     "scripts/local-verification/check_sp1_release.py",
+                     "scripts/local-verification/rebuild_reviewed_guest.py",
+                     "scripts/local-verification/cold_rebuild_reviewed_guest.py",
+                     "scripts/local-verification/verify_clock_proof.py",
+                     "scripts/local-verification/release_manifest.py"):
+            with self.subTest(path=path):
+                self.assertIn(f"      - '{path}'", trigger)
+        # The cold job checks the guest's dependency-source policy before it fetches.
+        self.assertLess(jobs.index("python3 scripts/local-verification/check_sp1_release.py"),
+                        jobs.index("python3 scripts/local-verification/cold_rebuild_reviewed_guest.py"))
+
+    def test_dependency_audit_covers_the_guest_git_patch(self):
+        # cargo audit matches crates.io packages only, so the guest lock is also
+        # audited with the git-pinned patch under its upstream identity.
+        workflow = (ROOT / ".github/workflows/a11-release-evidence.yml").read_text()
+        self.assertIn("cargo audit --deny unsound --file crates/sp1-guest/Cargo.lock", workflow)
+        self.assertIn("check_sp1_release.py --upstream-audit-lock", workflow)
+        self.assertIn('cargo audit --deny unsound --file "$RUNNER_TEMP/guest-upstream/Cargo.lock"', workflow)
+
     def test_every_opt_in_anvil_suite_runs_in_a_workflow(self):
         # An `ARCORA_RUN_*` gate that no workflow sets is a suite CI always skips.
         import re

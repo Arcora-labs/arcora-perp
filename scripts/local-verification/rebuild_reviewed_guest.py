@@ -2,8 +2,12 @@
 """Rebuild the reviewed clock ELF in a new target on the pinned ARM64 Mac tools.
 
 Normalizes two Cargo crate identities and embedded paths after verifying all 21
-reviewed guest source pins. Never changes source, ELF/vkey pins, or existing targets.
-Same-machine cached dependencies only; this does not generate or verify a proof.
+reviewed guest source pins and the guest's dependency-source policy (crates.io
+only, plus the commit-pinned tiny-keccak precompile patch). Never changes source,
+ELF/vkey pins, or existing targets. Same-machine cached dependencies only: the
+build is offline, so the patch must already be checked out in CARGO_HOME, and its
+checked-out files are compared with the reviewed tree before and after the build.
+This does not generate or verify a proof.
 """
 import argparse
 import hashlib
@@ -16,6 +20,7 @@ import subprocess
 import sys
 import time
 
+import check_sp1_release
 import verify_clock_proof as clock
 import release_manifest
 
@@ -50,7 +55,51 @@ def sha(path):
 
 def reviewed_sources():
     release_manifest.verify_reviewed_guest(ROOT)
+    errors = check_sp1_release.guest_dependency_errors(ROOT)
+    require(not errors, "unreviewed guest dependency source; rebuild and reprove: " + "; ".join(errors))
     return {name: sha(ROOT / name) for name in clock.REVIEWED_GUEST["sources"]}
+
+
+def cargo_home(env):
+    """The CARGO_HOME Cargo uses for this environment (Cargo's own default)."""
+    return Path(env["CARGO_HOME"]) if env.get("CARGO_HOME") else Path.home() / ".cargo"
+
+
+def tree_digest(files):
+    return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def git_checkout_inventory(home):
+    """Bind every checkout of the reviewed git dependency commit in CARGO_HOME.
+
+    Cargo checks a git dependency out once per commit and reuses the files on
+    later builds without re-verifying them, so each checkout of the pinned commit
+    must hold exactly the reviewed files: no extra, missing, changed or
+    symlinked file outside `.git`. Cargo's `.cargo-ok` marker is the only extra.
+    """
+    pin = check_sp1_release.GUEST_GIT_DEPENDENCY
+    checkouts = sorted((home / "git/checkouts").glob(pin["name"] + "-*/" + pin["commit"][:7]))
+    require(checkouts, "reviewed git dependency is not checked out in CARGO_HOME; fetch the guest lock first")
+    result = {}
+    for checkout in checkouts:
+        require(checkout.is_dir() and not checkout.is_symlink() and not checkout.parent.is_symlink(),
+                "regular git dependency checkout directory required")
+        files = {}
+        for path in checkout.rglob("*"):
+            relative = path.relative_to(checkout)
+            if relative.parts[0] == ".git":
+                continue
+            require(not path.is_symlink(), "symlinked git dependency file refused")
+            if path.is_dir():
+                continue
+            require(path.is_file(), "regular git dependency file required")
+            if relative.as_posix() != ".cargo-ok":
+                files[relative.as_posix()] = sha(path)
+        tree = tree_digest(files)
+        require(len(files) == pin["files"] and tree == pin["source_tree_sha256"],
+                "git dependency checkout differs from the reviewed source tree")
+        result[checkout.relative_to(home).as_posix()] = {"files": len(files), "source_tree_sha256": tree}
+    return result
 
 
 def normalized_args(args, root=ROOT, cwd=None):
@@ -111,6 +160,8 @@ def build(args):
     rustc_version = subprocess.check_output([str(rustc), "-vV"], text=True, timeout=15).strip()
     require(cargo_version == CARGO_VERSION, "different Cargo build; this recipe pins 1.99.0")
     require(rustc_version == RUSTC_VERSION, "different SP1 compiler; reviewed recipe is ARM64 macOS only")
+    home = cargo_home(os.environ)
+    checkouts = git_checkout_inventory(home)  # Offline build: the reviewed commit must be checked out.
     output = prepare_output(args.output_dir)
     wrapper = output / "rustc-wrapper.sh"
     wrapper_args = [sys.executable, str(Path(__file__).resolve()), "--compiler-wrapper",
@@ -141,6 +192,7 @@ def build(args):
             raise RuntimeError("owned build process group timed out; no success manifest") from None
     require(code == 0, f"guest build failed ({code}); inspect build.log")
     require(reviewed_sources() == sources, "source changed during build")
+    require(git_checkout_inventory(home) == checkouts, "git dependency checkout changed during build")
     elf = output / "target" / TARGET / "release/perp-core-guest"
     require(elf.is_file() and not elf.is_symlink(), "regular compiled ELF required")
     require(sha(elf) == clock.REVIEWED_GUEST["elf"], "compiled ELF differs from independently reviewed pin")
@@ -152,6 +204,8 @@ def build(args):
         "elf_bytes": elf.stat().st_size, "elf_path": str(elf),
         "source_pins_before_and_after": sources, "fresh_target": True,
         "dependency_registry_cache_reused": True, "independent_machine": False,
+        "git_dependency": dict(check_sp1_release.GUEST_GIT_DEPENDENCY),
+        "git_dependency_checkouts": checkouts,
         "compiler_metadata_normalization": METADATA,
         "path_remap": {"from": str(ROOT), "to": REFERENCE_ROOT}, "compiler_flags": FLAGS,
         "cargo": cargo_version, "rustc": rustc_version,

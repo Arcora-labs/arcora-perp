@@ -50,6 +50,11 @@ jobs:
           cargo audit --deny unsound --json | tee cargo-audit.json
           cargo audit --deny unsound --file crates/sp1-host/Cargo.lock --json | tee cargo-audit-host.json
           cargo audit --deny unsound --file crates/sp1-guest/Cargo.lock --json | tee cargo-audit-guest.json
+          # cargo audit matches crates.io packages only: audit the guest lock once more
+          # with the commit-pinned tiny-keccak patch under its upstream identity.
+          mkdir "$RUNNER_TEMP/guest-upstream"
+          python3 scripts/local-verification/check_sp1_release.py --upstream-audit-lock "$RUNNER_TEMP/guest-upstream/Cargo.lock"
+          cargo audit --deny unsound --file "$RUNNER_TEMP/guest-upstream/Cargo.lock" --json | tee cargo-audit-guest-upstream.json
           cargo audit --deny unsound --file crates/prover-service/Cargo.lock --json | tee cargo-audit-prover.json
           cargo audit --deny unsound --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json
       - uses: pnpm/action-setup@v4
@@ -227,7 +232,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum crates/sp1-guest/Cargo.toml crates/sp1-guest/src/main.rs crates/perp-core/src/*.rs Cargo.lock > a11-source-hashes.txt
+          sha256sum crates/sp1-guest/Cargo.toml crates/sp1-guest/Cargo.lock crates/sp1-guest/src/main.rs crates/perp-core/src/*.rs Cargo.lock > a11-source-hashes.txt
           python3 - <<'PY' > a11-deployment-pin.json
           import json
           from pathlib import Path

@@ -2,8 +2,11 @@
 """Rebuild the reviewed guest with empty Cargo/home/target directories.
 
 Uses an independently SHA-pinned official SP1 compiler archive, locked registry
-archives fetched into a new cache, then an offline compile. Does not generate a
-proof or infer machine independence from self-reported CI environment variables.
+archives fetched into a new cache, the one commit-pinned git dependency (the
+tiny-keccak precompile patch, check_sp1_release.GUEST_GIT_DEPENDENCY) fetched
+and checked against its reviewed source tree, then an offline compile. Does not
+generate a proof or infer machine independence from self-reported CI environment
+variables.
 """
 import argparse
 import hashlib
@@ -27,7 +30,9 @@ TOOLCHAIN_URL = ('https://github.com/succinctlabs/rust/releases/download/'
 TOOLCHAIN_SHA256 = '8ee4ea0f27efbf73ddfe8a2038ced4c0802fdcf9e1ee109349763b9f4a808cf6'
 RUSTC_SHA256 = '985c33069083f55ed42b68ef51a8528d0cb1632e43428ffdb5c489306154f964'
 REFERENCE_CARGO_HOME = '/Users/huseyinarslan/.cargo'
-REGISTRY_SOURCE = 'registry+https://github.com/rust-lang/crates.io-index'
+REGISTRY_SOURCE = recipe.check_sp1_release.REGISTRY_SOURCE
+GIT_DEPENDENCY = recipe.check_sp1_release.GUEST_GIT_DEPENDENCY
+GIT_SOURCE = recipe.check_sp1_release.GUEST_GIT_SOURCE
 
 
 def require(ok, label):
@@ -85,12 +90,18 @@ def unpack_toolchain(archive, destination):
     return rustc
 
 
+def reviewed_git_package(package):
+    """The lock entry of the one reviewed git dependency, and nothing looser."""
+    return (package['source'] == GIT_SOURCE and package['name'] == GIT_DEPENDENCY['name']
+            and package['version'] == GIT_DEPENDENCY['version'] and 'checksum' not in package)
+
+
 def registry_inventory(home, lock_path):
     """Require every fetched archive to match its reviewed lock checksum."""
     lock = tomllib.loads(lock_path.read_text())
     expected = {}
     for package in lock['package']:
-        if 'source' not in package:
+        if 'source' not in package or reviewed_git_package(package):
             continue
         require(package['source'] == REGISTRY_SOURCE, 'unreviewed dependency registry or git source')
         name = package['name'] + '-' + package['version'] + '.crate'
@@ -104,6 +115,34 @@ def registry_inventory(home, lock_path):
         require(actual[path.name] == expected[path.name], 'locked dependency archive checksum mismatch')
     require(actual == expected and bool(actual), 'incomplete locked registry fetch')
     return actual
+
+
+def git_inventory(home, lock_path):
+    """Bind the fetched git dependency to its lock pin and reviewed source tree.
+
+    The lock must name exactly the reviewed repository and commit. The new cache
+    may hold only that dependency's database and its one checkout of that commit,
+    whose files must equal the reviewed tree (recipe.git_checkout_inventory).
+    """
+    lock = tomllib.loads(lock_path.read_text())
+    git = [p for p in lock.get('package', []) if p.get('source', '').startswith('git+')]
+    require(len(git) == 1 and reviewed_git_package(git[0]), 'unreviewed git dependency in the guest lock')
+    checkouts = recipe.git_checkout_inventory(home)
+    require(len(checkouts) == 1, 'ambiguous git dependency checkout')
+    checkout = PurePosixPath(next(iter(checkouts)))
+    root = home / 'git'
+    require(root.is_dir() and not root.is_symlink(), 'regular git cache directory required')
+    database = root / 'db' / checkout.parts[2]
+    require(database.is_dir() and not database.is_symlink(), 'regular git database directory required')
+    # Cargo's cache-directory marker is the only other entry it writes here.
+    tag = root / 'CACHEDIR.TAG'
+    require(not tag.exists() or (tag.is_file() and not tag.is_symlink()), 'regular cache marker required')
+    entries = {p.relative_to(root).as_posix() for p in (*root.glob('checkouts/*/*'), *root.glob('db/*'))}
+    require({p.name for p in root.iterdir()} - {'CACHEDIR.TAG'} == {'checkouts', 'db'}
+            and entries == {'/'.join(checkout.parts[1:]), 'db/' + checkout.parts[2]},
+            'unexpected git cache entry')
+    return {'repository': GIT_DEPENDENCY['repository'], 'commit': GIT_DEPENDENCY['commit'],
+            'lock_source': GIT_SOURCE, 'checkout': checkout.as_posix(), **checkouts[checkout.as_posix()]}
 
 
 def unpacked_registry_inventory(home, archives):
@@ -230,6 +269,8 @@ def build(args):
         result['registry_archives_sha256'] = dependencies
         unpacked = unpacked_registry_inventory(output / 'cargo-home', dependencies)
         result['registry_sources'] = unpacked
+        git_sources = git_inventory(output / 'cargo-home', ROOT / 'crates/sp1-guest/Cargo.lock')
+        result['git_sources'] = git_sources
         wrapper = output / 'rustc-wrapper.sh'
         invocation_log = output / 'compiler-invocations.jsonl'
         wrapper_args = [sys.executable, str(Path(__file__).resolve()), '--compiler-wrapper', str(rustc),
@@ -247,6 +288,8 @@ def build(args):
                 'dependency archives changed during build')
         require(unpacked_registry_inventory(output / 'cargo-home', dependencies) == unpacked,
                 'extracted dependency sources changed during build')
+        require(git_inventory(output / 'cargo-home', ROOT / 'crates/sp1-guest/Cargo.lock') == git_sources,
+                'git dependency checkout changed during build')
         require(sha(__file__) == result['recipe_sha256'] and sha(recipe.__file__) == result['base_recipe_sha256'],
                 'build recipe changed during compilation')
         require(sha(cargo) == result['cargo_sha256'] and sha(rustc) == result['rustc_sha256'],

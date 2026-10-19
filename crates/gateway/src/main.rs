@@ -1710,7 +1710,7 @@ struct Gw {
     oracle_crosschecks: HashMap<u64, oracle_feed::crosscheck::CrosscheckGate>,
     /// The provable-history admission cap (`admission`). Runtime policy, never
     /// persisted: every boot and restore runs with the binary's cap.
-    #[serde(skip, default = "admission::provisional_cap")]
+    #[serde(skip, default = "admission::measured_cap")]
     admission_cap: admission::AdmissionCap,
 }
 
@@ -2259,7 +2259,7 @@ impl Gw {
             order_log: order_log::OrderLog::new(derive_log_pub(&enclave_seed)),
             oracle_signer,
             oracle_crosschecks: HashMap::new(),
-            admission_cap: admission::provisional_cap(),
+            admission_cap: admission::measured_cap(),
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.

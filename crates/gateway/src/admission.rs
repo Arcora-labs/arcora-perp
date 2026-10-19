@@ -22,7 +22,8 @@
 //!   either, and a held permit is no longer re-signed. Exits keep working at both,
 //!   so funds can always leave. The soft cap counts what the outstanding permits
 //!   will add once their deposits are credited, so the permits already signed fit
-//!   below it and the margin up to the hard cap is left to exits.
+//!   below it and the margin up to the hard cap is left to exits. The bounds
+//!   (`MAX_PROVABLE_HISTORY`, `MAX_POSITIONS`, `MAX_NOTES`) are measured.
 use super::*;
 use std::collections::BTreeSet;
 
@@ -33,19 +34,27 @@ pub(crate) const MIN_DEPOSIT_PERMIT: u128 = 10 * QUOTE_SCALE as u128;
 /// whole free balance of its market.
 pub(crate) const MIN_WITHDRAWAL: i128 = QUOTE_SCALE;
 
-/// PROVISIONAL bound on the provable history: note-tree leaves plus spent
-/// nullifiers. A placeholder until the CPU measurement gate measures the bound a
-/// phase-0 and a phase-1 proof can still carry, with margin; the measured value
-/// replaces it. It is admission policy only and changes no program key.
-pub(crate) const PROVISIONAL_MAX_PROVABLE_HISTORY: u64 = 100_000;
+/// Bound on the provable history: note-tree leaves plus spent nullifiers.
+///
+/// Measured by the CPU measurement gate on the keccak-precompile guest
+/// (`docs/audits/2026-10-19-pkg3-measurement-gate/`): the largest history, in
+/// steps of 80, at which the costliest batch (a phase-1 wind-down whose shortfall
+/// reissues every note) still fits one proof. A proof may take half of the 900 s
+/// prover budget, less the 250 s Groth16 wrap, at an assumed proving rate of
+/// 1,000,000 cycles/s; the cost counts the precompile's proving work through SP1
+/// gas. GPU day re-derives this bound, and the two below, from the measured
+/// proving rate. Admission policy only: changing it needs no new program key.
+pub(crate) const MAX_PROVABLE_HISTORY: u64 = 13_280;
 
-/// PROVISIONAL bound on position entries (the wind-down settles every one of
-/// them in a single proof). Replaced by the measured value with the history bound.
-pub(crate) const PROVISIONAL_MAX_POSITIONS: u64 = 10_000;
+/// Bound on position entries (the wind-down settles every one of them in a
+/// single proof): a tenth of `MAX_PROVABLE_HISTORY`, the ratio the gate measured
+/// the bound with. Same evidence and GPU-day re-derivation.
+pub(crate) const MAX_POSITIONS: u64 = 1_328;
 
-/// PROVISIONAL bound on unspent notes (the wind-down may reissue every one of
-/// them in a single proof). Replaced by the measured value with the history bound.
-pub(crate) const PROVISIONAL_MAX_NOTES: u64 = 20_000;
+/// Bound on unspent notes (the wind-down may reissue every one of them in a
+/// single proof): a fifth of `MAX_PROVABLE_HISTORY`, the ratio the gate measured
+/// the bound with. Same evidence and GPU-day re-derivation.
+pub(crate) const MAX_NOTES: u64 = 2_656;
 
 /// Returned by deposit ingestion while the engine is in close-only.
 pub(crate) const ENGINE_CLOSE_ONLY_INTAKE: &str = "the engine is in close-only: no deposit is \
@@ -97,16 +106,16 @@ pub(crate) struct AdmissionCap {
     pub max_notes: u64,
 }
 
-/// The cap a gateway runs with until the measured bounds land.
-pub(crate) fn provisional_cap() -> AdmissionCap {
+/// The cap every gateway runs with: the measured bounds.
+pub(crate) fn measured_cap() -> AdmissionCap {
     AdmissionCap {
-        max_history: PROVISIONAL_MAX_PROVABLE_HISTORY,
-        max_positions: PROVISIONAL_MAX_POSITIONS,
-        max_notes: PROVISIONAL_MAX_NOTES,
+        max_history: MAX_PROVABLE_HISTORY,
+        max_positions: MAX_POSITIONS,
+        max_notes: MAX_NOTES,
     }
 }
 
-/// 80% of `max`, rounded down.
+/// 80% of `max`, rounded up (`max` less a fifth of it, the fifth rounded down).
 fn soft(max: u64) -> u64 {
     max - max / 5
 }
@@ -604,9 +613,36 @@ mod tests {
         assert!(cap.hard_reached(size(100, 0, 0)));
         assert!(cap.hard_reached(size(0, 10, 0)));
         assert!(cap.hard_reached(size(0, 0, 20)));
-        let provisional = provisional_cap();
-        assert!(provisional.soft_reached(size(80_000, 0, 0)));
-        assert!(!provisional.soft_reached(size(79_999, 7_999, 15_999)));
+    }
+
+    /// The measured bounds and their soft caps, as recorded in
+    /// `docs/audits/2026-10-19-pkg3-measurement-gate/measurement.json`
+    /// (`scripts/local-verification/test_pin_coherence.py` compares the two).
+    #[test]
+    fn the_measured_cap_is_the_gate_s_recommendation() {
+        let cap = measured_cap();
+        assert_eq!(
+            cap,
+            AdmissionCap {
+                max_history: 13_280,
+                max_positions: 1_328,
+                max_notes: 2_656,
+            }
+        );
+        assert_eq!(MAX_PROVABLE_HISTORY % 80, 0);
+        assert_eq!(MAX_POSITIONS, MAX_PROVABLE_HISTORY / 10);
+        assert_eq!(MAX_NOTES, MAX_PROVABLE_HISTORY / 5);
+        assert_eq!(soft(MAX_PROVABLE_HISTORY), 10_624);
+        assert_eq!(soft(MAX_POSITIONS), 1_063);
+        assert_eq!(soft(MAX_NOTES), 2_125);
+        assert!(cap.soft_reached(size(10_624, 0, 0)));
+        assert!(cap.soft_reached(size(0, 1_063, 0)));
+        assert!(cap.soft_reached(size(0, 0, 2_125)));
+        assert!(!cap.soft_reached(size(10_623, 1_062, 2_124)));
+        assert!(cap.hard_reached(size(13_280, 0, 0)));
+        assert!(cap.hard_reached(size(0, 1_328, 0)));
+        assert!(cap.hard_reached(size(0, 0, 2_656)));
+        assert!(!cap.hard_reached(size(13_279, 1_327, 2_655)));
     }
 
     #[test]
@@ -642,7 +678,7 @@ mod tests {
         assert_eq!(gw.credit_refusal(), None);
         gw.admission_cap.max_history = 8;
         assert_eq!(gw.credit_refusal(), Some(HISTORY_CAP_INTAKE));
-        gw.admission_cap = provisional_cap();
+        gw.admission_cap = measured_cap();
         assert_eq!(gw.registration_refusal(), None);
         assert!(!gw
             .ops_alerts

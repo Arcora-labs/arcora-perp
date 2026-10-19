@@ -195,9 +195,18 @@ ZK-001 minors):
 
   Re-check these against the measured prover p99 and Base finality before the
   window; the tool enforces only the floors.
+- The gateway's admission cap is built in (`crates/gateway/src/admission.rs`):
+  13,280 history (note-tree leaves plus spent nullifiers), 1,328 position entries
+  and 2,656 unspent notes, soft cap at 80%. It was measured for `anchor_timeout_ms`
+  3,600,000 and `PROVER_TIMEOUT_SECS` 900 at an assumed 1,000,000 cycles/s
+  (`docs/audits/2026-10-19-pkg3-measurement-gate/`). A shorter anchor timeout, a
+  shorter prover timeout or a slower prover lowers the bound; re-derive it from the
+  GPU dry run below before changing either.
 - GPU dry run before the window: prove an **empty keepalive batch** and a normal
   batch under the real guest. The keepalive is what keeps an idle stack out of the
-  liveness timeout.
+  liveness timeout. Also prove phase 0, phase 1 and the phase-1 variant with a
+  shortfall at the admission cap, record the proving time and the sustained rate,
+  and re-derive the cap from that rate with the formula in the measurement gate.
 
 **0e. Stage the frontend build.** Everything is merged; contract addresses
 are build-time env (`VITE_COLLATERAL_VAULT`, `VITE_MOCK_USDC`; unset keeps the

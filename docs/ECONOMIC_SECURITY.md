@@ -442,6 +442,28 @@ tests in `crates/perp-core/tests/position_prune.rs`,
 `crates/sequencer/tests/admission_and_funding_mark.rs` and
 `crates/gateway/src/order_minimum_tests.rs`.
 
+**Mechanism — the provable-history admission cap, off-chain.** Every batch proof
+re-derives the whole note tree and nullifier log, so proving cost, the final
+wind-down's included, grows with the history the state has accumulated. The gateway
+bounds it:
+
+| What | Hard cap | Soft cap (80%) |
+|---|---:|---:|
+| Note-tree leaves plus spent nullifiers | 13,280 | 10,624 |
+| Open position entries | 1,328 | 1,063 |
+| Unspent notes | 2,656 | 2,125 |
+
+At the soft cap it issues no new deposit permit and registers no new account; at the
+hard cap it credits no further deposit. Withdrawals, closes and claims keep working at
+both. The bounds are measured on the guest with the Keccak precompile: the largest
+state whose costliest batch, a wind-down with a shortfall, still fits one proof within
+the prover budget at an assumed proving rate. They are re-derived from the measured
+proving rate before launch and change without a new program key.
+
+— `crates/gateway/src/admission.rs` (`MAX_PROVABLE_HISTORY`, `MAX_POSITIONS`,
+`MAX_NOTES`); evidence in `docs/audits/2026-10-19-pkg3-measurement-gate/`; behaviour
+in `docs/API.md` (§ Admission cap).
+
 ---
 
 ## Scorecard
@@ -456,7 +478,7 @@ tests in `crates/perp-core/tests/position_prune.rs`,
 | Q6 | Liquidation privacy | **Done** + review fix | `sequencer/src/lib.rs` (`7e9186d`,`8aa3559`) |
 | Q7 | Bad-debt attribution | **Done** (insurance → treasury → capped ADL → halt) | `engine.rs`, `position.rs` (`adl_clawable`) |
 | Q8 | Funding attribution | **Done** — stored rate, exact carry, settlement at every position touch | `funding.rs`, `engine.rs` |
-| Q9 | Dust | **Done** — rounded-up margin with a $1 floor; off-chain admission minimums | `position.rs`, gateway, sequencer |
+| Q9 | Dust | **Done** — rounded-up margin with a $1 floor; off-chain admission minimums and a measured history cap | `position.rs`, gateway, sequencer |
 
 All nine now have their protocol-owned mechanism in code with tests, each through
 an adversarial review pass. Q2's layered recovery rests on those mechanisms with the

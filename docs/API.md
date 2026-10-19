@@ -260,8 +260,19 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    from it. The gateway records each such deposit that landed under one of its
    permits; it is refunded by the vault once the settlement is in close-only, and
    the account view then lists it (§ Refunds after close-only). Withdrawals, closes
-   and claims keep working at both levels. The bounds are provisional until
-   measured.
+   and claims keep working at both levels.
+
+   | Bound | Hard cap | Soft cap (80%) |
+   |---|---:|---:|
+   | history (note-tree leaves plus spent nullifiers) | 13,280 | 10,624 |
+   | open position entries | 1,328 | 1,063 |
+   | unspent notes | 2,656 | 2,125 |
+
+   They are measured: the largest history at which the costliest batch, a
+   wind-down with a shortfall, still fits one proof within the prover budget at an
+   assumed proving rate (`docs/audits/2026-10-19-pkg3-measurement-gate/`). They are
+   admission policy, re-derived from the measured proving rate before launch, and
+   change without a new program key.
 
    The gateway reserves no capacity for a permit. The vault's bond-capacity gate
    decides when the deposit lands, first come first served, so a permitted deposit can
