@@ -4,17 +4,26 @@
 //!
 //! The guest is the explicit `--elf` artifact, refused unless its SHA-256 equals
 //! the reviewed guest pin; no build-script ELF is embedded. Modes:
-//! - default: execute the fixture and its negatives, then derive the setup key;
+//! - default: execute the fixture, its case witnesses and its negatives, then
+//!   derive the setup key;
 //! - `--no-prove`: execution only, on the execute-only light client: no proving
 //!   stack is built, no setup is run and no key file is written;
-//! - `--prove`: as default, then generate and verify a Groth16 proof.
+//! - `--prove`: as default, then generate and verify a Groth16 proof of the
+//!   normal fixture.
 //!
-//! The fixture and every negative are encoded by `sp1_host::encode_clock_witness`.
+//! Every case witness (`sp1_host::case_witnesses`) must succeed with the guest's
+//! public value equal to the native commitment. Every negative (the clock, engine,
+//! case-derived engine and framing refusals) must be refused natively with its
+//! expected error and by the guest with a panic and no public value. The fixture,
+//! each case and each negative are encoded by `sp1_host::encode_clock_witness` and
+//! written to the output directory (`clock.witness.bin`, `cases/NAME.witness.bin`,
+//! `negatives/NAME.witness.bin`); `execution.json` records their hashes, outputs
+//! and cycle counts.
 use perp_core::hash::Keccak256;
 use serde_json::{json, Value};
 use sp1_host::{
-    clock_negative_cases, framing_negative_cases, hex, normal_witness, sha256, witness_bytes,
-    NegativeCase,
+    case_witnesses, hex, normal_witness, reviewed_negative_cases, sha256, witness_bytes,
+    CaseWitness, NegativeCase,
 };
 use sp1_sdk::{
     Elf, HashableKey, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin, StatusCode,
@@ -53,6 +62,42 @@ fn reviewed_elf(path: &Path) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+/// Execute `bytes` in the guest, which must succeed and commit `expected`.
+/// Returns the cycle count.
+async fn execute_accepted<P: Prover>(client: &P, elf: &Elf, bytes: &[u8], expected: &[u8]) -> u64 {
+    let mut stdin = SP1Stdin::new();
+    stdin.write_vec(bytes.to_vec());
+    let (values, report) = client
+        .execute(elf.clone(), stdin)
+        .expected_exit_code(StatusCode::SUCCESS)
+        .await
+        .expect("clock guest execution");
+    assert_eq!(report.exit_code, 0);
+    assert_eq!(
+        values.as_slice(),
+        expected,
+        "native and guest commitments differ"
+    );
+    report.total_instruction_count()
+}
+
+/// Execute each case witness (native twin first, then the guest; both must give
+/// the same commitment). Returns the cases' evidence.
+async fn execute_cases<P: Prover>(client: &P, elf: &Elf, cases: &[CaseWitness]) -> Vec<Value> {
+    let mut evidence = Vec::new();
+    for case in cases {
+        let commitment = prover::public_from_witness(&case.bytes)
+            .unwrap_or_else(|e| panic!("{}: native twin refused the case: {e:?}", case.name))
+            .commitment::<Keccak256>();
+        assert_eq!(commitment, case.witness.3.commitment(), "{}", case.name);
+        let cycles = execute_accepted(client, elf, &case.bytes, &commitment).await;
+        evidence.push(json!({"name":case.name,"phase":case.phase,"guest_exit":0,
+            "native_guest_equal":true,"cycles":cycles,"witness_sha256":sha256(&case.bytes),
+            "commitment":format!("0x{}",hex(&commitment))}));
+    }
+    evidence
+}
+
 /// Execute the fixture witness `bytes` (it must succeed and commit `expected`) and
 /// each negative (natively refused with its expected error, and in the guest a
 /// panic with no public values) on `client`. Returns the fixture's cycle count and
@@ -64,14 +109,7 @@ async fn execute_fixture<P: Prover>(
     expected: &[u8],
     negatives: &[NegativeCase],
 ) -> (u64, Vec<Value>) {
-    let mut stdin = SP1Stdin::new();
-    stdin.write_vec(bytes.to_vec());
-    let (values, report) = client
-        .execute(elf.clone(), stdin)
-        .expected_exit_code(StatusCode::SUCCESS)
-        .await
-        .expect("clock guest execution");
-    assert_eq!(values.as_slice(), expected);
+    let cycles = execute_accepted(client, elf, bytes, expected).await;
     let mut evidence = Vec::new();
     for case in negatives {
         assert_eq!(
@@ -92,9 +130,18 @@ async fn execute_fixture<P: Prover>(
         evidence.push(json!({"name":case.name,"guest_exit":r.exit_code,"public_bytes":v.as_slice().len(),
             "witness_sha256":sha256(&case.bytes),"native_error":format!("{:?}", case.expected_error)}));
     }
-    let cycles = report.total_instruction_count();
     println!("CLOCK_NATIVE_GUEST_PARITY_PASS cycles={cycles}");
     (cycles, evidence)
+}
+
+/// Write `bytes` as `dir/NAME.witness.bin`, refusing to overwrite.
+fn write_witness(dir: &Path, name: &str, bytes: &[u8]) {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dir.join(format!("{name}.witness.bin")))
+        .expect("fresh witness file");
+    std::io::Write::write_all(&mut file, bytes).expect("witness written");
 }
 
 fn parse_args(args: &[String]) -> Result<(String, String, Mode), String> {
@@ -142,17 +189,32 @@ async fn main() {
         w.3.commitment(),
         "native twin binds the fixture clock"
     );
-    // The five clock negatives first, then every framing the guest refuses.
-    let negative_cases: Vec<NegativeCase> = clock_negative_cases(&w)
-        .into_iter()
-        .chain(framing_negative_cases(&w))
-        .collect();
+    // The five clock negatives first, then the engine refusals of the normal
+    // fixture and of fresh or case-derived batches, then every framing the guest
+    // refuses.
+    let negative_cases: Vec<NegativeCase> = reviewed_negative_cases(&w);
+    let cases = case_witnesses();
     std::fs::write(dir.join("clock.witness.bin"), &bytes).unwrap();
     std::fs::write(dir.join("guest.elf"), &elf_bytes).unwrap();
-    let evidence = |cycles: u64, negatives: Vec<Value>| {
+    for (sub, written) in [
+        (
+            "cases",
+            cases.iter().map(|c| (c.name, &c.bytes)).collect::<Vec<_>>(),
+        ),
+        (
+            "negatives",
+            negative_cases.iter().map(|c| (c.name, &c.bytes)).collect(),
+        ),
+    ] {
+        std::fs::create_dir(dir.join(sub)).expect("fresh witness directory");
+        for (name, witness) in written {
+            write_witness(&dir.join(sub), name, witness);
+        }
+    }
+    let evidence = |cycles: u64, cases: Vec<Value>, negatives: Vec<Value>| {
         json!({"kind":"clock-pkg3-native-guest","sdk_version":"6.1.0",
             "elf_sha256":sha256(&elf_bytes),"witness_sha256":sha256(&bytes),
-            "native_guest_equal":true,"cycles":cycles,"negatives":negatives,
+            "native_guest_equal":true,"cycles":cycles,"cases":cases,"negatives":negatives,
             "commitment":format!("0x{}",hex(&expected)),"proof_generated":false,"target_contract_verified":false})
     };
     if mode == Mode::ExecuteOnly {
@@ -161,7 +223,8 @@ async fn main() {
         let client = ProverClient::builder().light().build().await;
         let (cycles, negatives) =
             execute_fixture(&client, &elf, &bytes, &expected, &negative_cases).await;
-        let mut evidence = evidence(cycles, negatives);
+        let cases = execute_cases(&client, &elf, &cases).await;
+        let mut evidence = evidence(cycles, cases, negatives);
         evidence["setup_performed"] = json!(false);
         std::fs::write(
             dir.join("execution.json"),
@@ -173,7 +236,8 @@ async fn main() {
     let client = ProverClient::builder().cpu().build().await;
     let (cycles, negatives) =
         execute_fixture(&client, &elf, &bytes, &expected, &negative_cases).await;
-    let mut evidence = evidence(cycles, negatives);
+    let cases = execute_cases(&client, &elf, &cases).await;
+    let mut evidence = evidence(cycles, cases, negatives);
     let pk = client.setup(elf).await.expect("real setup");
     let vkey = pk.verifying_key().bytes32_raw();
     std::fs::write(dir.join("program-vkey.bin"), vkey).unwrap();

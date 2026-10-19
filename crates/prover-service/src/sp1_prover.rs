@@ -15,7 +15,13 @@ const ELF: Elf = include_elf!("perp-core-guest");
 /// Describe the embedded bytes and the key captured by the existing backend
 /// setup. Reading this descriptor never constructs a client or runs setup/prove.
 pub(crate) fn program_descriptor(vkey: &str) -> serde_json::Value {
-    crate::identity::program_descriptor(&*ELF, vkey)
+    crate::identity::program_descriptor(&ELF, vkey)
+}
+
+/// The witness domains the embedded program accepts that `/prove` admits.
+/// Reads only the embedded bytes; no client, setup or proof.
+pub(crate) fn witness_domains() -> Vec<&'static str> {
+    crate::identity::witness_domains(&ELF)
 }
 
 /// Type aliases for the concrete SP1 CPU client + proving key. The `CpuProver`/

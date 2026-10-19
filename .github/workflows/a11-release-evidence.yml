@@ -23,6 +23,7 @@ jobs:
           python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
           python3 -m unittest discover -s scripts/local-verification -p test_pin_coherence.py
           python3 -m unittest discover -s scripts/local-verification -p test_check_reviewed_guest_execution.py
+          python3 -m unittest discover -s scripts/local-verification -p test_verify_funds_replay.py
       - name: Release manifest and repository protection policy guards
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py

@@ -124,6 +124,48 @@ class Bundle(unittest.TestCase):
         self.assertIn("<YOUR_SIGNER>", cmd)
 
 
+# The wind-down reserve leaf as the gateway publishes it (the POST /v1/admin/wind-down
+# `reserveSink` and the status read-out, which adds `claimable`): the only leaf of
+# its batch, so its root is the leaf itself and its proof is empty. The vector is
+# the one the gateway test `the_reserve_claim_data_is_a_claim_bundle` pins.
+RESERVE_LEAF = "0x9b70005e6c1a4d420bac265b81fa429cd6fa2dae864e709fff695e4f5330ea3e"
+
+
+def reserve_bundle(**overrides):
+    bundle = {"schema": "arcora.claim-bundle.v1", "chainId": 84532, "vault": "0x" + "ab" * 20,
+              "to": "0x" + "c0" * 20, "amount": "1234567", "nonce": 3, "leaf": RESERVE_LEAF,
+              "root": RESERVE_LEAF, "proof": []}
+    bundle.update(overrides)
+    return bundle
+
+
+class SingleLeafBundle(unittest.TestCase):
+    def test_the_reserve_leaf_checks_with_an_empty_proof(self):
+        self.assertEqual(cw.withdrawal_leaf("0x" + "c0" * 20, 1234567, 3).hex(), RESERVE_LEAF[2:])
+        self.assertEqual(cw.check_bundle(reserve_bundle()), [])
+        # The status read-out's extra `claimable` field is not part of the claim.
+        self.assertEqual(cw.check_bundle(reserve_bundle(claimable=True)), [])
+        self.assertEqual(cw.merkle_root([bytes.fromhex(RESERVE_LEAF[2:])]).hex(), RESERVE_LEAF[2:])
+
+    def test_a_single_leaf_bundle_must_still_match_its_root_and_leaf(self):
+        for name, overrides in (("root", {"root": "0x" + "22" * 32}), ("amount", {"amount": "1234566"}),
+                                ("nonce", {"nonce": 4}), ("to", {"to": "0x" + "c1" * 20})):
+            with self.subTest(name):
+                self.assertNotEqual(cw.check_bundle(reserve_bundle(**overrides)), [])
+
+    def test_the_cli_prints_the_claim_call_with_an_empty_proof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "reserve.json"
+            path.write_text(json.dumps(reserve_bundle(claimable=False)))
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = cw.main([str(path)])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("1234567 base units to 0x" + "c0" * 20 + " (nonce 3)", out.getvalue())
+        self.assertIn(f'cast send 0x{"ab" * 20} "claim(address,uint256,uint256,bytes32,bytes32[])" '
+                      f'0x{"c0" * 20} 1234567 3 {RESERVE_LEAF} "[]"', out.getvalue())
+
+
 FAKE_CAST = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys

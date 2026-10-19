@@ -197,6 +197,30 @@ class ConfigTests(unittest.TestCase):
                         self.assertRaisesRegex(ValueError, "must not be a contract address"):
                     release.public_config(value)
 
+    def test_public_dev_accounts_are_refused_as_genesis_addresses_off_a_local_chain(self):
+        anvil = ("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266", "0x70997970c51812dc3a010c7d01b50e0d17dc79c8")
+        self.assertTrue(set(anvil) <= release.PUBLIC_DEV_ADDRESSES)
+        self.assertEqual(len(release.PUBLIC_DEV_ADDRESSES), 10)
+        for chain_id in (84532, 8453, 900):
+            for field, address in zip(("wind_down_recipient", "oracle_signer"), anvil):
+                value = config()
+                value["chain_id"] = chain_id
+                value["gateway"]["L1_CHAIN_ID"] = str(chain_id)
+                value["genesis"][field] = address.upper().replace("0X", "0x")
+                if field == "wind_down_recipient":
+                    value["gateway"]["WIND_DOWN_RECIPIENT"] = address
+                with self.subTest(chain_id=chain_id, field=field), \
+                        self.assertRaisesRegex(ValueError, "public default development account"):
+                    release.public_config(value)
+        # A local test chain may use them.
+        for chain_id in sorted(release.LOCAL_TEST_CHAINS):
+            value = config()
+            value["chain_id"] = chain_id
+            value["gateway"]["L1_CHAIN_ID"] = str(chain_id)
+            value["genesis"].update(wind_down_recipient=anvil[0], oracle_signer=anvil[1])
+            value["gateway"]["WIND_DOWN_RECIPIENT"] = anvil[0]
+            self.assertEqual(release.public_config(value)["genesis"]["oracle_signer"], anvil[1])
+
     def test_genesis_addresses_differ_from_every_operator_address(self):
         value = config()
         value["operator_policy"] = operator_policy()
@@ -645,6 +669,97 @@ class TargetTests(unittest.TestCase):
 
 
 PENDING_GUEST = {"elf": "cd" * 32, "vkey": "0x" + "ab" * 32}
+
+
+def fake_gateway(directory, *, exit_code=0, extra_line=""):
+    """A stand-in `darkperp-gateway --print-genesis-root`: its root is a hash of the
+    recipient and the oracle signer, and it refuses other arguments or an inherited
+    environment."""
+    import sys
+    path = Path(directory) / "gateway"
+    path.write_text(f"""#!{sys.executable}
+import hashlib, os, sys
+args = sys.argv[1:]
+if args[:2] != ["--print-genesis-root", "--oracle-address"] or len(args) != 3:
+    sys.exit(9)
+# The caller's environment (its PATH, any key) is not inherited.
+if "PATH" in os.environ or "ORACLE_SIGNER_KEY" in os.environ or "WIND_DOWN_RECIPIENT" not in os.environ:
+    sys.exit(8)
+recipient, oracle = os.environ["WIND_DOWN_RECIPIENT"].lower(), args[2].lower()
+if {exit_code}:
+    sys.exit({exit_code})
+print("GENESIS_ROOT=0x" + hashlib.sha256((recipient + oracle).encode()).hexdigest())
+print("WIND_DOWN_RECIPIENT=" + recipient)
+print("ORACLE_SIGNER_ADDRESS=" + oracle)
+{"print(" + repr(extra_line) + ")" if extra_line else ""}
+""")
+    path.chmod(0o755)
+    return path
+
+
+def fake_root(recipient, oracle):
+    import hashlib
+    return "0x" + hashlib.sha256((recipient.lower() + oracle.lower()).encode()).hexdigest()
+
+
+class GenesisBindingTests(unittest.TestCase):
+    """--gateway-bin recomputes the genesis root from the recipient and the oracle signer."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.genesis = {"root": fake_root(RECIPIENT, ORACLE_SIGNER), "wind_down_recipient": RECIPIENT,
+                        "oracle_signer": ORACLE_SIGNER}
+
+    def test_a_matching_genesis_passes_and_no_caller_variable_reaches_the_gateway(self):
+        gateway = fake_gateway(self.tmp.name)
+        with patch.dict(os.environ, {"ORACLE_SIGNER_KEY": "0x" + "11" * 32}):
+            self.assertEqual(release.check_genesis_binding(self.genesis, gateway), self.genesis)
+
+    def test_a_wrong_oracle_signer_or_recipient_is_refused(self):
+        gateway = fake_gateway(self.tmp.name)
+        for field, other in (("oracle_signer", "0x" + "7c" * 20), ("wind_down_recipient", "0x" + "7d" * 20),
+                             ("root", "0x" + "4d" * 32)):
+            genesis = dict(self.genesis, **{field: other})
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "does not bind"):
+                release.check_genesis_binding(genesis, gateway)
+
+    def test_a_refusing_missing_or_noisy_gateway_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "refused the genesis addresses"):
+            release.check_genesis_binding(self.genesis, fake_gateway(self.tmp.name, exit_code=2))
+        with self.assertRaisesRegex(ValueError, "unexpected gateway --print-genesis-root output"):
+            release.check_genesis_binding(self.genesis, fake_gateway(self.tmp.name, extra_line="NOTE=1"))
+        with self.assertRaisesRegex(ValueError, "could not be run"):
+            release.check_genesis_binding(self.genesis, Path(self.tmp.name) / "absent")
+
+    def test_create_and_validate_recompute_when_given_a_gateway(self):
+        value = config()
+        value["genesis"]["root"] = self.genesis["root"]
+        expected = {"schema": release.SCHEMA, "public_config": release.public_config(value),
+                    "real_proof": {"status": release.clock.PROVEN}, "scope": dict(release.SCOPE)}
+        gateway = fake_gateway(self.tmp.name)
+        with patch.object(release, "build_manifest", return_value=expected):
+            self.assertEqual(release.create_manifest(release.ROOT, value, gateway_bin=gateway), expected)
+            self.assertEqual(release.validate_manifest(release.ROOT, copy.deepcopy(expected), value,
+                                                       gateway_bin=gateway), expected)
+        wrong = copy.deepcopy(expected)
+        wrong["public_config"]["genesis"]["oracle_signer"] = "0x" + "7c" * 20
+        with patch.object(release, "build_manifest", return_value=wrong):
+            with self.assertRaisesRegex(ValueError, "does not bind"):
+                release.create_manifest(release.ROOT, value, gateway_bin=gateway)
+            with self.assertRaisesRegex(ValueError, "does not bind"):
+                release.validate_manifest(release.ROOT, copy.deepcopy(wrong), value, gateway_bin=gateway)
+            # Without a gateway the configured values are taken as printed.
+            self.assertEqual(release.create_manifest(release.ROOT, value), wrong)
+
+    @unittest.skipUnless(os.environ.get("ARCORA_GATEWAY_BIN"), "set ARCORA_GATEWAY_BIN to a built gateway")
+    def test_the_real_gateway_prints_a_genesis_this_check_accepts(self):
+        gateway = Path(os.environ["ARCORA_GATEWAY_BIN"])
+        printed = release.genesis_from_gateway(gateway, RECIPIENT, ORACLE_SIGNER)
+        self.assertEqual((printed["wind_down_recipient"], printed["oracle_signer"]), (RECIPIENT, ORACLE_SIGNER))
+        self.assertEqual(release.check_genesis_binding(printed, gateway), printed)
+        with self.assertRaisesRegex(ValueError, "does not bind"):
+            release.check_genesis_binding(dict(printed, oracle_signer="0x" + "7c" * 20), gateway)
 
 
 class ProofStatusGateTests(unittest.TestCase):

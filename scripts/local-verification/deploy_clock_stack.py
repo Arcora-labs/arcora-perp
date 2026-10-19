@@ -29,8 +29,9 @@ chain the operator marks with --owned-test-chain; a public Base chain id is
 never accepted as one unless its client is Anvil. A target that is not an owned
 test chain is also refused unless the real proof status
 (`verify_clock_proof.proof_status()`, read from the committed proof files and
-shared with `release_manifest.py`) is PROVEN. Until then, a declared
---owned-test-chain must also use a local chain id (31337 or 1337).
+shared with `release_manifest.py`) is PROVEN and the checkout's guest sources
+are the reviewed ones (`release_manifest.deployable_status()`). Until then, a
+declared --owned-test-chain must also use a local chain id (31337 or 1337).
 
     deploy_clock_stack.py --config deploy.json --rpc http://127.0.0.1:8545 \
         --output public-config.json -- --unlocked --from 0x…
@@ -53,7 +54,12 @@ GENESIS_ROOT, WIND_DOWN_RECIPIENT and ORACLE_SIGNER_ADDRESS lines of one
 `darkperp-gateway --print-genesis-root` run: the recipient and the oracle
 signer are bound into that root, which the settlement pins for life. Both
 addresses must be nonzero, distinct from each other and from every
-operator_policy address; off Anvil neither may be a public default account.
+operator_policy address; off Anvil neither may be a public default account,
+and the release config refuses one on any chain id that is not a local test
+chain. With `--gateway-bin GATEWAY` the tool reruns `GATEWAY
+--print-genesis-root` on the configured recipient and oracle signer (no key is
+needed or passed) and refuses, before any transaction, unless it prints the
+configured root.
 
 Writes the release public config to --output (input for `release_manifest.py
 create` / `observe-target`; its `genesis` block and the gateway's
@@ -76,13 +82,7 @@ import release_manifest as release
 ROLES_IN_ORDER = ["sp1_verifier", "sp1_gateway", "sp1_adapter", "clock_verifier", "settlement", "token", "vault"]
 
 # The ten default Anvil/Hardhat accounts (the published `test ... junk` mnemonic).
-PUBLIC_DEV_ADDRESSES = frozenset({
-    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266", "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
-    "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc", "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
-    "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65", "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
-    "0x976ea74026e726554db657fa54763abd0c3a0aa9", "0x14dc79964da2c08b23698b3d3cc7ca32193d9955",
-    "0x23618e81e3f5cdf7f54c3d65f7fbc0abf5b21e8f", "0xa0ee7a142d267c1f36714e4a8f75612f20a79720",
-})
+PUBLIC_DEV_ADDRESSES = release.PUBLIC_DEV_ADDRESSES
 TOKEN_ARTIFACT = "out/MockUSDC.sol/MockUSDC.json"
 CONFIG_KEYS = {"chain_id", "genesis_root", "wind_down_recipient", "oracle_signer_address", "sp1_gateway",
                "clock", "operator_policy", "deposit_permit_ttl_secs"}
@@ -228,18 +228,19 @@ def check_chain(config, rpc, allow_public, owned_test_chain=False):
         for name, address in pinned.items():
             if address.lower() in PUBLIC_DEV_ADDRESSES:
                 raise DeployError(f"{name} is a public default Anvil account; refusing off Anvil")
-    status = release.clock.proof_status()
+    # PROVEN only for the committed proof of the guest this checkout builds.
+    status, reason = release.deployable_status(release.ROOT)
     proven = status == release.clock.PROVEN
     owned = release.target_owned(config["chain_id"], anvil, owned_test_chain is True, proven=proven)
     if owned_test_chain and not owned:
         local = " or ".join(str(chain) for chain in sorted(release.LOCAL_TEST_CHAINS))
-        raise DeployError(f"real proof status is {status}: --owned-test-chain needs a local chain id ({local}) "
-                          "or an Anvil client until the reviewed guest has a committed real proof")
+        raise DeployError(f"real proof status is {status} ({reason}): --owned-test-chain needs a local chain id "
+                          f"({local}) or an Anvil client until the reviewed guest has a committed real proof")
     if not owned:
         if not proven:
-            raise DeployError(f"real proof status is {status}: until the reviewed guest has a committed real proof, "
-                              "only an owned test chain (Anvil, or --owned-test-chain on a local chain id) "
-                              "may be deployed to")
+            raise DeployError(f"real proof status is {status} ({reason}): until the reviewed guest has a committed "
+                              "real proof, only an owned test chain (Anvil, or --owned-test-chain on a local "
+                              "chain id) may be deployed to")
         check_base_floors(config)
     return client, owned
 
@@ -334,11 +335,18 @@ def main(argv=None):
     parser.add_argument("--owned-test-chain", action="store_true",
                         help="the target is a disposable chain you own; skips the Base launch floors "
                              "(chain id 31337 or 1337 until the real proof status is PROVEN)")
+    parser.add_argument("--gateway-bin", type=Path,
+                        help="the release's darkperp-gateway binary: recompute the genesis root from the "
+                             "configured recipient and oracle signer and require the configured root")
     args = parser.parse_args(own)
     try:
         if not signer:
             raise DeployError("signer flags are required after `--` (e.g. --unlocked --from ADDR, --account NAME)")
         config = load_config(release.read_json(args.config))
+        if args.gateway_bin is not None:
+            release.check_genesis_binding({"root": config["genesis_root"],
+                                           "wind_down_recipient": config["wind_down_recipient"],
+                                           "oracle_signer": config["oracle_signer_address"]}, args.gateway_bin)
         # The release config must accept this policy before anything is sent.
         public_config(config, {role: "0x" + format(i, "040x")
                                for i, role in enumerate(sorted(release.ADDRESS_ROLES), 1)})
@@ -363,7 +371,8 @@ def main(argv=None):
     args.output.with_suffix(".deployment.json").write_text(json.dumps({
         "chain_id": config["chain_id"], "rpc_client": client, "owned_test_chain": owned,
         "genesis_root": config["genesis_root"], "wind_down_recipient": config["wind_down_recipient"],
-        "oracle_signer_address": config["oracle_signer_address"], "deploy_block": first_block(deployer),
+        "oracle_signer_address": config["oracle_signer_address"],
+        "genesis_recomputed": args.gateway_bin is not None, "deploy_block": first_block(deployer),
         "settlement_block": deployer.block_of("settlement"), "transactions": deployer.transactions,
     }, indent=2) + "\n")
     print(json.dumps({"status": "DEPLOYED", "addresses": public["addresses"]}, indent=2))

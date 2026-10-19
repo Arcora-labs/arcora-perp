@@ -2,7 +2,9 @@
 //! The backend is a canary, not SP1: these tests establish refusal BEFORE key
 //! release or plaintext backend access, not successful confidential hardware.
 use perp_core::hash::Digest;
-use prover::{AttestedProver, Prover, PublicInputs, SealKeyProvider, SealedWitness};
+use prover::{
+    AttestedProver, CommitmentProver, Prover, PublicInputs, SealKeyProvider, SealedWitness,
+};
 use std::{
     ffi::OsString,
     process::Command,
@@ -112,6 +114,11 @@ fn privacy_environment_worker() {
         CountingBackend(accesses.clone()),
         CountingProvider(releases.clone()),
     );
+    // Caller-supplied public inputs exist only on the commitment stand-in.
+    let stand_in = AttestedProver::new(
+        CommitmentProver::new([7; 32]),
+        CountingProvider(releases.clone()),
+    );
     let public = PublicInputs {
         prev_state_root: [0; 32],
         batch_manifest_hash: [0; 32],
@@ -123,9 +130,10 @@ fn privacy_environment_worker() {
         wind_down_phase: 0,
         clock_receipt: None,
     };
-    let sealed_result = prover.prove_sealed(&sealed, &public);
+    let sealed_result = stand_in.prove_sealed(&sealed, &public);
     // The canary is deliberately not a postcard batch. In a denied environment,
-    // even this path must refuse before key release/native witness decoding.
+    // even this path must refuse before key release/native witness decoding;
+    // otherwise the native twin refuses it before the backend sees it.
     let batch_result = prover.prove_batch(&sealed);
     if deny {
         assert_eq!(releases.load(Ordering::SeqCst), 0, "released a seal key");
@@ -136,6 +144,10 @@ fn privacy_environment_worker() {
         assert!(sealed_result.is_ok());
         assert!(batch_result.is_err());
         assert_eq!(releases.load(Ordering::SeqCst), 2);
-        assert_eq!(accesses.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            accesses.load(Ordering::SeqCst),
+            0,
+            "a non-witness never reaches the backend"
+        );
     }
 }

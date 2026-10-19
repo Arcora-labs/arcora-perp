@@ -17,7 +17,9 @@ build-script output. In order:
      {name, witness_sha256, commitment, guest_exit 0, native_guest_equal true,
      cycles > 0}; the list may be absent only while no case is pinned;
    - `negatives`: one entry per REVIEWED_FIXTURE["negatives"] name, each
-     {name, witness_sha256, guest_exit 1, public_bytes 0}.
+     {name, witness_sha256, guest_exit 1, public_bytes 0};
+   - DIR/cases/ and DIR/negatives/ hold exactly one `NAME.witness.bin` per
+     recorded case and negative, with the recorded SHA-256.
 
 No proof is generated. Evidence is written to --output-dir/verification.json.
 A mismatch refuses with the first differing field; it never updates a pin.
@@ -137,6 +139,22 @@ def check_execution_record(record, witness, elf):
             "negatives": sorted(negatives)}
 
 
+def check_witness_files(directory, record):
+    """DIR/cases and DIR/negatives hold exactly the recorded witnesses, byte for byte."""
+    for sub, label in (("cases", "case"), ("negatives", "negative")):
+        entries = named(record.get(sub, []), label)
+        folder = directory / sub
+        require(not entries or (folder.is_dir() and not folder.is_symlink()), "missing " + sub + " directory")
+        written = {path.name for path in folder.iterdir()} if folder.is_dir() else set()
+        expected = {name + ".witness.bin" for name in entries}
+        require(written == expected, "unrecorded or missing " + label + " witness file: "
+                + ", ".join(sorted(written ^ expected)))
+        for name, entry in entries.items():
+            data = read_regular(folder / (name + ".witness.bin"), MAX_RECORD_BYTES)
+            require(clock.target.sha256(data) == entry.get("witness_sha256"),
+                    label + " " + name + ": written witness file differs from the record")
+
+
 def check_fixture_shape():
     """REVIEWED_FIXTURE's own shape, so a malformed pin cannot pass by matching itself."""
     fixture = clock.REVIEWED_FIXTURE
@@ -172,7 +190,9 @@ def verify(vkey_bin, clock_proof_bin, output, root=ROOT, timeout=2400):
     produced = read_regular(execution / "clock.witness.bin", MAX_RECORD_BYTES)
     require(produced == witness, "produced fixture witness differs from the committed clock.witness.bin")
     require(read_regular(execution / "guest.elf", MAX_ELF_BYTES) == elf, "clock-proof executed a different ELF")
-    summary = check_execution_record(release.decode_json(raw), produced, elf)
+    decoded = release.decode_json(raw)
+    summary = check_execution_record(decoded, produced, elf)
+    check_witness_files(execution, decoded)
     # Nothing the comparison relied on may have changed while the binaries ran.
     _, after_elf, after_witness = reviewed_identity(root)
     require((after_elf, after_witness) == (elf, witness), "reviewed identity changed during execution")

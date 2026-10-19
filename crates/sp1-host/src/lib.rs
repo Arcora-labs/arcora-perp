@@ -1,10 +1,15 @@
-//! Synthetic clock-bound ordinary witness, its negative controls and reproducible
-//! artifacts. Never constructs wind-down operations or sends chain transactions.
+//! Synthetic clock-bound witnesses, their negative controls and reproducible
+//! artifacts: the normal fixture (an ordinary batch), the case witnesses and
+//! engine refusals of [`cases`] (ordinary and wind-down batches). Never sends
+//! chain transactions.
 //!
 //! Every witness here is the one encoding the guest accepts, produced by the one
 //! helper [`encode_clock_witness`] and decoded by its strict counterpart
 //! [`decode_clock_witness`] (both from `prover`, the guest's native twin).
 
+pub mod cases;
+
+pub use cases::{case_witnesses, engine_negative_cases, CaseWitness};
 pub use perp_core::clock::ClockWitness;
 pub use prover::{decode_clock_witness, encode_clock_witness, ProverError};
 
@@ -54,9 +59,9 @@ pub fn check_groth16_prerequisites(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// The public synthetic oracle signing key of the normal fixture. It is a test
-/// value, never a deployment key.
-const FIXTURE_ORACLE_KEY: [u8; 32] = [7; 32];
+/// The public synthetic oracle signing key of the normal fixture and the case
+/// witnesses. It is a test value, never a deployment key.
+pub(crate) const FIXTURE_ORACLE_KEY: [u8; 32] = [7; 32];
 
 /// The normal fixture: one deposit of 1,000,000 (deposit id 0, payer address(0)),
 /// a withdrawal of that note to `0xAB…AB` with nonce 1, and two funding ticks at
@@ -151,13 +156,22 @@ pub fn witness_bytes(witness: &ClockWitness) -> Vec<u8> {
 /// transition (its `commitment` is the guest's public value) and the post-batch
 /// deposit count.
 pub fn native_from_bytes(bytes: &[u8]) -> Result<(BoundTransition, u64), ProverError> {
-    let (mut state, ops, manifest, clock) = decode_clock_witness(bytes)?;
-    let bound = bind_transition(&mut state, &ops, &manifest, &clock)?;
+    let (bound, state) = native_case_from_bytes(bytes)?;
     assert_eq!(
         bound.roots.wind_down_phase, 0,
         "this harness is ordinary-only"
     );
     Ok((bound, state.consumed_deposit_count))
+}
+
+/// [`native_from_bytes`] for a batch of any wind-down phase: the bound transition
+/// and the post-batch state.
+pub fn native_case_from_bytes(
+    bytes: &[u8],
+) -> Result<(BoundTransition, DefaultState), ProverError> {
+    let (mut state, ops, manifest, clock) = decode_clock_witness(bytes)?;
+    let bound = bind_transition(&mut state, &ops, &manifest, &clock)?;
+    Ok((bound, state))
 }
 
 pub struct NegativeCase {
@@ -271,6 +285,19 @@ pub fn framing_negative_cases(witness: &ClockWitness) -> Vec<NegativeCase> {
             expected_error: ProverError::WitnessDecode,
         },
     ]
+}
+
+/// Every negative `clock-proof` runs, in its order: the clock negatives of
+/// `witness`, the engine refusals of the normal fixture, the engine refusals of
+/// fresh and case-derived batches ([`engine_negative_cases`]), and the framing
+/// negatives of `witness`. Names are unique.
+pub fn reviewed_negative_cases(witness: &ClockWitness) -> Vec<NegativeCase> {
+    clock_negative_cases(witness)
+        .into_iter()
+        .chain(normal_negative_cases())
+        .chain(engine_negative_cases())
+        .chain(framing_negative_cases(witness))
+        .collect()
 }
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -474,6 +501,29 @@ mod tests {
             );
             assert_ne!(case.bytes, honest, "{}", case.name);
         }
+    }
+
+    /// The negatives `clock-proof` runs: every set, each name once, and every one
+    /// refused natively with its expected error.
+    #[test]
+    fn reviewed_negatives_cover_every_set_with_unique_names() {
+        let witness = normal_witness();
+        let cases = reviewed_negative_cases(&witness);
+        let mut names = cases.iter().map(|case| case.name).collect::<Vec<_>>();
+        assert_eq!(names.len(), 5 + 3 + 8 + 6);
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), cases.len(), "negative names are unique");
+        for case in &cases {
+            assert_eq!(
+                prover::public_from_witness(&case.bytes).unwrap_err(),
+                case.expected_error,
+                "{}",
+                case.name
+            );
+        }
+        let cases = case_witnesses();
+        assert!(cases.iter().all(|case| !names.contains(&case.name)));
     }
 
     #[test]

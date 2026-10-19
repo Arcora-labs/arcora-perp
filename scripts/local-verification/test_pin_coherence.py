@@ -137,6 +137,23 @@ class ReviewedGuestCopies(unittest.TestCase):
             with self.subTest(size=pattern):
                 self.assertEqual(int(one(pattern, text, "fixture ELF size").replace("_", "")), size)
 
+    def test_prover_service_program_domains(self):
+        # The prover's /identity reports a witness domain only for a program its
+        # table lists with it. Only REVIEWED_GUEST's ELF may be listed with the
+        # admitted domain, and it must be unless it is listed as an earlier program.
+        text = source("crates/prover-service/src/identity.rs")
+        domain = one(r'^pub\(crate\) const WITNESS_DOMAIN: &str = "([A-Z0-9]+)";', text, "witness domain")
+        block = re.search(r"PROGRAM_WITNESS_DOMAINS: &\[\(&str, &str\)\] = &\[(.*?)\n\];", text, re.S)
+        self.assertIsNotNone(block, "program table")
+        block = block.group(1)
+        table = re.findall(r'\(\s*"([0-9a-f]{64})",\s*"([A-Z0-9]+)",?\s*\)', block)
+        self.assertTrue(table, "the program table is parsed")
+        self.assertEqual(len({sha for sha, _ in table}), len(table), "one entry per program")
+        admitted = {sha for sha, listed in table if listed == domain}
+        self.assertLessEqual(admitted, {REVIEWED["elf"]})
+        if REVIEWED["elf"] not in {sha for sha, listed in table if listed != domain}:
+            self.assertIn(REVIEWED["elf"], admitted, "the reviewed guest must be listed with " + domain)
+
     def test_reviewed_identity_directory(self):
         directory = ROOT / REVIEWED["identity_dir"]
         self.assertEqual(clock.target.sha256((directory / "guest.elf").read_bytes()), REVIEWED["elf"])

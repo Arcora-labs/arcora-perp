@@ -93,9 +93,20 @@ FAKE_CAST = textwrap.dedent("""\
 
 
 class CastFixture(unittest.TestCase):
-    def proof_status(self, status):
-        """Fix the shared on-disk real proof status for this test."""
+    def proof_status(self, status, sources_reviewed=True):
+        """Fix the shared on-disk real proof status for this test, and whether the
+        checkout's guest sources are the reviewed ones."""
         patcher = unittest.mock.patch.object(release.clock, "proof_status", return_value=status)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.guest_sources(sources_reviewed)
+
+    def guest_sources(self, reviewed):
+        """Fix the result of the checkout's guest-source check for this test."""
+        def check(root):
+            if not reviewed:
+                raise ValueError("guest source changed; rebuild and reprove: crates/perp-core/src/clock.rs")
+        patcher = unittest.mock.patch.object(release, "verify_reviewed_guest", side_effect=check)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -200,6 +211,26 @@ class Guards(CastFixture):
                 self.assertEqual(self.run_cli(), 0)
                 self.output.unlink()
                 self.log.write_text("")
+
+    def test_a_given_gateway_must_print_the_configured_genesis_root(self):
+        import test_release_manifest as manifest_tests
+        gateway = manifest_tests.fake_gateway(self.tmp)
+        self.write_config()
+        # The synthetic GENESIS is not the root the gateway computes.
+        self.assertEqual(self.run_cli(extra=["--gateway-bin", str(gateway)]), 2)
+        self.assertEqual(self.sends(), [])
+        self.write_config(genesis_root=manifest_tests.fake_root(RECIPIENT, ORACLE_SIGNER))
+        self.assertEqual(self.run_cli(extra=["--gateway-bin", str(gateway)]), 0)
+        record = json.loads(self.output.with_suffix(".deployment.json").read_text())
+        self.assertIs(record["genesis_recomputed"], True)
+        self.output.unlink()
+        self.assertEqual(self.run_cli(), 0)
+        self.assertIs(json.loads(self.output.with_suffix(".deployment.json").read_text())["genesis_recomputed"],
+                      False)
+
+    def test_public_dev_accounts_are_the_release_tool_set(self):
+        # One list: the release config refuses the same accounts off a local chain.
+        self.assertIs(deploy.PUBLIC_DEV_ADDRESSES, release.PUBLIC_DEV_ADDRESSES)
 
     def test_program_key_is_not_configurable(self):
         self.write_config(program_vkey="0x" + "ab" * 32)
@@ -337,6 +368,7 @@ class ProofStatusGate(CastFixture):
         # No dict edit or flag changes it; the deploy tool asks the one shared function.
         self.assertIn(release.clock.proof_status(), {release.clock.PROVEN, release.clock.PENDING_REPROOF})
         self.write_config(**launch_config())
+        self.guest_sources(True)
         for status, code in ((release.clock.PENDING_REPROOF, 2), (release.clock.PROVEN, 0)):
             with self.subTest(status=status), \
                     unittest.mock.patch.object(release.clock, "proof_status", return_value=status) as reading:
@@ -352,6 +384,22 @@ class ProofStatusGate(CastFixture):
                                       env={"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}), 2)
         self.assertEqual(self.sends(), [])
         self.assertFalse(self.output.exists())
+
+    def test_a_proven_status_does_not_cover_changed_guest_sources(self):
+        # The committed proof files pass, but this checkout builds another program.
+        self.proof_status(release.clock.PROVEN, sources_reviewed=False)
+        self.write_config(**launch_config())
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain"], env=PUBLIC), 2)
+        self.write_config(chain_id=900)
+        own = {"FAKE_CHAIN": "900", "FAKE_CLIENT": "Geth/v1.14"}
+        self.assertEqual(self.run_cli(extra=["--allow-public-chain", "--owned-test-chain"], env=own), 2)
+        self.assertEqual(self.sends(), [])
+        self.assertFalse(self.output.exists())
+        self.assertEqual(release.deployable_status()[0], release.clock.PENDING_REPROOF)
+        self.assertIn("guest source changed", release.deployable_status()[1])
+        # An owned Anvil target still deploys.
+        self.write_config()
+        self.assertEqual(self.run_cli(), 0)
 
     def test_declared_owned_chain_must_be_local_while_pending(self):
         self.pending()

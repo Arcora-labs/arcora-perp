@@ -9,6 +9,34 @@ from pathlib import Path
 import ops_notify
 
 
+ROOT = Path(__file__).resolve().parents[2]
+# Gateway alerts the external monitor does not relay from `opsAlerts`: it reads
+# the first two from their own health fields, and the gateway delivers the last
+# two itself while it runs.
+NOT_RELAYED = {"settlement_held", "deposit_halted", "persistence_failed", "archive_pressure"}
+
+
+def gateway_alert_kinds():
+    """The snake_case names of the gateway's `ops_alerts::AlertKind` variants."""
+    text = (ROOT / "crates/gateway/src/ops_alerts.rs").read_text()
+    body = text.split("pub enum AlertKind {", 1)[1].split("\n}", 1)[0]
+    lines = [line.strip() for line in body.splitlines()]
+    names = [line.rstrip(",") for line in lines if line and not line.startswith("//")]
+    snake = lambda name: "".join("_" + c.lower() if c.isupper() else c for c in name).lstrip("_")
+    return {snake(name) for name in names}
+
+
+class GatewayAlertNames(unittest.TestCase):
+    def test_every_gateway_alert_is_relayed_or_deliberately_not(self):
+        kinds = gateway_alert_kinds()
+        self.assertIn("deposit_blocked_at_cap", kinds)
+        self.assertEqual(set(ops_notify.GATEWAY_ALERTS), kinds - NOT_RELAYED)
+        self.assertLessEqual(NOT_RELAYED, kinds)
+        self.assertEqual(len(ops_notify.GATEWAY_ALERTS), len(set(ops_notify.GATEWAY_ALERTS)))
+        for name in ops_notify.GATEWAY_ALERTS:
+            ops_notify.event_body(name, "active", 1)
+
+
 class Collector:
     """Real loopback HTTP collector; answers 503 for the first `reject` posts."""
 

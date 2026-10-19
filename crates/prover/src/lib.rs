@@ -130,10 +130,25 @@ impl PublicInputs {
 
 impl From<&BoundTransition> for PublicInputs {
     /// The public inputs of a clock-bound transition. Their
-    /// `commitment::<Keccak256>()` equals `bound.commitment`.
+    /// `commitment::<Keccak256>()` equals `bound.commitment` whenever this
+    /// crate's commitment and perp-core's agree; [`public_from_witness`] checks
+    /// that they do.
     fn from(bound: &BoundTransition) -> Self {
         Self::from_roots(&bound.roots, Some(bound.receipt))
     }
+}
+
+/// The public inputs of `bound`, refused unless their commitment is exactly the
+/// commitment the transition bound (`bound.commitment`, the guest's public
+/// value). [`PublicInputs::commitment`] is a second implementation of
+/// perp-core's commitment; any disagreement, in any wind-down phase, is
+/// [`ProverError::CommitmentMismatch`], in every build.
+fn bound_public(bound: &BoundTransition) -> Result<PublicInputs, ProverError> {
+    let public = PublicInputs::from(bound);
+    if public.commitment::<Keccak256>() != bound.commitment {
+        return Err(ProverError::CommitmentMismatch);
+    }
+    Ok(public)
 }
 
 /// Run the batch state transition and derive its UNBOUND base public inputs
@@ -184,11 +199,12 @@ pub fn decode_clock_witness(bytes: &[u8]) -> Result<ClockWitness, ProverError> {
 /// Native twin of the guest. Decodes `bytes` exactly as the guest does
 /// ([`decode_clock_witness`]) and runs the same `perp_core::clock::bind_transition`,
 /// so the returned inputs always carry the clock receipt and their commitment is
-/// the value the guest commits. Original operation times are retained.
+/// the value the guest commits (`BoundTransition::commitment`; checked, see
+/// [`ProverError::CommitmentMismatch`]). Original operation times are retained.
 pub fn public_from_witness(bytes: &[u8]) -> Result<PublicInputs, ProverError> {
     let (mut state, ops, manifest, clock) = decode_clock_witness(bytes)?;
     let bound = perp_core::clock::bind_transition(&mut state, &ops, &manifest, &clock)?;
-    Ok(PublicInputs::from(&bound))
+    bound_public(&bound)
 }
 
 /// A produced proof: the public inputs, opaque proof bytes, and the measurement
@@ -223,6 +239,11 @@ pub enum ProverError {
     /// A diagnostic output setting could persist private witness/trace data.
     /// Refused before the seal provider releases a key or the witness is opened.
     UnsafeEnvironment(Sp1PrivacyError),
+    /// The native twin's public inputs do not commit to the commitment the
+    /// transition bound. This crate's commitment and perp-core's disagree: an
+    /// internal fault of the build, never a property of the witness. Refused
+    /// before the backend is called.
+    CommitmentMismatch,
 }
 
 impl From<EngineError> for ProverError {
@@ -559,18 +580,6 @@ impl<P: Prover> AttestedProver<P> {
             .collect())
     }
 
-    /// Prove a transition over a sealed witness whose public inputs are already known.
-    /// The witness is opened only here (measurement-gated), used, and zeroized (§10b).
-    pub fn prove_sealed(
-        &self,
-        sealed: &SealedWitness,
-        public: &PublicInputs,
-    ) -> Result<BatchProof, ProverError> {
-        validate_sp1_environment().map_err(ProverError::UnsafeEnvironment)?;
-        let mut witness = self.open(sealed)?;
-        self.prove_opened(&mut witness, Some(public))
-    }
-
     /// Open a sealed witness, DERIVE its public inputs from the batch itself (F2-safe:
     /// the prover derives the roots, never trusts an external claim), prove, and zeroize.
     /// The opened witness must be the guest's encoding ([`encode_clock_witness`]).
@@ -584,6 +593,8 @@ impl<P: Prover> AttestedProver<P> {
     }
 
     /// Keep a wipe guard alive across both native derivation and backend proving.
+    /// `public` is `Some` only on the commitment stand-in's
+    /// [`AttestedProver::prove_sealed`]; every other caller derives the inputs.
     /// `zeroize` uses volatile writes and a compiler fence, including when `?`
     /// returns an error or a backend panic unwinds. Abort/SIGKILL cannot run Drop;
     /// this guard also makes no claim about decoded state, register copies, or
@@ -604,6 +615,43 @@ impl<P: Prover> AttestedProver<P> {
             proof_bytes,
             prover_measurement: self.backend.measurement(),
         })
+    }
+}
+
+impl AttestedProver<CommitmentProver> {
+    /// The commitment stand-in's demonstration path: prove `sealed` against
+    /// caller-supplied public inputs without deriving them, so the opened bytes
+    /// need not be a witness and the inputs need not carry a clock receipt. The
+    /// witness is opened only here (measurement-gated), used, and zeroized (§10b).
+    ///
+    /// Only the stand-in, which is not sound, offers it. Every other backend
+    /// proves only through [`AttestedProver::prove_batch`], where the native twin
+    /// derives the public inputs from the witness first; a backend other than
+    /// the stand-in has no such method:
+    ///
+    /// ```compile_fail
+    /// use prover::{AttestedProver, Prover, PublicInputs, SealedWitness};
+    /// struct Backend;
+    /// impl Prover for Backend {
+    ///     fn measurement(&self) -> [u8; 32] {
+    ///         [0; 32]
+    ///     }
+    ///     fn prove(&self, _: &PublicInputs, _: &[u8]) -> Vec<u8> {
+    ///         Vec::new()
+    ///     }
+    /// }
+    /// fn attempt(prover: &AttestedProver<Backend>, sealed: &SealedWitness, public: &PublicInputs) {
+    ///     let _ = prover.prove_sealed(sealed, public);
+    /// }
+    /// ```
+    pub fn prove_sealed(
+        &self,
+        sealed: &SealedWitness,
+        public: &PublicInputs,
+    ) -> Result<BatchProof, ProverError> {
+        validate_sp1_environment().map_err(ProverError::UnsafeEnvironment)?;
+        let mut witness = self.open(sealed)?;
+        self.prove_opened(&mut witness, Some(public))
     }
 }
 
@@ -740,33 +788,47 @@ mod tests {
             [7, 6, 5, 4, 3, 2, 1],
             [0xAA, 0x00, 0xFF, 0x11, 0x22, 0x33, 0x44],
         ];
+        // Every wind-down phase: phases 1 and 2 append the phase word, and the
+        // bound commitment (with a receipt) must agree too.
         for c in cases {
-            let public = PublicInputs {
-                clock_receipt: None,
-                prev_state_root: [c[0]; 32],
-                batch_manifest_hash: [c[1]; 32],
-                new_state_root: [c[2]; 32],
-                ordered_root: [c[3]; 32],
-                withdrawals_root: [c[4]; 32],
-                rejected_root: [c[5]; 32],
-                deposits_root: [c[6]; 32],
-                wind_down_phase: 0,
-            };
-            let derived = DerivedRoots {
-                prev_state_root: [c[0]; 32],
-                manifest_hash: [c[1]; 32],
-                new_state_root: [c[2]; 32],
-                ordered_root: [c[3]; 32],
-                withdrawals_root: [c[4]; 32],
-                rejected_root: [c[5]; 32],
-                deposits_root: [c[6]; 32],
-                wind_down_phase: 0,
-            };
-            assert_eq!(
-                public.commitment::<Keccak256>(),
-                derived.commitment::<Keccak256>(),
-                "PublicInputs and DerivedRoots must agree byte-for-byte (case {c:?})",
-            );
+            for phase in [0u8, 1, 2] {
+                let public = PublicInputs {
+                    clock_receipt: None,
+                    prev_state_root: [c[0]; 32],
+                    batch_manifest_hash: [c[1]; 32],
+                    new_state_root: [c[2]; 32],
+                    ordered_root: [c[3]; 32],
+                    withdrawals_root: [c[4]; 32],
+                    rejected_root: [c[5]; 32],
+                    deposits_root: [c[6]; 32],
+                    wind_down_phase: phase,
+                };
+                let derived = DerivedRoots {
+                    prev_state_root: [c[0]; 32],
+                    manifest_hash: [c[1]; 32],
+                    new_state_root: [c[2]; 32],
+                    ordered_root: [c[3]; 32],
+                    withdrawals_root: [c[4]; 32],
+                    rejected_root: [c[5]; 32],
+                    deposits_root: [c[6]; 32],
+                    wind_down_phase: phase,
+                };
+                assert_eq!(
+                    public.commitment::<Keccak256>(),
+                    derived.commitment::<Keccak256>(),
+                    "PublicInputs and DerivedRoots must agree byte-for-byte (case {c:?}, phase {phase})",
+                );
+                let receipt = [c[0] ^ phase; 32];
+                let bound = PublicInputs {
+                    clock_receipt: Some(receipt),
+                    ..public
+                };
+                assert_eq!(
+                    bound.commitment::<Keccak256>(),
+                    perp_core::clock::bind_commitment(derived.commitment::<Keccak256>(), receipt),
+                    "bound commitments must agree (case {c:?}, phase {phase})",
+                );
+            }
         }
 
         // ...and both must equal KAT-COMMIT7, the canonical seven-word known-answer for
@@ -1120,6 +1182,85 @@ mod tests {
         assert_eq!(base.clock_receipt, None);
         assert_eq!(base.commitment::<Keccak256>(), clock.base_commitment);
         assert_ne!(base.commitment::<Keccak256>(), bound.commitment);
+    }
+
+    /// The twin returns inputs only when they commit to the commitment the
+    /// transition bound: a bound commitment its inputs do not reproduce, in any
+    /// phase, is refused.
+    #[test]
+    fn the_twin_refuses_inputs_that_do_not_commit_to_the_bound_commitment() {
+        let (s, ops, manifest, clock) = clock_test_witness();
+        let bound =
+            perp_core::clock::bind_transition(&mut s.clone(), &ops, &manifest, &clock).unwrap();
+        assert_eq!(bound_public(&bound), Ok(PublicInputs::from(&bound)));
+        let mut drifted = bound;
+        drifted.commitment[0] ^= 1;
+        assert_eq!(bound_public(&drifted), Err(ProverError::CommitmentMismatch));
+        for phase in [1u8, 2] {
+            let mut other = bound;
+            other.roots.wind_down_phase = phase;
+            // perp-core's bound commitment of the same roots in that phase
+            other.commitment = perp_core::clock::bind_commitment(
+                other.roots.commitment::<Keccak256>(),
+                other.receipt,
+            );
+            assert_eq!(
+                bound_public(&other),
+                Ok(PublicInputs::from(&other)),
+                "phase {phase}"
+            );
+            other.commitment = bound.commitment;
+            assert_eq!(
+                bound_public(&other),
+                Err(ProverError::CommitmentMismatch),
+                "phase {phase}"
+            );
+        }
+    }
+
+    /// A phase-1 batch (the one-shot wind-down) through the twin: its commitment
+    /// is perp-core's bound commitment of the phase-1 roots.
+    #[test]
+    fn the_twin_binds_a_wind_down_batch() {
+        let (mut s, ops) = state_with_deposit();
+        let manifest = empty_manifest(&s);
+        s.apply_batch(&ops).unwrap();
+        s.set_wind_down_recipient([0x5D; 20]);
+        let ops = vec![BatchOp::SettleAll];
+        let manifest = BatchManifest {
+            previous_state_root: s.state_root(),
+            batch_id: s.next_batch_id,
+            ..manifest
+        };
+        let clock = bound_context(&s, &ops, &manifest);
+        assert_eq!(clock.phase, 1);
+        let bytes = encode_clock_witness(&s, &ops, &manifest, &clock);
+        let public = public_from_witness(&bytes).unwrap();
+        assert_eq!(public.wind_down_phase, 1);
+        let bound = perp_core::clock::bind_transition(&mut s, &ops, &manifest, &clock).unwrap();
+        assert_eq!(public.commitment::<Keccak256>(), bound.commitment);
+        assert_eq!(public.commitment::<Keccak256>(), clock.commitment());
+    }
+
+    /// A backend other than the stand-in proves only inputs the twin derived:
+    /// `prove_batch` refuses a body that is not a witness before the backend runs.
+    #[test]
+    fn a_backend_other_than_the_stand_in_proves_only_derived_inputs() {
+        struct Backend;
+        impl Prover for Backend {
+            fn measurement(&self) -> Digest {
+                M
+            }
+            fn prove(&self, _: &PublicInputs, _: &[u8]) -> Vec<u8> {
+                unreachable!("the twin refuses first")
+            }
+        }
+        let prover = AttestedProver::new(Backend, prov(M));
+        let sealed = SealedWitness::seal(b"not a witness", &prov(M), M, [0x09; 32]).unwrap();
+        assert_eq!(
+            prover.prove_batch(&sealed),
+            Err(ProverError::UnboundWitness)
+        );
     }
 
     #[test]

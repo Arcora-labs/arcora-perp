@@ -3,6 +3,14 @@
 
 Does not create a proof, execute a guest, submit transactions or contact a prover.
 A successful positive control is mandatory before any rejection counts as passing.
+
+Each negative control rewrites one copy of the export and must be refused with
+the message replay-funds prints for that refusal (CASES). A witness the strict
+clock decoder refuses panics with `WITNESS_REFUSAL: <ProverError variant>`:
+`UnboundWitness` for input without the `WIRE_MAGIC` framing, `WitnessDecode` for
+a framed body that does not decode exactly. test_verify_funds_replay.py reads
+those texts from the Rust sources, so a message changed in the binary fails that
+test before this harness runs.
 """
 import argparse
 import hashlib
@@ -11,9 +19,48 @@ from pathlib import Path
 import shutil
 import subprocess
 
+# `perp_core::clock::WIRE_MAGIC`, the framing of the one witness encoding.
+WIRE_MAGIC = b"DPCLK4\0\0"
+# The `.expect` text of replay-funds' strict witness decode.
+WITNESS_REFUSAL = "exact clock-bound witness required"
+# The panic text of a failed `assert_eq!` (Rust's standard library).
+ASSERT_EQ_REFUSAL = "assertion `left == right` failed"
+# (case, the stderr text that identifies its refusal). Witness cases rewrite
+# batch-1.witness.bin through `witness_mutation`.
+CASES = (
+    ("missing-window", "complete four-window lifecycle required"),
+    ("reordered-window", ASSERT_EQ_REFUSAL),
+    ("substituted-commitment", ASSERT_EQ_REFUSAL),
+    ("changed-witness", ASSERT_EQ_REFUSAL),
+    ("trailing-witness", WITNESS_REFUSAL + ": WitnessDecode"),
+    ("magic-only-witness", WITNESS_REFUSAL + ": WitnessDecode"),
+    ("legacy-witness", WITNESS_REFUSAL + ": UnboundWitness"),
+    ("dpclk2-witness", WITNESS_REFUSAL + ": UnboundWitness"),
+    ("symlink-witness", "regular input file required"),
+)
+# Cases whose rewritten witness must reach the strict decoder: the export's
+# metadata is updated to the rewritten bytes, so only the decoder can refuse it.
+DECODER_CASES = ("trailing-witness", "magic-only-witness", "legacy-witness", "dpclk2-witness")
+
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def witness_mutation(name, raw):
+    """The rewritten bytes of a framed witness `raw` for decoder case `name`."""
+    if not raw.startswith(WIRE_MAGIC):
+        raise ValueError("the export's witness is not WIRE_MAGIC-framed")
+    body = raw[len(WIRE_MAGIC):]
+    if name == "trailing-witness":
+        return raw + b"\x00"  # one byte after an exact body
+    if name == "magic-only-witness":
+        return WIRE_MAGIC  # framing with no body
+    if name == "legacy-witness":
+        return body  # the unframed body
+    if name == "dpclk2-witness":
+        return b"DPCLK2\0\0" + body  # an earlier framing
+    raise ValueError("not a decoder case: " + name)
 
 
 def main():
@@ -52,17 +99,8 @@ def main():
     assert positive_report["proof_generated"] is False
     assert len(positive_report["batches"]) == 4
 
-    cases = [
-        ("missing-window", "complete four-window lifecycle required"),
-        ("reordered-window", "assertion `left == right` failed"),
-        ("substituted-commitment", "assertion `left == right` failed"),
-        ("changed-witness", "assertion `left == right` failed"),
-        ("trailing-witness", "no trailing witness bytes"),
-        ("legacy-witness", "clock-v2 input required"),
-        ("symlink-witness", "regular input file required"),
-    ]
     results = []
-    for name, expected in cases:
+    for name, expected in CASES:
         directory = output / f"input-{name}"
         directory.mkdir()
         for entry in source.iterdir():
@@ -81,9 +119,8 @@ def main():
             changed = bytearray(witness.read_bytes())
             changed[-1] ^= 1
             witness.write_bytes(changed)
-        elif name in ("trailing-witness", "legacy-witness"):
-            raw = witness.read_bytes()
-            witness.write_bytes(raw + b"\x00" if name == "trailing-witness" else raw[8:])
+        elif name in DECODER_CASES:
+            witness.write_bytes(witness_mutation(name, witness.read_bytes()))
             # Keep metadata coherent so the actual wire decoder is reached.
             data["batches"][1]["clock"]["witnessSha256"] = "0x" + digest(witness)
             data["batches"][1]["clock"]["witnessBytes"] = witness.stat().st_size

@@ -31,7 +31,7 @@ FAKE_VKEY = textwrap.dedent("""\
 
 FAKE_CLOCK_PROOF = textwrap.dedent("""\
     #!/usr/bin/env python3
-    import os, shutil, sys
+    import json, os, shutil, sys
     open(os.environ["FAKE_CALLS"], "a").write("clock-proof\\n")
     args = sys.argv[1:]
     elf = args[args.index("--elf") + 1]
@@ -41,6 +41,10 @@ FAKE_CLOCK_PROOF = textwrap.dedent("""\
     shutil.copyfile(elf, os.path.join(directory, "guest.elf"))
     shutil.copyfile(os.environ["FAKE_WITNESS"], os.path.join(directory, "clock.witness.bin"))
     shutil.copyfile(os.environ["FAKE_RECORD"], os.path.join(directory, "execution.json"))
+    for relative, data in json.load(open(os.environ["FAKE_FILES"])).items():
+        path = os.path.join(directory, relative)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "wb").write(bytes.fromhex(data))
     sys.exit(int(os.environ.get("FAKE_PROOF_EXIT", "0")))
 """)
 
@@ -53,9 +57,17 @@ ELF = b"\x7fELF synthetic reviewed guest"
 VKEY = bytes(range(32))
 WITNESS = b"DPCLK4\0\0 synthetic normal fixture"
 COMMITMENT = "0x" + "c0" * 32
-NEGATIVES = {"wrong-bounds": "a1" * 32, "wrong-count": "a2" * 32, "legacy-tuple": "a3" * 32}
-CASES = {"epoch-refresh": {"witness_sha256": "b1" * 32, "commitment": "0x" + "d1" * 32},
-         "phase-1-sink": {"witness_sha256": "b2" * 32, "commitment": "0x" + "d2" * 32}}
+# The bytes clock-proof writes for each negative and case, and their pins.
+WRITTEN = {"negatives/" + name + ".witness.bin": ("negative " + name).encode()
+           for name in ("wrong-bounds", "wrong-count", "legacy-tuple")}
+WRITTEN.update({"cases/" + name + ".witness.bin": ("case " + name).encode()
+                for name in ("epoch-refresh", "phase-1-sink")})
+NEGATIVES = {name: sha(WRITTEN["negatives/" + name + ".witness.bin"])
+             for name in ("wrong-bounds", "wrong-count", "legacy-tuple")}
+CASES = {"epoch-refresh": {"witness_sha256": sha(WRITTEN["cases/epoch-refresh.witness.bin"]),
+                           "commitment": "0x" + "d1" * 32},
+         "phase-1-sink": {"witness_sha256": sha(WRITTEN["cases/phase-1-sink.witness.bin"]),
+                          "commitment": "0x" + "d2" * 32}}
 
 
 def record(cases=CASES):
@@ -94,8 +106,11 @@ class ReviewedGuestExecutionTests(unittest.TestCase):
         self.witness.write_bytes(WITNESS)
         self.record_path = self.tmp / "record.json"
         self.write_record(record())
+        self.files_path = self.tmp / "files.json"
+        self.write_files(WRITTEN)
         self.env = {"FAKE_CALLS": str(self.calls), "FAKE_WITNESS": str(self.witness),
-                    "FAKE_RECORD": str(self.record_path), "FAKE_VKEY_LINES": "VKEY=0x" + VKEY.hex()}
+                    "FAKE_RECORD": str(self.record_path), "FAKE_FILES": str(self.files_path),
+                    "FAKE_VKEY_LINES": "VKEY=0x" + VKEY.hex()}
         for target, values in ((checker.clock.REVIEWED_GUEST, {"elf": sha(ELF), "vkey": "0x" + VKEY.hex(),
                                                                "identity_dir": "fixtures/reviewed", "sources": {}}),
                                (checker.clock.REVIEWED_FIXTURE, {"witness_sha256": sha(WITNESS),
@@ -109,6 +124,9 @@ class ReviewedGuestExecutionTests(unittest.TestCase):
 
     def write_record(self, value):
         self.record_path.write_text(json.dumps(value))
+
+    def write_files(self, files):
+        self.files_path.write_text(json.dumps({name: data.hex() for name, data in files.items()}))
 
     def verify(self, **env):
         self.runs += 1
@@ -137,7 +155,26 @@ class ReviewedGuestExecutionTests(unittest.TestCase):
     def test_no_case_pinned_accepts_a_record_without_cases(self):
         checker.clock.REVIEWED_FIXTURE["cases"] = {}
         self.write_record(record(cases=None))
+        self.write_files({name: data for name, data in WRITTEN.items() if name.startswith("negatives/")})
         self.assertEqual(self.verify()["execution"]["cases"], {})
+
+    def test_written_witness_files_must_be_exactly_the_recorded_ones(self):
+        changed = dict(WRITTEN)
+        changed["cases/epoch-refresh.witness.bin"] += b"\0"
+        self.write_files(changed)
+        self.refuses("case epoch-refresh: written witness file differs")
+        changed = dict(WRITTEN)
+        changed["negatives/wrong-count.witness.bin"] = b"other"
+        self.write_files(changed)
+        self.refuses("negative wrong-count: written witness file differs")
+        changed = dict(WRITTEN)
+        del changed["negatives/legacy-tuple.witness.bin"]
+        self.write_files(changed)
+        self.refuses("missing negative witness file: legacy-tuple.witness.bin")
+        self.write_files({**WRITTEN, "cases/unrecorded.witness.bin": b"x"})
+        self.refuses("unrecorded or missing case witness file: unrecorded.witness.bin")
+        self.write_files({name: data for name, data in WRITTEN.items() if name.startswith("negatives/")})
+        self.refuses("missing cases directory")
 
     def test_derived_setup_key_must_be_the_reviewed_key(self):
         self.refuses("derived setup key differs", FAKE_VKEY_LINES="VKEY=0x" + "ee" * 32)

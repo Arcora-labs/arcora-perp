@@ -3,8 +3,8 @@
 
 use serde_json::json;
 use sp1_host::{
-    clock_negative_cases, framing_negative_cases, hex, native_from_bytes, normal_negative_cases,
-    normal_witness, options, roots_json, sha256, witness_bytes, Artifacts,
+    hex, native_from_bytes, normal_witness, options, reviewed_negative_cases, roots_json, sha256,
+    witness_bytes, Artifacts,
 };
 use sp1_sdk::{include_elf, Elf, Prover, ProverClient, SP1Stdin, StatusCode};
 
@@ -55,11 +55,7 @@ async fn main() {
 
     let mut negatives = Vec::new();
     if options.check_negatives {
-        let cases = normal_negative_cases()
-            .into_iter()
-            .chain(clock_negative_cases(&witness))
-            .chain(framing_negative_cases(&witness));
-        for case in cases {
+        for case in reviewed_negative_cases(&witness) {
             assert_eq!(
                 native_from_bytes(&case.bytes).unwrap_err(),
                 case.expected_error

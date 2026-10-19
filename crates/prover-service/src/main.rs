@@ -39,6 +39,17 @@ mod prove_refusal_tests {
             assert_eq!(prove_refusal(error).0, StatusCode::UNPROCESSABLE_ENTITY);
         }
     }
+
+    #[test]
+    fn a_native_commitment_mismatch_is_a_server_fault() {
+        assert_eq!(
+            prove_refusal(ProverError::CommitmentMismatch),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "CommitmentMismatch".into()
+            )
+        );
+    }
 }
 mod sp1_prover;
 
@@ -125,16 +136,24 @@ fn hx(b: &[u8]) -> String {
 /// The response to a refused `prove_batch`. Every witness refusal happens before
 /// the backend runs and is unprocessable input (422): a body outside the one
 /// supported domain (`UnboundWitness`: an unframed tuple or another framing), a
-/// framed body that does not decode, or a transition the guest also rejects.
+/// framed body that does not decode, or a transition the guest also rejects. A
+/// native commitment that disagrees with the bound one (`CommitmentMismatch`)
+/// is a fault of this build, not of the input: 500.
 fn prove_refusal(error: ProverError) -> (StatusCode, String) {
-    let detail = match error {
-        ProverError::UnboundWitness => format!(
-            "UnboundWitness: only {} witnesses are accepted",
-            identity::WITNESS_DOMAIN
+    match error {
+        ProverError::UnboundWitness => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!(
+                "UnboundWitness: only {} witnesses are accepted",
+                identity::WITNESS_DOMAIN
+            ),
         ),
-        other => format!("{other:?}"),
-    };
-    (StatusCode::UNPROCESSABLE_ENTITY, detail)
+        ProverError::CommitmentMismatch => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "CommitmentMismatch".into(),
+        ),
+        other => (StatusCode::UNPROCESSABLE_ENTITY, format!("{other:?}")),
+    }
 }
 
 impl FromRef<Arc<App>> for identity::PublicIdentity {
@@ -407,9 +426,25 @@ async fn main() {
         std::process::exit(1);
     });
     let m = measurement();
+    // The released binary defaults to production.
+    let prod = std::env::var("PROD").as_deref() != Ok("0");
+
+    // The embedded program must be a reviewed guest that accepts the one framing
+    // /prove admits. Checked before the expensive setup, from the ELF bytes alone.
+    let domains = sp1_prover::witness_domains();
+    if let Err(error) = identity::admit_program(&domains, prod) {
+        eprintln!("prover-service: {error}");
+        std::process::exit(1);
+    }
+    if domains.is_empty() {
+        eprintln!(
+            "WARN prover-service: the embedded guest ELF accepts no {} witness; /identity \
+             reports no supported domain and every proof will fail — NEVER production",
+            identity::WITNESS_DOMAIN
+        );
+    }
     let backend = Sp1GnarkProver::new(m).await;
     let program_vkey = backend.vkey();
-    let prod = std::env::var("PROD").as_deref() != Ok("0"); // released binary defaults prod
     let root = match prover::resolve_seal_root(prod) {
         Ok(r) => r,
         Err(e) => {

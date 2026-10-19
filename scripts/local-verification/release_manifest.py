@@ -12,12 +12,24 @@ PROVEN, validate and observe-target accept only an owned test chain (the
 deploy_clock_stack rule: an Anvil client, or an operator-declared
 --owned-test-chain whose chain id is a local one, 31337 or 1337).
 
+A proof of the reviewed guest says nothing about a checkout whose guest sources
+are no longer REVIEWED_GUEST's: deployable_status() is PROVEN only when the
+proof status is PROVEN and verify_reviewed_guest() passes on the checkout.
+deploy_clock_stack refuses a target that is not owned unless it is PROVEN.
+
 The public config binds the genesis the settlement was deployed with: `genesis`
 {root, wind_down_recipient, oracle_signer}, the three values
 `darkperp-gateway --print-genesis-root` prints together. The recipient is also
 the gateway's WIND_DOWN_RECIPIENT, and neither address may be an operator or
-contract address. observe-target checks the deployed `currentStateRoot()`
-against `genesis.root` while `batchCount()` is still 0.
+contract address, nor, on a chain id that is not a local test chain, one of the
+published default development accounts (PUBLIC_DEV_ADDRESSES). observe-target
+checks the deployed `currentStateRoot()` against `genesis.root` while
+`batchCount()` is still 0. With `--gateway-bin`, create, validate and
+observe-target also recompute the root from the recipient and the oracle signer
+(`darkperp-gateway --print-genesis-root`, which needs no key) and refuse unless
+all three values equal the configured ones. Without it, no tool here recomputes
+the root; the recipient and the oracle signer rest on the --print-genesis-root
+output that listed them with it.
 """
 import argparse
 import datetime
@@ -57,6 +69,15 @@ PUBLIC_BASE_CHAINS = frozenset({8453, 84532})
 # Local development chain ids (Anvil/Hardhat and the common dev-node default).
 # While the real proof is not PROVEN, a declared owned test chain must use one.
 LOCAL_TEST_CHAINS = frozenset({31337, 1337})
+# The ten default Anvil/Hardhat accounts (the published `test ... junk` mnemonic):
+# anyone can sign as them. Never a genesis address off a local test chain.
+PUBLIC_DEV_ADDRESSES = frozenset({
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266", "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc", "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65", "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+    "0x976ea74026e726554db657fa54763abd0c3a0aa9", "0x14dc79964da2c08b23698b3d3cc7ca32193d9955",
+    "0x23618e81e3f5cdf7f54c3d65f7fbc0abf5b21e8f", "0xa0ee7a142d267c1f36714e4a8f75612f20a79720",
+})
 # observe-target asks the client name only to decide ownership while the real
 # proof status is not PROVEN; every other read is the deployment reader's.
 READ_METHODS = deployment_reader.READ_METHODS | {"web3_clientVersion"}
@@ -188,12 +209,14 @@ def operator_addresses(policy):
     return {policy[role][name] for role, fields in OPERATOR_ADDRESSES.items() for name in fields}
 
 
-def genesis_config(value, addresses, policy):
+def genesis_config(value, addresses, policy, chain_id):
     """The deployed genesis: a nonzero root and two independent nonzero addresses.
 
     The wind-down recipient and the oracle signer are bound into the genesis root,
     so neither can be rotated after deployment. Each must differ from the other,
-    from every contract address and from every operator address in the policy.
+    from every contract address and from every operator address in the policy,
+    and unless `chain_id` is a local test chain it must not be a public default
+    development account, whose key anyone holds.
     """
     exact_keys(value, GENESIS_KEYS, "genesis")
     root = normalized_hex(value["root"], 32, "genesis root")
@@ -205,10 +228,48 @@ def genesis_config(value, addresses, policy):
         require(address not in addresses.values(), "genesis " + name + " must not be a contract address")
         require(policy is None or address not in operator_addresses(policy),
                 "genesis " + name + " must differ from every operator address")
+        require(chain_id in LOCAL_TEST_CHAINS or address not in PUBLIC_DEV_ADDRESSES,
+                "genesis " + name + " is a public default development account; refused off a local test chain")
         result[name] = address
     require(result["wind_down_recipient"] != result["oracle_signer"],
             "genesis wind_down_recipient and oracle_signer must be distinct")
     return result
+
+
+GENESIS_PRINT_KEYS = ("GENESIS_ROOT", "WIND_DOWN_RECIPIENT", "ORACLE_SIGNER_ADDRESS")
+
+
+def genesis_from_gateway(gateway_bin, recipient, oracle_signer, timeout=60):
+    """The genesis `gateway_bin --print-genesis-root --oracle-address ORACLE` prints.
+
+    The gateway computes the root from the oracle signer's address and
+    WIND_DOWN_RECIPIENT alone and exits before any network, state or key access;
+    its environment holds only the recipient, so no key of the caller's reaches it.
+    """
+    try:
+        result = subprocess.run([str(gateway_bin), "--print-genesis-root", "--oracle-address", oracle_signer],
+                                env={"WIND_DOWN_RECIPIENT": recipient}, capture_output=True, text=True,
+                                timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        raise ValueError("gateway --print-genesis-root could not be run") from None
+    require(result.returncode == 0, "gateway --print-genesis-root refused the genesis addresses")
+    lines = result.stdout.splitlines()
+    fields = dict(line.split("=", 1) for line in lines if "=" in line)
+    require(len(lines) == len(GENESIS_PRINT_KEYS) and tuple(fields) == GENESIS_PRINT_KEYS,
+            "unexpected gateway --print-genesis-root output")
+    return {"root": normalized_hex(fields["GENESIS_ROOT"], 32, "printed genesis root"),
+            "wind_down_recipient": normalized_hex(fields["WIND_DOWN_RECIPIENT"], 20, "printed recipient"),
+            "oracle_signer": normalized_hex(fields["ORACLE_SIGNER_ADDRESS"], 20, "printed oracle signer")}
+
+
+def check_genesis_binding(genesis, gateway_bin):
+    """Refuse a configured genesis whose root is not the one the gateway computes
+    from its recipient and oracle signer (a normalized `genesis` block)."""
+    printed = genesis_from_gateway(gateway_bin, genesis["wind_down_recipient"], genesis["oracle_signer"])
+    require(printed == {name: genesis[name] for name in GENESIS_KEYS},
+            "genesis root does not bind the configured recipient and oracle signer "
+            "(gateway --print-genesis-root computes another root)")
+    return printed
 
 
 def public_config(value):
@@ -247,7 +308,7 @@ def public_config(value):
             "PROVER_EXPECTED_ELF_SHA256 must be 64 lower-case hex digits")
     require(elf == clock.REVIEWED_GUEST["elf"], "PROVER_EXPECTED_ELF_SHA256 does not match the reviewed guest ELF")
     policy = operator_policy(value["operator_policy"]) if "operator_policy" in value else None
-    genesis = genesis_config(value["genesis"], addresses, policy)
+    genesis = genesis_config(value["genesis"], addresses, policy, value["chain_id"])
     gateway["WIND_DOWN_RECIPIENT"] = normalized_hex(gateway["WIND_DOWN_RECIPIENT"], 20, "WIND_DOWN_RECIPIENT")
     require(gateway["WIND_DOWN_RECIPIENT"] == genesis["wind_down_recipient"],
             "WIND_DOWN_RECIPIENT does not match the genesis wind_down_recipient")
@@ -367,6 +428,25 @@ def real_proof(root):
                          "program_vkey": clock.REVIEWED_GUEST["vkey"]}}
 
 
+def deployable_status(root=ROOT):
+    """(status, reason): the real proof status a target that is not owned may rely on.
+
+    `clock.proof_status()` judges the committed proof files against the reviewed
+    pins only. A checkout whose guest sources are no longer REVIEWED_GUEST's builds
+    a program other than the proven one, so its status is PENDING_REPROOF whatever
+    those files say; `reason` names the first difference. `reason` is None when
+    the status is PROVEN.
+    """
+    status = clock.proof_status()
+    if status != clock.PROVEN:
+        return status, "real proof status is " + str(status)
+    try:
+        verify_reviewed_guest(root)
+    except ValueError as error:
+        return clock.PENDING_REPROOF, str(error)
+    return status, None
+
+
 def build_manifest(root, config):
     config = public_config(config)
     # The reviewed ELF and key are pinned independently of caller-supplied JSON.
@@ -395,12 +475,18 @@ def build_manifest(root, config):
             "public_config_sha256": digest(canonical(config)), "scope": dict(SCOPE)}
 
 
-def create_manifest(root, config):
-    """`create`: a release manifest exists only for a guest with a matching real proof."""
+def create_manifest(root, config, gateway_bin=None):
+    """`create`: a release manifest exists only for a guest with a matching real proof.
+
+    With `gateway_bin`, the configured genesis must also be the one the gateway
+    computes from its recipient and oracle signer.
+    """
     manifest = build_manifest(root, config)
     status = manifest["real_proof"]["status"]
     require(status == clock.PROVEN,
             "real proof status is " + str(status) + "; create requires a committed proof of the reviewed guest")
+    if gateway_bin is not None:
+        check_genesis_binding(manifest["public_config"]["genesis"], gateway_bin)
     return manifest
 
 
@@ -429,7 +515,8 @@ def require_release_target(manifest, owned, action):
             + " or ".join(str(chain) for chain in sorted(LOCAL_TEST_CHAINS)) + ") is accepted")
 
 
-def validate_manifest(root, manifest, config, env=None, *, owned_test_chain=False, check_target=True):
+def validate_manifest(root, manifest, config, env=None, *, owned_test_chain=False, check_target=True,
+                      gateway_bin=None):
     require(isinstance(manifest, dict) and manifest.get("schema") == SCHEMA, "unsupported release manifest")
     require(type(owned_test_chain) is bool, "invalid owned test chain declaration")
     expected = build_manifest(root, config)
@@ -445,6 +532,8 @@ def validate_manifest(root, manifest, config, env=None, *, owned_test_chain=Fals
         require_release_target(expected, target_owned(chain, False, owned_test_chain), "validate")
     if env is not None:
         check_environment(expected["public_config"], env)
+    if gateway_bin is not None:
+        check_genesis_binding(expected["public_config"]["genesis"], gateway_bin)
     return expected
 
 
@@ -537,7 +626,8 @@ def runtime_identity(artifact, deployed, role):
             "runtime_matches_compiler_template": True}
 
 
-def observe_target(root, manifest, config, rpc, *, require_operator_policy=False, owned_test_chain=False):
+def observe_target(root, manifest, config, rpc, *, require_operator_policy=False, owned_test_chain=False,
+                   gateway_bin=None):
     """Observe the complete clock stack at a single finalized, hash-pinned block.
 
     `rpc` is injectable for deterministic failure tests. The CLI always uses the
@@ -551,15 +641,17 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
               "manifest_sha256": digest(canonical(manifest)), "contracts": {}, "bindings": [],
               "scope": {**SCOPE, "local_identity_checked": False, "operator_and_settlement_policy_approved": False,
                         "operator_and_settlement_policy_matches": False,
-                        "token_runtime_verified": False, "genesis_root_verified": False},
+                        "token_runtime_verified": False, "genesis_root_verified": False,
+                        "genesis_bindings_recomputed": False},
               "limitations": ["RPC responses are trusted; no light-client or independent endpoint consensus.",
                               "Declared operator/settlement policy can be matched; its security and economic suitability are not approved.",
                               "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
-                              "The genesis root is compared on chain only before the first batch; the recipient and oracle signer are tied to it by the print-genesis-root run that produced all three.",
+                              "The genesis root is compared on chain only before the first batch; without --gateway-bin the recipient and oracle signer are not recomputed against it and rest on the print-genesis-root output that listed them with it.",
                               "No proof is generated or submitted; no service identity, state migration or release readiness is established."]}
     try:
-        validated = validate_manifest(root, manifest, config, check_target=False)
+        validated = validate_manifest(root, manifest, config, check_target=False, gateway_bin=gateway_bin)
         result["scope"]["local_identity_checked"] = True
+        result["scope"]["genesis_bindings_recomputed"] = gateway_bin is not None
         public = validated["public_config"]
         addresses = public["addresses"]
         require(type(require_operator_policy) is bool, "invalid operator policy requirement")
@@ -676,6 +768,9 @@ def main():
     create = commands.add_parser("create", help="record local release identities; target chain remains HOLD")
     create.add_argument("--config", type=Path, required=True, help="public config only; never an .env or keys file")
     create.add_argument("--output", type=Path, required=True)
+    gateway_help = ("the release's darkperp-gateway binary: recompute the genesis root from the configured "
+                    "recipient and oracle signer (--print-genesis-root; no key needed) and require equality")
+    create.add_argument("--gateway-bin", type=Path, help=gateway_help)
     validate = commands.add_parser("validate", help="fail closed on source/artifact/config changes")
     validate.add_argument("--manifest", type=Path, required=True)
     validate.add_argument("--config", type=Path, required=True)
@@ -683,6 +778,7 @@ def main():
     validate.add_argument("--owned-test-chain", action="store_true",
                           help="declare a disposable local test chain you own (chain id 31337 or 1337; "
                                "needed while the real proof is not PROVEN)")
+    validate.add_argument("--gateway-bin", type=Path, help=gateway_help)
     deployment = commands.add_parser("check-deployment", help="check recorded deployment key only, without RPC")
     deployment.add_argument("--deployment", type=Path, required=True)
     target = commands.add_parser("observe-target", help="read-only finalized clock-stack runtime and binding verification; release remains HOLD")
@@ -695,6 +791,7 @@ def main():
     target.add_argument("--owned-test-chain", action="store_true",
                         help="declare a disposable local test chain you own (chain id 31337 or 1337; "
                              "an Anvil client needs no declaration)")
+    target.add_argument("--gateway-bin", type=Path, help=gateway_help)
     args = parser.parse_args()
     if args.command == "check-deployment":
         check_deployment_config(read_json(args.deployment))
@@ -702,22 +799,24 @@ def main():
     elif args.command == "observe-target":
         result = observe_target(ROOT, read_json(args.manifest), read_json(args.config), TargetRPC(args.rpc),
                                 require_operator_policy=args.require_operator_policy,
-                                owned_test_chain=args.owned_test_chain)
+                                owned_test_chain=args.owned_test_chain, gateway_bin=args.gateway_bin)
         with args.output.open("x") as output:
             output.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
         print(json.dumps({key: result[key] for key in ("status", "scope", "blocker") if key in result}))
         if result["status"] != "VERIFIED_AT_FINALIZED_BLOCK":
             sys.exit(1)
     elif args.command == "create":
-        result = create_manifest(ROOT, read_json(args.config))
+        result = create_manifest(ROOT, read_json(args.config), gateway_bin=args.gateway_bin)
         with args.output.open("x") as output:
             output.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
-        print(json.dumps({"status": "PASS", "scope": SCOPE}))
+        print(json.dumps({"status": "PASS", "scope": SCOPE,
+                          "genesis_bindings_recomputed": args.gateway_bin is not None}))
     else:
         validate_manifest(ROOT, read_json(args.manifest), read_json(args.config),
                           os.environ if args.check_process_env else None,
-                          owned_test_chain=args.owned_test_chain)
-        print(json.dumps({"status": "PASS", "scope": SCOPE}))
+                          owned_test_chain=args.owned_test_chain, gateway_bin=args.gateway_bin)
+        print(json.dumps({"status": "PASS", "scope": SCOPE,
+                          "genesis_bindings_recomputed": args.gateway_bin is not None}))
 
 
 if __name__ == "__main__":
