@@ -2,9 +2,12 @@
 //!
 //!  * the pre-trade check reads the funding index the engine's fill will read
 //!    (`FundingState::index_at`), so it agrees with the engine after a pause;
-//!  * the minimum order notional applies only to orders that add exposure;
+//!  * the minimum order notional applies only to orders that add exposure, judged
+//!    against the position the order will meet when it executes;
+//!  * close-only admission refuses orders that add exposure;
 //!  * the funding mark is the impact-notional book mid, averaged over the open
-//!    window, with the oracle index as the fallback;
+//!    window, with the oracle index as the fallback; only depth the engine could
+//!    fill and that takers face counts, and one sample cannot saturate the rate;
 //!  * idle markets keep windows idle, a traded market refreshes its price once per
 //!    epoch, ADL leaves winners healthy, and pruned positions leave the scans.
 
@@ -23,7 +26,7 @@ use perp_core::position::Position;
 use perp_core::{EngineError, FillLeg, Note, RiskError};
 use sequencer::{
     below_minimum_order_notional, EnclaveIdentity, Sequencer, FUNDING_IMPACT_NOTIONAL,
-    MIN_ORDER_NOTIONAL,
+    FUNDING_MARK_MIN_SPAN_MS, MIN_ORDER_NOTIONAL,
 };
 
 fn enclave() -> EnclaveIdentity {
@@ -138,34 +141,56 @@ fn band(index: i128) -> i128 {
     test_market(0).max_mark_deviation_ratio * index / RATE_SCALE
 }
 
-/// A model of the sequencer's funding mark: samples `(time, premium)`, each in
-/// force until the next; the mark at a tick is the index plus the time-weighted
-/// average of the samples whose span has closed.
+/// The smallest premium at which the rate reaches its clamp at `index`, within
+/// the mark band: the most a sample or the window average may carry.
+fn cap(index: i128) -> i128 {
+    let saturating = (MAX_FUNDING_RATE_PER_INTERVAL * index + RATE_SCALE - 1) / RATE_SCALE;
+    saturating.min(band(index))
+}
+
+/// A model of the sequencer's funding mark: samples `(time, premium)`, each taken
+/// from the book a tick's takers face (before the tick matches) and pricing the
+/// span since the previous sample. The mark at a tick is the index plus the
+/// time-weighted average of the closed spans, divided by at least
+/// `FUNDING_MARK_MIN_SPAN_MS`, with every premium capped at `cap`.
 #[derive(Default)]
 struct MarkModel {
     samples: Vec<(u64, i128)>,
 }
 
 impl MarkModel {
-    fn mark_at(&self, now: u64, index: i128) -> i128 {
+    fn mark(&self, index: i128) -> i128 {
         let mut weighted = 0i128;
-        let mut elapsed = 0i128;
-        for (i, (t, p)) in self.samples.iter().enumerate() {
-            let end = self.samples.get(i + 1).map_or(now, |(t1, _)| *t1);
-            weighted += p * i128::from(end - t);
-            elapsed += i128::from(end - t);
+        let mut elapsed = 0u64;
+        for pair in self.samples.windows(2) {
+            let ((t0, _), (t1, p1)) = (pair[0], pair[1]);
+            weighted += p1 * i128::from(t1 - t0);
+            elapsed += t1 - t0;
         }
-        let avg = if elapsed == 0 { 0 } else { weighted / elapsed };
-        index + avg.clamp(-band(index), band(index))
+        let avg = weighted / i128::from(elapsed.max(FUNDING_MARK_MIN_SPAN_MS));
+        index + avg.clamp(-cap(index), cap(index))
     }
 
-    /// Record the sample the sequencer takes after a tick at `now`.
+    /// Record the sample the sequencer takes at `now`, before the tick's orders
+    /// reach the book. Call it after the tick's oracle is set and before sealing.
     fn sample(&mut self, seq: &Sequencer, now: u64, index: i128) {
         let premium = seq
             .impact_mid(0, now)
-            .map_or(0, |mid| (mid - index).clamp(-band(index), band(index)));
+            .map_or(0, |mid| (mid - index).clamp(-cap(index), cap(index)));
         self.samples.push((now, premium));
     }
+}
+
+/// One tick at `t` with a fresh $100k oracle: the model samples first, as the
+/// sequencer does, then the batch is sealed and its funding mark returned.
+fn modeled_tick(s: &mut Sequencer, model: &mut MarkModel, t: u64, orders: &[Order]) -> i128 {
+    let index = 100_000 * PRICE_SCALE;
+    s.set_oracle(0, oracle(100_000, t));
+    model.sample(s, t, index);
+    let sealed = s.seal_batch(orders, t);
+    let mark = accrue_mark(&sealed.ops);
+    assert_eq!(mark, model.mark(index), "the sequencer's mark at {t}");
+    mark
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +408,303 @@ fn a_resting_remainder_below_the_minimum_keeps_matching() {
     assert!(s.state.conservation_holds());
 }
 
+/// An IOC copy of `o`.
+fn ioc(o: Order) -> Order {
+    Order {
+        tif: TimeInForce::Ioc,
+        ..o
+    }
+}
+
+/// Owner 2 holds a $100 long (0.001 BTC). In one batch it closes it and adds a $5
+/// sell, which measured against the long alone would be an exempt reduction. After
+/// the close it would open a $5 short, so it is refused before matching; the close
+/// itself trades.
+#[test]
+fn a_same_batch_reduction_cannot_open_below_the_minimum() {
+    let t = 10_000u64;
+    let mut s = setup(t);
+    let lot = SIZE_SCALE / 1_000;
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, lot, 100_000, 1),
+            order(2, Side::Buy, lot, 100_000, 2),
+        ],
+        t,
+    );
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, lot);
+    let maker = order(1, Side::Buy, lot + TEN_DOLLARS / 2, 100_000, 3);
+    let close = order(2, Side::Sell, lot, 100_000, 4);
+    let tiny = order(2, Side::Sell, TEN_DOLLARS / 2, 100_000, 5);
+    assert_eq!(
+        s.pre_trade_check(&tiny, t),
+        Ok(()),
+        "alone it is a reduction"
+    );
+    let sealed = s.seal_batch(&[maker, close, tiny], t + 700);
+    assert_eq!(
+        sealed.manifest.rejected,
+        vec![(
+            tiny.order_hash::<Keccak256>(),
+            RejectReason::BelowMinimumSize
+        )]
+    );
+    assert!(sealed
+        .settled_order_hashes
+        .contains(&close.order_hash::<Keccak256>()));
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, 0);
+    // the other order of the pair keeps its exemption: a $5 trim after a $50 trim
+    // of a larger long still only reduces
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, lot, 100_000, 6),
+            order(2, Side::Buy, lot, 100_000, 7),
+        ],
+        t + 1_400,
+    );
+    let half = order(2, Side::Sell, lot / 2, 100_000, 8);
+    let trim = order(2, Side::Sell, TEN_DOLLARS / 2, 100_000, 9);
+    let sealed = s.seal_batch(&[half, trim], t + 2_100);
+    assert!(
+        sealed.manifest.rejected.is_empty(),
+        "{:?}",
+        sealed.manifest.rejected
+    );
+    assert!(s.state.conservation_holds());
+}
+
+/// Owner 2 rests a $5 sell as an exempt reduction of its $100 long, then closes
+/// the long with another order. When a buyer later reaches the resting $5 sell, the
+/// fill would open a $5 short, so settlement refuses it: the sell is banned with
+/// `BelowMinimumSize` and the buyer's order is left to rest.
+#[test]
+fn a_resting_exempt_order_cannot_open_when_it_fills() {
+    let t = 10_000u64;
+    let mut s = setup(t);
+    fund(&mut s, 3, 20_000, 0x33);
+    let lot = SIZE_SCALE / 1_000;
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, lot, 100_000, 1),
+            order(2, Side::Buy, lot, 100_000, 2),
+        ],
+        t,
+    );
+    let tiny = order(2, Side::Sell, TEN_DOLLARS / 2, 100_100, 3);
+    let tiny_hash = tiny.order_hash::<Keccak256>();
+    let sealed = s.seal_batch(&[tiny], t + 700);
+    assert!(sealed.manifest.ordered.contains(&tiny_hash));
+    assert_eq!(s.remaining_order_size(&tiny_hash), Some(TEN_DOLLARS / 2));
+    // the long is closed by an IOC against owner 1's bid
+    s.seal_batch(
+        &[
+            order(1, Side::Buy, lot, 100_000, 4),
+            ioc(order(2, Side::Sell, lot, 100_000, 5)),
+        ],
+        t + 1_400,
+    );
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, 0);
+    assert_eq!(s.remaining_order_size(&tiny_hash), Some(TEN_DOLLARS / 2));
+    // owner 3 buys $10 up to $100,100 and reaches the $5 sell
+    let buy = order(3, Side::Buy, TEN_DOLLARS, 100_100, 6);
+    let sealed = s.seal_batch(&[buy], t + 2_100);
+    assert_eq!(
+        sealed.manifest.rejected,
+        vec![(tiny_hash, RejectReason::BelowMinimumSize)]
+    );
+    assert!(sealed.applied_fills.is_empty());
+    assert_eq!(
+        s.remaining_order_size(&tiny_hash),
+        None,
+        "banned from the book"
+    );
+    assert_eq!(
+        s.remaining_order_size(&buy.order_hash::<Keccak256>()),
+        Some(TEN_DOLLARS)
+    );
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, 0);
+    assert!(s.state.conservation_holds());
+}
+
+/// While it still reduces, a resting exempt order fills normally, and a cancelled
+/// one leaves nothing behind.
+#[test]
+fn a_resting_exempt_order_fills_while_it_reduces() {
+    let t = 10_000u64;
+    let mut s = setup(t);
+    fund(&mut s, 3, 20_000, 0x33);
+    let lot = SIZE_SCALE / 1_000;
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, lot, 100_000, 1),
+            order(2, Side::Buy, lot, 100_000, 2),
+        ],
+        t,
+    );
+    let tiny = order(2, Side::Sell, TEN_DOLLARS / 2, 100_100, 3);
+    s.seal_batch(&[tiny], t + 700);
+    let sealed = s.seal_batch(&[order(3, Side::Buy, TEN_DOLLARS, 100_100, 4)], t + 1_400);
+    assert!(sealed.manifest.rejected.is_empty());
+    assert!(sealed
+        .settled_order_hashes
+        .contains(&tiny.order_hash::<Keccak256>()));
+    assert_eq!(
+        s.state.position(&owner_id(2), 0).unwrap().size,
+        lot - TEN_DOLLARS / 2
+    );
+    let again = order(2, Side::Sell, TEN_DOLLARS / 2, 100_200, 5);
+    s.seal_batch(&[again], t + 2_100);
+    assert!(s.cancel_order(&owner_id(2), &again, true).is_some());
+    assert!(s.state.conservation_holds());
+}
+
+/// The gateway's house market maker answers each taker with a counter order of the
+/// taker's size. A $5 reduce-only close is exempt from the minimum, but its counter
+/// adds to the house's position, so without the house exemption the counter is
+/// refused and the close finds no liquidity. With it, the close trades.
+#[test]
+fn an_exempt_owner_can_counter_a_small_close() {
+    for exempt in [false, true] {
+        let t = 10_000u64;
+        let mut s = setup(t); // 1 = house, 2 = user
+        fund(&mut s, 3, 20_000, 0x33); // 3 = another user
+        if exempt {
+            s.set_minimum_exempt_owner(Some(owner_id(1)));
+        }
+        // user 3 shorts 0.01 BTC against the house: the house is long 0.01
+        s.seal_batch(
+            &[
+                order(1, Side::Buy, SIZE_SCALE / 100, 100_000, 1),
+                ioc(order(3, Side::Sell, SIZE_SCALE / 100, 100_000, 2)),
+            ],
+            t,
+        );
+        // user 2 buys $20, then sells $15 of it reduce-only, keeping a $5 long
+        s.seal_batch(
+            &[
+                order(1, Side::Sell, TEN_DOLLARS * 2, 100_000, 3),
+                ioc(order(2, Side::Buy, TEN_DOLLARS * 2, 100_000, 4)),
+            ],
+            t + 700,
+        );
+        s.seal_batch(
+            &[
+                order(1, Side::Buy, TEN_DOLLARS * 3 / 2, 100_000, 5),
+                ioc(Order {
+                    reduce_only: true,
+                    ..order(2, Side::Sell, TEN_DOLLARS * 3 / 2, 100_000, 6)
+                }),
+            ],
+            t + 1_400,
+        );
+        assert_eq!(
+            s.state.position(&owner_id(2), 0).unwrap().size,
+            TEN_DOLLARS / 2
+        );
+        // the $5 close and its house counter
+        let counter = order(1, Side::Buy, TEN_DOLLARS / 2, 100_000, 7);
+        let close = ioc(Order {
+            reduce_only: true,
+            ..order(2, Side::Sell, TEN_DOLLARS / 2, 100_000, 8)
+        });
+        let sealed = s.seal_batch(&[counter, close], t + 2_100);
+        let counter_refused = sealed.manifest.rejected.contains(&(
+            counter.order_hash::<Keccak256>(),
+            RejectReason::BelowMinimumSize,
+        ));
+        assert_eq!(counter_refused, !exempt);
+        let left = s.state.position(&owner_id(2), 0).unwrap().size;
+        assert_eq!(
+            left,
+            if exempt { 0 } else { TEN_DOLLARS / 2 },
+            "exempt={exempt}"
+        );
+        assert!(s.state.conservation_holds());
+    }
+}
+
+/// While the engine is close-only, an order that adds exposure is refused before
+/// matching with `MarketCloseOnly`, also when only the owner's earlier order of the
+/// same batch makes it add exposure.
+#[test]
+fn close_only_admission_refuses_orders_that_add_exposure() {
+    let t = 10_000u64;
+    let mut s = setup(t);
+    let lot = SIZE_SCALE / 100;
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, lot, 100_000, 1),
+            order(2, Side::Buy, lot, 100_000, 2),
+        ],
+        t,
+    );
+    s.apply(&BatchOp::EnterCloseOnly).unwrap();
+    let open = order(2, Side::Buy, lot, 100_000, 3);
+    assert_eq!(
+        s.pre_trade_check(&open, t),
+        Err(RejectReason::MarketCloseOnly)
+    );
+    let close = order(2, Side::Sell, lot, 100_000, 4);
+    let reopen = order(2, Side::Sell, lot, 99_000, 5);
+    let maker = order(1, Side::Buy, lot, 100_000, 6);
+    let sealed = s.seal_batch(&[close, reopen, maker], t + 700);
+    assert_eq!(
+        sealed.manifest.rejected,
+        vec![(
+            reopen.order_hash::<Keccak256>(),
+            RejectReason::MarketCloseOnly
+        )]
+    );
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, 0);
+    assert!(s.state.conservation_holds());
+}
+
+// ---------------------------------------------------------------------------
+// Wind-down recipient
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "set_wind_down_recipient must run before the first window is sealed")]
+fn the_recipient_cannot_be_set_after_a_window_is_sealed() {
+    let mut s = Sequencer::new(enclave(), 20);
+    s.add_market(test_market(0));
+    s.set_wind_down_recipient([0x5A; 20]);
+    s.seal_genesis_baseline();
+    let _ = s.seal_window();
+    s.set_wind_down_recipient([0x5A; 20]);
+}
+
+#[test]
+#[should_panic(expected = "the wind-down recipient is fixed once set")]
+fn the_recipient_cannot_be_replaced() {
+    let mut s = Sequencer::new(enclave(), 20);
+    s.add_market(test_market(0));
+    s.set_wind_down_recipient([0x5A; 20]);
+    s.set_wind_down_recipient([0x5B; 20]);
+}
+
+#[test]
+#[should_panic(expected = "set_wind_down_recipient must run before any window ops")]
+fn the_recipient_cannot_be_set_over_a_pending_manifest() {
+    let mut s = Sequencer::new(enclave(), 20);
+    s.add_market(test_market(0));
+    // a rejection in the open window's manifest, with no op
+    s.reject_in_window(&[word_u64(1)], RejectReason::Cancelled);
+    assert!(s.window_has_pending_manifest() && !s.window_has_staged_ops());
+    s.set_wind_down_recipient([0x5A; 20]);
+}
+
+#[test]
+fn the_same_recipient_may_be_set_again_before_genesis() {
+    let mut s = Sequencer::new(enclave(), 20);
+    s.add_market(test_market(0));
+    s.set_wind_down_recipient([0x5A; 20]);
+    let root = s.state.state_root();
+    s.set_wind_down_recipient([0x5A; 20]);
+    assert_eq!(s.state.state_root(), root);
+    assert_eq!(s.window_baseline().state_root(), root);
+}
+
 // ---------------------------------------------------------------------------
 // Funding mark
 // ---------------------------------------------------------------------------
@@ -406,34 +728,30 @@ fn quoted_book(t: u64) -> Sequencer {
 
 /// A $10 bid $1 under the ask, placed at the last tick before the window is sealed,
 /// moves the top-of-book mid enough to clamp the rate. The funding mark is not
-/// moved by it: a tick's own quote never weighs in that tick's mark, the bid is far
-/// below the impact size, and the next window starts its average afresh, so the
-/// rate in force over the pause after the seal carries no premium.
+/// moved by it: the tick's sample is taken before its orders reach the book, the
+/// bid is far below the impact size, and the next window starts its average
+/// afresh, so the rate in force over the pause after the seal carries no premium.
 #[test]
 fn a_ten_dollar_quote_at_the_last_tick_cannot_set_the_pause_rate() {
     let index = 100_000 * PRICE_SCALE;
     let t1 = 10_000u64;
     let mut s = quoted_book(t1);
-    let mut model = MarkModel::default();
-    model.sample(&s, t1, index);
+    // the quotes arrived in t1's batch: t1's sample saw an empty book
+    let mut model = MarkModel {
+        samples: vec![(t1, 0)],
+    };
     let mut t = t1;
     for _ in 0..8 {
         t += 700;
-        s.set_oracle(0, oracle(100_000, t));
-        let sealed = s.seal_batch(&[], t);
-        assert_eq!(accrue_mark(&sealed.ops), model.mark_at(t, index));
-        assert_eq!(
-            accrue_mark(&sealed.ops),
-            index,
-            "the honest window has no premium"
-        );
-        model.sample(&s, t, index);
+        let mark = modeled_tick(&mut s, &mut model, t, &[]);
+        assert_eq!(mark, index, "the honest window has no premium");
     }
 
     // the last tick before the seal: the attacker's $10 bid, $1 under the ask
     t += 700;
-    s.set_oracle(0, oracle(100_000, t));
     let attack = order(3, Side::Buy, TEN_DOLLARS, 100_099, 9);
+    s.set_oracle(0, oracle(100_000, t));
+    model.sample(&s, t, index);
     let sealed = s.seal_batch(&[attack], t);
     assert!(sealed
         .manifest
@@ -447,12 +765,12 @@ fn a_ten_dollar_quote_at_the_last_tick_cannot_set_the_pause_rate() {
         "fixture: the top-of-book mid would clamp the rate"
     );
     assert_eq!(accrue_mark(&sealed.ops), index);
+    assert_eq!(accrue_mark(&sealed.ops), model.mark(index));
     assert_eq!(
         s.state.funding[&0].rate, 0,
         "the pause is priced at no premium"
     );
-    model.sample(&s, t, index);
-    let impact_premium = model.samples.last().unwrap().1;
+    let impact_premium = s.impact_mid(0, t).unwrap() - index;
     assert!(
         impact_premium > 0 && impact_premium < PRICE_SCALE,
         "the $10 bid moves the impact mid by under $1: {impact_premium}"
@@ -460,20 +778,21 @@ fn a_ten_dollar_quote_at_the_last_tick_cannot_set_the_pause_rate() {
 
     // seal and pause for 30 minutes
     let _ = s.seal_window();
+    let mut model = MarkModel::default();
     let reopen = t + 1_800_000;
-    s.set_oracle(0, oracle(100_000, reopen));
-    let sealed = s.seal_batch(&[], reopen);
+    let mark = modeled_tick(&mut s, &mut model, reopen, &[]);
     assert_eq!(
-        accrue_mark(&sealed.ops),
-        index,
+        mark, index,
         "the new window carries no sample over the pause"
     );
-    // the bid is still resting: from now on it counts, at its impact weight only
+    // the bid is still resting: from now on it counts, at its impact weight only,
+    // and over at least the minimum span
     let next = reopen + 700;
-    s.set_oracle(0, oracle(100_000, next));
-    let sealed = s.seal_batch(&[], next);
-    let mark = accrue_mark(&sealed.ops);
-    assert_eq!(mark, index + impact_premium);
+    let mark = modeled_tick(&mut s, &mut model, next, &[]);
+    assert_eq!(
+        mark,
+        index + impact_premium * 700 / i128::from(FUNDING_MARK_MIN_SPAN_MS)
+    );
     let rate = s.state.funding[&0].rate;
     assert_eq!(rate, FundingState::funding_rate(mark, index));
     assert!(
@@ -529,63 +848,265 @@ fn an_empty_side_falls_back_to_the_index() {
     }
 }
 
-/// The window average weighs each premium sample by the time it was in force, and
-/// it averages the premium rather than the mid: a move of the index during the
-/// window does not read as a premium.
+/// The window average weighs each premium sample by the span it prices (the time
+/// since the previous tick), counts missing time up to the minimum span at the
+/// index, and averages the premium rather than the mid: a move of the index during
+/// the window does not read as a premium. A quote withdrawn before a tick prices
+/// nothing at that tick.
 #[test]
 fn the_mark_is_the_time_weighted_premium_of_the_open_window() {
     let t1 = 10_000u64;
     let mut s = setup(t1);
-    // impact mid $100,050 against a $100,000 index: a $50 premium
-    s.seal_batch(
-        &[
-            order(1, Side::Buy, SIZE_SCALE / 10, 100_000, 1),
-            order(2, Side::Sell, SIZE_SCALE / 10, 100_100, 2),
-        ],
+    // impact mid $100,020 against a $100,000 index: a $20 premium
+    let bid = order(1, Side::Buy, SIZE_SCALE / 10, 100_000, 1);
+    let sealed = s.seal_batch(
+        &[bid, order(2, Side::Sell, SIZE_SCALE / 10, 100_040, 2)],
         t1,
     );
-    assert_eq!(s.impact_mid(0, t1), Some(100_050 * PRICE_SCALE));
+    assert_eq!(
+        accrue_mark(&sealed.ops),
+        100_000 * PRICE_SCALE,
+        "the quotes arrived in t1's batch"
+    );
+    assert_eq!(s.impact_mid(0, t1), Some(100_020 * PRICE_SCALE));
 
-    // 700 ms later the index has risen to the mid; the $50 sample was in force
+    // 700 ms later the index has risen by $10: the premium is now $10, and the
+    // 700 ms it priced count over the 7 s minimum span
     let t2 = t1 + 700;
-    let index2 = 100_050 * PRICE_SCALE;
+    let index2 = 100_010 * PRICE_SCALE;
     s.set_oracle(0, oracle_px(index2, t2));
     let sealed = s.seal_batch(&[], t2);
-    assert_eq!(accrue_mark(&sealed.ops), index2 + 50 * PRICE_SCALE);
-    assert_eq!(s.state.funding[&0].rate, 499, "≈ 0.05%, at the new index");
-
-    // 2,100 ms at no premium: (50 · 700 + 0 · 2,100) / 2,800 = $12.50
-    let t3 = t2 + 2_100;
-    s.set_oracle(0, oracle_px(index2, t3));
-    let sealed = s.seal_batch(&[], t3);
+    let premium = 10 * PRICE_SCALE;
     let mark = accrue_mark(&sealed.ops);
-    assert_eq!(mark, index2 + 1_250 * PRICE_SCALE / 100);
+    assert_eq!(mark, index2 + premium * 700 / 7_000);
     assert_eq!(
         s.state.funding[&0].rate,
         FundingState::funding_rate(mark, index2)
     );
-    assert_eq!(s.state.funding[&0].rate, 124);
+
+    // 7,000 ms more at the same premium: 7,700 ms of $10 is a $10 average
+    let t3 = t2 + 7_000;
+    s.set_oracle(0, oracle_px(index2, t3));
+    let sealed = s.seal_batch(&[], t3);
+    assert_eq!(accrue_mark(&sealed.ops), index2 + premium);
+
+    // the bid is cancelled between ticks: the next 2,300 ms are priced at the
+    // index, since no impact bid faced the takers at t4
+    assert!(s.cancel_order(&owner_id(1), &bid, true).is_some());
+    let t4 = t3 + 2_300;
+    s.set_oracle(0, oracle_px(index2, t4));
+    let sealed = s.seal_batch(&[], t4);
+    let mark = accrue_mark(&sealed.ops);
+    assert_eq!(mark, index2 + premium * 7_700 / 10_000);
+    assert_eq!(
+        s.state.funding[&0].rate,
+        FundingState::funding_rate(mark, index2)
+    );
 }
 
-/// A book far outside the mark band no longer drops the funding tick: each sample
-/// is clamped to the band, so the op is always admissible and the rate clamps.
+/// Owner 3, funded with $1k, rests a bid at +4.9% and an ask at +5.0%, about
+/// $1,050 a side. Both lie inside the 5% mark band but outside the 2% fill band, so
+/// no taker could ever trade against them: they give no impact price, and the
+/// rate stays at zero. A seller that crosses the bid finds the fill refused and the
+/// bid banned.
 #[test]
-fn an_out_of_band_book_clamps_the_mark_to_the_band() {
+fn depth_outside_the_fill_band_does_not_move_the_mark() {
+    let t1 = 10_000u64;
+    let mut s = setup(t1);
+    fund(&mut s, 3, 1_000, 0x33);
+    s.seal_genesis_baseline();
+    let mut model = MarkModel::default();
+    let mut t = t1;
+    modeled_tick(&mut s, &mut model, t, &[]);
+    t += 700;
+    let bid = order(3, Side::Buy, SIZE_SCALE / 100, 104_900, 1);
+    let ask = order(3, Side::Sell, SIZE_SCALE / 100, 105_000, 2);
+    s.set_oracle(0, oracle(100_000, t));
+    let sealed = s.seal_batch(&[bid, ask], t);
+    assert!(sealed.manifest.rejected.is_empty());
+    assert_eq!(s.impact_mid(0, t), None);
+    for _ in 0..8 {
+        t += 700;
+        s.set_oracle(0, oracle(100_000, t));
+        let sealed = s.seal_batch(&[], t);
+        assert_eq!(accrue_mark(&sealed.ops), 100_000 * PRICE_SCALE);
+        assert_eq!(s.state.funding[&0].rate, 0);
+    }
+    // the bid was never fillable
+    t += 700;
+    s.set_oracle(0, oracle(100_000, t));
+    let sell = Order {
+        tif: TimeInForce::Ioc,
+        ..order(2, Side::Sell, SIZE_SCALE / 100, 100_000, 3)
+    };
+    let sealed = s.seal_batch(&[sell], t);
+    assert!(sealed.manifest.rejected.contains(&(
+        bid.order_hash::<Keccak256>(),
+        RejectReason::FillPriceOutOfBand
+    )));
+    assert!(s
+        .state
+        .position(&owner_id(3), 0)
+        .is_none_or(|p| p.size == 0));
+}
+
+/// Depth whose maker could not settle the fill is not depth: owner 3 quotes about
+/// $1,010 a side inside the fill band, then unbinds all but $50 of its collateral,
+/// so neither quote could fill without breaking its initial margin.
+#[test]
+fn depth_its_maker_could_not_margin_does_not_move_the_mark() {
+    let t1 = 10_000u64;
+    let mut s = setup(t1);
+    fund(&mut s, 3, 1_000, 0x33);
+    let bid = order(3, Side::Buy, SIZE_SCALE / 100, 101_000, 1);
+    let ask = order(3, Side::Sell, SIZE_SCALE / 100, 101_050, 2);
+    s.seal_batch(&[bid, ask], t1);
+    assert_eq!(
+        s.impact_mid(0, t1),
+        Some(101_025 * PRICE_SCALE),
+        "fixture: margined, the quotes are depth"
+    );
+    let collateral = s.state.position(&owner_id(3), 0).unwrap().collateral;
+    s.apply(&BatchOp::Unbind {
+        owner: owner_id(3),
+        market_id: 0,
+        amount: collateral - 50 * QUOTE_SCALE,
+        blinding: [0x7A; 32],
+        oracle: oracle(100_000, t1),
+        now_ms: t1,
+    })
+    .unwrap();
+    assert_eq!(s.impact_mid(0, t1), None);
+    let mut t = t1;
+    for _ in 0..8 {
+        t += 700;
+        s.set_oracle(0, oracle(100_000, t));
+        let sealed = s.seal_batch(&[], t);
+        assert_eq!(accrue_mark(&sealed.ops), 100_000 * PRICE_SCALE);
+        assert_eq!(s.state.funding[&0].rate, 0);
+    }
+}
+
+/// Quotes inside the fill band at +1.925%, placed at one tick and cancelled (or
+/// expiring) before the next, were never on the book when any taker could trade
+/// against them, so they price no span: the stored rate stays at zero through the
+/// window, and the quoter holds no position.
+#[test]
+fn a_quote_withdrawn_before_the_next_tick_never_counts() {
+    for expire in [false, true] {
+        let t1 = 10_000u64;
+        let mut s = setup(t1);
+        fund(&mut s, 3, 1_000, 0x33);
+        s.seal_genesis_baseline();
+        let mut model = MarkModel::default();
+        let mut t = t1;
+        modeled_tick(&mut s, &mut model, t, &[]);
+        t += 700;
+        let expiry_ms = if expire { t + 1 } else { 0 };
+        let bid = Order {
+            expiry_ms,
+            ..order(3, Side::Buy, SIZE_SCALE / 100, 101_900, 1)
+        };
+        let ask = Order {
+            expiry_ms,
+            ..order(3, Side::Sell, SIZE_SCALE / 100, 101_950, 2)
+        };
+        modeled_tick(&mut s, &mut model, t, &[bid, ask]);
+        assert!(
+            s.impact_mid(0, t).is_some(),
+            "fixture: the quotes are depth at t"
+        );
+        if !expire {
+            assert!(s.cancel_order(&owner_id(3), &bid, true).is_some());
+            assert!(s.cancel_order(&owner_id(3), &ask, true).is_some());
+        }
+        for _ in 0..8 {
+            t += 700;
+            let mark = modeled_tick(&mut s, &mut model, t, &[]);
+            assert_eq!(mark, 100_000 * PRICE_SCALE);
+            assert_eq!(s.state.funding[&0].rate, 0, "expire={expire}");
+        }
+        assert!(s
+            .state
+            .position(&owner_id(3), 0)
+            .is_none_or(|p| p.size == 0));
+    }
+}
+
+/// A quote resting through one tick's matching counts for the span it priced,
+/// and no more: its premium is capped at the one that saturates the rate, and the window
+/// average divides by at least the minimum span. So one sample at +1.925% in a
+/// ten-tick window moves the stored rate at the window's last tick to at most
+/// `MAX · 700 / FUNDING_MARK_MIN_SPAN_MS`.
+#[test]
+fn one_sample_cannot_saturate_the_pause_rate() {
     let index = 100_000 * PRICE_SCALE;
     let t1 = 10_000u64;
     let mut s = setup(t1);
-    // a two-sided book 10% above the index
+    fund(&mut s, 3, 1_000, 0x33);
+    s.seal_genesis_baseline();
+    let bid = order(3, Side::Buy, SIZE_SCALE / 100, 101_900, 1);
+    let ask = order(3, Side::Sell, SIZE_SCALE / 100, 101_950, 2);
+    let mut model = MarkModel::default();
+    let mut t = t1;
+    // the quotes arrive in the window's first tick and rest through the second
+    modeled_tick(&mut s, &mut model, t, &[bid, ask]);
+    t += 700;
+    let mark = modeled_tick(&mut s, &mut model, t, &[]);
+    assert_eq!(
+        model.samples[1].1,
+        cap(index),
+        "the +1.925% sample is capped"
+    );
+    assert_eq!(
+        mark,
+        index + cap(index) * 700 / i128::from(FUNDING_MARK_MIN_SPAN_MS)
+    );
+    assert!(s.cancel_order(&owner_id(3), &bid, true).is_some());
+    assert!(s.cancel_order(&owner_id(3), &ask, true).is_some());
+    for _ in 0..8 {
+        t += 700;
+        modeled_tick(&mut s, &mut model, t, &[]);
+    }
+    let rate = s.state.funding[&0].rate;
+    let bound = MAX_FUNDING_RATE_PER_INTERVAL * 700 / i128::from(FUNDING_MARK_MIN_SPAN_MS);
+    assert!(rate > 0 && rate <= bound, "rate {rate} above {bound}");
+    let _ = s.seal_window();
+    assert_eq!(
+        s.state.funding[&0].rate, rate,
+        "the rate that prices the pause"
+    );
+}
+
+/// A book far above the index no longer drops the funding tick: depth the engine
+/// could fill only counts inside the fill band, and every premium is capped below
+/// the mark band, so the op is always admissible. A deep in-band book at the edge
+/// of the fill band held through a whole window saturates the rate, as an honest
+/// premium should.
+#[test]
+fn a_premium_held_through_the_window_reaches_the_clamp() {
+    let index = 100_000 * PRICE_SCALE;
+    let t1 = 10_000u64;
+    let mut s = setup(t1);
+    // a two-sided book 1.9% above the index
     s.seal_batch(
         &[
-            order(1, Side::Buy, SIZE_SCALE / 10, 110_000, 1),
-            order(2, Side::Sell, SIZE_SCALE / 10, 110_100, 2),
+            order(1, Side::Buy, SIZE_SCALE / 10, 101_900, 1),
+            order(2, Side::Sell, SIZE_SCALE / 10, 101_950, 2),
         ],
         t1,
     );
-    let t2 = t1 + 700;
-    s.set_oracle(0, oracle(100_000, t2));
-    let sealed = s.seal_batch(&[], t2);
-    assert_eq!(accrue_mark(&sealed.ops), index + band(index));
+    let mut model = MarkModel {
+        samples: vec![(t1, 0)],
+    };
+    let mut t = t1;
+    let mut mark = index;
+    for _ in 0..10 {
+        t += 700;
+        mark = modeled_tick(&mut s, &mut model, t, &[]);
+        assert!(mark <= index + cap(index));
+    }
+    assert_eq!(mark, index + cap(index), "ten ticks fill the minimum span");
     assert_eq!(s.state.funding[&0].rate, MAX_FUNDING_RATE_PER_INTERVAL);
 }
 

@@ -63,6 +63,7 @@ impl Sequencer {
         // order may be ordered earlier and cancelled later in the SAME window;
         // cancellation describes its remainder, never a reversal of prior fills.
         self.window_rejected.push((hash, RejectReason::Cancelled));
+        self.minimum_exempt.remove(&hash);
         // No off-chain withholding alarm for an order resolved by cancellation.
         // The original gateway receipt remains valid against the settled manifest.
         self.inclusion.remove(&hash);

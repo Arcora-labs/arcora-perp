@@ -23,16 +23,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
-use matcher::{Match, MatchingEngine, OrderRemoval, SubmitStatus};
+use matcher::{Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus};
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{notional_quote, QUOTE_SCALE, RATE_SCALE};
+use perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL;
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::note::PubKey;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side};
 use perp_core::position::Position;
-use perp_core::{DefaultState, EngineError, FillLeg};
+use perp_core::{DefaultState, EngineError, FillLeg, Mode};
 
 /// Compute the Ethereum-style 20-byte address of a secp256k1 verifying key:
 /// `keccak256(uncompressed_pubkey[1..])[12..]` — exactly what L1 `ecrecover`
@@ -268,6 +269,14 @@ pub fn adl_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
 /// order that only reduces a position is exempt, and a resting remainder that a
 /// partial fill left below the minimum keeps matching (the book never re-checks
 /// it). A refused order is recorded as [`RejectReason::BelowMinimumSize`].
+///
+/// The exemption holds only while the order really reduces. In a batch, an order
+/// is measured against its owner's position before the batch and against that
+/// position after the owner's earlier orders of the batch, filled in full; it is
+/// exempt only if it reduces against both. An exempt order whose fill would add
+/// exposure when it executes (in its own batch, or later while it rests) is
+/// refused at settlement with the same reason, so no order below the minimum ever
+/// opens, grows or flips a position.
 pub const MIN_ORDER_NOTIONAL: i128 = 10 * QUOTE_SCALE;
 
 /// The notional, quote-scaled ($1,000), at which the funding mark takes its impact
@@ -275,6 +284,13 @@ pub const MIN_ORDER_NOTIONAL: i128 = 10 * QUOTE_SCALE;
 /// the book. A side holding less than this gives no impact price, and the mark
 /// falls back to the oracle index (see [`Sequencer::run_maintenance`]).
 pub const FUNDING_IMPACT_NOTIONAL: i128 = 1_000 * QUOTE_SCALE;
+
+/// The shortest span, in ms, the funding mark's window average divides by: ten
+/// 700 ms ticks, about one settle window under the launch clock policy. While the
+/// open window has run for less, the missing time counts at the oracle index (a
+/// zero premium), so a few early samples move the mark by at most their share of
+/// this span.
+pub const FUNDING_MARK_MIN_SPAN_MS: u64 = 7_000;
 
 /// Whether the minimum order size ([`MIN_ORDER_NOTIONAL`]) refuses `order` against
 /// its owner's current `position` (an empty one when the owner holds none), at the
@@ -286,7 +302,14 @@ pub fn below_minimum_order_notional(position: &Position, order: &Order, mark: i1
     if order.reduce_only || order.size <= 0 || !position.increases_exposure(order.signed_size()) {
         return false;
     }
-    notional_quote(order.size, mark).is_some_and(|notional| notional < MIN_ORDER_NOTIONAL)
+    under_minimum_notional(order, mark)
+}
+
+/// Whether `order`'s full size at `mark` is below [`MIN_ORDER_NOTIONAL`]. An order
+/// with a non-positive size, or whose notional overflows, is not.
+fn under_minimum_notional(order: &Order, mark: i128) -> bool {
+    order.size > 0
+        && notional_quote(order.size, mark).is_some_and(|notional| notional < MIN_ORDER_NOTIONAL)
 }
 
 /// The widest funding premium, in price units, that `AccrueFunding` accepts for
@@ -302,59 +325,131 @@ fn mark_band(market: &Market, index: i128) -> i128 {
         .max(0)
 }
 
+/// The largest funding premium, in price units, the sequencer lets a sample or the
+/// window average carry at the validated `index`: the smallest premium at which the
+/// engine's rate reaches its clamp, `ceil(MAX_FUNDING_RATE_PER_INTERVAL · index /
+/// RATE_SCALE)`, and never more than the mark band ([`mark_band`]). A larger
+/// premium cannot raise the rate further, so the cap changes no single tick's rate;
+/// it keeps one sample from weighing more than a premium at the cap would over its
+/// share of the window. 0 for a non-positive index.
+fn premium_cap(market: &Market, index: i128) -> i128 {
+    let band = mark_band(market, index);
+    if index <= 0 {
+        return 0;
+    }
+    let saturating = MAX_FUNDING_RATE_PER_INTERVAL
+        .checked_mul(index)
+        .map_or(band, |v| v / RATE_SCALE + i128::from(v % RATE_SCALE != 0));
+    saturating.clamp(0, band)
+}
+
+/// Whether a fill at `price` lies inside `market`'s fill band around the validated
+/// `index`: `|price − index| · RATE_SCALE <= max_fill_deviation_ratio · index`, the
+/// engine's own division-free test (`op_fill`). Any overflow is outside the band.
+fn within_fill_band(market: &Market, index: i128, price: i128) -> bool {
+    let Some(deviation) = price.checked_sub(index).and_then(i128::checked_abs) else {
+        return false;
+    };
+    match (
+        deviation.checked_mul(RATE_SCALE),
+        market.max_fill_deviation_ratio.checked_mul(index),
+    ) {
+        (Some(lhs), Some(rhs)) => lhs <= rhs,
+        _ => false,
+    }
+}
+
+/// `position` after a resting maker's fill of `delta` at the `quote`'s price, if
+/// the engine could settle that fill for the maker at the validated `index`: a reduce-only
+/// maker and, in close-only mode, any maker may only reduce; a fill that adds
+/// exposure must leave initial margin; and the position must stay maintenance-
+/// compliant while open, or end with no debt. This mirrors the maker leg of
+/// `op_fill` without its fee rebate, so it errs toward refusing depth. `None` when
+/// the fill would be refused.
+fn maker_fill_settles(
+    position: &Position,
+    market: &Market,
+    quote: &RestingQuote,
+    delta: i128,
+    index: i128,
+    funding_index: i128,
+    close_only: bool,
+) -> Option<Position> {
+    let increasing = position.increases_exposure(delta);
+    if increasing && (quote.reduce_only || close_only) {
+        return None;
+    }
+    let mut after = *position;
+    after.apply_fill(delta, quote.price, funding_index).ok()?;
+    if increasing
+        && after
+            .check_initial_margin(market, index, funding_index)
+            .is_err()
+    {
+        return None;
+    }
+    let solvent = if after.is_open() {
+        after
+            .check_maintenance_margin(market, index, funding_index)
+            .is_ok()
+    } else {
+        after.collateral >= 0
+    };
+    solvent.then_some(after)
+}
+
 /// The running time average of one market's funding premium over the open settle
 /// window (see [`Sequencer::run_maintenance`]).
 ///
-/// The premium is the impact-notional book mid minus the validated oracle index,
-/// sampled once per tick and treated as in force from its tick until the next one.
-/// Averaging the premium rather than the mid itself keeps a move of the index
-/// during the window from reading as a premium. Each sample is clamped to the
-/// market's mark band, so no single tick can outweigh its share of the window.
+/// The premium is the impact-notional book mid minus the validated oracle index.
+/// It is sampled at each tick from the book the tick's takers face, before the
+/// tick matches, and it prices the span that ends at that tick: the time since the
+/// previous sample. A quote therefore weighs only on the spans that end at ticks
+/// whose takers could still trade against it. Averaging the premium rather than
+/// the mid keeps a move of the index during the window from reading as a premium.
+/// Each sample is capped at the premium that saturates the rate ([`premium_cap`]),
+/// and the average divides by at least [`FUNDING_MARK_MIN_SPAN_MS`], so no single
+/// tick outweighs its share of the window.
 ///
 /// Off-chain sequencer state only: it decides the marks the sequencer puts into
 /// future `AccrueFunding` ops, and every emitted op carries its own mark, so
 /// replaying a sealed window never reads it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct FundingMarkWindow {
-    /// Σ premium · dt over the samples whose span has closed, price units × ms.
+    /// Σ premium · dt over the closed spans, price units × ms.
     weighted: i128,
     /// Σ dt over the same spans, ms.
     elapsed: u64,
-    /// The newest sample, `(time, premium)`, in force from its time onwards. Its
-    /// span closes when the next sample is taken.
+    /// The newest sample, `(time, premium)`. The next span runs from its time.
     last: Option<(u64, i128)>,
 }
 
 impl FundingMarkWindow {
-    /// Take the sample `premium` at `now_ms`: close the span of the previous
-    /// sample up to `now_ms`, then make `premium` the sample in force. A second
-    /// sample at the same time only replaces the first, and a time before the
-    /// newest sample closes no span.
+    /// Take the sample `premium` at `now_ms`: it prices the span from the newest
+    /// sample's time up to `now_ms`, and `now_ms` starts the next span. The first
+    /// sample of a window only starts the clock. A sample at the newest sample's
+    /// time or earlier changes nothing, so the first sample taken at a time stands.
     fn observe(&mut self, now_ms: u64, premium: i128) {
-        let at = match self.last {
-            Some((t, p)) if now_ms > t => {
+        match self.last {
+            Some((t, _)) if now_ms > t => {
                 let dt = now_ms - t;
                 self.weighted = self
                     .weighted
-                    .saturating_add(p.saturating_mul(i128::from(dt)));
+                    .saturating_add(premium.saturating_mul(i128::from(dt)));
                 self.elapsed = self.elapsed.saturating_add(dt);
-                now_ms
+                self.last = Some((now_ms, premium));
             }
-            Some((t, _)) => t,
-            None => now_ms,
-        };
-        self.last = Some((at, premium));
+            Some(_) => {}
+            None => self.last = Some((now_ms, premium)),
+        }
     }
 
     /// The time-weighted average premium over the closed spans, rounded toward
-    /// zero; 0 while no span has closed. A sample counts only once time has passed
-    /// with it in force, so the sample taken at a tick never moves that tick's mark.
+    /// zero, divided by at least [`FUNDING_MARK_MIN_SPAN_MS`]; 0 while no span has
+    /// closed.
     fn average(&self) -> i128 {
-        if self.elapsed == 0 {
-            0
-        } else {
-            self.weighted / i128::from(self.elapsed)
-        }
+        let span = self.elapsed.max(FUNDING_MARK_MIN_SPAN_MS);
+        self.weighted / i128::from(span)
     }
 }
 
@@ -439,25 +534,33 @@ fn exposure_increases_in(
 /// per-market oracle. Extracted from `seal_batch` for SEC-022 §6's probe
 /// dry-run (Task 7); a clean probe is ADOPTED as the committed settlement
 /// (review I4), so the probe and the commit are one run by construction.
-/// Deterministic in exactly `(state, oracles, fills, now_ms)` — the adoption
-/// relies on that.
+/// Deterministic in exactly `(state, oracles, fills, now_ms, minimum_exempt)` —
+/// the adoption relies on that.
 ///
 /// The pre-trade gate covers the *taker* against current state, but a *resting
 /// maker* admitted in an earlier batch can have drifted below initial margin
 /// since (funding / a prior liquidation), so a fill can still fail to settle.
 /// Failure attribution (SEC-022 §6): an ATTRIBUTABLE failure ([`offending_leg`]
-/// returns `Some`, or the reduce_only backstop fires) records ONLY the offending
-/// leg in `rejected` (and
-/// `offenders`); `seal_batch`'s dry-run then bans the offender, restores the
-/// book, and rematches, so the innocent counterparty's fill is re-routed rather
-/// than left in limbo. A NON-attributable failure still records BOTH legs, and
-/// `seal_batch` still moves an order all of whose recorded fills failed into
-/// the manifest's `rejected`.
+/// returns `Some`, or one of the leg checks below fires) records ONLY the
+/// offending leg in `rejected` (and `offenders`); `seal_batch`'s dry-run then
+/// bans the offender, restores the book, and rematches, so the innocent
+/// counterparty's fill is re-routed rather than left in limbo. A NON-attributable
+/// failure still records BOTH legs, and `seal_batch` still moves an order all of
+/// whose recorded fills failed into the manifest's `rejected`.
+///
+/// Before a fill is applied, each leg is checked against the position it would
+/// change, in this order: a reduce-only order may not add exposure
+/// ([`RejectReason::ReduceOnlyViolation`]); in close-only mode no order may add
+/// exposure ([`RejectReason::MarketCloseOnly`], the engine's own rule, named per
+/// leg); and an order in `minimum_exempt` (admitted below [`MIN_ORDER_NOTIONAL`]
+/// because it reduced) may not add exposure either
+/// ([`RejectReason::BelowMinimumSize`]).
 fn settle_fills(
     state: &mut DefaultState,
     oracles: &BTreeMap<MarketId, OracleTranscript>,
     fills: &[Match],
     now_ms: u64,
+    minimum_exempt: &BTreeSet<Digest>,
 ) -> FillSettlement {
     let mut out = FillSettlement::default();
     for m in fills {
@@ -472,36 +575,60 @@ fn settle_fills(
         // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
         // The pre-trade gate already rejects a reduce_only order that would open against
         // the pre-batch position; this is the live backstop for an intra-batch change.
+        //
+        // The violation is attributed ONLY to the offending order(s), never to an
+        // innocent counterparty (adversarial-review follow-up). SEC-022 §6 (Task 7
+        // review I1a): it is ATTRIBUTABLE, so the offender is also BANNED like any
+        // other offending leg — without the ban the dropped fill still burned the
+        // innocent counterparty's consumed depth. Reachable cross-batch: a reduce_only
+        // maker resting since batch N whose position an EARLIER fill of this very
+        // settlement pass closed (the pre-trade gate and the owners_with_order guard
+        // see only current-batch orders). Where both legs offend, both are banned.
+        //
+        // The close-only and minimum checks follow the same rule. In close-only mode
+        // the engine refuses a fill when either leg adds exposure; naming that leg here
+        // lets a close that crossed a resting opener (admitted before the mode
+        // changed) be rematched instead of rejected with it.
         let taker_delta = if m.taker_side == Side::Buy {
             m.size
         } else {
             -m.size
         };
-        let taker_opens =
-            m.taker_reduce_only && exposure_increases_in(state, &m.taker, m.market_id, taker_delta);
-        let maker_opens = m.maker_reduce_only
-            && exposure_increases_in(state, &m.maker, m.market_id, -taker_delta);
-        if taker_opens || maker_opens {
-            // attribute the violation ONLY to the offending reduce_only order(s), never
-            // to an innocent counterparty (adversarial-review follow-up). SEC-022 §6
-            // (Task 7 review I1a): the violation is ATTRIBUTABLE, so the offender is
-            // also BANNED like any other offending leg — without the ban the dropped
-            // fill still burned the innocent counterparty's consumed depth. Reachable
-            // cross-batch: a reduce_only maker resting since batch N whose position an
-            // EARLIER fill of this very settlement pass closed (the pre-trade gate and
-            // the owners_with_order guard see only current-batch orders). Where both
-            // legs open, both are genuine offenders and both are banned.
-            if taker_opens {
-                out.rejected
-                    .push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
-                out.offenders
-                    .push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
+        let close_only = state.mode == Mode::CloseOnly;
+        let leg_offense = |owner: &PubKey, hash: &Digest, reduce_only: bool, delta: i128| {
+            if !exposure_increases_in(state, owner, m.market_id, delta) {
+                None
+            } else if reduce_only {
+                Some(RejectReason::ReduceOnlyViolation)
+            } else if close_only {
+                Some(RejectReason::MarketCloseOnly)
+            } else if minimum_exempt.contains(hash) {
+                Some(RejectReason::BelowMinimumSize)
+            } else {
+                None
             }
-            if maker_opens {
-                out.rejected
-                    .push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
-                out.offenders
-                    .push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
+        };
+        let taker_offense = leg_offense(
+            &m.taker,
+            &m.taker_order_hash,
+            m.taker_reduce_only,
+            taker_delta,
+        );
+        let maker_offense = leg_offense(
+            &m.maker,
+            &m.maker_order_hash,
+            m.maker_reduce_only,
+            -taker_delta,
+        );
+        if taker_offense.is_some() || maker_offense.is_some() {
+            for (hash, offense) in [
+                (m.taker_order_hash, taker_offense),
+                (m.maker_order_hash, maker_offense),
+            ] {
+                if let Some(reason) = offense {
+                    out.rejected.push((hash, reason));
+                    out.offenders.push((hash, reason));
+                }
             }
             continue;
         }
@@ -575,6 +702,13 @@ const TICK_WINDOW_GRACE_WINDOWS: u64 = 8;
 /// Hard backstop on the tick→window map so no path can leak (the legacy path never settles a
 /// window, so it has no window-settle prune event) — evict the oldest entries beyond this cap.
 const TICK_WINDOW_MAX: usize = 16_384;
+
+/// The pre-trade gate's verdict on an order it admits.
+struct Admitted {
+    /// The order is below [`MIN_ORDER_NOTIONAL`] and was admitted only because it
+    /// reduces its owner's position; settlement refuses it a fill that adds exposure.
+    below_minimum_exempt: bool,
+}
 
 /// The sequencer / matcher node.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -666,6 +800,19 @@ pub struct Sequencer {
     /// witness (each op carries the mark it was given).
     #[serde(default)]
     funding_marks: BTreeMap<MarketId, FundingMarkWindow>,
+    /// Hashes of resting orders admitted below [`MIN_ORDER_NOTIONAL`] only because
+    /// they reduced their owner's position. Settlement refuses such an order a fill
+    /// that would add exposure. Pruned to the orders still resting after each batch
+    /// and on cancellation. Persisted with the sequencer so the rule survives a
+    /// restart; never part of a witness.
+    #[serde(default)]
+    minimum_exempt: BTreeSet<Digest>,
+    /// An owner whose orders are not subject to [`MIN_ORDER_NOTIONAL`] at all: the
+    /// gateway's house market maker, whose counter order mirrors a taker that the
+    /// sequencer measures itself. Boot configuration, not persisted: the gateway
+    /// sets it after every boot or restore ([`Sequencer::set_minimum_exempt_owner`]).
+    #[serde(skip)]
+    minimum_exempt_owner: Option<PubKey>,
 }
 
 impl Sequencer {
@@ -693,6 +840,8 @@ impl Sequencer {
             adl_tag_keys: BTreeMap::new(),
             liq_fallback_salt,
             funding_marks: BTreeMap::new(),
+            minimum_exempt: BTreeSet::new(),
+            minimum_exempt_owner: None,
         }
     }
 
@@ -759,16 +908,39 @@ impl Sequencer {
     ///
     /// # Panics
     ///
-    /// If the open window already holds ops. Unlike `add_market`'s debug-only
-    /// check this holds in release builds too: the call is boot-time only, and a
-    /// late call would silently corrupt the next window witness.
+    /// If the open window already holds ops or manifest entries, if a window has
+    /// already been sealed, or if a different recipient is already set. Unlike
+    /// `add_market`'s debug-only check this holds in release builds too: the call
+    /// is boot-time only, and a late call would silently change a root that is
+    /// already anchored or corrupt the next window witness. Setting the recipient
+    /// already in place again changes nothing and is allowed.
     pub fn set_wind_down_recipient(&mut self, recipient: [u8; 20]) {
         assert!(
-            self.window_ops.is_empty(),
+            self.window_ops.is_empty()
+                && self.window_ordered.is_empty()
+                && self.window_rejected.is_empty(),
             "set_wind_down_recipient must run before any window ops (the recipient is setup config)"
+        );
+        assert_eq!(
+            self.state.next_batch_id, 0,
+            "set_wind_down_recipient must run before the first window is sealed"
+        );
+        let current = self.state.wind_down_recipient;
+        assert!(
+            current == [0u8; 20] || current == recipient,
+            "the wind-down recipient is fixed once set"
         );
         self.state.set_wind_down_recipient(recipient);
         self.window_start_state = self.state.clone();
+    }
+
+    /// Exempt `owner`'s orders from [`MIN_ORDER_NOTIONAL`], or clear the exemption
+    /// with `None`. Meant for the gateway's house market maker: its counter order
+    /// has the size of the taker it answers, and the taker is measured against the
+    /// minimum itself, so without the exemption a small exempt close could find its
+    /// counter refused. Boot configuration, not persisted.
+    pub fn set_minimum_exempt_owner(&mut self, owner: Option<PubKey>) {
+        self.minimum_exempt_owner = owner;
     }
 
     /// Set / refresh the oracle transcript a market settles against (§8).
@@ -990,8 +1162,30 @@ impl Sequencer {
     ///
     /// An order that adds exposure must also reach [`MIN_ORDER_NOTIONAL`]
     /// ([`below_minimum_order_notional`]); otherwise it is refused with
-    /// [`RejectReason::BelowMinimumSize`].
+    /// [`RejectReason::BelowMinimumSize`]. While the engine is close-only, an order
+    /// that adds exposure is refused with [`RejectReason::MarketCloseOnly`], the
+    /// engine's own rule.
+    ///
+    /// This is the check for an order on its own, against its owner's committed
+    /// position. [`Sequencer::seal_batch`] applies the same check to each order of a
+    /// batch, also against the position after the owner's earlier orders of the
+    /// batch.
     pub fn pre_trade_check(&self, order: &Order, now_ms: u64) -> Result<(), RejectReason> {
+        self.admission(order, now_ms, 0).map(|_| ())
+    }
+
+    /// [`Sequencer::pre_trade_check`] for an order whose owner already has orders
+    /// of net signed size `earlier` admitted in this market in the same batch. The
+    /// minimum and the close-only rule are judged against the committed position and
+    /// against that position after the earlier orders fill in full; the order adds
+    /// exposure if it does so against either. Returns whether the order was admitted
+    /// below the minimum because it reduces (settlement then holds it to that).
+    fn admission(
+        &self,
+        order: &Order,
+        now_ms: u64,
+        earlier: i128,
+    ) -> Result<Admitted, RejectReason> {
         let Some(market) = self.state.markets.get(&order.market_id) else {
             // audit Tier-3: an unknown market is not a reduce-only violation.
             return Err(RejectReason::InvalidOrder);
@@ -1008,6 +1202,8 @@ impl Sequencer {
             .position(&order.owner, order.market_id)
             .copied()
             .unwrap_or_else(|| Position::empty(order.owner, order.market_id));
+        let mut projected = base;
+        projected.size = base.size.saturating_add(earlier);
         // audit DP-009 (adversarial-review follow-up): reject a reduce_only order that
         // would OPEN or GROW the owner's position BEFORE matching — otherwise the matcher
         // consumes a counterparty's resting liquidity for a fill that is then dropped at
@@ -1015,14 +1211,26 @@ impl Sequencer {
         if order.reduce_only && base.increases_exposure(order.signed_size()) {
             return Err(RejectReason::ReduceOnlyViolation);
         }
-        if below_minimum_order_notional(&base, order, mark) {
+        let adds_exposure = base.increases_exposure(order.signed_size())
+            || projected.increases_exposure(order.signed_size());
+        if self.state.mode == Mode::CloseOnly && adds_exposure {
+            return Err(RejectReason::MarketCloseOnly);
+        }
+        let minimum_applies = self.minimum_exempt_owner != Some(order.owner);
+        if minimum_applies
+            && (below_minimum_order_notional(&base, order, mark)
+                || below_minimum_order_notional(&projected, order, mark))
+        {
             return Err(RejectReason::BelowMinimumSize);
         }
-        if base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
-            Ok(())
-        } else {
-            Err(RejectReason::InsufficientMargin)
+        if !base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
+            return Err(RejectReason::InsufficientMargin);
         }
+        Ok(Admitted {
+            below_minimum_exempt: minimum_applies
+                && !order.reduce_only
+                && under_minimum_notional(order, mark),
+        })
     }
 
     /// The funding index an op on `market_id` at `now_ms` reads, with the validated
@@ -1039,18 +1247,77 @@ impl Sequencer {
 
     /// The impact-notional book mid of `market_id` at `now_ms`: the midpoint of the
     /// average prices at which [`FUNDING_IMPACT_NOTIONAL`] would fill against the
-    /// bids and against the asks. `None` when either side holds less than that.
+    /// bids and against the asks. Only depth the engine could fill counts: a
+    /// resting order inside the market's fill band around the validated index
+    /// whose maker could settle the fill. `None` when either side holds less than
+    /// that, or when the market's oracle does not validate at `now_ms`.
     pub fn impact_mid(&self, market_id: MarketId, now_ms: u64) -> Option<i128> {
-        let book = self.matcher.book(market_id)?;
-        let bid = book.impact_price(Side::Buy, FUNDING_IMPACT_NOTIONAL, now_ms)?;
-        let ask = book.impact_price(Side::Sell, FUNDING_IMPACT_NOTIONAL, now_ms)?;
+        let market = self.state.markets.get(&market_id)?;
+        let index = self
+            .oracles
+            .get(&market_id)?
+            .validate(market, now_ms)
+            .ok()?;
+        self.impact_mid_at(market, index, now_ms)
+    }
+
+    /// [`Sequencer::impact_mid`] at the validated oracle `index`.
+    fn impact_mid_at(&self, market: &Market, index: i128, now_ms: u64) -> Option<i128> {
+        let bid = self.impact_price(market, index, Side::Buy, now_ms)?;
+        let ask = self.impact_price(market, index, Side::Sell, now_ms)?;
         Some(book_mid(bid, ask))
     }
 
+    /// The impact price of one side of `market`'s book at the validated oracle
+    /// `index`: the bids for [`Side::Buy`], the asks for [`Side::Sell`]. A resting
+    /// order counts as depth only if the engine could fill it now: its price lies
+    /// inside the market's fill band around the index ([`within_fill_band`]), and
+    /// its maker could settle the fill ([`maker_fill_settles`]), taking the maker's
+    /// orders met earlier in the sweep as filled first. A quote nothing could
+    /// trade against therefore cannot move the funding mark.
+    fn impact_price(&self, market: &Market, index: i128, side: Side, now_ms: u64) -> Option<i128> {
+        let book = self.matcher.book(market.id)?;
+        let funding_index = self.funding_index_at(market.id, index, now_ms);
+        let close_only = self.state.mode == Mode::CloseOnly;
+        // each maker's position after the fills of its orders counted so far
+        let mut staged: BTreeMap<PubKey, Position> = BTreeMap::new();
+        book.impact_price(side, FUNDING_IMPACT_NOTIONAL, now_ms, |quote| {
+            if !within_fill_band(market, index, quote.price) {
+                return false;
+            }
+            // the maker buys against a resting bid and sells against a resting ask
+            let delta = match side {
+                Side::Buy => quote.remaining,
+                Side::Sell => -quote.remaining,
+            };
+            let position = staged.get(&quote.owner).copied().unwrap_or_else(|| {
+                self.state
+                    .position(&quote.owner, market.id)
+                    .copied()
+                    .unwrap_or_else(|| Position::empty(quote.owner, market.id))
+            });
+            match maker_fill_settles(
+                &position,
+                market,
+                quote,
+                delta,
+                index,
+                funding_index,
+                close_only,
+            ) {
+                Some(after) => {
+                    staged.insert(quote.owner, after);
+                    true
+                }
+                None => false,
+            }
+        })
+    }
+
     /// This tick's funding-premium sample for `market`: the impact mid minus the
-    /// validated oracle index, clamped to the market's mark band. 0 (the index
-    /// itself) when either side of the book lacks the impact depth or the oracle
-    /// does not validate at `now_ms`.
+    /// validated oracle index, capped at [`premium_cap`]. 0 (the index itself) when
+    /// either side of the book lacks the impact depth or the oracle does not
+    /// validate at `now_ms`.
     fn funding_premium_sample(
         &self,
         market: &Market,
@@ -1060,15 +1327,16 @@ impl Sequencer {
         let Ok(index) = oracle.validate(market, now_ms) else {
             return 0;
         };
-        let band = mark_band(market, index);
-        self.impact_mid(market.id, now_ms)
-            .map_or(0, |mid| mid.saturating_sub(index).clamp(-band, band))
+        let cap = premium_cap(market, index);
+        self.impact_mid_at(market, index, now_ms)
+            .map_or(0, |mid| mid.saturating_sub(index).clamp(-cap, cap))
     }
 
-    /// Take this tick's funding-premium sample for every market with an oracle,
-    /// closing the span of each market's previous sample. Calling it again at the
-    /// same `now_ms` replaces the samples, so the sample in force until the next
-    /// tick reflects the book as it rests after the whole tick.
+    /// Take the funding-premium sample at `now_ms` for every market with an oracle,
+    /// closing the span since each market's previous sample. Only the first sample
+    /// at a given time counts: [`Sequencer::seal_batch`] takes it from the book the
+    /// tick's takers face, before matching, and a later call at the same time
+    /// changes nothing.
     fn sample_funding_premiums(&mut self, now_ms: u64) {
         let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
         for mid in market_ids {
@@ -1087,16 +1355,17 @@ impl Sequencer {
     }
 
     /// The funding mark for `market` at the validated oracle `index`: the index
-    /// plus the window's time-averaged funding premium, kept inside the market's
-    /// mark band so the `AccrueFunding` op is always admissible. With no closed
-    /// span yet in the window (its first tick) the mark is the index itself.
+    /// plus the window's time-averaged funding premium, capped at [`premium_cap`]
+    /// (which lies inside the mark band, so the `AccrueFunding` op is always
+    /// admissible). With no closed span yet in the window (its first tick) the mark
+    /// is the index itself.
     fn funding_mark(&self, market: &Market, index: i128) -> i128 {
-        let band = mark_band(market, index);
+        let cap = premium_cap(market, index);
         let premium = self
             .funding_marks
             .get(&market.id)
             .map_or(0, FundingMarkWindow::average)
-            .clamp(-band, band);
+            .clamp(-cap, cap);
         index.saturating_add(premium)
     }
 
@@ -1109,17 +1378,25 @@ impl Sequencer {
     /// **Funding mark.** Each tick samples, per market, the premium of the
     /// impact-notional book mid ([`Sequencer::impact_mid`]) over the validated
     /// oracle index, or 0 when either side lacks [`FUNDING_IMPACT_NOTIONAL`] of
-    /// depth. A sample is in force until the next tick. The `AccrueFunding` mark is
-    /// the index plus the time-weighted average of the samples in force since the
-    /// open window began (reset by [`Sequencer::seal_window`]), so moving it takes
-    /// real depth held over time: a quote that rests for one tick moves the mark
-    /// by at most its share of the window, and the quote seen at a tick never
-    /// moves that tick's own mark. The engine still bounds the mark to the market's
-    /// mark band and the rate to its clamp.
+    /// depth the engine could fill. [`Sequencer::seal_batch`] takes the sample from
+    /// the book the tick's takers face, before it matches, and the sample prices
+    /// the span since the previous tick. The `AccrueFunding` mark is the index plus
+    /// the time-weighted average of those spans since the open window began (reset
+    /// by [`Sequencer::seal_window`]), with each sample and the average capped at the
+    /// premium that saturates the rate, and the average taken over at least
+    /// [`FUNDING_MARK_MIN_SPAN_MS`]. So moving the mark takes fillable depth that
+    /// takers can trade against, held over time: a quote withdrawn before the next
+    /// tick never counts, a quote placed in a tick does not move that tick's mark,
+    /// and one sample moves the mark by at most its share of the window. The engine
+    /// still bounds the mark to the market's mark band and the rate to its clamp.
+    ///
+    /// Called on its own (outside `seal_batch`), it samples the book as it rests at
+    /// `now_ms`.
     pub fn run_maintenance(&mut self, now_ms: u64) -> MaintenanceOutcome {
         // reap good-till-time makers that have expired before reading the book for
         // the funding mark — an expired order must not count as depth (§8), and
-        // matching already refuses to trade against it.
+        // matching already refuses to trade against it. Within `seal_batch` the
+        // sample at `now_ms` was taken before matching, so this one changes nothing.
         let removals = self.matcher.reap_expired_with_events(now_ms);
         self.sample_funding_premiums(now_ms);
         let mut liquidated = Vec::new();
@@ -1221,6 +1498,13 @@ impl Sequencer {
         // maker's resting depth. Reject it up front instead (audit DP-009 review follow-up); the
         // owner can resubmit in a later batch. The pre-trade gate below handles the pre-batch case.
         let mut owners_with_order: BTreeSet<(PubKey, MarketId)> = BTreeSet::new();
+        // the net signed size of each owner's orders admitted so far this batch, per
+        // market: the minimum and the close-only rule also judge an order against the
+        // position after these fill in full
+        let mut earlier: BTreeMap<(PubKey, MarketId), i128> = BTreeMap::new();
+        // orders below the minimum admitted only because they reduce: the ones
+        // resting from earlier batches plus this batch's
+        let mut minimum_exempt = self.minimum_exempt.clone();
         for o in orders {
             if o.reduce_only && owners_with_order.contains(&(o.owner, o.market_id)) {
                 pre_rejected.push((
@@ -1229,14 +1513,25 @@ impl Sequencer {
                 ));
                 continue;
             }
-            match self.pre_trade_check(o, now_ms) {
-                Ok(()) => {
-                    owners_with_order.insert((o.owner, o.market_id));
+            let key = (o.owner, o.market_id);
+            match self.admission(o, now_ms, earlier.get(&key).copied().unwrap_or(0)) {
+                Ok(admitted_order) => {
+                    owners_with_order.insert(key);
+                    let net = earlier.entry(key).or_default();
+                    *net = net.saturating_add(o.signed_size());
+                    if admitted_order.below_minimum_exempt {
+                        minimum_exempt.insert(o.order_hash::<Keccak256>());
+                    }
                     admitted.push(*o);
                 }
                 Err(reason) => pre_rejected.push((o.order_hash::<Keccak256>(), reason)),
             }
         }
+
+        // The funding-mark sample for the span that ends at this tick is the book
+        // this tick's takers face: taken before matching, so only a quote still on
+        // the book when this batch matches is weighed.
+        self.sample_funding_premiums(now_ms);
 
         // 1. match, then DRY-RUN settlement against a probe clone before the book's
         //    mutation is allowed to stand (SEC-022 §6). The matcher consumes resting
@@ -1264,7 +1559,13 @@ impl Sequencer {
                 break (stream, None);
             }
             let mut probe = self.state.clone();
-            let probed = settle_fills(&mut probe, &self.oracles, &stream.fills, now_ms);
+            let probed = settle_fills(
+                &mut probe,
+                &self.oracles,
+                &stream.fills,
+                now_ms,
+                &minimum_exempt,
+            );
             if probed.offenders.is_empty() {
                 // Clean: carry the probe state + its settlement out of the loop;
                 // step 3 ADOPTS them instead of settling the same fills a second
@@ -1382,12 +1683,10 @@ impl Sequencer {
         for (owner, _market) in &liquidations {
             removals.extend(self.matcher.cancel_owner_with_events(owner));
         }
-        // The funding-mark sample in force until the next tick is the book as it
-        // rests now, after the liquidated owners' orders are gone. Re-sampling at
-        // the same time only replaces this tick's sample; it moves no mark.
-        if !liquidations.is_empty() {
-            self.sample_funding_premiums(now_ms);
-        }
+        // Keep the minimum-exempt orders that still rest; the rest have filled,
+        // been banned, expired or been cancelled with a liquidated owner.
+        self.matcher.retain_resting(&mut minimum_exempt);
+        self.minimum_exempt = minimum_exempt;
 
         removals.extend(
             stream
@@ -1983,32 +2282,99 @@ mod tests {
         }
     }
 
-    /// The window average weighs each sample by the time it was in force, counts a
-    /// sample only once its span has closed, lets a same-time sample replace the
-    /// previous one, and never closes a span backwards in time.
+    /// Each sample prices the span that ends at it, the first sample of a window
+    /// only starts the clock, the first sample at a time stands, a time before the
+    /// newest sample closes nothing, and the average divides by at least
+    /// `FUNDING_MARK_MIN_SPAN_MS`.
     #[test]
-    fn funding_mark_window_is_a_time_weighted_average_of_closed_spans() {
+    fn funding_mark_window_prices_each_span_by_the_sample_at_its_end() {
         let mut w = FundingMarkWindow::default();
         assert_eq!(w.average(), 0, "no sample yet");
         w.observe(1_000, 300);
-        assert_eq!(w.average(), 0, "the first sample has no closed span");
-        w.observe(1_000, 600);
-        assert_eq!(w.average(), 0, "a same-time sample only replaces the first");
-        w.observe(2_000, -900);
-        assert_eq!(w.average(), 600, "600 in force for 1,000 ms");
-        w.observe(5_000, 0);
-        // 600 · 1,000 − 900 · 3,000 over 4,000 ms
-        assert_eq!(w.average(), (600_000 - 2_700_000) / 4_000);
-        let before = w;
-        w.observe(4_000, 77);
         assert_eq!(
             (w.weighted, w.elapsed),
-            (before.weighted, before.elapsed),
-            "a time before the newest sample closes no span"
+            (0, 0),
+            "the first sample starts the clock"
         );
-        assert_eq!(w.last, Some((5_000, 77)));
-        w.observe(6_000, 0);
-        assert_eq!(w.weighted, before.weighted + 77 * 1_000);
+        assert_eq!(w.average(), 0);
+        w.observe(1_000, 600);
+        assert_eq!(
+            w.last,
+            Some((1_000, 300)),
+            "the first sample at a time stands"
+        );
+        w.observe(2_000, -900);
+        assert_eq!((w.weighted, w.elapsed), (-900_000, 1_000));
+        assert_eq!(
+            w.average(),
+            -900_000 / i128::from(FUNDING_MARK_MIN_SPAN_MS),
+            "1,000 ms of a short window count over the minimum span"
+        );
+        w.observe(9_000, 600);
+        // −900 · 1,000 + 600 · 7,000 over 8,000 ms
+        assert_eq!(w.average(), (4_200_000 - 900_000) / 8_000);
+        let before = w;
+        w.observe(8_000, 77);
+        assert_eq!(w, before, "a time before the newest sample closes no span");
+        w.observe(10_000, 10);
+        assert_eq!(w.weighted, before.weighted + 10 * 1_000);
+        assert_eq!(w.elapsed, before.elapsed + 1_000);
+    }
+
+    /// The premium cap is the smallest premium at which the engine's rate reaches
+    /// its clamp, and it never exceeds the mark band.
+    #[test]
+    fn the_premium_cap_is_the_smallest_premium_that_saturates_the_rate() {
+        use perp_core::funding::FundingState;
+        let m = Market::conservative(0);
+        for index in [
+            100_000 * PRICE_SCALE,
+            3_456 * PRICE_SCALE + 7,
+            PRICE_SCALE / 3,
+            1,
+        ] {
+            let cap = premium_cap(&m, index);
+            assert!(cap <= mark_band(&m, index));
+            if cap < mark_band(&m, index) {
+                assert_eq!(
+                    FundingState::funding_rate(index + cap, index),
+                    perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL
+                );
+                assert_eq!(
+                    FundingState::funding_rate(index - cap, index),
+                    -perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL
+                );
+                assert!(
+                    FundingState::funding_rate(index + cap - 1, index)
+                        < perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL,
+                    "one unit less does not saturate at {index}"
+                );
+            }
+        }
+        assert_eq!(premium_cap(&m, 100_000 * PRICE_SCALE), 50 * PRICE_SCALE);
+        assert_eq!(premium_cap(&m, 0), 0);
+        assert_eq!(premium_cap(&m, -5), 0);
+        assert_eq!(
+            premium_cap(&m, i128::MAX),
+            0,
+            "an overflowing band pins the index"
+        );
+    }
+
+    /// The fill band is the engine's own bound: a fill at the band's edge settles,
+    /// one unit beyond is refused.
+    #[test]
+    fn the_fill_band_matches_the_engine_bound() {
+        let m = Market::conservative(0);
+        let index = 100_000 * PRICE_SCALE;
+        let edge = index * m.max_fill_deviation_ratio / RATE_SCALE;
+        assert!(within_fill_band(&m, index, index));
+        assert!(within_fill_band(&m, index, index + edge));
+        assert!(within_fill_band(&m, index, index - edge));
+        assert!(!within_fill_band(&m, index, index + edge + 1));
+        assert!(!within_fill_band(&m, index, index - edge - 1));
+        assert!(!within_fill_band(&m, index, i128::MIN));
+        assert!(!within_fill_band(&m, i128::MAX, i128::MAX));
     }
 
     #[test]
@@ -2813,114 +3179,143 @@ mod tests {
     /// site pairs each banned order with the reason pushed at its OWN
     /// `settle_fills` push site — never looked up first-match in `rejected`, where
     /// the same hash can already sit under a DIFFERENT reason from earlier in the
-    /// same probe pass. The original pin drove that with a leg-less fill `Risk`;
-    /// SEC-024's carry-in made fill `Risk` attributable, which dissolved the
-    /// fixture (the test above now pins two-offender pairing, where a first-match
-    /// lookup happens to agree) — but not the hazard: every remaining
-    /// non-attributable class (`Oracle`, `CloseOnly`, `SelfTrade`, `Overflow`)
-    /// still records BOTH legs. This fixture rebuilds the double record on
-    /// `CloseOnly`.
-    ///
-    /// In close-only mode (which `pre_trade_check` deliberately does not gate — it
-    /// margins at the mark and screens reduce_only only, so opening orders still
-    /// admit and match, failing first at settlement), ONE probe pass records X
-    /// twice: fill 1 (X taker × M1 maker, at M1's in-band resting price) fails
-    /// `CloseOnly` because M1's flat leg would OPEN — non-attributable, both legs
-    /// recorded, and X (whose leg REDUCES: it is closing its batch-1 long) is the
-    /// INNOCENT counterparty under `MarketCloseOnly`; fill 2 (T2 taker × X's
-    /// resting remainder, at X's own out-of-band 90k limit) then fails
-    /// `FillPriceOutOfBand` on X's maker leg — X's OWN offense, and the pass's
-    /// only offender.
+    /// same pass. A non-attributable failure still records BOTH legs; here fill 1
+    /// is in a market with no oracle, so X (owner 1) is recorded as an innocent
+    /// counterparty under `OracleUnavailable`, and fill 2 (owner 2 taker × X's
+    /// out-of-band resting ask) is X's OWN offense.
     #[test]
     fn a_ban_survives_an_earlier_innocent_record_of_the_same_hash() {
-        let mut sq = test_sequencer();
-        fund(&mut sq, 3, 20_000, 0x33); // M1 — the flat maker whose leg trips close-only
+        let sq = test_sequencer();
         let size = SIZE_SCALE / 10;
+        let x_h = word_u64(0x51);
+        let other_h = word_u64(0x52);
+        let t2_h = word_u64(0x53);
+        let fill = |market_id, taker, maker, price, taker_hash, maker_hash| Match {
+            market_id,
+            taker: owner_id(taker),
+            maker: owner_id(maker),
+            taker_side: Side::Buy,
+            size,
+            price,
+            taker_order_hash: taker_hash,
+            maker_order_hash: maker_hash,
+            taker_reduce_only: false,
+            maker_reduce_only: false,
+        };
+        let fills = [
+            fill(1, 2, 1, 100_000 * PRICE_SCALE, other_h, x_h),
+            fill(0, 2, 1, 90_000 * PRICE_SCALE, t2_h, x_h),
+        ];
+        let mut probe = sq.state.clone();
+        let out = settle_fills(&mut probe, &sq.oracles, &fills, now(), &BTreeSet::new());
+        assert_eq!(
+            out.rejected,
+            vec![
+                (other_h, RejectReason::OracleUnavailable),
+                (x_h, RejectReason::OracleUnavailable),
+                (x_h, RejectReason::FillPriceOutOfBand),
+            ],
+            "X is recorded first as an innocent counterparty"
+        );
+        assert_eq!(
+            out.offenders,
+            vec![(x_h, RejectReason::FillPriceOutOfBand)],
+            "the offender carries the reason of its own offense"
+        );
+        assert!(out.applied_fills.is_empty());
+        assert_eq!(probe.state_root(), sq.state.state_root());
+    }
 
-        // Batch 1 (normal mode): X (owner 1) opens 0.1 BTC long at the $100k mark
-        // against owner 2, so X's later sell REDUCES — the innocence in fill 1.
+    /// In close-only mode the pre-trade gate refuses an order that adds exposure,
+    /// with the engine's own reason, before it can reach the book.
+    #[test]
+    fn close_only_refuses_an_opening_order_before_matching() {
+        let mut sq = test_sequencer();
+        let size = SIZE_SCALE / 100;
         sq.seal_batch(
             &[
-                t_order_at(2, Side::Sell, 100_000, size, 900),
-                t_order_at(1, Side::Buy, 100_000, size, 901),
+                t_order_at(1, Side::Sell, 100_000, size, 1),
+                t_order_at(2, Side::Buy, 100_000, size, 2),
             ],
             now(),
         );
-        assert_eq!(sq.state.position(&owner_id(1), 0).unwrap().size, size);
-
-        // Flip the system to close-only for batch 2.
         sq.apply(&BatchOp::EnterCloseOnly).unwrap();
-
-        // Stream order matters: M1 rests first; X's sell crosses it (fill 1, at
-        // M1's 100k) and X's remainder rests at its own 90k ask; T2 crosses X
-        // (fill 2, at X's 90k).
-        let m1 = t_order_at(3, Side::Buy, 100_000, size, 902);
-        let x = t_order_at(1, Side::Sell, 90_000, 2 * size, 903);
-        let t2 = t_order_at(2, Side::Buy, 95_000, size, 904);
-        let m1_h = m1.order_hash::<Keccak256>();
-        let x_h = x.order_hash::<Keccak256>();
-        let t2_h = t2.order_hash::<Keccak256>();
-
-        // Fixture guards — mechanical, not narrative. Fill 1 exactly as the matcher
-        // will produce it must fail with the NON-attributable `CloseOnly`, and
-        // fill 2 with the maker-attributable band error — otherwise the double
-        // record this test exists for never forms and the pin below goes vacuous.
-        let oracle = *sq.oracle(0).expect("market 0 oracle");
-        let mut probe = sq.state.clone();
-        let e1 = probe
-            .apply_op(&BatchOp::Fill {
-                taker: owner_id(1),
-                maker: owner_id(3),
-                market_id: 0,
-                taker_side: Side::Sell,
-                size,
-                price: 100_000 * PRICE_SCALE,
-                oracle,
-                now_ms: now() + 10,
-            })
-            .expect_err("fill 1 must fail at settlement");
-        assert_eq!(e1, EngineError::CloseOnly, "fill 1 is the close-only class");
-        assert_eq!(offending_leg(&e1), None, "…and it is NON-attributable");
-        let mut probe = sq.state.clone();
-        let e2 = probe
-            .apply_op(&BatchOp::Fill {
-                taker: owner_id(2),
-                maker: owner_id(1),
-                market_id: 0,
-                taker_side: Side::Buy,
-                size,
-                price: 90_000 * PRICE_SCALE,
-                oracle,
-                now_ms: now() + 10,
-            })
-            .expect_err("fill 2 must fail at settlement");
-        assert_eq!(e2, EngineError::FillPriceOutOfBand);
+        let open = t_order_at(1, Side::Sell, 100_000, size, 3);
+        let flip = t_order_at(2, Side::Sell, 100_000, 2 * size, 4);
+        let close = t_order_at(2, Side::Sell, 100_000, size, 5);
         assert_eq!(
-            offending_leg(&e2),
-            Some(FillLeg::Maker),
-            "fill 2 is X's OWN offense — the attributable record"
+            sq.pre_trade_check(&open, now()),
+            Err(RejectReason::MarketCloseOnly)
         );
-
-        let sealed = sq.seal_batch(&[m1, x, t2], now() + 10);
-
-        // THE PIN: the committed ban carries the reason from X's OWN offender push
-        // site. Reverting `banned.push((*oh, *reason))` to a first-match lookup
-        // into `rejected` finds fill 1's innocent `MarketCloseOnly` record for the
-        // same hash instead and folds that falsehood permanently into
-        // `manifest_hash`.
+        assert_eq!(
+            sq.pre_trade_check(&flip, now()),
+            Err(RejectReason::MarketCloseOnly)
+        );
+        assert_eq!(sq.pre_trade_check(&close, now()), Ok(()));
+        let sealed = sq.seal_batch(&[open], now());
         assert_eq!(
             sealed.manifest.rejected,
-            vec![(x_h, RejectReason::FillPriceOutOfBand)],
-            "the ban must commit the reason from X's OWN offending leg, not the \
-             reason recorded when X was the innocent counterparty of the earlier \
-             non-attributable close-only failure",
+            vec![(
+                open.order_hash::<Keccak256>(),
+                RejectReason::MarketCloseOnly
+            )]
         );
-        // The rematch (X excised) leaves two same-side bids: nothing fills, both
-        // rest — the innocent parties are ordered, not dragged into the rejection.
-        assert!(sealed.manifest.ordered.contains(&m1_h));
-        assert!(sealed.manifest.ordered.contains(&t2_h));
-        assert!(!sealed.manifest.ordered.contains(&x_h));
-        assert!(sealed.settled_order_hashes.is_empty(), "nothing settled");
+        assert!(sealed.receipts.is_empty());
+        assert_eq!(sq.matcher.book(0).unwrap().resting_size(Side::Sell), 0);
+    }
+
+    /// An opener that rested before the engine became close-only cannot settle. A
+    /// close that crosses it is not rejected with it: the opener alone is banned
+    /// with `MarketCloseOnly`, and the close is rematched to a maker it can trade
+    /// with.
+    #[test]
+    fn close_only_bans_a_resting_opener_and_reroutes_the_close() {
+        let mut sq = test_sequencer();
+        fund(&mut sq, 3, 20_000, 0x33);
+        let size = SIZE_SCALE / 100;
+        // owner 2 is long, owner 1 short
+        sq.seal_batch(
+            &[
+                t_order_at(1, Side::Sell, 100_000, size, 1),
+                t_order_at(2, Side::Buy, 100_000, size, 2),
+            ],
+            now(),
+        );
+        // a bid from owner 3, flat, opens on a fill; a lower bid from owner 1 closes
+        // its short
+        let opener = t_order_at(3, Side::Buy, 100_000, size, 3);
+        let closer = t_order_at(1, Side::Buy, 99_990, size, 4);
+        sq.seal_batch(&[opener, closer], now());
+        sq.apply(&BatchOp::EnterCloseOnly).unwrap();
+
+        let close = Order {
+            reduce_only: true,
+            tif: TimeInForce::Ioc,
+            ..t_order_at(2, Side::Sell, 99_000, size, 5)
+        };
+        let sealed = sq.seal_batch(&[close], now() + 10);
+        let opener_h = opener.order_hash::<Keccak256>();
+        let close_h = close.order_hash::<Keccak256>();
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(opener_h, RejectReason::MarketCloseOnly)]
+        );
+        assert!(sealed.settled_order_hashes.contains(&close_h));
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&closer.order_hash::<Keccak256>()));
+        assert!(sealed.manifest.ordered.contains(&close_h));
+        assert_eq!(
+            sq.remaining_order_size(&opener_h),
+            None,
+            "banned from the book"
+        );
+        for owner in [1, 2, 3] {
+            assert!(sq
+                .state
+                .position(&owner_id(owner), 0)
+                .is_none_or(|p| p.size == 0));
+        }
         assert!(sq.state.conservation_holds());
     }
 
