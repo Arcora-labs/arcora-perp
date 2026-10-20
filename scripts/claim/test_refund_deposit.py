@@ -20,6 +20,9 @@ SETTLEMENT = "0x" + "a2" * 20
 ALICE = "0x" + "a3" * 20
 BOB = "0x" + "a4" * 20
 CAROL = "0x" + "a5" * 20
+# An RPC URL that carries a provider key in its path and query; the key must never be printed.
+PROVIDER_KEY = "provider-key-marker"
+RPC = f"https://rpc.example/v2/{PROVIDER_KEY}?apikey={PROVIDER_KEY}"
 
 
 def word(value):
@@ -171,8 +174,52 @@ class Tool(unittest.TestCase):
     def run_tool(self, *args):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = rd.main(["--rpc", "https://rpc.example", *args], rpc_factory=lambda _url: self.chain)
+            code = rd.main(["--rpc", RPC, *args], rpc_factory=lambda _url: self.chain)
+        self.assertNotIn(PROVIDER_KEY, out.getvalue())
+        self.assertNotIn("rpc.example", out.getvalue())
         return code, out.getvalue()
+
+    def assert_commands_read_the_rpc_url_from_the_shell(self, out, count):
+        """Every printed `cast send` ends with the $RPC_URL placeholder; one note before the first says so."""
+        lines = out.splitlines()
+        commands = [i for i, line in enumerate(lines) if line.lstrip().startswith("cast send")]
+        self.assertEqual(len(commands), count, out)
+        for i in commands:
+            self.assertTrue(lines[i].endswith(' --rpc-url "$RPC_URL" <YOUR_SIGNER>'), lines[i])
+        notes = [i for i, line in enumerate(lines) if chain.RPC_URL_NOTE in line]
+        self.assertEqual(notes, [commands[0] - 1], out)
+
+    def test_printed_commands_get_one_export_note_before_the_first(self):
+        # Close-only: one refund call per deposit, one note in all.
+        self.chain.close_only = True
+        code, out = self.run_tool("--vault", VAULT, "--from", ALICE)
+        self.assertEqual(code, 0, out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 2)
+        # Live settlement: the close-only trigger comes first and carries the note, the refund follows it.
+        self.chain.close_only = False
+        code, out = self.run_tool("--vault", VAULT, "--id", "1")
+        self.assertEqual(code, 0, out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 2)
+        commands = [line for line in out.splitlines() if line.lstrip().startswith("cast send")]
+        self.assertIn('"triggerCloseOnly()"', commands[0])
+        self.assertIn(f'"{rd.REFUND_SIGNATURE}"', commands[1])
+        # Close-only cannot be triggered yet: only the refund call is printed.
+        self.chain.consumed, self.chain.head = 3, 9_960
+        code, out = self.run_tool("--vault", VAULT, "--id", "3")
+        self.assertEqual(code, 0, out)
+        self.assertIn("close-only cannot be triggered yet", out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 1)
+
+    def test_no_command_means_no_note(self):
+        self.chain.close_only = True
+        code, out = self.run_tool("--vault", VAULT, "--id", "0")
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("cast send", out)
+        self.assertNotIn(chain.RPC_URL_NOTE, out)
+        self.chain.refund = lambda *a: self.chain.revert("TransferFailed")
+        code, out = self.run_tool("--vault", VAULT, "--id", "2")
+        self.assertEqual(code, 1, out)
+        self.assertNotIn(chain.RPC_URL_NOTE, out)
 
     def test_close_only_refunds_every_unconsumed_deposit_of_the_payer(self):
         self.chain.close_only = True
@@ -184,7 +231,7 @@ class Tool(unittest.TestCase):
         self.assertNotIn("deposit 1", out)  # another payer
         commit = self.chain.deposits[2][1]
         self.assertIn(f'cast send {VAULT} "{rd.REFUND_SIGNATURE}" 2 {ALICE} {commit} 10000000 {ALICE} '
-                      "--rpc-url https://rpc.example <YOUR_SIGNER>", out)
+                      '--rpc-url "$RPC_URL" <YOUR_SIGNER>', out)
         self.assertIn("(anyone may send it)", out)
         self.assertNotIn("triggerCloseOnly", out)
         # Every eth_call is pinned to the same block.
@@ -197,7 +244,7 @@ class Tool(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("is refundable once the settlement is in close-only", out)
         self.assertIn("close-only can be triggered now by anyone:", out)
-        self.assertIn(f'cast send {SETTLEMENT} "triggerCloseOnly()" --rpc-url https://rpc.example', out)
+        self.assertIn(f'cast send {SETTLEMENT} "triggerCloseOnly()" --rpc-url "$RPC_URL" <YOUR_SIGNER>', out)
         self.assertIn("after close-only", out)
         # Nothing waits long enough yet: the earliest block is reported instead.
         self.chain.consumed, self.chain.head = 3, 9_960
@@ -290,9 +337,12 @@ class Tool(unittest.TestCase):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
                 self.run_tool(*args)
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            rd.main(["--rpc", "https://user:secret@rpc.example", "--vault", VAULT, "--id", "1"],
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            rd.main(["--rpc", f"https://user:{PROVIDER_KEY}@rpc.example", "--vault", VAULT, "--id", "1"],
                     rpc_factory=lambda _url: self.chain)
+        self.assertIn("--rpc must be an http(s) URL without user info", err.getvalue())
+        self.assertNotIn(PROVIDER_KEY, err.getvalue())
 
 
 class Handler(http.server.BaseHTTPRequestHandler):

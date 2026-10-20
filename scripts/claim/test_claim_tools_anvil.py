@@ -127,8 +127,9 @@ class ClaimToolsOnAnvil(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             code = module.main(argv)
-        self.transcript.append({"tool": module.__name__, "exit": code,
-                                "output": out.getvalue().replace(self.url, "<RPC_URL>")})
+        # The tools never print the --rpc URL (printed commands read "$RPC_URL" from the shell).
+        self.assertNotIn(self.url, out.getvalue())
+        self.transcript.append({"tool": module.__name__, "exit": code, "output": out.getvalue()})
         return code, out.getvalue()
 
     def settle(self, deposits):

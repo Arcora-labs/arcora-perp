@@ -27,6 +27,10 @@ AUTH_A_SIG = ("0x490ce9b286399686afb9dfb81f58c2fa2622d492fb468f27682b22fc15ed816
               "4c1c3b569abd8431ff2e339bb14d1022a5ef5d58dad371b6cfe314ad28e41482" "1b")
 AUTH_B_DIGEST = "0x72e7483a96cc46922628812fa90ac8351fb95784c7883861a34836b14f882225"
 CAP = 1_000_000_000
+# An RPC URL that carries a provider key in its path and query; the key must never be printed.
+PROVIDER_KEY = "provider-key-marker"
+RPC = f"https://rpc.example/v2/{PROVIDER_KEY}?apikey={PROVIDER_KEY}"
+RPC_URL_FLAG = '--rpc-url "$RPC_URL" <YOUR_SIGNER>'
 
 
 def receipt():
@@ -246,29 +250,80 @@ class Cli(unittest.TestCase):
         with open(path, "w") as stream:
             json.dump(kit, stream)
         out = io.StringIO()
-        extra = ["--rpc", "https://rpc.example"] if rpc else []
-        with contextlib.redirect_stdout(out):
+        extra = ["--rpc", RPC] if rpc else []
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
             code = ci.main([path, *extra, *args], rpc_factory=lambda _url: self.chain)
+        self.assertNotIn(PROVIDER_KEY, out.getvalue())
+        self.assertNotIn("rpc.example", out.getvalue())
         return code, out.getvalue()
+
+    def assert_commands_read_the_rpc_url_from_the_shell(self, out):
+        """Every printed `cast send` ends with the $RPC_URL placeholder; one note before the first says so."""
+        lines = out.splitlines()
+        commands = [i for i, line in enumerate(lines) if line.lstrip().startswith("cast send")]
+        self.assertTrue(commands, out)
+        for i in commands:
+            self.assertTrue(lines[i].endswith(" " + RPC_URL_FLAG), lines[i])
+        notes = [i for i, line in enumerate(lines) if chain.RPC_URL_NOTE in line]
+        self.assertEqual(notes, [commands[0] - 1], out)
 
     def test_offline_prints_the_challenge_call(self):
         code, out = self.run_tool(receipt(), rpc=False)
         self.assertEqual(code, 0, out)
         self.assertIn(f"kit OK: order {ORDER} authorized by {ENCLAVE} for beneficiary {BENEFICIARY}", out)
         self.assertIn(f'cast send {SETTLEMENT} "{ci.CHALLENGE_SIGNATURE}" {ORDER} 0 1000 0 {BENEFICIARY} '
-                      f"{AUTH_A_SIG} --value <challengeBond()>", out)
+                      f"{AUTH_A_SIG} --value <challengeBond()> {RPC_URL_FLAG}", out)
         self.assertIn(f"offline check: signed by the kit's enclaveSigner {ENCLAVE}; --rpc also checks that it is "
                       "the settlement's enclaveSigner()", out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out)
         self.assertEqual(self.chain.calls, [])
 
     def test_ripe_challenge_is_simulated_with_the_stake_and_printed(self):
         code, out = self.run_tool(receipt(), "--staker", STAKER)
         self.assertEqual(code, 0, out)
         self.assertIn("open the challenge (anyone may send it with the 10000000000000000 wei stake):", out)
-        self.assertIn("--value 10000000000000000 --rpc-url https://rpc.example <YOUR_SIGNER>", out)
+        self.assertIn(f"--value 10000000000000000 {RPC_URL_FLAG}", out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out)
         sent = [c for c in self.chain.calls if c["data"].startswith(chain.selector(ci.CHALLENGE_SIGNATURE))]
         self.assertEqual(sent[0]["from"], STAKER)
         self.assertEqual(sent[0]["value"], hex(10**16))
+
+    def test_no_printed_line_names_the_rpc_url_in_any_stage(self):
+        """The key-bearing --rpc URL is checked by run_tool; here every stage that prints commands runs."""
+        stages = {
+            "not ripe": lambda c: setattr(c, "timestamp", 3000),
+            "resolved with claims": lambda c: (setattr(c, "resolved", True), c.pending_usdc.update({BENEFICIARY: CAP}),
+                                               c.pending_eth.update({STAKER: 10**16})),
+            "slashable": lambda c: (setattr(c, "challenge", {"openedBlock": 300, "openBatchCount": 3,
+                                                             "beneficiary": BENEFICIARY, "bond": 10**16}),
+                                    setattr(c, "batch_count", 5), setattr(c, "settled_at", {4: 470}),
+                                    setattr(c, "head", 521)),
+            "stale in close-only": lambda c: (setattr(c, "challenge", {"openedBlock": 300, "openBatchCount": 3,
+                                                                       "beneficiary": BENEFICIARY, "bond": 10**16}),
+                                              setattr(c, "close_only", True), setattr(c, "close_only_batch_count", 4)),
+        }
+        for name, arrange in stages.items():
+            self.chain = FakeSettlement()
+            arrange(self.chain)
+            with self.subTest(stage=name):
+                code, out = self.run_tool(receipt(), "--staker", STAKER)
+                self.assertEqual(code, 0, out)
+                self.assert_commands_read_the_rpc_url_from_the_shell(out)
+        # Many kits in one file: still one note, before the first command.
+        code, out = self.run_tool([receipt(), receipt()], rpc=False)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out.count("cast send"), 2)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out)
+
+    def test_chain_read_failures_do_not_name_the_rpc_url(self):
+        def failing(_method, _params):
+            raise chain.ChainError("RPC transport failed (URLError)")
+        self.chain = failing
+        code, out = self.run_tool(receipt())
+        self.assertEqual(code, 1, out)
+        self.assertIn("kit FAILED: RPC transport failed", out)
+        self.assertNotIn("cast send", out)
+        self.assertNotIn(chain.RPC_URL_NOTE, out)
 
     def test_not_ripe_reports_the_time(self):
         self.chain.timestamp = 3000
