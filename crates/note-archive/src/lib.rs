@@ -231,6 +231,16 @@ impl NoteArchive {
         &self.records
     }
 
+    /// Drop the records `keep` rejects, keeping the others in their order, and
+    /// return how many were dropped. Records are otherwise append-only; this is
+    /// for discarding the notes a voided window minted, which no settled state
+    /// holds.
+    pub fn retain(&mut self, keep: impl FnMut(&ArchivedNote) -> bool) -> usize {
+        let before = self.records.len();
+        self.records.retain(keep);
+        before - self.records.len()
+    }
+
     /// Total recoverable collateral for a view-key, MINUS notes already spent.
     /// `spent` is the set of nullifiers known spent (from L1 / the state); a note
     /// whose nullifier is spent is excluded. This reconstructs the *current*
@@ -427,6 +437,65 @@ mod tests {
         );
         // Alice's viewing secret must not unseal Bob's note
         assert!(archive.scan(&alice.view_x25519_secret()).is_empty());
+    }
+
+    /// `retain` drops exactly the records the predicate rejects, keeps the rest
+    /// in order, and leaves every remaining record scannable by its owner.
+    #[test]
+    fn retain_drops_only_the_named_commitments_and_scan_still_works() {
+        use alloc::collections::BTreeSet;
+        let alice = Wallet::from_seed(seeded(1));
+        let bob = Wallet::from_seed(seeded(2));
+        let notes = [
+            (0, alice.note(0, 10_000 * QUOTE_SCALE, [1; 32])),
+            (1, bob.note(0, 5_000 * QUOTE_SCALE, [2; 32])),
+            (2, alice.note(0, 7_000 * QUOTE_SCALE, [3; 32])),
+            (2, alice.note(0, 3_000 * QUOTE_SCALE, [4; 32])),
+        ];
+        let mut archive = NoteArchive::new();
+        for (batch, note) in &notes {
+            let view = if note.owner == alice.owner {
+                alice.view_x25519_public()
+            } else {
+                bob.view_x25519_public()
+            };
+            archive.record(*batch, note, &view, OsRng);
+        }
+        let commitment = |i: usize| notes[i].1.commitment::<Keccak256>();
+        // Naming nothing, or a commitment the archive does not hold, drops nothing.
+        assert_eq!(archive.retain(|_| true), 0);
+        let absent = alice.note(0, 1, [9; 32]).commitment::<Keccak256>();
+        assert_eq!(archive.retain(|r| r.commitment != absent), 0);
+        assert_eq!(archive.len(), 4);
+
+        let dropped: BTreeSet<Digest> = [commitment(1), commitment(2)].into_iter().collect();
+        assert_eq!(archive.retain(|r| !dropped.contains(&r.commitment)), 2);
+        let kept: Vec<(u64, Digest)> = archive
+            .notes()
+            .iter()
+            .map(|r| (r.batch_id, r.commitment))
+            .collect();
+        assert_eq!(kept, [(0, commitment(0)), (2, commitment(3))]);
+
+        let recovered = archive.scan(&alice.view_x25519_secret());
+        assert_eq!(
+            recovered,
+            [
+                RecoveredNote {
+                    batch_id: 0,
+                    note: notes[0].1
+                },
+                RecoveredNote {
+                    batch_id: 2,
+                    note: notes[3].1
+                },
+            ]
+        );
+        assert_eq!(
+            archive.recover_balance(&alice, |_| false),
+            13_000 * QUOTE_SCALE
+        );
+        assert!(archive.scan(&bob.view_x25519_secret()).is_empty());
     }
 
     #[test]
