@@ -254,7 +254,7 @@ impl Gw {
             }
         }
         let window = self.seq.current_window_id();
-        let voided = self.seq.void_open_window();
+        let voided = self.seq.void_open_window().hashes;
         let dropped = self.deposits.credits.split_off(&consumed);
         if !dropped.is_empty() {
             // The ingestion anchor may point past the consumed prefix; refetch from
@@ -643,8 +643,11 @@ mod tests {
         gw.last_settled_root = gw.seq.state.state_root();
         let settled_root = gw.last_settled_root;
         let consumed = gw.seq.state.consumed_deposit_count;
-        // Unsettled work after the last settle: a credit and a rejected order.
+        // Unsettled work after the last settle: a credit, a tick and a rejected
+        // order.
         gw.account_deposit(&key, 0, 5 * QUOTE_SCALE).unwrap();
+        let tick = gw.seq.seal_batch(&[], now_ms()).batch_id;
+        assert!(gw.seq.fill_tick_pending(tick));
         let stray = [0x5c; 32];
         gw.seq
             .reject_in_window(&[stray], perp_core::order::RejectReason::Expired);
@@ -699,6 +702,10 @@ mod tests {
         let mut gw = app.gw.lock().await;
         assert!(gw.wind_down_started && restored.wind_down_started);
         assert!(gw.deposits.l1_close_only);
+        assert!(
+            !gw.seq.fill_tick_pending(tick) && !restored.seq.fill_tick_pending(tick),
+            "the rebase discards the unsettled window's ticks"
+        );
         assert_eq!(gw.seq.state.consumed_deposit_count, consumed);
         let (witness, ww) = gw.begin_window_settle(window).unwrap().unwrap();
         assert_eq!(witness.pre_state.state_root(), settled_root);

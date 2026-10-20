@@ -84,7 +84,8 @@ fn the_counter_stays_ahead_after_a_void_moves_the_engine_back() {
     }
     // A void returns the engine to the window baseline; the voided leaves were
     // never published, and the gateway counter does not move back.
-    gw.seq.void_open_window();
+    let voided = gw.seq.void_open_window();
+    assert!(voided.hashes.is_empty() && voided.ticks.is_empty());
     assert_eq!(gw.seq.state.last_withdrawal_nonce, 0);
     assert_eq!(gw.next_withdraw_nonce, 3);
     assert_eq!(

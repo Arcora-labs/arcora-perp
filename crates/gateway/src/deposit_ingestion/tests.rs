@@ -833,6 +833,8 @@ fn close_only_rebase_keeps_only_the_settled_deposit_prefix() {
     let (b, cb) = permit(&mut gw, 7_000_000, Purpose::Collateral, 0);
     gw.apply_deposit_page(page(&gw, &[cb])).unwrap();
     let (c, cc) = permit(&mut gw, 1_000_000, Purpose::Collateral, 0);
+    let tick = gw.seq.seal_batch(&[], now_ms()).batch_id;
+    assert!(gw.seq.fill_tick_pending(tick));
     assert_eq!(gw.seq.state.consumed_deposit_count, 2);
     assert!(gw.close_only_rebase_applies(true, false));
     assert!(!gw.close_only_rebase_applies(false, false));
@@ -873,6 +875,10 @@ fn close_only_rebase_keeps_only_the_settled_deposit_prefix() {
     }
     let voided = gw.rebase_to_settled(&l1).unwrap();
     assert!(voided.is_empty(), "the window held no orders");
+    assert!(
+        !gw.seq.fill_tick_pending(tick),
+        "the rebase discards the unsettled window's ticks"
+    );
     assert_eq!(gw.seq.state.state_root(), settled_root);
     assert_eq!(gw.seq.state.consumed_deposit_count, 1);
     assert_eq!(gw.seq.current_window_id(), 1);
