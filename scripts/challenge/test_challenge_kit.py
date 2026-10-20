@@ -114,7 +114,7 @@ class BrowserKitThroughTheTool(unittest.TestCase):
                       f"for beneficiary {AUTH['beneficiary']}", out)
         self.assertIn(f'cast send {AUTH["settlement"]} "{ci.CHALLENGE_SIGNATURE}" {KIT["orderHash"]} 0 1000 0 '
                       f'{AUTH["beneficiary"]} {AUTH["signature"]} --value <challengeBond()> '
-                      "--rpc-url <RPC_URL> <YOUR_SIGNER>", out)
+                      '--rpc-url "$RPC_URL" <YOUR_SIGNER>', out)
         self.assertEqual(self.chain.methods, [])
 
     def test_export_all_is_an_array_checked_entry_by_entry(self):
@@ -218,7 +218,8 @@ class BrowserKitThroughTheTool(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn(f"settlement {AUTH['settlement']} on chain 84532", out)
         self.assertIn(f"open the challenge (anyone may send it with the {BOND} wei stake):", out)
-        self.assertIn(f"--value {BOND} --rpc-url {RPC_LABEL} <YOUR_SIGNER>", out)
+        self.assertIn(f'--value {BOND} --rpc-url "$RPC_URL" <YOUR_SIGNER>', out)
+        self.assertNotIn(RPC_LABEL, out)
         self.assertTrue(set(self.chain.methods) <= chain.READ_METHODS)
 
     def test_rpc_reports_an_order_already_answered(self):

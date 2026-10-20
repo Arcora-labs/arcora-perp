@@ -9,18 +9,23 @@ import io
 import json
 import os
 import stat
+import subprocess
 import tempfile
 import textwrap
 import unittest
 import unittest.mock
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+import chain_read
 import claim_withdrawal as cw
 
 HERE = Path(__file__).resolve().parent
 VECTORS = json.loads((HERE / "fixtures" / "withdrawal-vectors.json").read_text())
 VAULT = "0x57e951F6a378E00e4F1b26510380E089D7c07b8B"
+PROVIDER_KEY = "provider-key-marker"
+RPC = f"https://rpc.example/v2/{PROVIDER_KEY}?apikey={PROVIDER_KEY}"
+RPC_URL_FLAG = ' --rpc-url "$RPC_URL" <YOUR_SIGNER>'
 
 
 class Keccak(unittest.TestCase):
@@ -117,11 +122,11 @@ class Bundle(unittest.TestCase):
 
     def test_cast_command_has_no_key_and_exact_arguments(self):
         b = cw.parse_bundle(bundle_from_tree())
-        cmd = cw.cast_command(b, "https://sepolia.base.org")
+        cmd = cw.cast_command(b)
         self.assertTrue(cmd.startswith(f'cast send {VAULT} "claim(address,uint256,uint256,bytes32,bytes32[])" '))
         self.assertIn(f'"[{",".join(b["proof"])}]"', cmd)
-        self.assertIn("--rpc-url https://sepolia.base.org", cmd)
-        self.assertIn("<YOUR_SIGNER>", cmd)
+        self.assertTrue(cmd.endswith(RPC_URL_FLAG), cmd)
+        self.assertNotIn("http", cmd)
 
 
 # The wind-down reserve leaf as the gateway publishes it (the POST /v1/admin/wind-down
@@ -234,6 +239,108 @@ class OnChain(unittest.TestCase):
     def test_rpc_url_must_be_plain_http(self):
         with self.assertRaises(SystemExit):
             self.run_cli(rpc="https://user:pw@rpc.example")
+
+
+class PrintedCommands(unittest.TestCase):
+    """The tool never prints the --rpc URL: the claim call reads `"$RPC_URL"` from the shell."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.chain_id = "84532"
+        self.published = "true"
+        self.claimed_leaves = set()
+        self.cast_calls = []
+
+    def fake_cast(self, args, rpc):
+        # The tool does hand the URL to cast (that is how it reads the chain); it never prints it.
+        self.assertEqual(rpc, RPC)
+        self.cast_calls.append(args)
+        if args[0] == "chain-id":
+            return self.chain_id
+        if args[0] == "call" and args[2].startswith("rootPublished"):
+            return self.published
+        if args[0] == "call" and args[2].startswith("claimed"):
+            return "true" if args[3] in self.claimed_leaves else "false"
+        raise AssertionError(args)
+
+    def run_cli(self, bundle, *extra):
+        path = Path(self.tmp.name) / "bundle.json"
+        path.write_text(json.dumps(bundle))
+        out = io.StringIO()
+        with unittest.mock.patch.object(cw, "_cast", side_effect=self.fake_cast), \
+                redirect_stdout(out), redirect_stderr(out):
+            code = cw.main([str(path), *extra])
+        self.assertNotIn(PROVIDER_KEY, out.getvalue())
+        self.assertNotIn("rpc.example", out.getvalue())
+        return code, out.getvalue()
+
+    def assert_commands_read_the_rpc_url_from_the_shell(self, out, count):
+        """Every printed `cast send` ends with the $RPC_URL placeholder; one note before the first says so."""
+        lines = out.splitlines()
+        commands = [i for i, line in enumerate(lines) if line.lstrip().startswith("cast send")]
+        self.assertEqual(len(commands), count, out)
+        for i in commands:
+            self.assertTrue(lines[i].endswith(RPC_URL_FLAG), lines[i])
+        notes = [i for i, line in enumerate(lines) if chain_read.RPC_URL_NOTE in line]
+        self.assertEqual(notes, [commands[0] - 1], out)
+
+    def test_with_rpc_the_claim_call_does_not_print_the_url(self):
+        code, out = self.run_cli(bundle_from_tree(), "--rpc", RPC)
+        self.assertEqual(code, 0, out)
+        self.assertEqual([c[0] for c in self.cast_calls], ["chain-id", "call", "call"])
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 1)
+
+    def test_offline_the_claim_call_reads_the_url_from_the_shell_too(self):
+        code, out = self.run_cli(bundle_from_tree())
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.cast_calls, [])
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 1)
+
+    def test_many_bundles_get_one_note_before_the_first_command(self):
+        entries = [bundle_from_tree(i=0), bundle_from_tree(i=1)]
+        self.claimed_leaves = {entries[0]["leaf"]}
+        code, out = self.run_cli(entries, "--rpc", RPC)
+        self.assertEqual(code, 0, out)
+        self.assertIn("[0] already claimed", out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 1)
+        self.claimed_leaves = set()
+        code, out = self.run_cli(entries, "--rpc", RPC)
+        self.assertEqual(code, 0, out)
+        self.assert_commands_read_the_rpc_url_from_the_shell(out, 2)
+
+    def test_failures_print_no_command_and_no_note(self):
+        self.chain_id = "8453"
+        code, out = self.run_cli(bundle_from_tree(), "--rpc", RPC)
+        self.assertEqual(code, 1, out)
+        self.assertIn("RPC is chain 8453", out)
+        self.chain_id, self.published = "84532", "false"
+        code, out = self.run_cli(bundle_from_tree(), "--rpc", RPC)
+        self.assertEqual(code, 1, out)
+        self.assertIn("not published", out)
+        code, out = self.run_cli(bundle_from_tree(leaf="0x" + "11" * 32), "--rpc", RPC)
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("cast send", out)
+        self.assertNotIn(chain_read.RPC_URL_NOTE, out)
+
+    def test_a_cast_that_fails_or_times_out_does_not_name_the_url(self):
+        # The real `_cast` runs here; only the process launch is replaced.
+        for failure in (subprocess.TimeoutExpired(["cast", "chain-id", "--rpc-url", RPC], 60),
+                        subprocess.CompletedProcess(["cast", "chain-id", "--rpc-url", RPC], 1, "", f"{RPC} refused")):
+            with self.subTest(failure=type(failure).__name__):
+                path = Path(self.tmp.name) / "bundle.json"
+                path.write_text(json.dumps(bundle_from_tree()))
+                effect = failure if isinstance(failure, Exception) else None
+                out = io.StringIO()
+                with unittest.mock.patch.object(subprocess, "run", side_effect=effect,
+                                                return_value=failure), \
+                        redirect_stdout(out), redirect_stderr(out):
+                    code = cw.main([str(path), "--rpc", RPC])
+                self.assertEqual(code, 1, out.getvalue())
+                self.assertIn("FAILED: cast chain-id", out.getvalue())
+                self.assertNotIn(PROVIDER_KEY, out.getvalue())
+                self.assertNotIn("rpc.example", out.getvalue())
+                self.assertNotIn("cast send", out.getvalue())
 
 
 class Files(unittest.TestCase):

@@ -25,7 +25,9 @@ challenge for that order on one settlement, paying any fine to `beneficiary`
   `slashUnanswered` (once `progressBatches` batches settled after it opened and
   `challengeGraceBlocks` passed without an answer), `releaseStaleChallenge`
   (close-only began before that progress), and the `claimUsdc` / `claimEth`
-  withdrawals of credited fines and stakes.
+  withdrawals of credited fines and stakes. The commands read the RPC URL
+  from the shell (`--rpc-url "$RPC_URL"`); the tool never prints the URL,
+  which may carry a provider key.
 
 When the bond is below `slashPayoutCap`, the fine is reduced and only the
 beneficiary may trigger the slash (the submitter may, one liveness window
@@ -213,7 +215,7 @@ def encode_challenge(k):
     return head + chain.word(65) + sig + "0" * (-len(sig) % 64)
 
 
-def chain_report(k, signer, digest, rpc, rpc_label, staker=None, out=print):
+def chain_report(k, signer, digest, rpc, staker=None, out=print):
     """Read the settlement, print the next call; return a list of problems."""
     chain_id = chain.quantity(rpc("eth_chainId", []))
     if chain_id != k["chainId"]:
@@ -242,7 +244,7 @@ def chain_report(k, signer, digest, rpc, rpc_label, staker=None, out=print):
     out(f"settlement {s} on chain {chain_id}, block {head}")
     problems = []
     if challenge["open"]:
-        problems += open_challenge_report(k, read, challenge, close_only, head, rpc_label, staker, out)
+        problems += open_challenge_report(k, read, challenge, close_only, head, staker, out)
     elif resolved:
         out(f"the challenge for {h} is resolved (answered, slashed or released)")
     elif close_only:
@@ -253,7 +255,7 @@ def chain_report(k, signer, digest, rpc, rpc_label, staker=None, out=print):
         ripe_at = k["recvTimeMs"] // 1000 + read.uint(s, "inclusionDeadlineSecs()")
         if timestamp < ripe_at:
             out(f"not ripe yet: it can be opened from unix time {ripe_at} ({ripe_at - timestamp} s from now)")
-            out("  " + chain.cast_send(s, CHALLENGE_SIGNATURE, challenge_args(k), rpc_label, value=bond))
+            out("  " + chain.cast_send(s, CHALLENGE_SIGNATURE, challenge_args(k), value=bond))
         else:
             tx = {"to": s, "data": chain.selector(CHALLENGE_SIGNATURE) + encode_challenge(k), "value": hex(bond)}
             if staker:
@@ -263,8 +265,8 @@ def chain_report(k, signer, digest, rpc, rpc_label, staker=None, out=print):
                 problems.append("opening it would revert now: " + SETTLEMENT_ERRORS.get(reverted, reverted or "no reason"))
             else:
                 out(f"open the challenge (anyone may send it with the {bond} wei stake):")
-                out("  " + chain.cast_send(s, CHALLENGE_SIGNATURE, challenge_args(k), rpc_label, value=bond))
-    claims_report(k, read, rpc_label, staker, out)
+                out("  " + chain.cast_send(s, CHALLENGE_SIGNATURE, challenge_args(k), value=bond))
+    claims_report(k, read, staker, out)
     return problems
 
 
@@ -276,7 +278,7 @@ def simulate_raw(rpc, tx, block):
     return None
 
 
-def open_challenge_report(k, read, challenge, close_only, head, rpc_label, staker, out):
+def open_challenge_report(k, read, challenge, close_only, head, staker, out):
     s, h = k["settlement"], k["orderHash"]
     progress = read.uint(s, "progressBatches()")
     target = challenge["openBatchCount"] + progress
@@ -284,7 +286,7 @@ def open_challenge_report(k, read, challenge, close_only, head, rpc_label, stake
     out(f"challenge open since block {challenge['openedBlock']} (batch count then {challenge['openBatchCount']})")
     if close_only and target > settled:
         out("close-only began before enough batches settled after it; release it to refund the stake:")
-        out("  " + chain.cast_send(s, "releaseStaleChallenge(bytes32)", [h], rpc_label))
+        out("  " + chain.cast_send(s, "releaseStaleChallenge(bytes32)", [h]))
         return []
     if settled < target:
         out(f"waiting for {target - settled} more settled batch(es) before a slash is possible; "
@@ -308,22 +310,22 @@ def open_challenge_report(k, read, challenge, close_only, head, rpc_label, stake
         return ["the slash would revert now: " + SETTLEMENT_ERRORS.get(reverted, reverted or "no reason")]
     who = "send it from the beneficiary" if payout < cap else "anyone may send it"
     out(f"unanswered past the grace: slash it ({who}; fine {payout} USDC base units to the beneficiary):")
-    out("  " + chain.cast_send(s, "slashUnanswered(bytes32)", [h], rpc_label))
+    out("  " + chain.cast_send(s, "slashUnanswered(bytes32)", [h]))
     return []
 
 
-def claims_report(k, read, rpc_label, staker, out):
+def claims_report(k, read, staker, out):
     s = k["settlement"]
     usdc = read.uint(s, "pendingUsdc(address)", k["beneficiary"])
     if usdc:
         out(f"{usdc} USDC base units are credited to the beneficiary; withdraw them from that address "
             "(claimUsdcTo(address) pays another address):")
-        out("  " + chain.cast_send(s, "claimUsdc()", [], rpc_label))
+        out("  " + chain.cast_send(s, "claimUsdc()", []))
     for account in dict.fromkeys(a for a in (staker, k["beneficiary"]) if a):
         eth = read.uint(s, "pendingEth(address)", account)
         if eth:
             out(f"{eth} wei of stake is credited to {account}; withdraw it from that address:")
-            out("  " + chain.cast_send(s, "claimEth()", [], rpc_label))
+            out("  " + chain.cast_send(s, "claimEth()", []))
 
 
 def main(argv=None, rpc_factory=chain.HttpRPC):
@@ -346,6 +348,7 @@ def main(argv=None, rpc_factory=chain.HttpRPC):
         print("FAILED: the file holds no kits")
         return 1
     rpc = rpc_factory(args.rpc) if args.rpc else None
+    out = chain.noting_rpc_url(print)
     ok = True
     for index, entry in enumerate(entries):
         label = f"[{index}]" if isinstance(raw, list) else "kit"
@@ -353,15 +356,15 @@ def main(argv=None, rpc_factory=chain.HttpRPC):
             k = parse_kit(entry)
             problems, digest, signer = check_kit(k)
             if not problems:
-                print(f"{label} OK: order {k['orderHash']} authorized by {signer} for beneficiary {k['beneficiary']}")
+                out(f"{label} OK: order {k['orderHash']} authorized by {signer} for beneficiary {k['beneficiary']}")
                 if rpc is None:
-                    print(f"  offline check: signed by the kit's enclaveSigner {signer}; --rpc also checks that it "
-                          "is the settlement's enclaveSigner()")
-                    print("  " + chain.cast_send(k["settlement"], CHALLENGE_SIGNATURE, challenge_args(k),
-                                                 "<RPC_URL>", value="<challengeBond()>"))
+                    out(f"  offline check: signed by the kit's enclaveSigner {signer}; --rpc also checks that it "
+                        "is the settlement's enclaveSigner()")
+                    out("  " + chain.cast_send(k["settlement"], CHALLENGE_SIGNATURE, challenge_args(k),
+                                               value="<challengeBond()>"))
                 else:
-                    problems = chain_report(k, signer, digest, rpc, args.rpc,
-                                            args.staker.lower() if args.staker else None)
+                    problems = chain_report(k, signer, digest, rpc, args.staker.lower() if args.staker else None,
+                                            out=out)
         except (KitError, chain.ChainError) as error:
             problems = [str(error)]
         if problems:

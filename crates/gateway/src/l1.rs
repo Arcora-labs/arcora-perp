@@ -942,12 +942,27 @@ impl L1 {
             .map_err(|e| format!("nonce parse: {e}"))
     }
 
+    /// Run `cast`. Its error names no endpoint (the primary, the witness or any
+    /// `--rpc-url` passed) and no URL: see `redact_endpoints`.
     fn cast(&self, args: &[&str]) -> Result<String, String> {
+        self.run_cast(args).map_err(|error| {
+            let mut endpoints = vec![self.rpc.as_str()];
+            endpoints.extend(self.rpc_witness.as_deref());
+            endpoints.extend(
+                args.windows(2)
+                    .filter(|pair| pair[0] == "--rpc-url")
+                    .map(|pair| pair[1]),
+            );
+            redact_endpoints(&error, &endpoints)
+        })
+    }
+
+    fn run_cast(&self, args: &[&str]) -> Result<String, String> {
         use std::io::Read;
         // Spawn with piped output and a hard wall-clock deadline: a black-hole RPC must
         // not hang forever holding the nonce lock (see CAST_WALL_TIMEOUT_SECS). ETH_RPC_
         // TIMEOUT additionally bounds each individual JSON-RPC call.
-        let mut child = Command::new("cast")
+        let mut child = cast_command()
             .args(args)
             .env("ETH_RPC_TIMEOUT", CAST_RPC_TIMEOUT_SECS.to_string())
             .stdout(std::process::Stdio::piped())
@@ -2265,16 +2280,119 @@ impl Drop for KeystoreDir {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// A shell script a test stands in for `cast` on its own thread.
+    static FAKE_CAST: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The `cast` executable (in tests, a stand-in script when one is set).
+fn cast_command() -> Command {
+    #[cfg(test)]
+    if let Some(script) = FAKE_CAST.with(|c| c.borrow().clone()) {
+        let mut command = Command::new("/bin/sh");
+        command.arg(script);
+        return command;
+    }
+    Command::new("cast")
+}
+
+/// Stands in for a configured endpoint in error text leaving this module.
+const RPC_PLACEHOLDER: &str = "<rpc>";
+/// Stands in for any other URL in that text.
+const URL_PLACEHOLDER: &str = "<url>";
+/// Endpoint parts shorter than this (`/`, `/rpc`) stay in the text: they are not
+/// credentials, and replacing them would garble the rest of the message.
+const MIN_REDACTED_PART: usize = 8;
+
+/// `text` with no configured endpoint and no URL in it. An endpoint can carry a
+/// provider key in its userinfo, path or query, and cast's HTTP client names the
+/// URL in transport errors (`error sending request for url (…)`, without the
+/// userinfo). Each endpoint, as configured or as that client prints it, becomes
+/// `<rpc>`. Any other `scheme://…`, such as a normalized or JSON-escaped copy,
+/// becomes `<url>`. Then the endpoint's userinfo, path and query become `<rpc>`
+/// where they still appear on their own (a debug-printed URL). The rest of the
+/// message is kept, so the error still diagnoses and the answer lane can still
+/// classify it.
+fn redact_endpoints(text: &str, endpoints: &[&str]) -> String {
+    let (mut whole, mut parts) = (Vec::new(), Vec::new());
+    for endpoint in endpoints.iter().map(|e| e.trim()) {
+        whole.push(endpoint.to_owned());
+        let (scheme, rest) = endpoint.split_once("://").unwrap_or(("", endpoint));
+        let (authority, tail) = rest.split_at(rest.find(['/', '?', '#']).unwrap_or(rest.len()));
+        let (path, query) = tail.split_once('?').unwrap_or((tail, ""));
+        parts.extend([tail, path, query]);
+        if let Some((userinfo, host)) = authority.rsplit_once('@') {
+            whole.push(format!("{scheme}://{host}{tail}"));
+            parts.push(userinfo);
+            parts.extend(userinfo.split(':'));
+        }
+    }
+    let out = replace_longest_first(text, &whole);
+    replace_longest_first(&strip_urls(&out), &parts)
+}
+
+/// Each needle of at least `MIN_REDACTED_PART` bytes in `text` as `<rpc>`, longest
+/// first, so a whole endpoint goes before any shorter needle inside it.
+fn replace_longest_first<S: AsRef<str>>(text: &str, needles: &[S]) -> String {
+    let mut needles: Vec<&str> = needles
+        .iter()
+        .map(AsRef::as_ref)
+        .filter(|n| n.len() >= MIN_REDACTED_PART)
+        .collect();
+    needles.sort_unstable_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
+    needles.dedup();
+    needles.into_iter().fold(text.to_owned(), |out, needle| {
+        out.replace(needle, RPC_PLACEHOLDER)
+    })
+}
+
+/// Every `scheme://…` token in `text`, also with JSON-escaped slashes, as `<url>`.
+/// A token ends at whitespace, a quote or an angle bracket; closing brackets and
+/// punctuation at its end stay in the text.
+fn strip_urls(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some((at, separator)) = ["://", ":\\/\\/"]
+        .iter()
+        .filter_map(|s| rest.find(s).map(|at| (at, s.len())))
+        .min()
+    {
+        let start = rest[..at]
+            .char_indices()
+            .rev()
+            .take_while(|&(_, c)| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+            .last()
+            .map_or(at, |(i, _)| i);
+        let after = &rest[at + separator..];
+        let end = after
+            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '<' | '>'))
+            .unwrap_or(after.len());
+        let url = after[..end]
+            .trim_end_matches([')', ']', '}', ',', '.', ';', ':', '!', '?', '\\'])
+            .len();
+        out.push_str(&rest[..start]);
+        out.push_str(URL_PLACEHOLDER);
+        rest = &after[url..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The chain id the RPC serves — a free function (no keystore) so it can be checked BEFORE
 /// any on-disk key material is created, and so a refusal leaks nothing (DP-007/DP-013 review).
 fn query_chain_id(rpc: &str) -> Result<u64, String> {
-    let out = Command::new("cast")
+    let out = cast_command()
         .args(["chain-id", "--rpc-url", rpc])
         .env("ETH_RPC_TIMEOUT", "15") // bound the startup stall on a black-hole RPC
         .output()
         .map_err(|e| format!("cast spawn failed (is Foundry installed?): {e}"))?;
     if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        return Err(redact_endpoints(
+            String::from_utf8_lossy(&out.stderr).trim(),
+            &[rpc],
+        ));
     }
     String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
@@ -2977,6 +3095,240 @@ mod tests {
         let seq = l1.sequencer_lane();
         assert_eq!(seq.keystore_path, "/seq/ks");
         assert!(seq.address.is_none());
+    }
+
+    /// Endpoints whose userinfo, path and query hold provider keys. Every secret
+    /// part contains `SECRET`, which no error may contain.
+    const PRIMARY: &str =
+        "http://user-SECRET-name:SECRET-pass@127.0.0.1:9/v2/SECRET-path-key?apikey=SECRET-query";
+    const WITNESS: &str = "https://witness.example/SECRET-witness-key";
+    /// What the stand-in cast prints after cast's own `error sending request for
+    /// url (<the --rpc-url it was given>)`: a classifiable cause, the primary URL
+    /// as a debug print, a JSON-escaped and an unconfigured URL, and the witness.
+    const CAST_ECHOES: &str = "\
+- Error #0: nonce too low: next nonce 7, tx nonce 5
+url: Url { scheme: \"http\", username: \"user-SECRET-name\", password: Some(\"SECRET-pass\"), \
+host: Some(Ipv4(127.0.0.1)), port: Some(9), path: \"/v2/SECRET-path-key\", query: Some(\"apikey=SECRET-query\") }
+body: {\"message\":\"upstream http:\\/\\/127.0.0.1:9\\/v2\\/SECRET-path-key failed\"}
+docs: https://other.example/v3/SECRET-other?token=SECRET-other.
+witness https://witness.example/SECRET-witness-key (path /SECRET-witness-key)";
+
+    /// A shell script standing in for `cast` on this test's thread. It exits 1
+    /// after printing what cast prints for an unreachable RPC, then `echoes`.
+    #[cfg(unix)]
+    struct FakeCast(std::path::PathBuf);
+    #[cfg(unix)]
+    impl FakeCast {
+        fn failing(echoes: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "l1-fake-cast-{}-{}",
+                std::process::id(),
+                rand::random::<u64>()
+            ));
+            std::fs::create_dir(&dir).unwrap();
+            let script = dir.join("cast.sh");
+            std::fs::write(
+                &script,
+                format!(
+                    "url=\nprev=\nfor arg in \"$@\"; do\n  [ \"$prev\" = --rpc-url ] && url=$arg\n  \
+                     prev=$arg\ndone\nprintf 'Error: error sending request for url (%s)\\n' \"$url\" >&2\n\
+                     cat >&2 <<'ECHOES'\n{echoes}\nECHOES\nexit 1\n"
+                ),
+            )
+            .unwrap();
+            FAKE_CAST.with(|c| *c.borrow_mut() = Some(script));
+            FakeCast(dir)
+        }
+    }
+    #[cfg(unix)]
+    impl Drop for FakeCast {
+        fn drop(&mut self) {
+            FAKE_CAST.with(|c| c.borrow_mut().take());
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn assert_redacted(error: &str) {
+        assert!(!error.contains("SECRET"), "{error}");
+        assert!(
+            !error.contains("://") && !error.contains(":\\/\\/"),
+            "{error}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cast_errors_never_name_a_configured_endpoint_or_any_url() {
+        let _cast = FakeCast::failing(CAST_ECHOES);
+        let mut l1 = L1::test_reader(PRIMARY.into());
+        l1.rpc_witness = Some(WITNESS.into());
+        for args in [
+            vec!["chain-id", "--rpc-url", PRIMARY],
+            vec!["rpc", "eth_chainId", "--rpc-url", WITNESS],
+            vec!["wallet", "address", "--keystore", "/ks"],
+        ] {
+            let error = l1.cast(&args).unwrap_err();
+            assert_redacted(&error);
+            // What is left still diagnoses, and still classifies.
+            assert!(
+                error.contains("nonce too low: next nonce 7, tx nonce 5"),
+                "{error}"
+            );
+            assert!(error.contains("docs: <url>.\n"), "{error}");
+            assert!(error.contains("path: \"<rpc>\""), "{error}");
+            assert!(error.contains("witness <rpc> (path <rpc>)"), "{error}");
+        }
+        let error = l1.cast(&["chain-id", "--rpc-url", PRIMARY]).unwrap_err();
+        assert!(
+            error.starts_with("Error: error sending request for url (<rpc>)\n"),
+            "{error}"
+        );
+        drop(_cast);
+        // An endpoint passed as `--rpc-url` is redacted even when not configured.
+        let _cast = FakeCast::failing("path: \"/SECRET-other-path\"");
+        let error = l1
+            .cast(&[
+                "chain-id",
+                "--rpc-url",
+                "https://other.example/SECRET-other-path",
+            ])
+            .unwrap_err();
+        assert_redacted(&error);
+        assert!(error.ends_with("path: \"<rpc>\""), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_startup_chain_id_query_never_names_the_endpoint() {
+        let _cast = FakeCast::failing("- Error #0: client error (Connect)");
+        let error = query_chain_id(PRIMARY).unwrap_err();
+        assert_redacted(&error);
+        assert_eq!(
+            error,
+            "Error: error sending request for url (<rpc>)\n- Error #0: client error (Connect)"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn answer_round_errors_never_name_an_endpoint() {
+        let _cast = FakeCast::failing(CAST_ECHOES);
+        let mut l1 = L1::test_reader(PRIMARY.into());
+        l1.rpc_witness = Some(WITNESS.into());
+        l1.keystore_path = "/seq/ks".into();
+        l1.password_file = "/seq/pw".into();
+        let sends = || {
+            vec![(
+                3,
+                vec![ChallengeAnswer {
+                    order_hash: [0x11; 32],
+                    by_rejection: false,
+                    proof: vec![],
+                }],
+            )]
+        };
+        // Serial answers on the sequencer lane: the send fails.
+        *l1.nonce.lock().unwrap() = Some(5);
+        let (answered, error) = l1.answer_round(sends());
+        assert_eq!(answered, 0);
+        let error = error.expect("the serial send fails");
+        assert_redacted(&error);
+        assert!(error.contains("url (<rpc>)"), "{error}");
+        // Pipelined answers on the answer key's lane: the nonce read fails.
+        l1.answer = Some(AnswerLane::new(
+            "/ans/ks".into(),
+            "/ans/pw".into(),
+            crate::hex0x(&[0x44; 20]),
+        ));
+        let (answered, error) = l1.answer_round(sends());
+        assert_eq!(answered, 0);
+        let error = error.expect("the pipelined nonce read fails");
+        assert_redacted(&error);
+        assert!(error.contains("url (<rpc>)"), "{error}");
+    }
+
+    #[test]
+    #[ignore = "requires real cast; explicitly run in native verification"]
+    fn native_cast_transport_errors_never_name_the_endpoint() {
+        // A loopback port with no listener: cast fails to connect and names the URL.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let rpc = PRIMARY.replace(":9/", &format!(":{port}/"));
+        let l1 = L1::test_reader(rpc.clone());
+        for error in [
+            l1.cast(&["chain-id", "--rpc-url", &rpc]).unwrap_err(),
+            query_chain_id(&rpc).unwrap_err(),
+        ] {
+            assert_redacted(&error);
+            // A nightly cast may print its own warning first (unless
+            // FOUNDRY_DISABLE_NIGHTLY_WARNING is set), so look for the error line
+            // itself rather than the start of the text.
+            assert!(
+                error
+                    .lines()
+                    .any(|line| line.starts_with("Error: error sending request for url (<rpc>)")),
+                "{error}"
+            );
+            assert!(error.contains("Connection refused"), "{error}");
+        }
+    }
+
+    #[test]
+    fn redaction_replaces_endpoints_and_urls_and_keeps_everything_else() {
+        let endpoints = [PRIMARY, WITNESS];
+        for (raw, redacted) in [
+            (format!("url ({PRIMARY})"), "url (<rpc>)".to_string()),
+            // cast 1.7 prints the URL without its userinfo.
+            (
+                "url (http://127.0.0.1:9/v2/SECRET-path-key?apikey=SECRET-query)".into(),
+                "url (<rpc>)".into(),
+            ),
+            // A copy that differs from the configured text is still a URL.
+            (
+                "url (http://localhost:9/v2/SECRET-path-key?apikey=SECRET-query)".into(),
+                "url (<url>)".into(),
+            ),
+            (format!("{WITNESS}."), "<rpc>.".into()),
+            (
+                "path: \"/v2/SECRET-path-key\", query: Some(\"apikey=SECRET-query\"), \
+                 user: user-SECRET-name:SECRET-pass"
+                    .into(),
+                "path: \"<rpc>\", query: Some(\"<rpc>\"), user: <rpc>".into(),
+            ),
+            (
+                "[https://other.example/SECRET-a?k=SECRET-b], (x://SECRET-c);".into(),
+                "[<url>], (<url>);".into(),
+            ),
+            (
+                "{\"m\":\"see http:\\/\\/h.example\\/SECRET-d\\\"}".into(),
+                "{\"m\":\"see <url>\\\"}".into(),
+            ),
+            (
+                "é HTTPS://H.EXAMPLE/SECRET-é é ://SECRET-e".into(),
+                "é <url> é <url>".into(),
+            ),
+            // No URL: unchanged, so errors stay classifiable.
+            (
+                "replacement transaction underpriced; nonce too low; request timed out".into(),
+                "replacement transaction underpriced; nonce too low; request timed out".into(),
+            ),
+        ] {
+            assert_eq!(redact_endpoints(&raw, &endpoints), redacted, "{raw}");
+        }
+        // Short endpoint parts are not credentials and are not replaced
+        // elsewhere in the message; the endpoint itself always is.
+        let endpoint = "http://127.0.0.1:8545/rpc";
+        assert_eq!(
+            redact_endpoints(
+                &format!("rpc error at /rpc from {endpoint}"),
+                &[endpoint, ""]
+            ),
+            "rpc error at /rpc from <rpc>"
+        );
+        assert_eq!(redact_endpoints("plain", &[]), "plain");
     }
 
     #[test]
