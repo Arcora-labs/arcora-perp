@@ -170,8 +170,7 @@ def close_only_outlook(reader, state, head):
             "head": head, "revert": SETTLEMENT_ERRORS.get(simulated, simulated)}
 
 
-def check(rpc, vault, *, tx=None, ids=(), payer=None, to=None, max_scan=MAX_SCAN, rpc_label="<RPC_URL>",
-          out=print):
+def check(rpc, vault, *, tx=None, ids=(), payer=None, to=None, max_scan=MAX_SCAN, out=print):
     """Run the checks and print the report; return the exit status."""
     head, _ = chain.pin_latest(rpc)
     reader = chain.Reader(rpc, hex(head))
@@ -204,7 +203,7 @@ def check(rpc, vault, *, tx=None, ids=(), payer=None, to=None, max_scan=MAX_SCAN
         outlook = close_only_outlook(reader, state, head)
         if outlook["available_now"]:
             out("close-only can be triggered now by anyone:")
-            out("  " + chain.cast_send(state["settlement"], "triggerCloseOnly()", [], rpc_label))
+            out("  " + chain.cast_send(state["settlement"], "triggerCloseOnly()", []))
         elif outlook["earliest"] is not None:
             block, reason = outlook["earliest"]
             when = f"from block {block}" if block > head + 1 else "from the next block"
@@ -224,7 +223,7 @@ def check(rpc, vault, *, tx=None, ids=(), payer=None, to=None, max_scan=MAX_SCAN
         when = "" if state["closeOnly"] else ", after close-only"
         who = f"only {d['from']} may send this one" if recipient != d["from"] else "anyone may send it"
         out(f"refund deposit {d['id']} to {recipient} ({who}{when}):")
-        out("  " + chain.cast_send(vault, REFUND_SIGNATURE, args, rpc_label))
+        out("  " + chain.cast_send(vault, REFUND_SIGNATURE, args))
     return 0 if refundable and not failed else 1
 
 
@@ -269,7 +268,7 @@ def main(argv=None, rpc_factory=chain.HttpRPC):
                 print("FAILED: the settlement has no vault")
                 return 1
         return check(rpc, vault, tx=args.tx, ids=args.ids or (), payer=args.payer.lower() if args.payer else None,
-                     to=args.to, max_scan=args.max_scan, rpc_label=args.rpc)
+                     to=args.to, max_scan=args.max_scan, out=chain.noting_rpc_url(print))
     except chain.ChainError as error:
         print(f"FAILED: {error}")
         return 1
