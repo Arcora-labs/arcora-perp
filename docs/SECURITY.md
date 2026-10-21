@@ -221,11 +221,14 @@ take effect only on a fresh deployment (`docs/REDEPLOY-CC-RUNBOOK.md`).
   and only when nothing of it can still land on L1: our anchor is cancelled or absent,
   and either the finalized, header-bound block time is past the window's last
   operation time plus the immutable `clockSkewMs` (block times never decrease, so a
-  later registration reverts), or every recorded sequencer-key nonce is final and
-  no sequencer-key transaction is pending on any configured RPC. A phase-0 window
-  with timed operations is then voided off-chain (fills undone, deposits credited
-  again, withdrawals removed and re-requested with a new signature); an untimed
-  window returns to the open window and registers again. On the nonce basis alone
+  later registration reverts), or every sequencer-key nonce recorded for the
+  window's own registration and settle sends is final (at boot, every recorded
+  sequencer-key nonce) and no sequencer-key transaction is pending on any
+  configured RPC. While the window is pending only the settle loop sends for it,
+  so later sequencer-key sends made for other reasons do not hold it back. A
+  phase-0 window with timed operations is then voided off-chain (fills undone,
+  deposits credited again, withdrawals removed and re-requested with a new
+  signature); an untimed window returns to the open window and registers again. On the nonce basis alone
   the gateway may send up to three 0-value self-transfers per window at an unused
   sequencer nonce; they touch no contract and are not a cancel. Repeated voids stop
   the settle loop until a restart
