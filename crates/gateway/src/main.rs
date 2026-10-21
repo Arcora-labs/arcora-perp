@@ -15106,7 +15106,13 @@ mod tests {
         // A recovery step holds the lock: refused at once, for any window.
         *app.settle_in_flight.lock().await = None;
         let step = app.settle_in_flight.lock().await;
-        let (status, text) = call(&app, Some(&key), other.clone()).await;
+        // Bounded: a handler that waited for the lock would never answer here.
+        let (status, text) = tokio::time::timeout(
+            Duration::from_secs(10),
+            call(&app, Some(&key), other.clone()),
+        )
+        .await
+        .expect("the endpoint answers at once, without waiting for the lock");
         assert_eq!(status, StatusCode::CONFLICT, "{text}");
         assert!(text.contains("working on this window; retry"), "{text}");
         drop(step);

@@ -397,9 +397,13 @@ impl Harness {
             let step = run_step(&app, &chain, &mut rec, &jpath, &seed, &mut admission).await;
             (rec, step)
         });
-        tokio::task::spawn_blocking(move || entered.recv().unwrap())
-            .await
-            .unwrap();
+        tokio::task::spawn_blocking(move || {
+            entered
+                .recv_timeout(Duration::from_secs(10))
+                .expect("the step reaches its hook")
+        })
+        .await
+        .unwrap();
         (release, task)
     }
     fn admission_open(&self) -> bool {
@@ -1100,7 +1104,11 @@ async fn a_cancel_between_decision_and_attempt_sends_no_settle() {
     let h = harness(gw, journal.clone(), state);
     h.seal_hold().await;
     let (release, task) = h.step_held_at("evidence", h.pending()).await;
-    let (status, text) = cancel(&h.app, journal.batch_id).await;
+    // Bounded: a handler that waited for the lock would never answer here.
+    let (status, text) =
+        tokio::time::timeout(Duration::from_secs(10), cancel(&h.app, journal.batch_id))
+            .await
+            .expect("the endpoint answers at once, without waiting for the lock");
     assert_eq!(status, axum::http::StatusCode::CONFLICT, "{text}");
     assert!(text.contains("working on this window; retry"), "{text}");
     release.send(()).unwrap();
