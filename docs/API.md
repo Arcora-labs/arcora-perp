@@ -630,9 +630,12 @@ challenge that order on L1:
 
 The beneficiary is the account's bound deposit address when the receipt is
 served: the `POST /v1/orders` response names the address bound at acceptance, while
-`GET /v1/orders` signs for the address bound at the time of the read, so keep the
-kit from the accept response. It is `null` when the account has no bound deposit
-address or the gateway has no settlement configured. The signature is the enclave signer's over the settlement's
+`GET /v1/orders` signs for the address bound at the time of the read. Keep the kit
+from the accept response. After the account binds another address, a read names
+the new one, and either kit opens the challenge. Replace a kept kit only with one
+from the same `enclaveSigner` for the same chain and settlement, as the web client
+does (see `docs/FUNDS_LIFECYCLE.md`). `l1Challenge` is `null` when the account has
+no bound deposit address or the gateway has no settlement configured. The signature is the enclave signer's over the settlement's
 `challengeAuthDigest(orderHash, seqNo, recvTimeMs, batchIdHint, beneficiary)`:
 
 ```text

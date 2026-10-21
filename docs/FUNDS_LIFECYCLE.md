@@ -186,6 +186,11 @@ gateway is gone. The web client now keeps that data for every user:
 - **Download claim file** saves that bundle. **Export all claim files** saves
   every bundle kept so far as one JSON array, including entries the gateway no
   longer lists.
+- When the browser refuses the write (storage blocked or full), the withdrawals
+  list warns how many claimable withdrawals it holds no claim file for. Download
+  their claim files then: without a saved copy, the claim data comes back only
+  while the gateway still lists the withdrawal. The warning clears once a write
+  succeeds.
 - The bundle stays with the user. It is never sent anywhere, and leaves are not
   published to anyone else: a public leaf list would reveal recipient and amount
   before the claim does.
@@ -275,15 +280,22 @@ If no settled batch ever includes or rejects the order, the user needs this
 authorization after the fact, possibly when the gateway no longer answers. The web
 client keeps it:
 
-- The account panel keeps a challenge kit (`arcora.challenge-kit.v1`) in this
-  browser's storage for each order that `GET /v1/orders` lists with an
-  authorization. The client refreshes that list right after `POST /v1/orders`
-  accepts an order, so a new order's kit is kept within moments. Orders placed
-  from another browser get a kit too. The kit holds the receipt fields
-  `challengeInclusion` takes (`orderHash`, `seqNo`, `recvTimeMs`, `batchIdHint`),
-  the receipt's `enclaveSigner` and `l1Challenge` (`chainId`, `settlement`,
-  `beneficiary`, `signature`). Kits are merged by order hash, and the first copy
-  is kept.
+- The client keeps a challenge kit (`arcora.challenge-kit.v1`) in this browser's
+  storage for each order it places, from the `POST /v1/orders` accept response,
+  before the gateway lists the order. A refused write never fails the order.
+  The account panel also keeps one for each order that `GET /v1/orders` lists
+  with an authorization, so orders placed from another browser get a kit too.
+  The kit holds the receipt fields `challengeInclusion` takes (`orderHash`,
+  `seqNo`, `recvTimeMs`, `batchIdHint`), the receipt's `enclaveSigner` and
+  `l1Challenge` (`chainId`, `settlement`, `beneficiary`, `signature`).
+- There is one kit per order. The gateway signs a listed order's authorization
+  for the deposit address bound when it answers, so after the account binds
+  another address, the listing carries a kit for the new beneficiary. That kit
+  replaces the kept one, in storage and in the export, when it is the same
+  enclave signer's authorization for the same order, chain and settlement: only
+  the beneficiary and the signature differ. Any other copy leaves the kept kit
+  in place. The accept response's kit and the listing's kit for the same address
+  are the same kit, so keeping both changes nothing.
 - A kit is kept only when its signature recovers to the receipt's enclave signer.
   Receipts without an authorization (`null` when the account has no bound deposit
   address) produce no kit. An order the gateway lists as `SETTLED` gets no kit,
@@ -337,12 +349,12 @@ fixture is the vector that `crates/gateway/src/challenge_auth.rs` and
 `contracts/test/CrossLayer.t.sol` pin.
 
 **Limits.**
-- A kit exists only for orders this browser saw in the account panel while the
-  gateway listed them with an authorization. If the gateway stops answering
-  between accepting an order and listing it, that order has no kit. A browser that
-  cleared its storage, or evicted a kit to stay within its bound or quota, without
-  an export has nothing to recover. Export the kits of orders you may need to
-  challenge, and export again when the panel warns that it did not keep a kit.
+- A kit exists only for orders this browser placed, or saw listed in the account
+  panel, with an authorization: an accept response or listing from before the
+  account bound a deposit address carries none. A browser that cleared its
+  storage, or evicted a kit to stay within its bound or quota, without an export
+  has nothing to recover. Export the kits of orders you may need to challenge,
+  and export again when the panel warns that it did not keep a kit.
 - The panel takes the gateway's word that an order is `SETTLED` when it drops
   that order's kit. Keep an exported copy if you want to check settlement
   yourself.
