@@ -1320,6 +1320,47 @@ async fn a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_nex
     );
 }
 
+/// A void applied in memory whose snapshot failed is finished by the next step
+/// without reading the chain or deciding again. Close-only on L1 meanwhile
+/// would decide a phase-0 window as returned to the open window; the void
+/// already decided it, and its notice, events, `window_voided` and breaker
+/// count all follow.
+#[tokio::test]
+async fn an_applied_void_is_finished_on_the_next_step_without_deciding_again() {
+    let Voidable { gw, journal, .. } = voidable(false);
+    let mut state = chain_at(&journal);
+    state.block_time_ms = past_skew(&journal);
+    let h = harness(gw, journal.clone(), state);
+    h.seal_hold().await;
+    let mut rec = h.pending();
+    let mut events = h.app.events_tx.subscribe();
+    h.fail_snapshots.store(true, Ordering::SeqCst);
+    assert!(matches!(h.step(&mut rec).await, Step::Wait(_)));
+    assert!(rec.voided.is_some());
+    let reads = h.fake.with(|s| s.ceilings.len());
+    h.fake.with(|s| s.close_only = true);
+    let voided = h.app.gw.lock().await.snapshot_plain();
+    h.fail_snapshots.store(false, Ordering::SeqCst);
+    assert_eq!(h.step(&mut rec).await, Step::Resolved { close_only: false });
+    assert_eq!(h.fake.with(|s| s.ceilings.len()), reads, "nothing was read");
+    assert!(rec.voided.is_none());
+    assert!(!h.jpath.exists());
+    assert!(h.admission_open());
+    assert_eq!(
+        std::iter::from_fn(|| events.try_recv().ok()).count(),
+        2 + 1 + 3,
+        "the order, withdrawal and deposit events"
+    );
+    assert_eq!(h.durable().snapshot_plain(), voided);
+    let mut gw = h.app.gw.lock().await;
+    assert_eq!(gw.snapshot_plain(), voided);
+    assert_eq!(gw.last_void.as_ref().unwrap().batch_id, journal.batch_id);
+    assert!(h.alert(&gw, AlertKind::WindowVoided));
+    assert!(gw.clock_recovery.is_none());
+    // The void counted toward the breaker: one more trips it.
+    assert!(gw.void_breaker.record(Instant::now()).is_some());
+}
+
 /// A return to the open window whose snapshot failed is not applied again by
 /// the next step: the window's operations are in the open window once.
 #[tokio::test]

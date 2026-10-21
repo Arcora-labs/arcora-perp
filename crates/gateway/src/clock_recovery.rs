@@ -83,7 +83,8 @@ pub(crate) struct PendingRecovery {
     pub last_evidence: Option<DeadIntentEvidence>,
     pub last_budget: Option<CloseOnlyBudget>,
     /// A void applied in memory whose snapshot or journal delete has not
-    /// completed: its report, basis and finalized block.
+    /// completed: its report, basis and finalized block. The next step finishes
+    /// it without deciding again.
     voided: Option<(VoidReport, DeadBasis, u64)>,
 }
 
@@ -831,6 +832,13 @@ async fn step(
     admission: &mut Option<Paused>,
 ) -> Step {
     rec.steps = rec.steps.saturating_add(1);
+    // A void applied in memory whose snapshot or journal delete failed. It was
+    // decided dead when it was applied, and that is final: finish it without
+    // reading or deciding again, so nothing the chain showed since (close-only,
+    // a failed read) can skip its notice, its events or the breaker.
+    if rec.voided.is_some() {
+        return finish_void(app, rec, jpath, admission).await;
+    }
     let j = match reread(jpath, seed, rec.batch_id) {
         Ok(j) => j,
         Err(Reread::Wait(why)) => return wait(app, rec, class::JOURNAL_READ, why).await,
@@ -1124,67 +1132,77 @@ async fn step(
                     .await
                 }
             }
-            if let Err(e) = persist_and_delete(app, jpath).await {
-                return wait(
-                    app,
-                    rec,
-                    class::NOT_DURABLE,
-                    format!("the voided window is not durable yet: {e}"),
-                )
-                .await;
-            }
-            // Durable and the journal gone: only now do users hear of it.
-            let notice = rec.voided.take().map(|(report, basis, block)| {
-                println!(
-                    "[recovery] VOIDED window {} ({}, basis {basis:?}) at finalized block \
-                     {block}: {}",
-                    report.batch_id,
-                    report.cause_name(),
-                    report.summary()
-                );
-                for event in report.account_events() {
-                    let _ = app.events_tx.send(event);
-                }
-                report.notice(crate::now_ms())
-            });
-            if notice.is_none() {
-                println!(
-                    "[recovery] window {}: the snapshot already holds its void; journal deleted",
-                    rec.batch_id
-                );
-            }
-            {
-                let mut gw = app.gw.lock().await;
-                if notice.is_some() {
-                    gw.last_void = notice;
-                }
-                gw.ops_alerts.activate(AlertKind::WindowVoided);
-                if let Some(why) = gw.void_breaker.record(Instant::now()) {
-                    blocked(
-                        &gw,
-                        rec,
-                        &format!("repeated live voids: {why}"),
-                        operator::VOID_BREAKER,
-                    );
-                    drop(gw);
-                    return stop(
-                        app,
-                        rec,
-                        class::VOID_BREAKER,
-                        format!(
-                            "repeated live voids: {why}; admission stays closed until a restart"
-                        ),
-                    )
-                    .await;
-                }
-            }
-            resolved(app, admission, false).await
+            finish_void(app, rec, jpath, admission).await
         }
         Decision::Stop(why) => {
             drop(in_flight);
             stop(app, rec, class::CONTRADICTION, why).await
         }
     }
+}
+
+/// Make a live void durable, delete its journal, and only then tell users of it
+/// and count it toward the void breaker. A snapshot or delete that fails keeps
+/// the recovery pending, with the report in `rec.voided`; the next step comes
+/// straight back here.
+async fn finish_void(
+    app: &Shared,
+    rec: &mut PendingRecovery,
+    jpath: &Path,
+    admission: &mut Option<Paused>,
+) -> Step {
+    if let Err(e) = persist_and_delete(app, jpath).await {
+        return wait(
+            app,
+            rec,
+            class::NOT_DURABLE,
+            format!("the voided window is not durable yet: {e}"),
+        )
+        .await;
+    }
+    // Durable and the journal gone: only now do users hear of it.
+    let notice = rec.voided.take().map(|(report, basis, block)| {
+        println!(
+            "[recovery] VOIDED window {} ({}, basis {basis:?}) at finalized block {block}: {}",
+            report.batch_id,
+            report.cause_name(),
+            report.summary()
+        );
+        for event in report.account_events() {
+            let _ = app.events_tx.send(event);
+        }
+        report.notice(crate::now_ms())
+    });
+    if notice.is_none() {
+        println!(
+            "[recovery] window {}: the snapshot already holds its void; journal deleted",
+            rec.batch_id
+        );
+    }
+    {
+        let mut gw = app.gw.lock().await;
+        if notice.is_some() {
+            gw.last_void = notice;
+        }
+        gw.ops_alerts.activate(AlertKind::WindowVoided);
+        if let Some(why) = gw.void_breaker.record(Instant::now()) {
+            blocked(
+                &gw,
+                rec,
+                &format!("repeated live voids: {why}"),
+                operator::VOID_BREAKER,
+            );
+            drop(gw);
+            return stop(
+                app,
+                rec,
+                class::VOID_BREAKER,
+                format!("repeated live voids: {why}; admission stays closed until a restart"),
+            )
+            .await;
+        }
+    }
+    resolved(app, admission, false).await
 }
 
 /// The deposit barrier in front of a recovery settle. While admission is closed
