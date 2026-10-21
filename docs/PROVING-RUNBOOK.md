@@ -399,10 +399,13 @@ persisted before the journal is deleted and before admission reopens.
 **A restart while a window is undecided.** Boot classifies the journal with the
 same rules, at one finalized block and with every recorded sequencer-key send as
 the ceiling, but it cannot wait and does not burn. The evidence is read up to
-three times; if every read fails, startup is refused and nothing is resumed. A
-window with timed
-operations is decided by the chain clock at boot, and one that may still settle is
-resumed only against its existing anchor. An untimed window, or one whose
+three times; if every read fails, startup is refused and nothing is resumed. Like
+the settle loop, boot decides nothing while the finalized settled root at the
+window's batch is not the window's pre-state root: startup is refused and the
+journal kept. A window with timed operations is decided by the chain clock at
+boot, and one that may still settle is resumed only against its existing anchor.
+A void that was already durable when the gateway stopped needs no new decision:
+boot finds it in the restored snapshot and deletes its journal. An untimed window, or one whose
 operation times are not monotonic, needs the fence: if boot refuses startup
 because the sequencer nonce has not passed every recorded send, check that no
 sequencer-key transaction is pending. If none is, mine any transaction from the
