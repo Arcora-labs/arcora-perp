@@ -3453,30 +3453,38 @@ witness https://witness.example/SECRET-witness-key (path /SECRET-witness-key)";
         }
     }
 
-    /// A large error full of URLs, only the last one JSON-escaped. `send()`
+    /// Large errors full of URLs, only the last one JSON-escaped. `send()`
     /// redacts cast's errors while it holds the nonce lock: each separator is
     /// searched for in one pass over the text, not once per URL, so the work stays
-    /// linear (the reference searches over 10^12 bytes here).
+    /// linear. The escaped URL at the end makes that pass cover the whole text, so
+    /// a count below the text's length means a search went uncounted. A scan that
+    /// starts over after every URL is over a thousand times the bound at 5,000
+    /// URLs (300 KB) and still finishes in under a second, so it fails there before
+    /// the 12 MB error (over 10^12 bytes for the reference) is reached.
     #[test]
     fn url_stripping_searches_a_large_url_dense_error_once_per_separator() {
-        let mut text = String::new();
-        let mut expected = String::new();
-        for i in 0..200_000 {
-            let line = format!("error sending request for url (http://h{i}.example/v2/k{i})\n");
-            text.push_str(&line);
-            expected.push_str(&line.replace(&format!("http://h{i}.example/v2/k{i}"), "<url>"));
+        for urls in [5_000, 200_000] {
+            let mut text = String::new();
+            let mut expected = String::new();
+            for i in 0..urls {
+                let line = format!("error sending request for url (http://h{i}.example/v2/k{i})\n");
+                text.push_str(&line);
+                expected.push_str(&line.replace(&format!("http://h{i}.example/v2/k{i}"), "<url>"));
+            }
+            text.push_str("{\"url\":\"wss:\\/\\/h.example\\/k\"}");
+            expected.push_str("{\"url\":\"<url>\"}");
+            URL_SEARCH_BYTES.with(|n| n.set(0));
+            assert!(
+                strip_urls(&text) == expected,
+                "the output differs at {urls} URLs"
+            );
+            let searched = URL_SEARCH_BYTES.with(|n| n.get());
+            assert!(
+                (text.len()..=2 * text.len()).contains(&searched),
+                "{searched} bytes searched in {} bytes of text",
+                text.len()
+            );
         }
-        text.push_str("{\"url\":\"wss:\\/\\/h.example\\/k\"}");
-        expected.push_str("{\"url\":\"<url>\"}");
-        assert!(text.len() > 12 << 20, "{} bytes", text.len());
-        URL_SEARCH_BYTES.with(|n| n.set(0));
-        assert!(strip_urls(&text) == expected, "the output differs");
-        let searched = URL_SEARCH_BYTES.with(|n| n.get());
-        assert!(
-            searched <= 2 * text.len(),
-            "{searched} bytes searched in {} bytes of text",
-            text.len()
-        );
     }
 
     #[test]
