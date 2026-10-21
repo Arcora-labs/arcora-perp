@@ -779,6 +779,196 @@ fn ingestion_checks_the_permit_payer_not_the_current_binding() {
     assert_eq!(gw.deposits.credits[&0].event.from, [0x42; 20]);
 }
 
+/// Land the permitted deposits `commits` in one block (header time `block_time`)
+/// that the admission cap refuses, and record them as landed and uncredited, as
+/// ingestion does. Returns the refused page, which credits them once there is room.
+fn land_uncredited(gw: &mut Gw, commits: &[[u8; 32]], block_time: Option<u64>) -> Page {
+    let mut landed = page(gw, commits);
+    landed.end.timestamp = block_time;
+    for e in &mut landed.events {
+        e.block = landed.end.clone();
+    }
+    gw.admission_cap = crate::admission::AdmissionCap {
+        max_history: crate::admission::HistorySize::of(&gw.seq.state).history,
+        max_positions: 1_000,
+        max_notes: 1_000,
+    };
+    assert_eq!(
+        gw.apply_deposit_page(landed.clone()).unwrap_err(),
+        crate::admission::HISTORY_CAP_INTAKE
+    );
+    gw.admission_cap = crate::admission::measured_cap();
+    assert_eq!(gw.record_uncredited(&landed), commits.len());
+    landed
+}
+
+/// A deposit that landed and was not credited keeps its permit route and blind
+/// through permit GC at any later block time, until it is credited. Here the
+/// admission cap refused it; a voided window restores its deposits to the same
+/// rows. An expired permit whose deposit never landed is collected as before.
+#[test]
+fn restored_landed_routes_survive_permit_gc() {
+    let mut gw = fresh();
+    let (key, _) = gw.register_account(None);
+    gw.accounts.get_mut(&key).unwrap().deposit_address = Some([0x42; 20]);
+    let landed = gw
+        .authorize_routed_deposit(&key, [0x42; 20], 5_000_000, 1, Purpose::Collateral, 1_000)
+        .unwrap();
+    let unlanded = gw
+        .authorize_routed_deposit(&key, [0x42; 20], 6_000_000, 0, Purpose::Collateral, 1_000)
+        .unwrap();
+    // It landed in time: its block is no later than the permit deadline.
+    let refused = land_uncredited(&mut gw, &[landed], Some(900));
+    assert_eq!(gw.deposits.landed_commits(), BTreeSet::from([landed]));
+    gw.deposits.dirty = false;
+
+    assert_eq!(gw.gc_expired_permits(1_001), 1);
+    assert!(gw.deposits.routes.contains_key(&landed));
+    assert!(!gw.deposits.routes.contains_key(&unlanded));
+    let blinds = &gw.accounts[&key].deposit_authorizations;
+    assert!(blinds.contains_key(&landed) && !blinds.contains_key(&unlanded));
+    assert!(gw.deposits.dirty, "the removal must be persisted");
+    assert_eq!(gw.gc_expired_permits(u64::MAX), 0);
+    gw.validate_deposit_state().unwrap();
+    let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    assert_eq!(restored.deposits.routes, gw.deposits.routes);
+    assert_eq!(restored.deposits.uncredited, gw.deposits.uncredited);
+
+    // Once there is room the same page credits it; its row, route and blind go.
+    assert_eq!(gw.apply_deposit_page(refused).unwrap(), 1);
+    assert!(gw.deposits.uncredited.is_empty() && gw.deposits.routes.is_empty());
+    assert!(gw.accounts[&key].deposit_authorizations.is_empty());
+    assert!(gw.deposits.landed_commits().is_empty());
+    assert_eq!(
+        gw.seq.state.positions[&(gw.accounts[&key].wallet.owner, 1)].collateral,
+        5_000_000
+    );
+    gw.validate_deposit_state().unwrap();
+}
+
+/// A permit whose deposit landed and was not credited holds no rebind, counts
+/// against neither outstanding-permit bound and is never re-signed. The landed
+/// deposit is still credited after a rebind: ingestion checks the payer its
+/// permit names, not the current binding.
+#[test]
+fn landed_routes_free_rebind_capacity_and_are_not_resigned() {
+    use k256::ecdsa::SigningKey;
+    let sign = |sk: &SigningKey, digest: &[u8; 32]| {
+        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let mut wire = [0u8; 65];
+        wire[..64].copy_from_slice(&sig.to_bytes());
+        wire[64] = 27 + recid.to_byte();
+        wire
+    };
+    let old_sk = SigningKey::from_bytes((&[3u8; 32]).into()).unwrap();
+    let new_sk = SigningKey::from_bytes((&[4u8; 32]).into()).unwrap();
+    let (old, new) = (eth_address(&old_sk), eth_address(&new_sk));
+    let mut gw = fresh();
+    let (key, owner) = gw.register_account(None);
+    gw.accounts.get_mut(&key).unwrap().deposit_address = Some(old);
+    let until = 10_000;
+    let permit_for = |gw: &mut Gw, amount: u128| {
+        gw.authorize_routed_deposit(&key, old, amount, 1, Purpose::Collateral, until)
+            .unwrap()
+    };
+    let request = |gw: &Gw, commit: &[u8; 32]| Route {
+        valid_until: 0,
+        ..gw.deposits.routes[commit].clone()
+    };
+
+    let landed = permit_for(&mut gw, 5_000_000);
+    let landed_request = request(&gw, &landed);
+    assert_eq!(
+        gw.held_permit_deadline(&landed, &landed_request, 0),
+        Some(until)
+    );
+    let refused = land_uncredited(&mut gw, &[landed], None);
+    assert_eq!(gw.held_permit_deadline(&landed, &landed_request, 0), None);
+    assert_eq!(gw.unlanded_deposit_permits(&key), 0);
+
+    // Per account: the landed blind is held but not counted.
+    let mut open = Vec::new();
+    for i in 1..MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT {
+        open.push(permit_for(&mut gw, 1_000_000 + i as u128));
+    }
+    assert_eq!(
+        gw.accounts[&key].deposit_authorizations.len(),
+        MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT
+    );
+    gw.admit_deposit_permit(&key, Purpose::Collateral, 0)
+        .expect("a landed permit leaves room for one more");
+    open.push(permit_for(&mut gw, 2_000_000));
+    assert_eq!(
+        gw.admit_deposit_permit(&key, Purpose::Collateral, 0)
+            .unwrap_err()
+            .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let open_request = request(&gw, &open[0]);
+    assert_eq!(
+        gw.held_permit_deadline(&open[0], &open_request, 0),
+        Some(until),
+        "an outstanding permit is still re-signed"
+    );
+
+    // In total: on a copy, fill the global bound with the landed route included.
+    let mut full = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    let other = full.register_account(None).0;
+    let synthetic = Route {
+        key: other,
+        ..full.deposits.routes[&landed].clone()
+    };
+    let add_route = |full: &mut Gw| {
+        let mut commit = [0xEE; 32];
+        commit[..8].copy_from_slice(&(full.deposits.routes.len() as u64).to_be_bytes());
+        assert!(full
+            .deposits
+            .routes
+            .insert(commit, synthetic.clone())
+            .is_none());
+    };
+    while full.deposits.routes.len() < MAX_OPEN_DEPOSIT_PERMITS {
+        add_route(&mut full);
+    }
+    full.admit_deposit_permit(&other, Purpose::Collateral, 0)
+        .expect("the landed route is not counted");
+    add_route(&mut full);
+    assert_eq!(
+        full.admit_deposit_permit(&other, Purpose::Collateral, 0)
+            .unwrap_err()
+            .0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+
+    // The rebind waits for the outstanding permits only.
+    let bind = sign(
+        &new_sk,
+        &deposit_bind_digest(gw.chain_id, &gw.vault, &owner, &new),
+    );
+    let current = sign(
+        &old_sk,
+        &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &old, &new),
+    );
+    let error = gw
+        .account_set_deposit_address(&key, new, &bind, Some(&current))
+        .unwrap_err();
+    assert!(error.contains("have not landed or expired"), "{error}");
+    assert_eq!(gw.gc_expired_permits(until + 1), open.len());
+    assert_eq!(gw.accounts[&key].deposit_authorizations.len(), 1);
+    gw.account_set_deposit_address(&key, new, &bind, Some(&current))
+        .unwrap();
+    assert_eq!(gw.accounts[&key].deposit_address, Some(new));
+    gw.validate_deposit_state().unwrap();
+
+    // The landed deposit is credited against its permit's payer.
+    assert_eq!(gw.apply_deposit_page(refused).unwrap(), 1);
+    assert_eq!(gw.deposits.credits[&0].event.from, old);
+    assert!(gw.deposits.uncredited.is_empty());
+    assert!(gw.accounts[&key].deposit_authorizations.is_empty());
+    assert_eq!(gw.seq.state.positions[&(owner, 1)].collateral, 5_000_000);
+    gw.validate_deposit_state().unwrap();
+}
+
 #[test]
 fn close_only_stops_crediting_and_reports_unsettled_credits_as_refundable() {
     let mut gw = fresh();

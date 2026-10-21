@@ -2471,7 +2471,7 @@ impl Gw {
             if old == addr {
                 return Ok(()); // idempotent re-bind of the same address: no-op
             }
-            if !self.accounts[key].deposit_authorizations.is_empty() {
+            if self.unlanded_deposit_permits(key) > 0 {
                 return Err("Pending deposit authorizations have not landed or expired at a finalized block; rebind once they have.".into());
             }
             let cur = current_sig.ok_or(
