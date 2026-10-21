@@ -23,7 +23,12 @@ import {
   withdrawAuthDigest,
 } from "./realClient";
 import type { OrderEvent } from "./client";
-import { loadChallengeKits, type ChallengeKit, type ReceiptWithChallenge } from "../domain/challengeKit";
+import {
+  CHALLENGE_KIT_STORAGE_KEY,
+  loadChallengeKits,
+  type ChallengeKit,
+  type ReceiptWithChallenge,
+} from "../domain/challengeKit";
 
 // ── Rust-extracted contract vectors (source of truth) ────────────────────────
 // epoch_signing_digest(1, &[0x11;32], 1_720_000_000_000)
@@ -2300,8 +2305,10 @@ describe("L1 challenge kit at acceptance", () => {
   it("denied storage never fails an accepted order", async () => {
     orderPostResponse = KIT_VECTORS.acceptReceipt;
     const client = await bootstrapClient();
-    vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new DOMException("denied", "SecurityError"); });
+    const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new DOMException("denied", "SecurityError"); });
     expect((await client.placeOrder(order)).seqNo).toBe(0);
+    // The kit write was tried and refused.
+    expect(setItem).toHaveBeenCalledWith(CHALLENGE_KIT_STORAGE_KEY, expect.any(String));
     client.dispose();
   });
 });
