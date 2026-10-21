@@ -490,8 +490,9 @@ interface ClaimTxState {
 /// the entry shows pending settlement, and once `claimable` the user gets
 /// the on-chain claim — sent directly from a connected wallet, with the
 /// copy-pasteable `cast` command kept as the fallback. Hidden entirely when the
-/// client reports null (mock mode / no provisioned account). `storage` defaults
-/// to this origin's localStorage.
+/// client reports null (mock mode / no provisioned account). When this browser
+/// does not keep a claimable entry's claim bundle (storage blocked or full), the
+/// section says so. `storage` defaults to this origin's localStorage.
 /// Exported for tests (takes the client as a prop so a fake can drive it).
 export function WithdrawalsSection({ client, storage }: { client: DarkPerpClient; storage?: ClaimBundleStorage }) {
   const [data, setData] = useState<{ withdrawals: WithdrawalEntry[]; vault: string } | null>(null);
@@ -499,6 +500,8 @@ export function WithdrawalsSection({ client, storage }: { client: DarkPerpClient
   const wallet = useWalletAddress();
   const [claims, setClaims] = useState<Record<number, ClaimTxState>>({});
   const [savedBundles, setSavedBundles] = useState<ClaimBundle[]>(() => loadClaimBundles(storage));
+  // Listed claimable entries whose bundle this browser does not hold.
+  const [unsaved, setUnsaved] = useState(0);
 
   // Keep every claimable entry's bundle in this browser as soon as it is
   // seen, so the claim data survives the operator going away.
@@ -511,7 +514,16 @@ export function WithdrawalsSection({ client, storage }: { client: DarkPerpClient
         return []; // not claimable yet, or invalid claim data
       }
     });
-    if (fresh.length > 0 && rememberClaimBundles(fresh, storage)) setSavedBundles(loadClaimBundles(storage));
+    if (fresh.length === 0) {
+      setUnsaved(0);
+    } else if (rememberClaimBundles(fresh, storage)) {
+      setSavedBundles(loadClaimBundles(storage));
+      setUnsaved(0);
+    } else {
+      // A refused write keeps none of them; one stored earlier is still kept.
+      const kept = new Set(loadClaimBundles(storage).map((b) => b.leaf.toLowerCase()));
+      setUnsaved(fresh.filter((b) => !kept.has(b.leaf.toLowerCase())).length);
+    }
   }, [data, storage]);
 
   useEffect(() => {
@@ -574,6 +586,14 @@ export function WithdrawalsSection({ client, storage }: { client: DarkPerpClient
   return (
     <div className="withdrawals">
       <h3 className="card__title">Withdrawals</h3>
+      {unsaved > 0 && (
+        <p className="notice notice--warn" role="alert">
+          This browser did not keep{" "}
+          {unsaved === 1 ? "the claim file of 1 claimable withdrawal" : `the claim files of ${unsaved} claimable withdrawals`}{" "}
+          (its storage is blocked or full). Use Download claim file now and keep a copy: without one, the
+          claim data is offered again only while the gateway still lists the withdrawal.
+        </p>
+      )}
       <ul className="withdrawals__list">
         {entries.map((w) => {
           const claim = claims[w.nonce];
