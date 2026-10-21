@@ -55,7 +55,6 @@ pub enum AlertKind {
     /// undone, its orders were published as cancelled and its deposits were
     /// restored for re-ingestion. Recovered once the next window settles. Not
     /// persisted: a restart clears it.
-    #[allow(dead_code)] // raised by the boot and settle-loop recovery of a dead window
     WindowVoided,
     /// The settle loop is recovering a clock-bound window and needs the operator,
     /// or is running out of time: another anchor holds the batch, the settle keeps

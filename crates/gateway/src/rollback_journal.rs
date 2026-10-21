@@ -510,31 +510,39 @@ pub enum DeadIntentAction {
     /// under a fresh anchor; a phase-0 window in close-only never settles and the
     /// close-only rebase of the wind-down discards it.
     ReturnToOpenWindow,
+    /// Void the sealed phase-0 window and everything it did
+    /// (`Gw::live_void_window`). Nothing exists on L1 to undo, and the window can
+    /// never register with its operation times.
+    LiveVoid,
     /// Keep the journal and refuse to resolve it automatically.
     Hold(&'static str),
 }
 
-/// Automatic only where nothing on L1 has to be undone and no operation time has
-/// to be re-registered; every other dead intent holds for the operator, with the
-/// recovery path in the reason.
+/// Automatic wherever nothing on L1 has to be undone:
+///
+/// - an untimed window returns to the open window and registers again under a
+///   fresh anchor (its bounds are zero, so registering is exact);
+/// - a timed phase-0 window can never register with its operation times again,
+///   so it is voided. A window whose bounds cannot be derived (`timed` is set for
+///   it) could never register at all and is voided too;
+/// - a timed wind-down window and another anchor in the slot hold for the
+///   operator, with the recovery path in the reason. The first is unreachable:
+///   the wind-down phases carry no timed operation.
 pub fn dead_intent_action(dead: DeadIntent, phase: u8, timed: bool) -> DeadIntentAction {
     match dead {
         DeadIntent::CloseOnlyPhaseZero => DeadIntentAction::ReturnToOpenWindow,
         DeadIntent::Cancelled | DeadIntent::EmptyAfterFence if !timed => {
             DeadIntentAction::ReturnToOpenWindow
         }
-        DeadIntent::Cancelled | DeadIntent::EmptyAfterFence if phase == 0 => DeadIntentAction::Hold(
-            "a timed phase-0 window cannot be re-registered with its original operation times; \
-             have governance call enterCloseOnly(), then restart: the window is then discarded \
-             by the close-only rebase, uncredited deposits are refunded by the vault and the \
-             wind-down settles the rest",
-        ),
+        DeadIntent::Cancelled | DeadIntent::EmptyAfterFence if phase == 0 => {
+            DeadIntentAction::LiveVoid
+        }
         DeadIntent::Cancelled | DeadIntent::EmptyAfterFence => DeadIntentAction::Hold(
             "a timed wind-down window cannot be re-registered with its original operation times",
         ),
         DeadIntent::Replaced => DeadIntentAction::Hold(
             "another anchor holds this batch and phase; once it is older than anchorTimeoutMs, \
-             cancel it with POST /v1/admin/settlement/cancel-anchor and restart",
+             cancel it with POST /v1/admin/settlement/cancel-anchor",
         ),
     }
 }
@@ -1827,32 +1835,126 @@ mod tests {
         }
     }
 
+    /// The recovery policy over every dead-intent case, phase, kind of window and
+    /// basis, applied to the classification as boot and the settle loop apply it.
     #[test]
-    fn dead_intent_policy_is_automatic_only_without_a_time_to_reregister() {
-        use DeadIntentAction::*;
-        for phase in 0..=2 {
-            for timed in [false, true] {
-                assert_eq!(
-                    dead_intent_action(DeadIntent::CloseOnlyPhaseZero, phase, timed),
-                    ReturnToOpenWindow
-                );
-                assert!(matches!(
-                    dead_intent_action(DeadIntent::Replaced, phase, timed),
-                    Hold(m) if m.contains("cancel-anchor")
-                ));
-                for dead in [DeadIntent::Cancelled, DeadIntent::EmptyAfterFence] {
-                    let action = dead_intent_action(dead, phase, timed);
-                    if timed {
-                        assert!(matches!(action, Hold(_)), "{dead:?} phase {phase}");
-                    } else {
-                        assert_eq!(action, ReturnToOpenWindow);
+    fn dead_intent_policy_matrix() {
+        use DeadIntentAction::{Hold, LiveVoid, ReturnToOpenWindow};
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        enum Case {
+            Cancelled,
+            CloseOnly,
+            Empty,
+            Replaced,
+        }
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        enum Kind {
+            Untimed,
+            Timed,
+            Underivable,
+        }
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        enum Basis {
+            ChainClock,
+            FenceQuiet,
+            FenceNotQuiet,
+            None,
+        }
+        for case in [
+            Case::Cancelled,
+            Case::CloseOnly,
+            Case::Empty,
+            Case::Replaced,
+        ] {
+            for phase in 0..=2u8 {
+                for kind in [Kind::Untimed, Kind::Timed, Kind::Underivable] {
+                    for basis in [
+                        Basis::ChainClock,
+                        Basis::FenceQuiet,
+                        Basis::FenceNotQuiet,
+                        Basis::None,
+                    ] {
+                        let receipt = (case == Case::Cancelled).then_some(RECEIPT);
+                        let i = ClockIntent {
+                            timed: kind != Kind::Untimed,
+                            last_ms: (kind == Kind::Timed).then_some(LAST_MS),
+                            underivable: kind == Kind::Underivable,
+                            ..intent(phase, receipt, None)
+                        };
+                        let slot = match case {
+                            Case::Cancelled => AnchorSlot::Cancelled,
+                            Case::CloseOnly => AnchorSlot::Matching,
+                            Case::Empty => AnchorSlot::Empty,
+                            Case::Replaced => AnchorSlot::Different,
+                        };
+                        let e = DeadIntentEvidence {
+                            fence_passed: matches!(basis, Basis::FenceQuiet | Basis::FenceNotQuiet),
+                            quiet: basis == Basis::FenceQuiet,
+                            block_time_ms: Some(if basis == Basis::ChainClock {
+                                LAST_MS + SKEW_MS + 1
+                            } else {
+                                LAST_MS + SKEW_MS
+                            }),
+                            ..evidence(slot, case == Case::CloseOnly, false, 5)
+                        };
+                        let classified = classify_dead_intent(&i, &e);
+                        let action = match classified {
+                            Classified::Dead(d, _) => Some(dead_intent_action(d, i.phase, i.timed)),
+                            _ => None,
+                        };
+                        let at = format!("{case:?} phase {phase} {kind:?} {basis:?}");
+                        match case {
+                            // (b) is a phase-0 case; in a wind-down phase close-only is
+                            // the normal state and its own anchor may settle.
+                            Case::CloseOnly if phase == 0 => {
+                                assert_eq!(action, Some(ReturnToOpenWindow), "{at}")
+                            }
+                            Case::CloseOnly => {
+                                assert_eq!(classified, Classified::MaySettle, "{at}")
+                            }
+                            // (d) never needs a basis and always holds for the operator.
+                            Case::Replaced => assert!(
+                                matches!(action, Some(Hold(m)) if m.contains("cancel-anchor")),
+                                "{at}"
+                            ),
+                            Case::Cancelled | Case::Empty => {
+                                // The chain clock decides only a timed window whose
+                                // bounds derive; the fence needs quiet nonces.
+                                let dead = (basis == Basis::ChainClock && kind == Kind::Timed)
+                                    || basis == Basis::FenceQuiet;
+                                let expected = match (dead, kind, phase) {
+                                    (false, _, _) => None,
+                                    (true, Kind::Untimed, _) => Some(ReturnToOpenWindow),
+                                    (true, _, 0) => Some(LiveVoid),
+                                    (true, _, _) => Some(Hold(
+                                        "a timed wind-down window cannot be re-registered \
+                                         with its original operation times",
+                                    )),
+                                };
+                                assert_eq!(action, expected, "{at}");
+                                if !dead {
+                                    assert_eq!(classified, Classified::MaySettle, "{at}");
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-        assert!(matches!(
-            dead_intent_action(DeadIntent::EmptyAfterFence, 0, true),
-            Hold(m) if m.contains("enterCloseOnly")
-        ));
+        // No dead intent asks for close-only any more.
+        for dead in [
+            DeadIntent::Cancelled,
+            DeadIntent::CloseOnlyPhaseZero,
+            DeadIntent::EmptyAfterFence,
+            DeadIntent::Replaced,
+        ] {
+            for phase in 0..=2 {
+                for timed in [false, true] {
+                    if let Hold(m) = dead_intent_action(dead, phase, timed) {
+                        assert!(!m.contains("enterCloseOnly"), "{m}");
+                    }
+                }
+            }
+        }
     }
 }

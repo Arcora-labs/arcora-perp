@@ -30,7 +30,8 @@
 //! journal only then. Called again on a state that already holds the void (the
 //! snapshot was written, the journal delete was not), it recognizes the void and
 //! changes nothing.
-#![cfg_attr(not(test), allow(dead_code))] // until the boot and settle-loop recoveries call it
+//!
+//! Automatic voids that repeat stop at the [`VoidBreaker`].
 
 use super::*;
 use crate::rollback_journal::{DeadIntent, RollbackJournal};
@@ -69,7 +70,60 @@ pub(crate) struct VoidReport {
     /// One `execution` event per account order record the void changed, tagged
     /// with its owner like the tick's events. The caller sends them once the
     /// void is durable.
+    #[cfg_attr(not(test), allow(dead_code))] // sent by the settle loop's recovery
     pub order_events: Vec<String>,
+}
+
+/// Two automatic voids without a settled timed window between them, or three
+/// within an hour, trip the breaker.
+const VOID_BREAKER_CONSECUTIVE: u32 = 2;
+const VOID_BREAKER_IN_WINDOW: usize = 3;
+const VOID_BREAKER_WINDOW: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Stops automatic live voids once they repeat. A systematic delay between a
+/// window's last operation and its registration (a slow RPC, a slow disk) would
+/// otherwise void every timed window while the exchange looks alive. A void
+/// counts once it is durable, a void at boot included. Runtime only: the restart
+/// after a trip is the operator's acknowledgment and starts it afresh.
+#[derive(Debug, Default)]
+pub(crate) struct VoidBreaker {
+    /// When the voids of the last hour were made durable.
+    recent: std::collections::VecDeque<std::time::Instant>,
+    /// Voids since the last settled timed window.
+    consecutive: u32,
+}
+
+impl VoidBreaker {
+    /// Count a durable automatic void made at `now`. Returns why the breaker
+    /// tripped, if it did.
+    pub(crate) fn record(&mut self, now: std::time::Instant) -> Option<String> {
+        self.consecutive = self.consecutive.saturating_add(1);
+        self.recent.push_back(now);
+        while self
+            .recent
+            .front()
+            .is_some_and(|t| now.saturating_duration_since(*t) > VOID_BREAKER_WINDOW)
+        {
+            self.recent.pop_front();
+        }
+        if self.consecutive >= VOID_BREAKER_CONSECUTIVE {
+            Some(format!(
+                "{} live voids without a settled timed window between them",
+                self.consecutive
+            ))
+        } else if self.recent.len() >= VOID_BREAKER_IN_WINDOW {
+            Some(format!("{} live voids within an hour", self.recent.len()))
+        } else {
+            None
+        }
+    }
+
+    /// A window with timed operations settled: the voids before it are no longer
+    /// consecutive.
+    #[cfg_attr(not(test), allow(dead_code))] // called by the settle loop
+    pub(crate) fn timed_window_settled(&mut self) {
+        self.consecutive = 0;
+    }
 }
 
 impl VoidReport {
@@ -622,4 +676,4 @@ impl Gw {
 
 #[cfg(test)]
 #[path = "live_void_tests.rs"]
-mod tests;
+pub(crate) mod tests;

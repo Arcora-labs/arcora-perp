@@ -11,14 +11,14 @@ use crate::wind_down::SettledL1;
 use k256::ecdsa::SigningKey;
 use std::collections::BTreeMap;
 
-type Chain = BTreeMap<u64, (Block, Vec<Event>)>;
+pub(crate) type Chain = BTreeMap<u64, (Block, Vec<Event>)>;
 
 const S: i128 = SIZE_SCALE;
 
 /// A gateway-custody account bound to the address of its own signing key, which
 /// authorizes its withdrawals and its credential recovery.
-struct Keyed {
-    key: [u8; 32],
+pub(crate) struct Keyed {
+    pub(crate) key: [u8; 32],
     owner: PubKey,
     sk: SigningKey,
     address: [u8; 20],
@@ -86,13 +86,13 @@ fn next_page(gw: &Gw, chain: &Chain) -> Page {
 }
 
 /// Credit the next deposit block, and acknowledge it as the snapshot writer does.
-fn ingest(gw: &mut Gw, chain: &Chain) -> usize {
+pub(crate) fn ingest(gw: &mut Gw, chain: &Chain) -> usize {
     let credited = gw.apply_deposit_page(next_page(gw, chain)).unwrap();
     gw.deposits.dirty = false;
     credited
 }
 
-fn open_trading(gw: &mut Gw) {
+pub(crate) fn open_trading(gw: &mut Gw) {
     gw.prod = false;
     gw.trading_gate = trading_gate::TradingGate::Open;
     gw.window_settle_mode = true;
@@ -102,7 +102,7 @@ fn open_trading(gw: &mut Gw) {
     }
 }
 
-fn tick(gw: &mut Gw) {
+pub(crate) fn tick(gw: &mut Gw) {
     for (id, px) in gw.mkts.iter().map(|m| (m.id, m.px)).collect::<Vec<_>>() {
         gw.seq
             .set_oracle(id, oracle_of(px, now_ms(), id, &gw.oracle_signer));
@@ -111,7 +111,14 @@ fn tick(gw: &mut Gw) {
 }
 
 /// Place an order for account `key` in market 0; returns its hash.
-fn submit(gw: &mut Gw, key: &[u8; 32], side: &str, size: i128, price: i128, tif: &str) -> Digest {
+pub(crate) fn submit(
+    gw: &mut Gw,
+    key: &[u8; 32],
+    side: &str,
+    size: i128,
+    price: i128,
+    tif: &str,
+) -> Digest {
     gw.account_place_order(
         key,
         &OrderReq {
@@ -129,7 +136,7 @@ fn submit(gw: &mut Gw, key: &[u8; 32], side: &str, size: i128, price: i128, tif:
 
 /// Seal the open window and journal its clock intent, as the settle loop does
 /// before it registers the window.
-fn seal(gw: &mut Gw) -> RollbackJournal {
+pub(crate) fn seal(gw: &mut Gw) -> RollbackJournal {
     gw.deposits.dirty = false;
     let window = gw.seq.state.next_batch_id;
     let (witness, ww) = gw.begin_window_settle(window).unwrap().unwrap();
@@ -144,7 +151,7 @@ fn seal(gw: &mut Gw) -> RollbackJournal {
 
 /// Prove (mock) and commit a sealed window, its manifest's ordered and
 /// rejected hashes included.
-fn commit(gw: &mut Gw, j: &RollbackJournal) {
+pub(crate) fn commit(gw: &mut Gw, j: &RollbackJournal) {
     let prepared = crate::prover_client::prove_and_prepare(
         &crate::prover_client::MockProverClient,
         &j.witness,
@@ -182,7 +189,7 @@ fn applied(gw: &mut Gw, j: &RollbackJournal, cause: DeadIntent) -> VoidReport {
 /// and rejected hashes (its ticks filled no other order here). The rejected
 /// one is the house market maker's counter-order to the taker, which its
 /// margin refused.
-fn published(j: &RollbackJournal) -> Vec<Digest> {
+pub(crate) fn published(j: &RollbackJournal) -> Vec<Digest> {
     let mut hashes = j.witness.manifest.ordered.clone();
     hashes.extend(j.witness.manifest.rejected.iter().map(|(h, _)| *h));
     hashes
@@ -208,26 +215,26 @@ fn rejected_as(gw: &Gw, reason: perp_core::order::RejectReason) -> Vec<Digest> {
 /// window credited three deposits (the maker's, the taker's and an insurance
 /// deposit), the maker rested an order the taker partly filled, and `w`
 /// withdrew with a signed request.
-struct Voidable {
-    gw: Gw,
-    chain: Chain,
-    journal: RollbackJournal,
-    w: Keyed,
-    maker: Keyed,
-    taker: [u8; 32],
-    operator: [u8; 32],
+pub(crate) struct Voidable {
+    pub(crate) gw: Gw,
+    pub(crate) chain: Chain,
+    pub(crate) journal: RollbackJournal,
+    pub(crate) w: Keyed,
+    pub(crate) maker: Keyed,
+    pub(crate) taker: [u8; 32],
+    pub(crate) operator: [u8; 32],
     /// The sealed window's deposits: the maker's, the taker's, the insurance one.
-    commits: [[u8; 32]; 3],
+    pub(crate) commits: [[u8; 32]; 3],
     /// Their permit routes and blinds before they were credited.
-    routes: BTreeMap<[u8; 32], Route>,
-    blinds: BTreeMap<[u8; 32], [u8; 32]>,
-    orders: [Digest; 2],
-    withdrawal: Withdrawal,
+    pub(crate) routes: BTreeMap<[u8; 32], Route>,
+    pub(crate) blinds: BTreeMap<[u8; 32], [u8; 32]>,
+    pub(crate) orders: [Digest; 2],
+    pub(crate) withdrawal: Withdrawal,
     /// The deposit count before the sealed window (its pre-state's).
-    consumed: u64,
+    pub(crate) consumed: u64,
 }
 
-fn voidable(bootstrap_before: bool) -> Voidable {
+pub(crate) fn voidable(bootstrap_before: bool) -> Voidable {
     let mut gw = fresh();
     open_trading(&mut gw);
     let floor = bootstrap::MIN_BOOTSTRAP_INSURANCE as u128;
@@ -959,4 +966,30 @@ fn rotation_between_void_and_reingest_keeps_refund_and_boot_valid() {
         50_000 * QUOTE_SCALE
     );
     gw.validate_deposit_state().unwrap();
+}
+
+/// Two durable voids without a settled timed window between them trip the void
+/// breaker, and so do three within an hour; a settled timed window resets the
+/// consecutive count, and voids older than an hour no longer count.
+#[test]
+fn the_void_breaker_trips_on_repeated_voids() {
+    let t0 = std::time::Instant::now();
+    let min = |m: u64| t0 + std::time::Duration::from_secs(60 * m);
+    let mut b = VoidBreaker::default();
+    assert_eq!(b.record(t0), None);
+    let tripped = b.record(min(1)).unwrap();
+    assert!(tripped.contains("2 live voids without a settled timed window"));
+    let mut b = VoidBreaker::default();
+    assert_eq!(b.record(t0), None);
+    b.timed_window_settled();
+    assert_eq!(b.record(min(10)), None);
+    b.timed_window_settled();
+    let tripped = b.record(min(20)).unwrap();
+    assert!(tripped.contains("3 live voids within an hour"), "{tripped}");
+    let mut b = VoidBreaker::default();
+    for m in [0, 30, 61] {
+        assert_eq!(b.record(min(m)), None, "minute {m}");
+        b.timed_window_settled();
+    }
+    assert!(b.record(min(62)).is_some(), "three within the last hour");
 }

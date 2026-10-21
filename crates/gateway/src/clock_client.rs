@@ -28,7 +28,6 @@ pub(crate) struct ClockProverClient {
 impl ClockProverClient {
     /// The same prover and bridge, registering nothing: a window without an
     /// anchor fails with an error that asks the caller to classify it again.
-    #[cfg_attr(not(test), allow(dead_code))] // used by the settle loop's recovery
     pub(crate) fn existing_only(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -209,10 +208,10 @@ pub(crate) fn check_program_identity(
 }
 
 /// A journaled clock intent's classification at one finalized block.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct DeadIntentCheck {
     pub evidence: crate::rollback_journal::DeadIntentEvidence,
     /// The classification, with the basis of a dead one.
-    #[cfg_attr(not(test), allow(dead_code))] // read by the settle loop's recovery
     pub classified: crate::rollback_journal::Classified,
     /// Set when the intent can never settle, with what recovery does about it.
     pub dead: Option<(

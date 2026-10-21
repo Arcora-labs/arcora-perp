@@ -310,11 +310,11 @@ fn dead_intent_classification_follows_the_evidence() {
         classify(empty.clone(), intent(None, 0), Ceiling::Nonce(10)),
         None
     );
-    // A timed phase-0 window with an empty slot holds; an untimed one returns.
-    assert!(matches!(
+    // A timed phase-0 window with an empty slot is voided; an untimed one returns.
+    assert_eq!(
         classify(empty.clone(), intent(None, 0), Ceiling::Nonce(9)),
-        Some((DeadIntent::EmptyAfterFence, DeadIntentAction::Hold(_)))
-    ));
+        Some((DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid))
+    );
     let untimed = ClockIntent {
         timed: false,
         last_ms: None,
@@ -339,10 +339,14 @@ fn dead_intent_classification_follows_the_evidence() {
         dead.classified,
         Classified::Dead(DeadIntent::EmptyAfterFence, DeadBasis::ChainClock)
     );
-    assert!(matches!(
+    assert_eq!(
         dead.dead,
-        Some((DeadIntent::EmptyAfterFence, DeadIntentAction::Hold(_)))
-    ));
+        Some((DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid))
+    );
+    // The root, the block time and the skew come from the same canonical read.
+    assert_eq!(dead.evidence.state_root, empty.prev);
+    assert_eq!(dead.evidence.block_time_ms, Some(head_ms()));
+    assert_eq!(dead.evidence.clock_skew_ms, SKEW_MS);
     let at_skew = ClockIntent {
         last_ms: Some(head_ms() - SKEW_MS),
         ..intent(None, 0)
