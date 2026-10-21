@@ -8,6 +8,9 @@ import { installTestLocks } from "../testSupport/locks";
 // (`enclave_epoch::epoch_signing_digest` and `serialize_order_terms`, run via
 // `cargo test -p gateway`): if these tests fail, fix the TS mirror, never the pins.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
@@ -20,6 +23,12 @@ import {
   withdrawAuthDigest,
 } from "./realClient";
 import type { OrderEvent } from "./client";
+import {
+  CHALLENGE_KIT_STORAGE_KEY,
+  loadChallengeKits,
+  type ChallengeKit,
+  type ReceiptWithChallenge,
+} from "../domain/challengeKit";
 
 // ── Rust-extracted contract vectors (source of truth) ────────────────────────
 // epoch_signing_digest(1, &[0x11;32], 1_720_000_000_000)
@@ -169,6 +178,7 @@ let authorizeBody: unknown = null; // per-test override of the response body (nu
 const PERMIT_VALID_UNTIL = 1_760_001_800; // unix seconds; the gateway's permit expiry
 let stateResponse: unknown = wireState; // per-test override of the /api/state snapshot
 let v1OrdersResponse: unknown = { orders: [] }; // GET /v1/orders (own-account read)
+let orderPostResponse: unknown = null; // per-test override of the POST /v1/orders receipt
 let v1PositionsResponse: unknown = { positions: [] }; // GET /v1/positions (own-account read)
 let accountsStatus = 200; // per-test override: /v1 account registration failure
 // One-shot gate: parks the NEXT GET /v1/orders (payload captured at REQUEST
@@ -202,6 +212,13 @@ const defaultMeFields = () => ({
   depositAddress: BOUND, callerSigned: false, nextWithdrawNonce: 1,
   rebindCounter: 0, chainId: CHAIN_ID, vault: VAULT, recoveryNonce: 0,
 });
+
+// The L1 challenge kit vectors shared with scripts/challenge/test_challenge_kit.py:
+// an accept receipt with a verifying authorization, and the kit built from it.
+const KIT_VECTORS: { acceptReceipt: ReceiptWithChallenge; kit: ChallengeKit } = JSON.parse(readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), "../../../scripts/challenge/fixtures/challenge-kit-vectors.json"),
+  "utf8",
+));
 
 // A fake EIP-1193 wallet answering `personal_sign` — records what it was asked
 // to sign (and as which account) so tests can assert the EXACT digest. Injected
@@ -248,7 +265,7 @@ function installFetch() {
         return json({ owner: OWNER_HEX, ...meFields });
       }
       if (path === "/v1/orders" && method === "POST") {
-        return json({ orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
+        return json(orderPostResponse ?? { orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
       }
       // SEC-025-E1 own-account reads — authenticated per account, like the gateway.
       if ((path === "/v1/orders" || path === "/v1/positions") && method === "GET") {
@@ -394,6 +411,7 @@ beforeEach(() => {
   authorizeBody = null;
   stateResponse = wireState;
   v1OrdersResponse = { orders: [] };
+  orderPostResponse = null;
   v1PositionsResponse = { positions: [] };
   v1OrdersGate = null;
   accountsStatus = 200;
@@ -2069,6 +2087,27 @@ describe("order and legacy deposit mutation fencing", () => {
     client.dispose();
   });
 
+  it("keeps the kit of an order the gateway accepted before a credential rotation", async () => {
+    orderPostResponse = KIT_VECTORS.acceptReceipt;
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    recoveryFetch();
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const response = await original(url, init);
+      if (new URL(String(url)).pathname === "/v1/orders" && init?.method === "POST") {
+        entered.release(); await gate.promise;
+      }
+      return response;
+    }));
+    const operation = client.placeOrder(input).then(() => "unexpected success", error => String(error));
+    await entered.promise;
+    await client.recoverAccount(OWNER_HEX); await client.ownStateSettled();
+    gate.release();
+    expect(await operation).toMatch(/credential changed|account.*changed/i);
+    expect(loadChallengeKits()).toEqual([KIT_VECTORS.kit]); // the order exists: its kit is kept
+    client.dispose();
+  });
+
   it.each(["order", "deposit"] as const)("refuses %s after explicit socket auth failure without replacing the account", async kind => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = await bootstrapClient();
@@ -2229,6 +2268,47 @@ describe("clock admission status", () => {
     const client = await bootstrapClient();
     lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: { ...wireState, clockAdmission } }) });
     expect(client.getState().clockAdmission).toEqual(expected);
+    client.dispose();
+  });
+});
+
+// The user-held L1 challenge kit is kept from the accept response too, so an
+// order has one even if the gateway stops before it lists the order.
+describe("L1 challenge kit at acceptance", () => {
+  const order = { marketId: 0, side: "Sell", size: 250_000_000n, limitPrice: 6_450_000_000_000n, tif: "Fok", reduceOnly: true } as const;
+
+  it("placeOrder keeps the accept response's kit before the order is ever listed, and sends it nowhere", async () => {
+    orderPostResponse = KIT_VECTORS.acceptReceipt; // the listing stays empty
+    const client = await bootstrapClient();
+    const before = calls.length;
+    expect((await client.placeOrder(order)).seqNo).toBe(0);
+    await client.ownStateSettled();
+    expect(loadChallengeKits()).toEqual([KIT_VECTORS.kit]);
+    const signature = KIT_VECTORS.kit.l1Challenge.signature;
+    for (const c of calls.slice(before)) expect(JSON.stringify(c)).not.toContain(signature.slice(2, 40));
+    client.dispose();
+  });
+
+  it("keeps nothing for an accept response without a verifiable authorization", async () => {
+    for (const response of [
+      { ...KIT_VECTORS.acceptReceipt, l1Challenge: null },
+      { ...KIT_VECTORS.acceptReceipt, seqNo: 1 },
+    ]) {
+      orderPostResponse = response;
+      const client = await bootstrapClient();
+      await client.placeOrder(order);
+      expect(loadChallengeKits()).toEqual([]);
+      client.dispose();
+    }
+  });
+
+  it("denied storage never fails an accepted order", async () => {
+    orderPostResponse = KIT_VECTORS.acceptReceipt;
+    const client = await bootstrapClient();
+    const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new DOMException("denied", "SecurityError"); });
+    expect((await client.placeOrder(order)).seqNo).toBe(0);
+    // The kit write was tried and refused.
+    expect(setItem).toHaveBeenCalledWith(CHALLENGE_KIT_STORAGE_KEY, expect.any(String));
     client.dispose();
   });
 });

@@ -13,6 +13,7 @@ import {
   rememberClaimBundles,
   serializeClaimBundles,
   type ClaimBundle,
+  type ClaimBundleStorage,
 } from "../domain/claimBundle";
 import {
   MAX_STORED_CHALLENGE_KITS,
@@ -21,6 +22,7 @@ import {
   mergeChallengeKits,
   newChallengeKits,
   rememberChallengeKits,
+  seenChallengeKits,
   serializeChallengeKits,
   settledOrderHashes,
   unsettledOrderHashes,
@@ -488,14 +490,18 @@ interface ClaimTxState {
 /// the entry shows pending settlement, and once `claimable` the user gets
 /// the on-chain claim — sent directly from a connected wallet, with the
 /// copy-pasteable `cast` command kept as the fallback. Hidden entirely when the
-/// client reports null (mock mode / no provisioned account).
+/// client reports null (mock mode / no provisioned account). When this browser
+/// does not keep a claimable entry's claim bundle (storage blocked or full), the
+/// section says so. `storage` defaults to this origin's localStorage.
 /// Exported for tests (takes the client as a prop so a fake can drive it).
-export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
+export function WithdrawalsSection({ client, storage }: { client: DarkPerpClient; storage?: ClaimBundleStorage }) {
   const [data, setData] = useState<{ withdrawals: WithdrawalEntry[]; vault: string } | null>(null);
   const [copiedNonce, setCopiedNonce] = useState<number | null>(null);
   const wallet = useWalletAddress();
   const [claims, setClaims] = useState<Record<number, ClaimTxState>>({});
-  const [savedBundles, setSavedBundles] = useState<ClaimBundle[]>(() => loadClaimBundles());
+  const [savedBundles, setSavedBundles] = useState<ClaimBundle[]>(() => loadClaimBundles(storage));
+  // Listed claimable entries whose bundle this browser does not hold.
+  const [unsaved, setUnsaved] = useState(0);
 
   // Keep every claimable entry's bundle in this browser as soon as it is
   // seen, so the claim data survives the operator going away.
@@ -508,8 +514,17 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
         return []; // not claimable yet, or invalid claim data
       }
     });
-    if (fresh.length > 0 && rememberClaimBundles(fresh)) setSavedBundles(loadClaimBundles());
-  }, [data]);
+    if (fresh.length === 0) {
+      setUnsaved(0);
+    } else if (rememberClaimBundles(fresh, storage)) {
+      setSavedBundles(loadClaimBundles(storage));
+      setUnsaved(0);
+    } else {
+      // A refused write keeps none of them; one stored earlier is still kept.
+      const kept = new Set(loadClaimBundles(storage).map((b) => b.leaf.toLowerCase()));
+      setUnsaved(fresh.filter((b) => !kept.has(b.leaf.toLowerCase())).length);
+    }
+  }, [data, storage]);
 
   useEffect(() => {
     let alive = true;
@@ -571,6 +586,14 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
   return (
     <div className="withdrawals">
       <h3 className="card__title">Withdrawals</h3>
+      {unsaved > 0 && (
+        <p className="notice notice--warn" role="alert">
+          This browser did not keep{" "}
+          {unsaved === 1 ? "the claim file of 1 claimable withdrawal" : `the claim files of ${unsaved} claimable withdrawals`}{" "}
+          (its storage is blocked or full). Use Download claim file now and keep a copy: without one, the
+          claim data is offered again only while the gateway still lists the withdrawal.
+        </p>
+      )}
       <ul className="withdrawals__list">
         {entries.map((w) => {
           const claim = claims[w.nonce];
@@ -829,15 +852,24 @@ function unlistedNote({ count, unlisted }: UnsavedKits): string {
 /// the bound reached), the section still offers it for this session and says
 /// so, counting the ones that are not for an order the account lists now
 /// (older orders, or another account's in this browser). Hidden while there is
-/// none. `storage` defaults to this origin's localStorage. Exported for tests.
+/// none. When the gateway lists an order with another authorization than the
+/// kit kept for it (the account bound another deposit address, which the
+/// gateway now signs for), the new kit replaces the kept one, in storage and in
+/// the offer, when it is the same enclave's authorization for the same order,
+/// chain and settlement (see `mergeChallengeKits`). `storage` defaults to this
+/// origin's localStorage. Exported for tests.
 export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[]; storage?: ChallengeKitStorage }) {
   const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits(storage));
   const [unsaved, setUnsaved] = useState<UnsavedKits>({ count: 0, unlisted: 0, atBound: false });
   // The offered kits, for the effect (it alone changes them after the first render).
   const offered = useRef(kits);
-  // Order hashes already kept or tried, so a state push re-verifies nothing.
-  const seen = useRef<Set<string> | null>(null);
-  seen.current ??= new Set(kits.map((k) => k.orderHash.toLowerCase()));
+  // Per order hash, the authorization already kept or tried, so a state push
+  // re-verifies nothing and a new authorization is built.
+  const seen = useRef<Map<string, string> | null>(null);
+  seen.current ??= seenChallengeKits(kits);
+  // Per order hash, the authorization of the kit this session built from the
+  // listing: the newest copy of that order's kit this browser holds.
+  const built = useRef(new Map<string, string>());
 
   useEffect(() => {
     const fresh = newChallengeKits(orders, seen.current!);
@@ -845,18 +877,31 @@ export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[
     const current = offered.current;
     if (fresh.length === 0 && !current.some((k) => settled.has(k.orderHash.toLowerCase()))) return;
     const listed = unsettledOrderHashes(orders);
+    for (const [hash, signature] of seenChallengeKits(fresh)) built.current.set(hash, signature);
+    // This session's other kits (stored when the panel opened, or another
+    // account's) give way to a stored copy of their order: another tab may
+    // have stored a newer one since (its account bound another deposit address).
+    const isBuilt = (k: ChallengeKit) => built.current.get(k.orderHash.toLowerCase()) === k.l1Challenge.signature.toLowerCase();
+    const own = current.filter(isBuilt);
+    const others = current.filter((k) => !isBuilt(k));
     // Stored before this write, including kits another tab stored since this
     // panel opened: any of them the write evicts is offered (and counted) too.
     const before = loadChallengeKits(storage);
+    const inStore = seenChallengeKits(before);
     // This session's unsaved kits go along, so they are stored once there is room.
-    rememberChallengeKits([...current, ...fresh], storage, settled, listed);
+    rememberChallengeKits(
+      [...others.filter((k) => !inStore.has(k.orderHash.toLowerCase())), ...own, ...fresh], storage, settled, listed,
+    );
     const stored = loadChallengeKits(storage);
-    const kept = new Set(stored.map((k) => k.orderHash.toLowerCase()));
-    // Not bounded: a kit the store evicted stays offered for this session.
-    const next = mergeChallengeKits([...stored, ...current, ...before], fresh, settled);
+    // Per order, the authorization stored: a kit is kept only when it is that one.
+    const kept = seenChallengeKits(stored);
+    // Not bounded: a kit the store evicted stays offered for this session. A
+    // later copy wins, as `mergeChallengeKits` allows: the listing's, then this
+    // session's built ones, then the stored ones.
+    const next = mergeChallengeKits([...others, ...before, ...stored, ...own], fresh, settled);
     offered.current = next;
     setKits(next);
-    const notKept = next.filter((k) => !kept.has(k.orderHash.toLowerCase()));
+    const notKept = next.filter((k) => kept.get(k.orderHash.toLowerCase()) !== k.l1Challenge.signature.toLowerCase());
     setUnsaved({
       count: notKept.length,
       unlisted: notKept.filter((k) => !listed.has(k.orderHash.toLowerCase())).length,

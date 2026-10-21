@@ -52,9 +52,9 @@ const tampered = order("o3", { ...ACCEPTED, orderHash: "0x" + "cd".repeat(32) })
 /// the fixture order by `seqNo` milliseconds.
 const TEST_ENCLAVE_KEY = new Uint8Array(32).fill(9);
 const TEST_ENCLAVE_SIGNER = "0x" + bytesToHex(keccak_256(secp256k1.getPublicKey(TEST_ENCLAVE_KEY, false).subarray(1)).subarray(12));
-function signedReceiptFor(orderHash: string, seqNo: number): ReceiptWithChallenge {
+function signedReceiptFor(orderHash: string, seqNo: number, beneficiary = ACCEPTED.l1Challenge!.beneficiary): ReceiptWithChallenge {
   const fields = { ...ACCEPTED, orderHash, seqNo, recvTimeMs: ACCEPTED.recvTimeMs + seqNo, enclaveSigner: TEST_ENCLAVE_SIGNER };
-  const auth = ACCEPTED.l1Challenge!;
+  const auth = { ...ACCEPTED.l1Challenge!, beneficiary };
   const sig = secp256k1.sign(challengeAuthDigest({ ...auth, ...fields }), TEST_ENCLAVE_KEY);
   return { ...fields, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } };
 }
@@ -227,6 +227,80 @@ describe("ChallengeKitSection", () => {
   });
 });
 
+describe("ChallengeKitSection after the account binds another deposit address", () => {
+  // The gateway signs every listed order's authorization for the address bound
+  // now, so a fine pays the address the account chose last.
+  const NEW_BENEFICIARY = "0x" + "34".repeat(20);
+  const before = order("o6", signedReceipt("a6", 6));
+  const after = order("o6", signedReceiptFor("0x" + "a6".repeat(32), 6, NEW_BENEFICIARY));
+  const beneficiaries = (kits: ChallengeKit[]) => kits.map((k) => k.l1Challenge.beneficiary);
+
+  async function expectNewBeneficiaryExported() {
+    await waitFor(() => expect(beneficiaries(loadChallengeKits())).toEqual([NEW_BENEFICIARY]));
+    fireEvent.click(await screen.findByRole("button", { name: /export all challenge kits \(1\)/i }));
+    expect(JSON.parse(await downloads[downloads.length - 1].blob.text())).toEqual(kitOf(after));
+  }
+
+  it("replaces the kit it keeps for an order with the new beneficiary's, and exports that one", async () => {
+    expect(rememberChallengeKits([kitOf(before)])).toBe(true);
+    render(<ChallengeKitSection orders={[after]} />);
+    await expectNewBeneficiaryExported();
+  });
+
+  it("does the same while the panel is open", async () => {
+    const { rerender } = render(<ChallengeKitSection orders={[before]} />);
+    await waitFor(() => expect(beneficiaries(loadChallengeKits())).toEqual([ACCEPTED.l1Challenge!.beneficiary]));
+    rerender(<ChallengeKitSection orders={[after]} />);
+    await expectNewBeneficiaryExported();
+  });
+
+  it("offers the new beneficiary's kit and warns when a full storage still holds the old one", async () => {
+    const { storage } = fullStorage([kitOf(before)]);
+    const { rerender } = render(<ChallengeKitSection orders={[after]} storage={storage} />);
+    fireEvent.click(await screen.findByRole("button", { name: /export all challenge kits \(1\)/i }));
+    expect(JSON.parse(await downloads[0].blob.text())).toEqual(kitOf(after));
+    expect(beneficiaries(loadChallengeKits(storage))).toEqual([ACCEPTED.l1Challenge!.beneficiary]);
+    expect(screen.getByRole("alert").textContent).toMatch(/did not keep this kit \(its storage is blocked or full\)/i);
+    // The next listing does not bring the old kit back into the offer.
+    rerender(<ChallengeKitSection orders={[after, withKit]} storage={storage} />);
+    expect(await exportedKits(2)).toContainEqual(kitOf(after));
+    expect(screen.getByRole("alert").textContent).toMatch(/did not keep these kits/i);
+  });
+
+  it("keeps the kit it holds when a listing names the order with another enclave signer or settlement", async () => {
+    /// The order signed by `key`, also its receipt's enclave signer, for `settlement`.
+    function resigned(key: Uint8Array, settlement = ACCEPTED.l1Challenge!.settlement): TrackedOrder {
+      const r = before.receipt as ReceiptWithChallenge;
+      const enclaveSigner = "0x" + bytesToHex(keccak_256(secp256k1.getPublicKey(key, false).subarray(1)).subarray(12));
+      const auth = { ...r.l1Challenge!, beneficiary: NEW_BENEFICIARY, settlement };
+      const sig = secp256k1.sign(challengeAuthDigest({ ...r, ...auth }), key);
+      return order("o6", { ...r, enclaveSigner, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } });
+    }
+    for (const listing of [resigned(new Uint8Array(32).fill(12)), resigned(TEST_ENCLAVE_KEY, "0x" + "23".repeat(20))]) {
+      const storage = memoryStorage([kitOf(before)]);
+      render(<ChallengeKitSection orders={[listing]} storage={storage} />);
+      expect(await exportedKits(1)).toEqual(kitOf(before));
+      expect(loadChallengeKits(storage)).toEqual([kitOf(before)]);
+      expect(screen.queryByRole("alert")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("a panel open for another account in this browser does not put the old kit back", async () => {
+    const storage = memoryStorage([kitOf(before)]);
+    // Another tab, another account: its panel offers the stored kit too.
+    const { rerender } = render(<ChallengeKitSection orders={[withKit]} storage={storage} />);
+    await screen.findByRole("button", { name: /export all challenge kits \(2\)/i });
+    // The first account's tab stores the kit for its new deposit address.
+    expect(rememberChallengeKits([kitOf(after)], storage)).toBe(true);
+    // This account's next listing stores its new order's kit.
+    rerender(<ChallengeKitSection orders={[withKit, order("o7", signedReceipt("a7", 7))]} storage={storage} />);
+    await screen.findByRole("button", { name: /export all challenge kits \(3\)/i });
+    expect(loadChallengeKits(storage).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+    expect((await exportedKits(3)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+  });
+});
+
 describe("ChallengeKitSection past the browser's kit bound", () => {
   // An order that never gets a settled fill (unfilled, cancelled) stays listed
   // as ACCEPTED, so an account can list more kits than this browser keeps.
@@ -319,6 +393,59 @@ describe("ChallengeKitSection past the browser's kit bound", () => {
     expect(stored).not.toContain(unlisted[0].orderHash); // the oldest kit of an order no longer listed went
     expect((await exportedKits(MAX_STORED_CHALLENGE_KITS + 1)).map((k) => k.orderHash)).toContain(unlisted[0].orderHash);
   }, 30_000);
+});
+
+describe("ChallengeKitSection opened again in this page", () => {
+  // A kit the browser did not keep (storage blocked, or past its bound) is
+  // built again from the listing each time the panel opens. The signatures
+  // here are this describe's own, so the recoveries counted are too.
+  const recoveries = () => vi.spyOn(secp256k1.Signature.prototype, "recoverPublicKey");
+  const seqNos = (kits: ChallengeKit | ChallengeKit[]) => [kits].flat().map((k) => k.seqNo);
+  /// The order's authorization, signed by another key than its receipt's enclave signer.
+  function forged(o: TrackedOrder): TrackedOrder {
+    const r = o.receipt as ReceiptWithChallenge;
+    const sig = secp256k1.sign(challengeAuthDigest({ ...r, ...r.l1Challenge! }), new Uint8Array(32).fill(11));
+    return order(o.id, { ...r, l1Challenge: { ...r.l1Challenge!, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } });
+  }
+
+  it("does not verify a listed order's authorization again", async () => {
+    const orders = [order("o8", signedReceipt("b8", 8)), order("o9", signedReceipt("b9", 9))];
+    const { storage } = deniedStorage();
+    const recover = recoveries();
+    const first = render(<ChallengeKitSection orders={orders} storage={storage} />);
+    expect(seqNos(await exportedKits(2))).toEqual([9, 8]);
+    expect(recover).toHaveBeenCalledTimes(2);
+    first.unmount();
+    render(<ChallengeKitSection orders={orders} storage={storage} />);
+    expect(seqNos(await exportedKits(2))).toEqual([9, 8]);
+    expect(recover).toHaveBeenCalledTimes(2);
+  });
+
+  it("verifies an authorization for another beneficiary, and offers its kit", async () => {
+    const hash = "0x" + "ba".repeat(32);
+    const before = order("o10", signedReceiptFor(hash, 10));
+    const after = order("o10", signedReceiptFor(hash, 10, "0x" + "35".repeat(20)));
+    const { storage } = deniedStorage();
+    const recover = recoveries();
+    const first = render(<ChallengeKitSection orders={[before]} storage={storage} />);
+    expect(await exportedKits(1)).toEqual(kitOf(before));
+    first.unmount();
+    render(<ChallengeKitSection orders={[after]} storage={storage} />);
+    expect(await exportedKits(1)).toEqual(kitOf(after));
+    expect(recover).toHaveBeenCalledTimes(2);
+  });
+
+  it("verifies another signature over the same authorization, and offers no kit when it is not the enclave's", async () => {
+    const genuine = order("o11", signedReceipt("bb", 11));
+    const { storage } = deniedStorage();
+    const recover = recoveries();
+    const first = render(<ChallengeKitSection orders={[genuine]} storage={storage} />);
+    expect(await exportedKits(1)).toEqual(kitOf(genuine));
+    first.unmount();
+    render(<ChallengeKitSection orders={[forged(genuine)]} storage={storage} />);
+    await waitFor(() => expect(recover).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/challenge kits/i)).toBeNull();
+  });
 });
 
 describe("AccountPanel challenge kits", () => {

@@ -33,7 +33,7 @@ import { cancellationCapability } from "../domain/cancellation";
 import { parseExecution } from "../domain/execution";
 import { isWithdrawalAddress, parseWithdrawal } from "../domain/withdrawal";
 import { parseRefundableDeposit } from "../domain/refund";
-import { withL1Challenge } from "../domain/challengeKit";
+import { rememberAcceptedChallengeKit, withL1Challenge } from "../domain/challengeKit";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
@@ -1315,6 +1315,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { epochId: epoch.epochId, sealed: "0x" + bytesToHex(sealed) },
       { "X-Api-Key": acct.apiKey },
     );
+    // The order's L1 challenge kit, kept in this browser before anything else
+    // can fail: if the gateway stops before it lists the order, this is the
+    // only copy. The order exists even when the account context moved on.
+    // Never throws, and the kit is sent nowhere.
+    rememberAcceptedChallengeKit(receipt, this.ownOrders ?? []);
     assertCurrent();
     // SEC-025-E1: the accepted order lands in the account's /v1 order list —
     // refresh the own-account view now instead of waiting for the /v1/ws

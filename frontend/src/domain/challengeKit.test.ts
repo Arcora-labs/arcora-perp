@@ -1,12 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import {
   CHALLENGE_KIT_SCHEMA,
   CHALLENGE_KIT_STORAGE_KEY,
+  MAX_CACHED_CHALLENGE_SIGNERS,
   MAX_STORED_CHALLENGE_KITS,
   buildChallengeKit,
   challengeAuthDigest,
@@ -16,11 +18,14 @@ import {
   newChallengeKits,
   parseL1Challenge,
   recoverChallengeSigner,
+  rememberAcceptedChallengeKit,
   rememberChallengeKits,
+  seenChallengeKits,
   serializeChallengeKits,
   settledOrderHashes,
   unsettledOrderHashes,
   withL1Challenge,
+  type ChallengeAuthFields,
   type ChallengeKit,
   type ReceiptWithChallenge,
 } from "./challengeKit";
@@ -46,6 +51,27 @@ const V: Vectors = JSON.parse(readFileSync(
 
 const receipt = (): ReceiptWithChallenge => structuredClone(V.acceptReceipt);
 const SIG = V.kit.l1Challenge.signature;
+/// The fixture enclave's key (seed 0x07..07), to sign the fixture order for
+/// another beneficiary, as the gateway does once the account binds another
+/// deposit address.
+const FIXTURE_ENCLAVE_KEY = new Uint8Array(32).fill(7);
+const NEW_BENEFICIARY = "0x" + "34".repeat(20);
+function reboundReceipt(beneficiary = NEW_BENEFICIARY): ReceiptWithChallenge {
+  const r = receipt();
+  const auth = { ...r.l1Challenge!, beneficiary };
+  const sig = secp256k1.sign(challengeAuthDigest({ ...r, ...auth }), FIXTURE_ENCLAVE_KEY);
+  return { ...r, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } };
+}
+/// The fixture order as a listing could name it signed by another enclave key
+/// (also its receipt's `enclaveSigner`), or for another settlement: its kit
+/// verifies against its own receipt only.
+function resignedReceipt(key: Uint8Array, settlement = V.kit.l1Challenge.settlement): ReceiptWithChallenge {
+  const r = receipt();
+  const enclaveSigner = "0x" + bytesToHex(keccak_256(secp256k1.getPublicKey(key, false).subarray(1)).subarray(12));
+  const auth = { ...r.l1Challenge!, beneficiary: NEW_BENEFICIARY, settlement };
+  const sig = secp256k1.sign(challengeAuthDigest({ ...r, ...auth }), key);
+  return { ...r, enclaveSigner, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } };
+}
 
 function memoryStorage(fail: { get?: boolean; set?: boolean } = {}) {
   const map = new Map<string, string>();
@@ -106,6 +132,81 @@ describe("challenge authorization digest and signer", () => {
     for (const bad of [highS, badV, zeroR]) {
       expect(recoverChallengeSigner(V.digestVectors[0], "0x" + bytesToHex(bad))).toBeNull();
     }
+  });
+});
+
+describe("recoverChallengeSigner's cache", () => {
+  // The cache lives as long as the module, here this file: each test signs its
+  // own authorization, so the recoveries it counts are its own.
+  function authorization(beneficiaryByte: string): { fields: ChallengeAuthFields; signature: string } {
+    const r = reboundReceipt("0x" + beneficiaryByte.repeat(20));
+    return { fields: { ...r, ...r.l1Challenge! }, signature: r.l1Challenge!.signature };
+  }
+  const recoveries = () => vi.spyOn(secp256k1.Signature.prototype, "recoverPublicKey");
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("recovers a digest and signature once", () => {
+    const { fields, signature } = authorization("41");
+    const recover = recoveries();
+    expect(recoverChallengeSigner(fields, signature)).toBe(V.enclaveSigner);
+    expect(recoverChallengeSigner({ ...fields }, "0x" + signature.slice(2).toUpperCase())).toBe(V.enclaveSigner);
+    expect(recover).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers again for any other signed field or signature byte, so only the signed authorization verifies", () => {
+    const { fields, signature } = authorization("42");
+    expect(recoverChallengeSigner(fields, signature)).toBe(V.enclaveSigner);
+    const recover = recoveries();
+    const sig = hexToBytes(signature.slice(2));
+    const flipped = (at: number) => {
+      const other = new Uint8Array(sig);
+      other[at] = at === 64 ? 55 - sig[64] : sig[at] ^ 1; // v: 27 <-> 28
+      return "0x" + bytesToHex(other);
+    };
+    const cases: Array<[ChallengeAuthFields, string]> = [
+      [{ ...fields, chainId: fields.chainId + 1 }, signature],
+      [{ ...fields, settlement: "0x" + "56".repeat(20) }, signature],
+      [{ ...fields, orderHash: "0x" + "57".repeat(32) }, signature],
+      [{ ...fields, seqNo: fields.seqNo + 1 }, signature],
+      [{ ...fields, recvTimeMs: fields.recvTimeMs + 1 }, signature],
+      [{ ...fields, batchIdHint: fields.batchIdHint + 1 }, signature],
+      [{ ...fields, beneficiary: "0x" + "58".repeat(20) }, signature],
+      [fields, flipped(31)], // r
+      [fields, flipped(63)], // s
+      [fields, flipped(64)], // v
+    ];
+    const first = cases.map(([f, s]) => recoverChallengeSigner(f, s));
+    for (const signer of first) expect(signer).not.toBe(V.enclaveSigner);
+    expect(recover).toHaveBeenCalledTimes(cases.length);
+    // Each answer, once recovered, is the cached one.
+    expect(cases.map(([f, s]) => recoverChallengeSigner(f, s))).toEqual(first);
+    expect(recover).toHaveBeenCalledTimes(cases.length);
+  });
+
+  it("still decides against each receipt's own enclave signer", () => {
+    expect(buildChallengeKit(receipt())).toEqual(V.kit);
+    const recover = recoveries();
+    expect(() => buildChallengeKit({ ...receipt(), enclaveSigner: "0x" + "59".repeat(20) })).toThrow(/does not verify/);
+    expect(buildChallengeKit(receipt())).toEqual(V.kit);
+    expect(recover).not.toHaveBeenCalled();
+  });
+
+  it(`keeps at most ${MAX_CACHED_CHALLENGE_SIGNERS} recoveries, dropping the least recently used`, () => {
+    const a = authorization("43");
+    const b = authorization("44");
+    expect(recoverChallengeSigner(a.fields, a.signature)).toBe(V.enclaveSigner);
+    expect(recoverChallengeSigner(b.fields, b.signature)).toBe(V.enclaveSigner);
+    expect(recoverChallengeSigner(a.fields, a.signature)).toBe(V.enclaveSigner); // b is now the older one
+    // Signatures the curve refuses (r = 0) fill the cache without a recovery.
+    const zeroR = "0x" + "00".repeat(32) + "01".repeat(32) + "1b";
+    for (let i = 1; i < MAX_CACHED_CHALLENGE_SIGNERS; i++) {
+      expect(recoverChallengeSigner({ ...a.fields, seqNo: 1_000_000 + i }, zeroR)).toBeNull();
+    }
+    const recover = recoveries();
+    expect(recoverChallengeSigner(a.fields, a.signature)).toBe(V.enclaveSigner);
+    expect(recover).not.toHaveBeenCalled();
+    expect(recoverChallengeSigner(b.fields, b.signature)).toBe(V.enclaveSigner);
+    expect(recover).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -200,8 +301,8 @@ describe("challenge kit", () => {
 describe("newChallengeKits", () => {
   const listed = (r: unknown, finality = "ACCEPTED") => ({ receipt: r, finality });
 
-  it("builds kits only for orders not seen yet, and tries each order once", () => {
-    const seen = new Set<string>(["0x" + "ee".repeat(32)]);
+  it("builds kits only for orders not seen yet, and tries each authorization once", () => {
+    const seen = new Map([["0x" + "ee".repeat(32), SIG.toLowerCase()]]);
     const known = { ...receipt(), orderHash: "0x" + "EE".repeat(32) };
     const unbound = { ...receipt(), orderHash: "0x" + "ab".repeat(32), l1Challenge: null };
     const broken = { ...receipt(), orderHash: "0x" + "cd".repeat(32) };
@@ -213,10 +314,26 @@ describe("newChallengeKits", () => {
   });
 
   it("keeps no kit for an order that is already settled", () => {
-    const seen = new Set<string>();
+    const seen = new Map<string, string>();
     expect(newChallengeKits([listed(receipt(), "SETTLED")], seen)).toEqual([]);
     expect(seen.has(V.kit.orderHash)).toBe(true); // SETTLED never reverts: not retried
-    expect(newChallengeKits([listed(receipt(), "MATCHED")], new Set())).toEqual([V.kit]);
+    expect(newChallengeKits([listed(reboundReceipt(), "SETTLED")], seen)).toEqual([]);
+    expect(newChallengeKits([listed(receipt(), "MATCHED")], new Map())).toEqual([V.kit]);
+  });
+
+  it("builds an order's kit again when the gateway lists it with another authorization", () => {
+    // The account bound another deposit address: the gateway signs the order
+    // for the new beneficiary, so the kept kit no longer pays the address the
+    // account chose.
+    const seen = new Map<string, string>();
+    expect(newChallengeKits([listed(receipt())], seen)).toEqual([V.kit]);
+    const rebound = reboundReceipt();
+    expect(newChallengeKits([listed(rebound)], seen)).toEqual([buildChallengeKit(rebound)]);
+    expect(buildChallengeKit(rebound).l1Challenge.beneficiary).toBe(NEW_BENEFICIARY);
+    expect(newChallengeKits([listed(rebound)], seen)).toEqual([]); // tried once
+    // The same from the kits a browser kept: only another authorization is built.
+    expect(newChallengeKits([listed(receipt())], seenChallengeKits([V.kit]))).toEqual([]);
+    expect(newChallengeKits([listed(rebound)], seenChallengeKits([V.kit]))).toEqual([buildChallengeKit(rebound)]);
   });
 
   it("names the settled orders by lowercase hash", () => {
@@ -238,18 +355,27 @@ describe("challenge kit storage", () => {
   const first = V.kit;
   const second: ChallengeKit = { ...first, orderHash: "0x" + "ee".repeat(32), seqNo: 9 };
 
-  it("remembers by order hash, never drops earlier kits and keeps the first copy", () => {
+  it("remembers by order hash, never drops earlier kits, and a later copy of an order replaces the stored one", () => {
     const storage = memoryStorage();
     expect(rememberChallengeKits([first], storage)).toBe(true);
+    // The account bound another deposit address: the order's new kit pays it.
     const later = {
       ...first, orderHash: first.orderHash.toUpperCase().replace("0X", "0x"),
-      l1Challenge: { ...first.l1Challenge, beneficiary: "0x" + "34".repeat(20) },
+      l1Challenge: { ...first.l1Challenge, beneficiary: NEW_BENEFICIARY },
     };
     expect(rememberChallengeKits([second, later], storage)).toBe(true);
     const saved = loadChallengeKits(storage);
     expect(saved.map((k) => k.seqNo).sort()).toEqual([0, 9]);
-    expect(saved.find((k) => k.seqNo === 0)).toEqual(first);
+    expect(saved.find((k) => k.seqNo === 0)).toEqual(later);
     expect(JSON.parse(storage.map.get(CHALLENGE_KIT_STORAGE_KEY)!)).toHaveLength(2);
+  });
+
+  it("storing the same kit again changes nothing", () => {
+    const storage = memoryStorage();
+    expect(rememberChallengeKits([first, second], storage)).toBe(true);
+    const raw = storage.map.get(CHALLENGE_KIT_STORAGE_KEY);
+    expect(rememberChallengeKits([first], storage)).toBe(true);
+    expect(storage.map.get(CHALLENGE_KIT_STORAGE_KEY)).toBe(raw);
   });
 
   it("stores kits compactly: no schema, no timestamps, no indentation", () => {
@@ -330,14 +456,38 @@ describe("challenge kit storage", () => {
     expect(mergeChallengeKits([], kits)).toHaveLength(MAX_STORED_CHALLENGE_KITS + 20);
   });
 
-  it("merges by order hash: the first copy wins, settled and malformed kits are left out", () => {
-    const copy = { ...kitN(1), l1Challenge: { ...kitN(1).l1Challenge, beneficiary: "0x" + "34".repeat(20) } };
+  it("merges by order hash: a later copy replaces an earlier one, settled and malformed kits are left out", () => {
+    const copy = { ...kitN(1), l1Challenge: { ...kitN(1).l1Challenge, beneficiary: NEW_BENEFICIARY } };
     const merged = mergeChallengeKits(
       [kitN(1), kitN(2)],
       [copy, kitN(3), { schema: "x" }, kitN(4)],
       new Set([kitN(3).orderHash.toLowerCase()]),
     );
-    expect(merged).toEqual([kitN(4), kitN(2), kitN(1)]);
+    expect(merged).toEqual([kitN(4), kitN(2), copy]);
+  });
+
+  it("lets a later copy replace an order's kit only as the same enclave's authorization for the same order, chain and settlement", () => {
+    // Only the beneficiary, and with it the signature, may differ: the
+    // settlement accepts no other enclave signer, and a kit for another chain
+    // or settlement does not open the challenge where the order was accepted.
+    const kept = kitN(1);
+    const copy = (fields: Partial<ChallengeKit>, auth: Partial<ChallengeKit["l1Challenge"]> = {}): ChallengeKit => ({
+      ...kept, ...fields,
+      l1Challenge: { ...kept.l1Challenge, beneficiary: NEW_BENEFICIARY, signature: "0x" + "ab".repeat(65), ...auth },
+    });
+    for (const other of [
+      copy({ enclaveSigner: "0x" + "44".repeat(20) }), copy({ seqNo: kept.seqNo + 1 }), copy({ recvTimeMs: kept.recvTimeMs + 1 }),
+      copy({ batchIdHint: kept.batchIdHint + 1 }), copy({}, { chainId: 84533 }), copy({}, { settlement: "0x" + "23".repeat(20) }),
+    ]) {
+      expect(mergeChallengeKits([kept], [other])).toEqual([kept]);
+      const storage = memoryStorage();
+      expect(rememberChallengeKits([kept], storage)).toBe(true);
+      expect(rememberChallengeKits([other], storage)).toBe(true);
+      expect(loadChallengeKits(storage)).toEqual([kept]);
+    }
+    // Addresses compare without case.
+    const rebound = copy({ enclaveSigner: kept.enclaveSigner.toUpperCase().replace("0X", "0x") });
+    expect(mergeChallengeKits([kept], [rebound])).toEqual([rebound]);
   });
 
   it("evicts the oldest kits until the rest fits when the browser refuses the write, and reports it", () => {
@@ -421,5 +571,74 @@ describe("challenge kit storage", () => {
     expect(loadChallengeKits(storage)).toEqual([]);
     expect(rememberChallengeKits([second], storage)).toBe(true);
     expect(loadChallengeKits(storage)).toEqual([second]);
+  });
+});
+
+describe("the kit of an order the gateway has just accepted", () => {
+  const listed = (r: unknown, finality = "ACCEPTED") => ({ receipt: r, finality });
+
+  it("is kept from the accept response, before the gateway ever lists the order", () => {
+    const storage = memoryStorage();
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    expect(loadChallengeKits(storage)).toEqual([V.kit]);
+  });
+
+  it("keeps nothing without a verifiable authorization, and never throws", () => {
+    const storage = memoryStorage();
+    for (const r of [{ ...receipt(), l1Challenge: null }, { ...receipt(), seqNo: 1 }, null, "x"]) {
+      expect(rememberAcceptedChallengeKit(r, [], storage)).toBe(false);
+    }
+    expect(storage.map.has(CHALLENGE_KIT_STORAGE_KEY)).toBe(false);
+    expect(rememberAcceptedChallengeKit(receipt(), [], memoryStorage({ set: true }))).toBe(false);
+    expect(rememberAcceptedChallengeKit(receipt(), [], undefined)).toBe(false);
+  });
+
+  it("and the listing's copy of it are one kit: keeping both is idempotent", () => {
+    const storage = memoryStorage();
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    const raw = storage.map.get(CHALLENGE_KIT_STORAGE_KEY);
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    // The account panel starts from the kept kits, so the listed order is not rebuilt...
+    expect(newChallengeKits([listed(receipt())], seenChallengeKits(loadChallengeKits(storage)))).toEqual([]);
+    // ...and storing the listing's kit anyway leaves the store as it was.
+    expect(rememberChallengeKits(newChallengeKits([listed(receipt())], new Map()), storage)).toBe(true);
+    expect(storage.map.get(CHALLENGE_KIT_STORAGE_KEY)).toBe(raw);
+  });
+
+  it("is replaced by the listing's kit for a deposit address bound since", () => {
+    const storage = memoryStorage();
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    const fresh = newChallengeKits([listed(reboundReceipt())], seenChallengeKits(loadChallengeKits(storage)));
+    expect(rememberChallengeKits(fresh, storage)).toBe(true);
+    expect(loadChallengeKits(storage).map((k) => k.l1Challenge.beneficiary)).toEqual([NEW_BENEFICIARY]);
+  });
+
+  it("is not replaced by a listed kit from another enclave signer, or for another settlement", () => {
+    for (const listing of [resignedReceipt(new Uint8Array(32).fill(12)), resignedReceipt(FIXTURE_ENCLAVE_KEY, "0x" + "23".repeat(20))]) {
+      const storage = memoryStorage();
+      expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+      // It verifies against its own receipt, so the listing builds it...
+      const fresh = newChallengeKits([listed(listing)], seenChallengeKits(loadChallengeKits(storage)));
+      expect(fresh).toEqual([buildChallengeKit(listing)]);
+      // ...but the kept kit stays.
+      expect(rememberChallengeKits(fresh, storage)).toBe(true);
+      expect(loadChallengeKits(storage)).toEqual([V.kit]);
+    }
+  });
+
+  it("is stored ahead of kits of orders not listed, with the listed orders' kits, as the panel stores them", () => {
+    const storage = memoryStorage();
+    // Stored earlier: kits of orders this account lists now, and newer kits of
+    // orders it does not list (older orders, or another account's).
+    const listedKits = Array.from({ length: 10 }, (_, i) => kitN(i + 1));
+    const unlisted = Array.from({ length: MAX_STORED_CHALLENGE_KITS - 10 }, (_, i) => kitN(1_000 + i));
+    expect(rememberChallengeKits([...listedKits, ...unlisted], storage)).toBe(true);
+    // The fixture order is older than every stored kit.
+    expect(rememberAcceptedChallengeKit(receipt(), listedKits.map((k) => listed(k)), storage)).toBe(false);
+    const kept = loadChallengeKits(storage).map((k) => k.orderHash);
+    expect(kept).toHaveLength(MAX_STORED_CHALLENGE_KITS);
+    expect(kept).toContain(V.kit.orderHash);
+    for (const k of listedKits) expect(kept).toContain(k.orderHash);
+    expect(kept).not.toContain(kitN(1_000).orderHash); // the oldest kit of an order not listed went
   });
 });

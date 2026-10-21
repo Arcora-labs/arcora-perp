@@ -7,6 +7,13 @@
 /// Kits stay with the user: they are kept in this browser's storage and offered
 /// as a download, never sent anywhere. Opening a challenge publishes the
 /// beneficiary next to the order hash on L1.
+///
+/// One kit per order: the gateway's latest authorization for it. The gateway
+/// signs an order's authorization for the deposit address the account has
+/// bound when it answers, so once the account binds another address, the next
+/// listing carries a kit for the new beneficiary, and that kit replaces the one
+/// kept for the order. Only the same enclave's authorization for the same
+/// order, chain and settlement replaces a kept kit (see `mergeChallengeKits`).
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils";
@@ -104,22 +111,48 @@ export function challengeAuthDigest(f: ChallengeAuthFields): Uint8Array {
   return keccak_256(preimage);
 }
 
+/// Signers `recoverChallengeSigner` cached for this page, least recently used
+/// first. A recovery takes milliseconds, and the account panel verifies every
+/// listed order's kit the browser did not keep (storage blocked, or past its
+/// bound) each time it opens. An entry is about 240 characters, so the cache
+/// stays under 500,000.
+export const MAX_CACHED_CHALLENGE_SIGNERS = 2048;
+const cachedSigners = new Map<string, string | null>();
+
+/// The signer of a 32-byte digest and a 65-byte r||s||v signature, or null.
+function recoverSigner(digest: Uint8Array, sig: Uint8Array): string | null {
+  try {
+    const parsed = secp256k1.Signature.fromCompact(sig.subarray(0, 64));
+    if (parsed.hasHighS()) return null;
+    const pub = parsed.addRecoveryBit(sig[64] - 27).recoverPublicKey(digest).toRawBytes(false);
+    return "0x" + bytesToHex(keccak_256(pub.subarray(1)).subarray(12));
+  } catch {
+    return null;
+  }
+}
+
 /// The lowercase address that signed the authorization, or null when the
 /// signature is one the settlement refuses (high s, v not 27/28, r or s out of
-/// range) or does not recover.
+/// range) or does not recover. Cached by the digest and every signature byte,
+/// all a recovery reads, so another field or signature is recovered anew.
 export function recoverChallengeSigner(f: ChallengeAuthFields, signature: string): string | null {
   if (!SIGNATURE.test(signature)) return null;
   const sig = hexToBytes(signature.slice(2));
   const v = sig[64];
   if (v !== 27 && v !== 28) return null;
+  let digest: Uint8Array;
   try {
-    const parsed = secp256k1.Signature.fromCompact(sig.subarray(0, 64));
-    if (parsed.hasHighS()) return null;
-    const pub = parsed.addRecoveryBit(v - 27).recoverPublicKey(challengeAuthDigest(f)).toRawBytes(false);
-    return "0x" + bytesToHex(keccak_256(pub.subarray(1)).subarray(12));
+    digest = challengeAuthDigest(f);
   } catch {
     return null;
   }
+  const key = bytesToHex(digest) + bytesToHex(sig);
+  const cached = cachedSigners.get(key);
+  const signer = cached === undefined ? recoverSigner(digest, sig) : cached;
+  cachedSigners.delete(key); // re-inserted as the most recently used
+  cachedSigners.set(key, signer);
+  if (cachedSigners.size > MAX_CACHED_CHALLENGE_SIGNERS) cachedSigners.delete(cachedSigners.keys().next().value!);
+  return signer;
 }
 
 /// The receipt's `l1Challenge`: null when the gateway issued none (no bound
@@ -177,27 +210,42 @@ export function buildChallengeKit(receipt: unknown): ChallengeKit {
 const orderHashOf = (receipt: unknown): string | null =>
   isRecord(receipt) && typeof receipt.orderHash === "string" ? receipt.orderHash.toLowerCase() : null;
 
-/// Kits for listed orders whose hash is not in `seen` yet. Each order is tried
-/// once (`seen` grows). A SETTLED order gets no kit (settled is never undone,
-/// and a challenge of it is answered at once, forfeiting the stake). A receipt
-/// without an authorization is not marked, since it gains one when the account
-/// binds a deposit address.
-export function newChallengeKits(orders: readonly ChallengeKitOrder[], seen: Set<string>): ChallengeKit[] {
+/// What `newChallengeKits` marks for a SETTLED order (never a signature).
+const SETTLED_MARK = "SETTLED";
+
+/// Kits for listed orders `seen` has not tried with their current
+/// authorization. `seen` maps a lowercase order hash to the signature of the
+/// authorization last tried for it (and grows), so each authorization is
+/// tried once, and an order the gateway lists with another one (the account
+/// bound another deposit address) is built again. A SETTLED order gets no kit
+/// (settled is never undone, and a challenge of it is answered at once,
+/// forfeiting the stake). A receipt without a well-formed authorization is not
+/// marked, since it gains one when the account binds a deposit address.
+export function newChallengeKits(orders: readonly ChallengeKitOrder[], seen: Map<string, string>): ChallengeKit[] {
   const kits: ChallengeKit[] = [];
   for (const o of orders) {
     const key = orderHashOf(o.receipt);
-    if (!key || seen.has(key)) continue;
+    if (!key || seen.get(key) === SETTLED_MARK) continue;
     if (o.finality === "SETTLED") {
-      seen.add(key);
+      seen.set(key, SETTLED_MARK);
       continue;
     }
-    if (!(o.receipt as ReceiptWithChallenge).l1Challenge) continue; // may gain one once an address is bound
-    seen.add(key);
+    const auth = parseL1Challenge((o.receipt as ReceiptWithChallenge).l1Challenge);
+    if (!auth) continue; // may gain one once an address is bound
+    const tried = auth.signature.toLowerCase();
+    if (seen.get(key) === tried) continue;
+    seen.set(key, tried);
     try {
       kits.push(buildChallengeKit(o.receipt));
     } catch { /* unusable authorization: nothing to keep */ }
   }
   return kits;
+}
+
+/// The `seen` map of `newChallengeKits` for kits already kept: their orders are
+/// built again only when listed with another authorization.
+export function seenChallengeKits(kits: readonly ChallengeKit[]): Map<string, string> {
+  return new Map(kits.map((k) => [k.orderHash.toLowerCase(), k.l1Challenge.signature.toLowerCase()]));
 }
 
 /// Lowercase hashes of the listed orders the gateway reports SETTLED: their
@@ -305,10 +353,30 @@ const hashKey = (k: ChallengeKit) => k.orderHash.toLowerCase();
 /// offered in, and, within listed and other kits, stored in.
 const newestFirst = (a: ChallengeKit, b: ChallengeKit) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo;
 
-/// The kits to keep: `existing`, then `added`, merged by order hash (the first
-/// copy wins), without the kits of orders in `settled` (lowercase hashes),
-/// newest first. Not bounded: this is also the session's offer, which must hold
-/// every listed order's kit. Malformed entries are skipped.
+/// Whether `later` is the same enclave's authorization as `kept` for the same
+/// order, chain and settlement: only the beneficiary, and with it the
+/// signature, may differ.
+function sameAuthority(kept: ChallengeKit, later: ChallengeKit): boolean {
+  const a = kept.l1Challenge;
+  const b = later.l1Challenge;
+  return later.enclaveSigner.toLowerCase() === kept.enclaveSigner.toLowerCase() &&
+    later.seqNo === kept.seqNo && later.recvTimeMs === kept.recvTimeMs && later.batchIdHint === kept.batchIdHint &&
+    b.chainId === a.chainId && b.settlement.toLowerCase() === a.settlement.toLowerCase();
+}
+
+/// The kits to keep: `existing`, then `added`, merged by order hash, without
+/// the kits of orders in `settled` (lowercase hashes), newest first. A later
+/// copy of an order's kit replaces an earlier one when it is the same
+/// enclave's authorization for the same order, chain and settlement, so
+/// callers pass kits oldest source first: after the account binds another
+/// deposit address, the gateway lists its orders with kits for the new
+/// beneficiary, and those must replace the kits kept for the old one (the
+/// settlement pays a fine to whichever beneficiary the kit names). Any other
+/// copy leaves the earlier kit in place: the settlement accepts no other
+/// enclave signer, and a kit for another chain or settlement does not open the
+/// challenge where the order was accepted. Merging a copy equal to the kept
+/// one changes nothing. Not bounded: this is also the session's offer, which
+/// must hold every listed order's kit. Malformed entries are skipped.
 export function mergeChallengeKits(
   existing: readonly unknown[],
   added: readonly unknown[],
@@ -317,16 +385,21 @@ export function mergeChallengeKits(
   const byHash = new Map<string, ChallengeKit>();
   for (const value of [...existing, ...added]) {
     const kit = normalizeKit(value);
-    if (kit && !byHash.has(hashKey(kit)) && !settled.has(hashKey(kit))) byHash.set(hashKey(kit), kit);
+    if (!kit || settled.has(hashKey(kit))) continue;
+    const kept = byHash.get(hashKey(kit));
+    if (!kept || sameAuthority(kept, kit)) byHash.set(hashKey(kit), kit);
   }
   return [...byHash.values()].sort(newestFirst);
 }
 
 /// Keep `kits` in this browser, merged with the stored ones as
-/// `mergeChallengeKits` does: the kits of orders in `settled` (orders the
-/// gateway lists as SETTLED, which a settled batch includes or rejects) are
-/// dropped. The store holds at most MAX_STORED_CHALLENGE_KITS, and its quota is
-/// shared with claim bundles, the deposit journal and the credential record.
+/// `mergeChallengeKits` does: a kit in `kits` replaces the stored kit of its
+/// order when it is the same enclave's authorization for the same order,
+/// chain and settlement (the last such kit for an order wins), and the kits of
+/// orders in `settled` (orders the gateway lists as SETTLED, which a settled
+/// batch includes or rejects) are dropped. The store holds at most
+/// MAX_STORED_CHALLENGE_KITS, and its quota is shared with claim bundles, the
+/// deposit journal and the credential record.
 /// When not every kit fits (the bound, or a write the browser refuses), kits
 /// are kept in this order and evicted from its end: the kits of orders in
 /// `listed` (lowercase hashes of the orders the gateway lists and does not
@@ -367,4 +440,29 @@ export function rememberChallengeKits(
   } catch {
     return false;
   }
+}
+
+/// Keep the kit of an order the gateway has just accepted, from the accept
+/// response's receipt (`POST /v1/orders`), before the gateway lists the order:
+/// if it stops in between, this is the order's only kit. The listing builds
+/// the same kit for the order while the account keeps its deposit address, so
+/// keeping both is idempotent; a kit listed for an address bound since replaces
+/// this one, as `mergeChallengeKits` describes. `orders` are the account's
+/// listed orders: their kits, and this one, are kept ahead of others, as
+/// `rememberChallengeKits` describes. Returns whether every kit to keep is
+/// stored; false without a verifiable authorization. Never throws.
+export function rememberAcceptedChallengeKit(
+  receipt: unknown,
+  orders: readonly ChallengeKitOrder[] = [],
+  storage: ChallengeKitStorage | undefined = defaultStorage(),
+): boolean {
+  let kit: ChallengeKit;
+  try {
+    kit = buildChallengeKit(receipt);
+  } catch {
+    return false; // no authorization (no bound deposit address), or one that does not verify
+  }
+  const listed = unsettledOrderHashes(orders);
+  listed.add(hashKey(kit));
+  return rememberChallengeKits([kit], storage, settledOrderHashes(orders), listed);
 }
