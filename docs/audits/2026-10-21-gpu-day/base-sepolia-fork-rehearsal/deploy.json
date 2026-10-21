@@ -1,0 +1,36 @@
+{
+  "chain_id": 84532,
+  "genesis_root": "0x900609506cd774309e8238498290321114134a4a1dfa464d042b2a11777f7f23",
+  "wind_down_recipient": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+  "oracle_signer_address": "0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+  "sp1_gateway": null,
+  "deposit_permit_ttl_secs": 1800,
+  "clock": {
+    "max_window_ms": 30000,
+    "clock_skew_ms": 30000,
+    "anchor_timeout_ms": 3600000
+  },
+  "operator_policy": {
+    "settlement": {
+      "sequencer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "enclave_signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "governance": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+      "liveness_timeout_blocks": 43200,
+      "challenge_grace_blocks": 3600,
+      "challenge_bond_wei": 10000000000000000,
+      "inclusion_deadline_seconds": 3600,
+      "final_settle_grace_blocks": 300,
+      "progress_batches": 2,
+      "slash_payout_cap_usdc": 1000000000
+    },
+    "vault": {
+      "gateway_signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+    },
+    "clock_verifier": {
+      "configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    },
+    "sp1_gateway": {
+      "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    }
+  }
+}

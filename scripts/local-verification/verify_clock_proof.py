@@ -145,26 +145,70 @@ HISTORICAL_V2_GUEST_SOURCES = MappingProxyType({
 })
 
 
+# The guest source pins the package-3 proof was generated under (the reviewed pins
+# when it was proven, 2026-10-21). Provenance only: never compared with the checkout.
+PKG3_PROOF_GUEST_SOURCES = MappingProxyType({
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "1d936a79121040bb6415cff2aa0e0459734222bfbf8c7f4452d52452389f85a2",
+    "crates/perp-core/src/commitment.rs": "02ccf0ead5b545fc6b06948df5f5cd31c4126b417bf5097c972f725e412fa801",
+    "crates/perp-core/src/engine.rs": "e42c15a7ef7473b6ba15faea7aa0a974b1799cc525802159edc0a48ec32794aa",
+    "crates/perp-core/src/error.rs": "d1e146386deb79870fd288732265347bd207b91c153633c079e42ec7c63a8c20",
+    "crates/perp-core/src/fixed.rs": "6d5a39e6d4c9facada98d0dba398990efb8db1bc9705d0dc58f86b6333fd69c2",
+    "crates/perp-core/src/funding.rs": "d3f393138b31ed843a24c63943fb15ec0f07a860ac629ce1ca15feb40d93fea9",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "d69657981bfd0d7f8e97230e7f0cbcf0d548d9fa5b69e8fb1c941864db1e9d50",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "2cbddc2a07b738dbe6ede79e447acfa6ab68499036ca48db50e53f9a97890ad2",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "c396e40e5d757849e507d60be6b0fbab34443f1fb0d6e091feff047fad3544a8",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "38f1321b773e5ca2f7978059381059340e67011750faac253af4fb21382c712f",
+    "crates/perp-core/src/position.rs": "c56b36e5adf77300eae6f237d04260aa25f535bf730b566a17c16e07e121e821",
+    "crates/perp-core/src/state.rs": "fcb6719b4f91f95e2dce88166cd80302144c049b97a3edab085e66353d2aea55",
+    "crates/sp1-guest/Cargo.lock": "6352cf76bf63ed1a0dfd44e54aa9832cfc1c67b9facb6ce3396270f2d15fff33",
+    "crates/sp1-guest/Cargo.toml": "c4310424be580e30f351f98644e47211dc286c2c020f6d81c1967cd6343a2bd6",
+    "crates/sp1-guest/src/main.rs": "8dc8437f4f3938fa430efc43e27b7ffcdd0ab4447462db036a08afef92d2fa9a",
+})
+
+
 # The committed real proof and the identity it was generated under. The Solidity
 # real-proof gate verifies exactly this proof; it says nothing about another guest.
 # `sources` are the source pins of that proof's own guest, recorded beside its ELF
 # in the evidence (provenance only; the checkout is checked against REVIEWED_GUEST).
 PROOF_FIXTURE = {
-    "dir": "contracts/integration/fixtures/clock-v2-verified",
-    "kind": "clock-v2-native-guest",
-    "elf": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
-    "vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
-    "witness_sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f",
-    "commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e",
-    "proof_sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89",
+    "dir": "contracts/integration/fixtures/clock-pkg3-verified",
+    "kind": "clock-pkg3-native-guest",
+    "elf": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+    "vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+    "witness_sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a",
+    "commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab",
+    "proof_sha256": "28d6804949242eac9a44e0d90542674a4e3325c15fbac30f258215505e6084db",
     "negatives": {
-        "wrong-bounds": "e4057d36e7aec9f61eb537d46957d6ede75c7706c328c699025fbefcfbd26bf5",
-        "wrong-count": "8b3ce13a156da3ea015181ee6e70478dd85eec8b4575dc8602ca276387695e46",
-        "wrong-batch": "20c6cd884979d825e456666c8c67b77137761f1e192552d8ef6b06d626034d32",
-        "wrong-base": "bfbd0612d87718c7560d188a5801e7bca14a9df7216a19177ce0f32fa962e611",
-        "backdated": "0ea2e8577cd965c2ea42ba8bc7a2381239ef01e9b6798c862877a20645136c71",
+        "wrong-bounds": "cb9174c67eccb190aa94f952e62ac767acfa1bd51356923eddbefac2cd57fd6b",
+        "wrong-count": "c0e211d721459f6076a68fb94044eccad767a52dcb87283604a3a27ae374e81e",
+        "wrong-batch": "d308e98fea20da6c25f77b0a75d5182763581c386c86fe09938e3d0a91314520",
+        "wrong-base": "2d118241670e93d3b46cd9be4f711986a5bd43345dc7c3c87220f4950bde59c5",
+        "backdated": "b94ee21774e8047f32d95e5c12293bbbd87139f36d3de32ab62b13a7fe36d4b3",
+        "bad-manifest": "c572b38d672a01dadd99f428310fd8b5c75a7ff8e6537268b0731df6725c0314",
+        "unauthorized-withdrawal": "765b222c711697700dc39942c5fa60c3bde7e4042bbe7195dd471135bd32135e",
+        "market-id-not-map-key": "849dc44beff8bb3c1d4f8a4a941575f9da12cfbcee7613b7fe5cc27cc75408b0",
+        "forged-nullifier-log": "fb483e26e9b4619e3fb76858845f2e9e4f3418c37df7ad856a2aa53bb57909af",
+        "erased-tree-history": "94a7c18009573fd98fc0e4760300a44a0697e7aea6813afc996af9252c7fb473",
+        "depth-64-tree": "dfa78adb977a6a1b932acaf4b31dea7801e63d0531fa7e27df612aa660c4aa56",
+        "overfull-tree": "70d0601451d4932a3eed02dee991bd5ffa8291daf8b4e62d4fb0def01ff7553a",
+        "duplicate-withdrawal-nonce": "9d288f47546f1d75a3ddf8177ec702a8b014884070416faeb08e34c09cb6902b",
+        "unfunded-dust-fill": "406037b43dd759a5ba263b415aacb42eef0fd6877791112dea2b2248f1d94769",
+        "under-floor-fill": "31433a9d6ecff1f58ee643a060b572f0e832c7d7fc31fd39440e6759073339bc",
+        "deposit-in-close-only": "3f79ad7ea77105bb9f71f63a56ff1b2903944a9151ad795fb94e362c9b56f678",
+        "legacy-tuple": "1dde2f621b7d6f04fc910e5b61015315fedb51de4a36d40cbee55ab4c344f929",
+        "empty-input": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "seven-byte-magic": "c9b279fdf496b7b8306d1dd2b4d354a7056f3f178434dc7bcffc4b570378dcde",
+        "dpclk2-magic": "b842e66fde09c47c99312091f79d236931b57a50907eda8366911f37041816a6",
+        "dpclk3-magic": "061cc6adfc6e5c5262b2ff0d6c9d274f49a9d19b81b5fdb0e00ae4462a52af26",
+        "trailing-byte": "2f46c18bd27c21be3342c047f455cba2278272ac3b28b1ede0bbb18d1045d552",
     },
-    "sources": HISTORICAL_V2_GUEST_SOURCES,
+    "sources": PKG3_PROOF_GUEST_SOURCES,
 }
 
 def verify_guest_source():

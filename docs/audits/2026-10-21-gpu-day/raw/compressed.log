@@ -1,0 +1,15 @@
+Running sp1-gpu-server 6.1.0 with device 0
+2026-10-21T16:44:43.520480Z  INFO sp1_gpu_server::server: Server listening @ /tmp/sp1-cuda-0.sock
+2026-10-21T16:44:43.520579Z  INFO sp1_gpu_server::server: Connection accepted
+2026-10-21T16:44:43.523958Z  INFO sp1_gpu_server::server: Running setup
+PROVE_START phase1-haircut-h13280 mode=compressed cycles=129942028
+2026-10-21T16:44:47.173741Z  INFO sp1_gpu_server::server: Proving with mode: Compressed
+PROVED phase1-haircut-h13280 mode=compressed cycles=129942028 prove_wall_s=37.7 cycles_per_s=3446707
+PROVE_START phase1-haircut-h26560 mode=compressed cycles=263319293
+2026-10-21T16:45:32.336240Z  INFO sp1_gpu_server::server: Proving with mode: Compressed
+PROVED phase1-haircut-h26560 mode=compressed cycles=263319293 prove_wall_s=69.5 cycles_per_s=3790161
+PROVE_START phase1-haircut-h53120 mode=compressed cycles=533028720
+2026-10-21T16:46:51.836086Z  INFO sp1_gpu_server::server: Proving with mode: Compressed
+PROVED phase1-haircut-h53120 mode=compressed cycles=533028720 prove_wall_s=133.6 cycles_per_s=3989074
+2026-10-21T16:49:05.550323Z  INFO sp1_gpu_server::server: Destroying key
+2026-10-21T16:49:05.557545Z  INFO sp1_gpu_server::server: Connection disconnected

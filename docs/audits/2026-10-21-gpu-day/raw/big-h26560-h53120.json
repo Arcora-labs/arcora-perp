@@ -1,0 +1,45 @@
+{
+  "elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+  "host_arch": "x86_64",
+  "host_os": "linux",
+  "kind": "pkg3-dry-run-proofs",
+  "mode": "groth16",
+  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+  "prover_backend": "cuda",
+  "runs": [
+    {
+      "commitment": "0x1bd9902b52d57595e09352a92db0f9a74e1bd6172fee6ea2694c2767091c5028",
+      "cycles": 263319293,
+      "gas": 380055050,
+      "guest_execute_wall_s": 7.522454756,
+      "name": "phase1-haircut-h26560",
+      "native_guest_equal": true,
+      "native_twin_wall_s": 0.06645888,
+      "proof_bytes": 356,
+      "proof_sha256": "46b3a5954c2dcaf16661302ef009b6f54105aff2f763ab1458998a0186a8d6b8",
+      "prove_wall_s": 153.720766664,
+      "sdk_verified": true,
+      "verify_wall_s": 0.336618581,
+      "witness_bytes": 1604940,
+      "witness_sha256": "0cf7425a457312cba24c2ab7c1fedaca425915202c285a658d7b541d59715386"
+    },
+    {
+      "commitment": "0xebeab277dbd27e836271388acf55c9100baf60a9b987b507e7be2d3995ca25e0",
+      "cycles": 533028720,
+      "gas": 777691858,
+      "guest_execute_wall_s": 8.761887377,
+      "name": "phase1-haircut-h53120",
+      "native_guest_equal": true,
+      "native_twin_wall_s": 0.106144801,
+      "proof_bytes": 356,
+      "proof_sha256": "ae976f2b16eb03941b18ad19513ae209c58f08565055776cc15dd7cb83ab12e9",
+      "prove_wall_s": 186.208732521,
+      "sdk_verified": true,
+      "verify_wall_s": 0.340352038,
+      "witness_bytes": 3209297,
+      "witness_sha256": "cf0c61f56166804d476f3c879500e7fe76d0e881c3ff4e77879c92fd1a0dd10a"
+    }
+  ],
+  "sdk_version": "6.1.0",
+  "setup_wall_s": 9.753970294
+}

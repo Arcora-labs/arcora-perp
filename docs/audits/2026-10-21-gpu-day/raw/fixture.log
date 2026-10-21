@@ -1,0 +1,24 @@
+Running sp1-gpu-server 6.1.0 with device 0
+2026-10-21T16:24:29.401433Z  WARN sp1_gpu_server::server: Failed to remove orphaned socket: No such file or directory (os error 2)
+CLOCK_NATIVE_GUEST_PARITY_PASS cycles=5750329
+2026-10-21T16:24:38.476129Z  INFO sp1_gpu_server::server: Server listening @ /tmp/sp1-cuda-0.sock
+2026-10-21T16:24:38.476230Z  INFO sp1_gpu_server::server: Connection accepted
+2026-10-21T16:24:38.479744Z  INFO sp1_gpu_server::server: Running setup
+CLOCK_GROTH16_START cuda
+2026-10-21T16:24:38.590438Z  INFO sp1_gpu_server::server: Proving with mode: Groth16
+2026-10-21T16:24:52.481635Z  INFO sp1_prover::build: [sp1] groth16 circuit artifacts already seem to exist at /root/.sp1/circuits/groth16/v6.1.0. if you want to re-download them, delete the directory
+Setting environment variables took 137.711µs
+Reading R1CS took 21.214927726s
+Reading proving key took 3.97730025s
+Reading witness file took 1.855458ms
+Deserializing JSON data took 19.734929ms
+Generating witness took 1.274040451s
+16:25:36 DBG constraint system solver done nbConstraints=15972262 took=17352.639644
+16:25:56 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=20437.251286
+Generating proof took 37.790574063s
+16:25:56 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+16:25:56 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+16:25:56 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+16:25:56 DBG verifier done backend=groth16 curve=bn254 took=2.521889
+CLOCK_GROTH16_VERIFIED cuda prove_wall_s=78.2
+2026-10-21T16:25:57.133012Z  INFO sp1_gpu_server::server: Destroying key

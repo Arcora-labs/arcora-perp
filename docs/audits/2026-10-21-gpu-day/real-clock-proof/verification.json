@@ -1,0 +1,221 @@
+{
+  "status": "PASS",
+  "kind": "clock-v2-real-sp1-target-verification",
+  "local_evm_only": true,
+  "mock_proof_used": false,
+  "production_deployed": false,
+  "full_token_lifecycle": false,
+  "clock_adapter_full_lifecycle": false,
+  "clock_adapter_synthetic_settlement_verified": true,
+  "synthetic_vault_claim_verified": true,
+  "mock_token_used": true,
+  "fixture_address_constructors": true,
+  "synthetic_zero_payer_impersonated": true,
+  "application_proof_accepted": true,
+  "scope": "Real clock-v2 proof through SP1 verifier, clock adapter, actual settlement and vault; fixed synthetic addresses and a mock token, not live payer provenance or full order/HTTP/production lifecycle.",
+  "identity_scope": "The forge suites verify the proof under PROOF_FIXTURE's setup key and public commitment. The top-level guest fields (ELF, setup key, source pins) and proof_fixture describe that proof's own guest; reviewed_guest and the reviewed_guest_source(s)_sha256 pins describe the guest this checkout is pinned to build, which is the proof's guest only if proof_matches_reviewed_guest is true.",
+  "guest_elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+  "public_commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab",
+  "tests": {
+    "ClockBoundRealProofTest": 6,
+    "SP1RealProofTest": 10,
+    "SP1RealVerifierGuardTest": 8
+  },
+  "proof_fixture": {
+    "dir": "contracts/integration/fixtures/clock-pkg3-verified",
+    "kind": "clock-pkg3-native-guest",
+    "guest_elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+    "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+    "guest_sources_sha256": {
+      "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+      "crates/perp-core/src/clock.rs": "1d936a79121040bb6415cff2aa0e0459734222bfbf8c7f4452d52452389f85a2",
+      "crates/perp-core/src/commitment.rs": "02ccf0ead5b545fc6b06948df5f5cd31c4126b417bf5097c972f725e412fa801",
+      "crates/perp-core/src/engine.rs": "e42c15a7ef7473b6ba15faea7aa0a974b1799cc525802159edc0a48ec32794aa",
+      "crates/perp-core/src/error.rs": "d1e146386deb79870fd288732265347bd207b91c153633c079e42ec7c63a8c20",
+      "crates/perp-core/src/fixed.rs": "6d5a39e6d4c9facada98d0dba398990efb8db1bc9705d0dc58f86b6333fd69c2",
+      "crates/perp-core/src/funding.rs": "d3f393138b31ed843a24c63943fb15ec0f07a860ac629ce1ca15feb40d93fea9",
+      "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+      "crates/perp-core/src/lib.rs": "d69657981bfd0d7f8e97230e7f0cbcf0d548d9fa5b69e8fb1c941864db1e9d50",
+      "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+      "crates/perp-core/src/merkle.rs": "2cbddc2a07b738dbe6ede79e447acfa6ab68499036ca48db50e53f9a97890ad2",
+      "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+      "crates/perp-core/src/nullifier.rs": "c396e40e5d757849e507d60be6b0fbab34443f1fb0d6e091feff047fad3544a8",
+      "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+      "crates/perp-core/src/order.rs": "38f1321b773e5ca2f7978059381059340e67011750faac253af4fb21382c712f",
+      "crates/perp-core/src/position.rs": "c56b36e5adf77300eae6f237d04260aa25f535bf730b566a17c16e07e121e821",
+      "crates/perp-core/src/state.rs": "fcb6719b4f91f95e2dce88166cd80302144c049b97a3edab085e66353d2aea55",
+      "crates/sp1-guest/Cargo.lock": "6352cf76bf63ed1a0dfd44e54aa9832cfc1c67b9facb6ce3396270f2d15fff33",
+      "crates/sp1-guest/Cargo.toml": "c4310424be580e30f351f98644e47211dc286c2c020f6d81c1967cd6343a2bd6",
+      "crates/sp1-guest/src/main.rs": "8dc8437f4f3938fa430efc43e27b7ffcdd0ab4447462db036a08afef92d2fa9a"
+    },
+    "witness_sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a",
+    "public_commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab",
+    "proof_sha256": "28d6804949242eac9a44e0d90542674a4e3325c15fbac30f258215505e6084db"
+  },
+  "reviewed_guest": {
+    "identity_dir": "contracts/integration/fixtures/clock-pkg3-reviewed",
+    "guest_elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+    "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+    "fixture_witness_sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a",
+    "fixture_commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab"
+  },
+  "proof_matches_reviewed_guest": true,
+  "real_proof_status": "PROVEN",
+  "input_artifacts": {
+    "proof-evidence.json": {
+      "sha256": "6beee3f7821d46762928a6d04d6002fc91646a0494d41dcfed340edea30e8444",
+      "size_bytes": 8877
+    },
+    "clock.witness.bin": {
+      "sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a",
+      "size_bytes": 1167
+    },
+    "guest.elf": {
+      "sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+      "size_bytes": 535904
+    },
+    "program-vkey.bin": {
+      "sha256": "2386b07f7dda5d7bd4ba338c97600c909d59265aa5d49b78c72a7bbd84484b4e",
+      "size_bytes": 32
+    },
+    "proof.bin": {
+      "sha256": "28d6804949242eac9a44e0d90542674a4e3325c15fbac30f258215505e6084db",
+      "size_bytes": 356
+    },
+    "public-values.bin": {
+      "sha256": "c1a0fba57e708158aad9667fa00b3dc979322310e3925b9140eb1be05d27d454",
+      "size_bytes": 32
+    },
+    "proof.sdk.json": {
+      "sha256": "be3725db25913c65c82e1e3bb55eba93e1dc801cb6cc97caf2ac95acfa27d742",
+      "size_bytes": 1997
+    }
+  },
+  "runner_sha256": "ef9d585564e4fe999990869f00d66e8cd3872a70911ed23dd6b0b04bb3303eb6",
+  "guest_sources_sha256": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "1d936a79121040bb6415cff2aa0e0459734222bfbf8c7f4452d52452389f85a2",
+    "crates/perp-core/src/commitment.rs": "02ccf0ead5b545fc6b06948df5f5cd31c4126b417bf5097c972f725e412fa801",
+    "crates/perp-core/src/engine.rs": "e42c15a7ef7473b6ba15faea7aa0a974b1799cc525802159edc0a48ec32794aa",
+    "crates/perp-core/src/error.rs": "d1e146386deb79870fd288732265347bd207b91c153633c079e42ec7c63a8c20",
+    "crates/perp-core/src/fixed.rs": "6d5a39e6d4c9facada98d0dba398990efb8db1bc9705d0dc58f86b6333fd69c2",
+    "crates/perp-core/src/funding.rs": "d3f393138b31ed843a24c63943fb15ec0f07a860ac629ce1ca15feb40d93fea9",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "d69657981bfd0d7f8e97230e7f0cbcf0d548d9fa5b69e8fb1c941864db1e9d50",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "2cbddc2a07b738dbe6ede79e447acfa6ab68499036ca48db50e53f9a97890ad2",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "c396e40e5d757849e507d60be6b0fbab34443f1fb0d6e091feff047fad3544a8",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "38f1321b773e5ca2f7978059381059340e67011750faac253af4fb21382c712f",
+    "crates/perp-core/src/position.rs": "c56b36e5adf77300eae6f237d04260aa25f535bf730b566a17c16e07e121e821",
+    "crates/perp-core/src/state.rs": "fcb6719b4f91f95e2dce88166cd80302144c049b97a3edab085e66353d2aea55",
+    "crates/sp1-guest/Cargo.lock": "6352cf76bf63ed1a0dfd44e54aa9832cfc1c67b9facb6ce3396270f2d15fff33",
+    "crates/sp1-guest/Cargo.toml": "c4310424be580e30f351f98644e47211dc286c2c020f6d81c1967cd6343a2bd6",
+    "crates/sp1-guest/src/main.rs": "8dc8437f4f3938fa430efc43e27b7ffcdd0ab4447462db036a08afef92d2fa9a"
+  },
+  "reviewed_guest_sources_sha256": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "1d936a79121040bb6415cff2aa0e0459734222bfbf8c7f4452d52452389f85a2",
+    "crates/perp-core/src/commitment.rs": "02ccf0ead5b545fc6b06948df5f5cd31c4126b417bf5097c972f725e412fa801",
+    "crates/perp-core/src/engine.rs": "e42c15a7ef7473b6ba15faea7aa0a974b1799cc525802159edc0a48ec32794aa",
+    "crates/perp-core/src/error.rs": "d1e146386deb79870fd288732265347bd207b91c153633c079e42ec7c63a8c20",
+    "crates/perp-core/src/fixed.rs": "6d5a39e6d4c9facada98d0dba398990efb8db1bc9705d0dc58f86b6333fd69c2",
+    "crates/perp-core/src/funding.rs": "d3f393138b31ed843a24c63943fb15ec0f07a860ac629ce1ca15feb40d93fea9",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "d69657981bfd0d7f8e97230e7f0cbcf0d548d9fa5b69e8fb1c941864db1e9d50",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "2cbddc2a07b738dbe6ede79e447acfa6ab68499036ca48db50e53f9a97890ad2",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "c396e40e5d757849e507d60be6b0fbab34443f1fb0d6e091feff047fad3544a8",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "38f1321b773e5ca2f7978059381059340e67011750faac253af4fb21382c712f",
+    "crates/perp-core/src/position.rs": "c56b36e5adf77300eae6f237d04260aa25f535bf730b566a17c16e07e121e821",
+    "crates/perp-core/src/state.rs": "fcb6719b4f91f95e2dce88166cd80302144c049b97a3edab085e66353d2aea55",
+    "crates/sp1-guest/Cargo.lock": "6352cf76bf63ed1a0dfd44e54aa9832cfc1c67b9facb6ce3396270f2d15fff33",
+    "crates/sp1-guest/Cargo.toml": "c4310424be580e30f351f98644e47211dc286c2c020f6d81c1967cd6343a2bd6",
+    "crates/sp1-guest/src/main.rs": "8dc8437f4f3938fa430efc43e27b7ffcdd0ab4447462db036a08afef92d2fa9a"
+  },
+  "source_sha256": {
+    "scripts/local-verification/verify_clock_proof.py": "ef9d585564e4fe999990869f00d66e8cd3872a70911ed23dd6b0b04bb3303eb6",
+    "scripts/local-verification/verify_real_proof.py": "523a34365c1cc36a4c946321ebdda02a6b65ecfc0bf97fa91bb842f86719843d",
+    "contracts/integration/ClockBoundRealProof.t.sol": "3de85592f3bd2683ec5b1f2a3429d01677a906c44f353262c66831552badf7d6",
+    "contracts/integration/RealSP1TestBase.sol": "caa282d511ee9c55dd9867dda78830244d33ac27a6294a51f88384a53f66ce94",
+    "contracts/integration/SP1RealProof.t.sol": "99276963ae99ea5fae6f79fcc7e0337c0cd875e4548c006b6454119ee752a098",
+    "contracts/integration/SP1RealVerifierGuard.t.sol": "083a6eed433353b6c983fe8e733a25fe78a81935265242a752c9ad725026eb6b",
+    "contracts/src/SP1ZkVerifier.sol": "f73bf945ec0be9a134bfb43269ba2517e091daa1f25553e846670d8b47056a68",
+    "contracts/src/ClockBoundVerifier.sol": "7b6821ece680b9a1a2ba36002c899e86585a078e644971f0c2aed695aaaf4a18",
+    "contracts/src/DarkPerpSettlement.sol": "fbd16439fa47f0aaf8ba19dc6ba542fdfae7fe8ec76fe300ffef3f0a2263e372",
+    "contracts/src/CollateralVault.sol": "77dbfbd20b5ecc4df9f387b04ea27a98424e8e469be1c3c08e3d21eb79e0a71a"
+  },
+  "compiled_contracts": {
+    "upstream_verifier": {
+      "artifact_path": "out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json",
+      "artifact_sha256": "baf5863b906904b51a2dfb684bc21a4dc147ab0b2c15021fb1e45dbbc6f51c0f",
+      "compiler": "0.8.20+commit.a1b79de6",
+      "creation_bytecode_sha256": "36c6488fc23bd3976d816e25c0c5b6aa638878e9493ccdac452d5c7604b7ce77",
+      "deployed_bytecode_template_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    },
+    "upstream_gateway": {
+      "artifact_path": "out/sp1-upstream/SP1VerifierGateway.sol/SP1VerifierGateway.json",
+      "artifact_sha256": "e8bdc916a7fb3922edfcd7f1f565d750550c99db6af933b2ea1ebcb576ce6eef",
+      "compiler": "0.8.20+commit.a1b79de6",
+      "creation_bytecode_sha256": "47723ad4dd3b21eb622af635bfd4b5584e021c95808f5b5d9d812650705f1e14",
+      "deployed_bytecode_template_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    },
+    "sp1_adapter": {
+      "artifact_path": "out/SP1ZkVerifier.sol/SP1ZkVerifier.json",
+      "artifact_sha256": "3b4447e9973eb5190edf4d4af6b2c8bd4dc7c6892c0cb7b4e947d1613f537aae",
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "creation_bytecode_sha256": "546169311f83a2a97005f36dc75f8a627dbdf94c9ba4964ae1b3117baa3bd7f7",
+      "deployed_bytecode_template_sha256": "add231cac455e09802b0076ad285a6c35cc81d3840465dd2e5285ba058deb70e",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    },
+    "clock_adapter": {
+      "artifact_path": "out/ClockBoundVerifier.sol/ClockBoundVerifier.json",
+      "artifact_sha256": "10c0429c97910f903b41bda78b45f32d14465cf4eaa8b04c925b808dd6318416",
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "creation_bytecode_sha256": "d419febd1298f5dc37579d4ace1e4a9aa5877ebf01a85daf553fb3f61e9aa432",
+      "deployed_bytecode_template_sha256": "6b173292d19ce1c1bf89ab677f1ad812277c3ceebf6c9eecaf790834ff208960",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    },
+    "settlement": {
+      "artifact_path": "out/DarkPerpSettlement.sol/DarkPerpSettlement.json",
+      "artifact_sha256": "8ec2bc8699e481d1726c3b151acea2bebcb8b566a16d73a7db4c497c1b367ce7",
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "creation_bytecode_sha256": "1cf3d6742ba754aee2f79a2913e15c28c58bba1555a3cf13305a2e55ea24771f",
+      "deployed_bytecode_template_sha256": "8ef6c4c8789877d33f861e9b1c5d591e8623492f09c4f4193b32f1c65d054a64",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    },
+    "vault": {
+      "artifact_path": "out/CollateralVault.sol/CollateralVault.json",
+      "artifact_sha256": "60f274b3b39c18887d63924a3ccef97c60f5a51a46aae017fb88e965dd538fd1",
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "creation_bytecode_sha256": "14b86f0a0923dfaca62db7200b86dc55425102657950dd4e24ea8e07952e498a",
+      "deployed_bytecode_template_sha256": "837c88256e27d759694496c0e492ff2e212e0234b4959548ebf604ec8af00d28",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    }
+  },
+  "vendor_upstreams": [
+    {
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "tag": "v6.1.0",
+      "archive_url": "https://codeload.github.com/succinctlabs/sp1-contracts/tar.gz/2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "archive_sha256": "f9466b50856007220cc8e10cb9bd02a162c779ab0efc74668fe2906e4a8116a5"
+    },
+    {
+      "repository": "https://github.com/OpenZeppelin/openzeppelin-contracts",
+      "commit": "dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "tag": "v5.0.2",
+      "archive_url": "https://codeload.github.com/OpenZeppelin/openzeppelin-contracts/tar.gz/dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "archive_sha256": "4a9c091852052f4319173629e0bf0b5cdf7a39d70e5e2298a7a6a149eff9f385"
+    }
+  ]
+}

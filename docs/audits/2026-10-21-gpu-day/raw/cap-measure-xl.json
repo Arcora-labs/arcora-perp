@@ -1,0 +1,169 @@
+{
+  "calibration": {
+    "cycles_per_permutation": 1608.3333333333333,
+    "gas_per_permutation": 2670.839285714286,
+    "method": "tree-depth differential: one leaf, no ops, depths 8/36/64; each level adds one 65-byte MerkleNode hash to decode and to each of the two state roots",
+    "midpoint_prediction_error": 0.0,
+    "points": [
+      {
+        "cycles": 129029,
+        "gas": 208253,
+        "permutations": 60,
+        "tree_depth": 8
+      },
+      {
+        "cycles": 264129,
+        "gas": 432609,
+        "permutations": 144,
+        "tree_depth": 36
+      },
+      {
+        "cycles": 399229,
+        "gas": 656954,
+        "permutations": 228,
+        "tree_depth": 64
+      }
+    ]
+  },
+  "elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+  "executor": "sp1-sdk light client, execute only (no setup, no proving)",
+  "host_arch": "aarch64",
+  "host_os": "macos",
+  "kind": "pkg3-history-measurement",
+  "runs": [
+    {
+      "batch": "phase1-haircut",
+      "commitment": "0x62738fec19e7b6f43c89065b2a1c856b71c629f13d4d47d2fcb14412c8001ba1",
+      "cycles": 807423472,
+      "gas": 1175976130,
+      "guest_execute_wall_s": 12.549302084,
+      "keccak_native": {
+        "absorbed_bytes": 24479931,
+        "hash_calls": 286907,
+        "permutations": 344780
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 3601536,
+          "hash_calls": 31872,
+          "permutations": 31872
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 2073273,
+          "hash_calls": 31897,
+          "permutations": 31897
+        },
+        "new_state_root": {
+          "absorbed_bytes": 10035535,
+          "hash_calls": 127503,
+          "permutations": 155353
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 8768784,
+          "hash_calls": 95632,
+          "permutations": 125651
+        }
+      },
+      "keccak_share_estimate": 0.6867786061422136,
+      "native_guest_equal": true,
+      "native_transition_s": 0.082074959,
+      "ops": [
+        "SettleAll"
+      ],
+      "peak_rss_bytes": 4154359808,
+      "peak_rss_bytes_before_execute": 108756992,
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 6432,
+        "spent_nullifiers": 31872,
+        "tree_leaves": 63744,
+        "unspent_notes": 15936
+      },
+      "shape": {
+        "history": 79680,
+        "markets": 4,
+        "positions": 7968,
+        "spent_nullifiers": 31872,
+        "tree_leaves": 47808,
+        "unspent_notes": 15936
+      },
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "witness_build_s": 0.241283833,
+      "witness_bytes": 4813642,
+      "witness_sha256": "b347aed8520761d4590f3b57361a36baff49f78005c359fad5e7dd899b3cb8db"
+    },
+    {
+      "batch": "phase1-haircut",
+      "commitment": "0xc7ad235623148acc2d52c4aac5b83d9fed1613dd793c8e5487f6956ee2ca80c6",
+      "cycles": 1081722393,
+      "gas": 1584210596,
+      "guest_execute_wall_s": 16.449515708,
+      "keccak_native": {
+        "absorbed_bytes": 32637562,
+        "hash_calls": 382522,
+        "permutations": 459678
+      },
+      "keccak_native_by_stage": {
+        "apply_batch": {
+          "absorbed_bytes": 4802048,
+          "hash_calls": 42496,
+          "permutations": 42496
+        },
+        "commitment": {
+          "absorbed_bytes": 803,
+          "hash_calls": 3,
+          "permutations": 7
+        },
+        "decode": {
+          "absorbed_bytes": 2763833,
+          "hash_calls": 42521,
+          "permutations": 42521
+        },
+        "new_state_root": {
+          "absorbed_bytes": 13380559,
+          "hash_calls": 169999,
+          "permutations": 207134
+        },
+        "prev_state_root": {
+          "absorbed_bytes": 11690319,
+          "hash_calls": 127503,
+          "permutations": 167520
+        }
+      },
+      "keccak_share_estimate": 0.6834613527317447,
+      "native_guest_equal": true,
+      "native_transition_s": 0.117031625,
+      "ops": [
+        "SettleAll"
+      ],
+      "peak_rss_bytes": 4727439360,
+      "peak_rss_bytes_before_execute": 4154359808,
+      "post_state": {
+        "mode": "CloseOnly",
+        "positions": 8582,
+        "spent_nullifiers": 42496,
+        "tree_leaves": 84992,
+        "unspent_notes": 21248
+      },
+      "shape": {
+        "history": 106240,
+        "markets": 4,
+        "positions": 10624,
+        "spent_nullifiers": 42496,
+        "tree_leaves": 63744,
+        "unspent_notes": 21248
+      },
+      "withdrawals_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "witness_build_s": 0.330639625,
+      "witness_bytes": 6417999,
+      "witness_sha256": "35dad335e12eb51422595b1529ca3c0b5fb6673cc61a15317ebcdfea586064a1"
+    }
+  ],
+  "sdk_version": "6.1.0",
+  "size_mapping": "H a multiple of 80; unspent notes N = H/5; positions P = H/10 over 4 markets; tree leaves L = (H+N)/2 = 3N; spent nullifiers F = H - L = L - N"
+}
