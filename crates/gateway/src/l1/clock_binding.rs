@@ -747,6 +747,48 @@ impl L1 {
             })
         })
     }
+    /// The terms of `triggerCloseOnly` at the latest block: the settlement's last
+    /// progress and liveness timeout, and the landing block of the oldest
+    /// deposit no settled batch consumed. While a clock window is recovering,
+    /// they tell how long the settlement can wait for it.
+    pub(crate) fn close_only_budget(
+        &self,
+    ) -> Result<crate::clock_recovery::CloseOnlyBudget, String> {
+        let s = &self.settlement;
+        let vault = self.vault.as_ref().ok_or("L1_VAULT not set")?;
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            let consumed = abi_u64(
+                r.word(s, "consumedDepositCount()", None)?,
+                "consumedDepositCount",
+            )?;
+            let deposits = abi_u64(r.word(vault, "depositCount()", None)?, "depositCount")?;
+            let oldest_unconsumed_deposit_block = if deposits > consumed {
+                Some(abi_u64(
+                    r.word(
+                        vault,
+                        "depositBlock(uint64)",
+                        Some(observation::u64_word(consumed)),
+                    )?,
+                    "depositBlock",
+                )?)
+            } else {
+                None
+            };
+            Ok(crate::clock_recovery::CloseOnlyBudget {
+                head: r.height(),
+                last_progress_block: abi_u64(
+                    r.word(s, "lastProgressBlock()", None)?,
+                    "lastProgressBlock",
+                )?,
+                liveness_timeout_blocks: abi_u64(
+                    r.word(s, "livenessTimeoutBlocks()", None)?,
+                    "livenessTimeoutBlocks",
+                )?,
+                oldest_unconsumed_deposit_block,
+                close_only: abi_bool(r.word(s, "closeOnly()", None)?, "closeOnly")?,
+            })
+        })
+    }
     /// Immediately before a recovery settle: the anchor `receipt` names for
     /// (batch, phase) must still be registered, and the receipt not cancelled, at
     /// the latest block. Anything else, a failed read included, sends nothing.
@@ -774,7 +816,6 @@ impl L1 {
     /// `expected`. The fence records `expected` before the broadcast, like every
     /// sequencer-key send. With its explicit gas limit cast runs no estimate. It
     /// touches no contract.
-    #[cfg_attr(not(test), allow(dead_code))] // used by the settle loop's recovery
     pub(crate) fn burn_sequencer_nonce(&self, expected: u64) -> Result<String, String> {
         let lane = self.sequencer_lane();
         let mut lane_next = lane.nonce.lock().map_err(|_| "nonce lock poisoned")?;

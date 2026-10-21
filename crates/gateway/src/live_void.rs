@@ -70,7 +70,6 @@ pub(crate) struct VoidReport {
     /// One `execution` event per account order record the void changed, tagged
     /// with its owner like the tick's events. The caller sends them once the
     /// void is durable.
-    #[cfg_attr(not(test), allow(dead_code))] // sent by the settle loop's recovery
     pub order_events: Vec<String>,
 }
 
@@ -120,7 +119,6 @@ impl VoidBreaker {
 
     /// A window with timed operations settled: the voids before it are no longer
     /// consecutive.
-    #[cfg_attr(not(test), allow(dead_code))] // called by the settle loop
     pub(crate) fn timed_window_settled(&mut self) {
         self.consecutive = 0;
     }

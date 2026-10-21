@@ -755,6 +755,74 @@ impl Gw {
     }
 }
 
+/// Clear the deposit barrier for a settle while clock admission is closed, when
+/// ingestion cannot run: a pending durability acknowledgement is waited for, and a
+/// prefix that is not verified yet is read once from the finalized vault. The page
+/// read is not applied: a page that starts at the engine's cursor shows that the
+/// finalized prefix is the engine's. A halt is never cleared; a halting read is
+/// recorded as ingestion records it.
+pub async fn refresh_readiness(app: &Shared) -> Result<(), String> {
+    let _serial = app.deposit_serial.lock().await;
+    let (halt, dirty, unverified, cursor) = {
+        let gw = app.gw.lock().await;
+        let d = &gw.deposits;
+        (
+            d.halt.clone(),
+            d.dirty,
+            d.required && !d.ready,
+            gw.deposit_cursor(),
+        )
+    };
+    if let Some(reason) = halt {
+        return Err(format!("deposit safety halt: {reason}"));
+    }
+    if dirty {
+        snapshot_now(&app.snapshot_req).await?;
+        app.gw.lock().await.deposits.dirty = false;
+    }
+    if unverified {
+        let source = app
+            .deposit_source
+            .clone()
+            .ok_or("automatic L1 deposit source is not configured")?;
+        let read = cursor.clone();
+        let fetched = match tokio::task::spawn_blocking(move || source.fetch(read)).await {
+            Ok(result) => result,
+            Err(e) => Err(Error::Retry(format!("deposit reader task failed: {e}"))),
+        };
+        match fetched {
+            Ok(page) if page.start == cursor => {
+                let mut gw = app.gw.lock().await;
+                if gw.deposit_cursor() != cursor {
+                    return Err("the deposit cursor moved during the readiness read".into());
+                }
+                gw.deposits.ready = true;
+                gw.deposits.last_error = None;
+            }
+            Ok(_) => return Err("the readiness read did not start at the deposit cursor".into()),
+            Err(error) => {
+                {
+                    let mut gw = app.gw.lock().await;
+                    gw.deposits.ready = false;
+                    gw.deposits.last_error = Some(error.to_string());
+                    if let Error::Halt(reason) = &error {
+                        gw.deposits.halt = Some(reason.clone());
+                        gw.deposits.dirty = true;
+                        gw.ops_alerts
+                            .activate(crate::ops_alerts::AlertKind::DepositHalted);
+                    }
+                }
+                if matches!(error, Error::Halt(_)) {
+                    snapshot_now(&app.snapshot_req).await?;
+                    app.gw.lock().await.deposits.dirty = false;
+                }
+                return Err(error.to_string());
+            }
+        }
+    }
+    app.gw.lock().await.deposits.check_ready()
+}
+
 /// Serialize automatic polling and manual accelerators over RPC, application and
 /// the durable ACK. Do not hold Gw across RPC or disk I/O. Cancellation leaves the
 /// dirty barrier armed; the next caller retries persistence before doing more work.

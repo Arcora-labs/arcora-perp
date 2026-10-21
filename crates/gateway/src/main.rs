@@ -101,6 +101,7 @@ mod challenge_auth;
 mod challenge_scan;
 mod clock_admission;
 mod clock_client;
+mod clock_recovery;
 mod clock_wait;
 #[cfg(test)]
 mod continuation_settlement_tests;
@@ -7262,6 +7263,68 @@ fn request_settlement_retry(
     Ok(gw.settle_health.health().as_str().to_string())
 }
 
+/// Commit a window whose own settle landed, and make the commit durable before
+/// admission reopens: the tail every settle-loop path shares once it saw its
+/// settle land. A settled window with timed operations ends the run of
+/// consecutive live voids.
+async fn commit_and_resolve(
+    app: &Shared,
+    witness: &WindowWitness,
+    prepared: prover_client::PreparedSettle,
+    status: L1Status,
+    observation: trading_gate::GateObservation,
+    claimed: &[[u8; 32]],
+    admission: &mut Option<clock_admission::Paused>,
+) -> Result<(), String> {
+    let ordered = witness.manifest.ordered.clone();
+    let rejected: Vec<Digest> = witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+    let timed =
+        perp_core::clock::TimeBounds::derive(&witness.ops).is_ok_and(|bounds| bounds.count > 0);
+    {
+        let mut gw = app.gw.lock().await;
+        gw.commit_window_settle(
+            witness.batch_id,
+            ordered,
+            rejected,
+            prepared,
+            status,
+            observation,
+        );
+        gw.prune_claimed_withdrawals(claimed);
+        if timed {
+            gw.void_breaker.timed_window_settled();
+        }
+        // FIN-001: this window settled — clear any failure/HELD state.
+        if gw.settle_breaker_recovered() {
+            println!("[l1] settlement recovered → HEALTHY");
+        }
+    }
+    if let Some(p) = admission.as_mut() {
+        snapshot_now(&app.snapshot_req).await?;
+        p.resolved();
+    }
+    Ok(())
+}
+
+/// A clock window failed after its intent was journaled and is now recovered by
+/// the settle loop: the failure counts toward HELD, whose line names the window
+/// and no error text. Returns the delay before the first recovery step.
+async fn note_clock_failure(app: &Shared, batch_id: u64, error: &str) -> Duration {
+    let mut gw = app.gw.lock().await;
+    let (action, just_held) =
+        gw.settle_breaker_failed(format!("clock window {batch_id} unresolved: {error}"));
+    if just_held {
+        eprintln!(
+            "{}",
+            settle_health::held_recovery_alert_message(
+                batch_id,
+                gw.settle_health.consecutive_failures()
+            )
+        );
+    }
+    action.delay()
+}
+
 async fn hold_settlement_for_recovery(app: &Shared, error: String) {
     let mut gw = app.gw.lock().await;
     gw.settle_health.hold_for_recovery(error);
@@ -7321,10 +7384,13 @@ async fn post_v1_admin_resume(State(app): State<Shared>, headers: HeaderMap) -> 
 /// `POST /v1/admin/settlement/cancel-anchor {"batchId": n, "phase": p, "receipt": "0x…"}`
 /// (`X-Admin-Key: FIN_ADMIN_KEY`): cancel a clock anchor whose bound proof will never
 /// settle, as the registrant role, once it is older than `anchorTimeoutMs` at the
-/// latest block. Refused while the settle loop is working on that batch and phase.
+/// latest block. Refused with a retryable 409 while the settle loop is working on a
+/// window: while it registers, proves or settles that batch and phase, and during
+/// each recovery step, from its finalized read until its decision is carried out.
 /// Every `cancel` precondition is checked before the transaction is sent; a send
 /// error is ambiguous and must be confirmed with `cancelledReceipt(receipt)`.
-/// Cancelling does not resolve the local window: boot recovery does, after a restart.
+/// The settle loop classifies the window at finality and resolves it; a restart is
+/// not needed.
 async fn post_v1_admin_cancel_anchor(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -7372,12 +7438,20 @@ async fn post_v1_admin_cancel_anchor(
             .into_response();
     };
     // Held across the check and the send, so the settle loop cannot start on
-    // this window in between.
-    let in_flight = app.settle_in_flight.lock().await;
+    // this window in between. Never waited for: a recovery step holds it through
+    // its whole attempt.
+    const BUSY: &str = "the settle loop is working on this window; retry";
+    let Ok(in_flight) = app.settle_in_flight.try_lock() else {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": BUSY })),
+        )
+            .into_response();
+    };
     if *in_flight == Some((batch, phase)) {
         return (
             StatusCode::CONFLICT,
-            Json(serde_json::json!({"error":"the settle loop is registering, proving or settling this window; cancel only once it has stopped"})),
+            Json(serde_json::json!({ "error": BUSY })),
         )
             .into_response();
     }
@@ -11512,6 +11586,15 @@ async fn main() {
         let jpath = state_path.as_deref().map(rollback_journal::journal_path);
         let snapshot_notify = snapshot_notify.clone();
         let stop = service_policy.shutdown.clone();
+        // A clock window the loop recovers is settled only against an anchor that
+        // already exists.
+        let recovery_chain: Option<Arc<dyn clock_recovery::RecoveryChain>> =
+            prover_existing_only.clone().map(|client| {
+                Arc::new(clock_recovery::L1Recovery {
+                    l1: l1.clone(),
+                    client,
+                }) as Arc<dyn clock_recovery::RecoveryChain>
+            });
         background.push(tokio::spawn(async move {
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
@@ -11531,6 +11614,10 @@ async fn main() {
             // Set when the preflight saw close-only at the latest block, before the
             // finalized close-only latch that `begin_window_settle_mode` checks.
             let mut close_only_seen = false;
+            // A clock window that failed after its intent was journaled. While it is
+            // set the window stays sealed and admission closed, and each attempt is
+            // one recovery step instead of a seal.
+            let mut pending: Option<clock_recovery::PendingRecovery> = None;
             loop {
                 if !stop.next_tick(&mut iv).await { break; }
                 // FIN-001 Task 4: an operator forced a resume (POST /v1/admin/settlement/resume) —
@@ -11558,8 +11645,9 @@ async fn main() {
                     // count read skips this tick.
                     let clocked = client.clock_enabled();
                     let liveness_due = tokio::time::Instant::now() >= liveness_read_at;
-                    let read_pre =
-                        clocked && (liveness_due || !app.gw.lock().await.window_is_idle());
+                    let read_pre = clocked
+                        && pending.is_none()
+                        && (liveness_due || !app.gw.lock().await.window_is_idle());
                     let l1c = l1.clone();
                     let pre_client = client.clone();
                     let (bond, swept, bc, pre) = match tokio::task::spawn_blocking(move || {
@@ -11611,6 +11699,34 @@ async fn main() {
                             continue;
                         }
                     };
+                    // A pending clock window: one recovery step, admission closed
+                    // throughout (the failed attempt left the hold sticky).
+                    if let Some(rec) = pending.as_mut() {
+                        let mut admission = match app.clock_admission.pause(&stop).await {
+                            Ok(p) => p, Err(_) => break,
+                        };
+                        let (Some(chain), Some(jp)) = (recovery_chain.as_ref(), jpath.as_deref()) else {
+                            hold_settlement_for_recovery(&app, format!("clock window {} unresolved without its journal or bridge", rec.batch_id)).await;
+                            break;
+                        };
+                        match clock_recovery::run_step(&app, chain, rec, jp, &enclave_seed, &mut admission).await {
+                            clock_recovery::Step::Resolved { close_only } => {
+                                pending = None;
+                                next_attempt = tokio::time::Instant::now();
+                                close_only_seen |= close_only;
+                                snapshot_notify.notify_one();
+                                let snap = { app.snapshot(&*app.gw.lock().await) };
+                                let _ = app.tx.send(
+                                    serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
+                                );
+                            }
+                            clock_recovery::Step::Wait(delay) => {
+                                next_attempt = tokio::time::Instant::now() + delay;
+                            }
+                            clock_recovery::Step::Stop => break,
+                        }
+                        continue;
+                    }
                     let mut admission = match app.clock_admission.pause(&stop).await {
                         Ok(p) => p, Err(_) => break,
                     };
@@ -11738,14 +11854,6 @@ async fn main() {
                         break;
                     }
                     if let Some(p) = admission.as_mut() { p.arm(); }
-                    let ordered = journal.witness.manifest.ordered.clone();
-                    let rejected: Vec<Digest> = journal
-                        .witness
-                        .manifest
-                        .rejected
-                        .iter()
-                        .map(|(h, _)| *h)
-                        .collect();
                     let batch_id = journal.batch_id;
                     let witness_rb = journal.witness.clone();
                     let ww_rb = journal.ww.clone();
@@ -11889,6 +11997,7 @@ async fn main() {
                     let envelope_bg = envelope.clone();
                     let deposit_guard_app = app.clone();
                     let clock_mode = client.clock_enabled();
+                    let prune_rb = prune_candidates.clone();
                     let window_phase = journal
                         .prepared
                         .as_ref()
@@ -11979,30 +12088,21 @@ async fn main() {
                                 tx,
                                 status.withdrawals_root
                             );
+                            // FIN-001: this window settled — the shared commit clears any
+                            // failure/HELD state; (below) resume the normal settle cadence.
+                            if let Err(error) = commit_and_resolve(
+                                &app,
+                                &witness_rb,
+                                prepared,
+                                status,
+                                observation,
+                                &claimed,
+                                &mut admission,
+                            )
+                            .await
                             {
-                                let mut gw = app.gw.lock().await;
-                                gw.commit_window_settle(
-                                    batch_id,
-                                    ordered,
-                                    rejected,
-                                    prepared,
-                                    status,
-                                    observation,
-                                );
-                                gw.prune_claimed_withdrawals(&claimed);
-                                // FIN-001: this window settled — clear any failure/HELD state
-                                // and (below) resume the normal settle cadence.
-                                let was_held = gw.settle_breaker_recovered();
-                                if was_held {
-                                    println!("[l1] settlement recovered → HEALTHY");
-                                }
-                            }
-                            if let Some(p) = admission.as_mut() {
-                                if let Err(error) = snapshot_now(&app.snapshot_req).await {
-                                    hold_settlement_for_recovery(&app, format!("clock commit snapshot not durable: {error}")).await;
-                                    break;
-                                }
-                                p.resolved();
+                                hold_settlement_for_recovery(&app, format!("clock commit snapshot not durable: {error}")).await;
+                                break;
                             }
                             next_attempt = tokio::time::Instant::now();
                             // Task 3 (WAL): the journal outlives the commit — boot's STALE
@@ -12018,9 +12118,28 @@ async fn main() {
                         }
                         Ok(SettleAttempt::ClockFailed(e)) => {
                             // A registration may already be mined or pending. Never
-                            // merge this immutable window with newer ops on a retry.
-                            hold_settlement_for_recovery(&app, format!("clock-bound window unresolved: {e}; retain journal and restart to resume exact witness")).await;
-                            break;
+                            // merge this immutable window with newer ops on a retry:
+                            // the window stays sealed, admission stays closed, and the
+                            // recovery decides it at finalized blocks.
+                            match perp_core::clock::TimeBounds::derive(&witness_rb.ops) {
+                                Ok(b) if b.count > 0 => eprintln!(
+                                    "[recovery] window {batch_id}: clock failed {} ms after its last timed op: {e}",
+                                    now_ms().saturating_sub(b.last_ms)
+                                ),
+                                _ => eprintln!("[recovery] window {batch_id}: clock failed: {e}"),
+                            }
+                            let delay = note_clock_failure(&app, batch_id, &e).await;
+                            // Taken after the worker returned: a send holds its lane
+                            // until cast returns, so this covers every send it made.
+                            pending = Some(clock_recovery::PendingRecovery::new(
+                                batch_id,
+                                window_phase,
+                                e,
+                                prune_rb,
+                                gate_was_closed,
+                                l1.nonce_ceiling(),
+                            ));
+                            next_attempt = tokio::time::Instant::now() + delay;
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
                             eprintln!(
@@ -12108,36 +12227,26 @@ async fn main() {
                                                     ),
                                                 };
                                                 eprintln!("[l1] settle reported '{err}' but the tx LANDED (batchCount {batch_id}->{now_bc}); rolled forward + committed bookkeeping");
+                                                // FIN-001: this ambiguous-but-landed settle
+                                                // reached finality — the shared commit clears
+                                                // any failure/HELD state, exactly like the clean
+                                                // Ok path (else the breaker reports HELD forever
+                                                // after a recovery via this path). A landed
+                                                // settlement is a success — resume the normal
+                                                // settle cadence (mirror the clean Ok arm).
+                                                if let Err(error) = commit_and_resolve(
+                                                    &app,
+                                                    &witness_rb,
+                                                    prepared,
+                                                    status,
+                                                    observation,
+                                                    &[],
+                                                    &mut admission,
+                                                )
+                                                .await
                                                 {
-                                                    let mut gw = app.gw.lock().await;
-                                                    gw.commit_window_settle(
-                                                        batch_id,
-                                                        ordered,
-                                                        rejected,
-                                                        prepared,
-                                                        status,
-                                                        observation,
-                                                    );
-                                                    // FIN-001: this ambiguous-but-landed settle
-                                                    // reached finality — clear any failure/HELD
-                                                    // state, exactly like the clean Ok path (else
-                                                    // the breaker reports HELD forever after a
-                                                    // recovery via this path).
-                                                    let was_held = gw.settle_breaker_recovered();
-                                                    if was_held {
-                                                        println!(
-                                                            "[l1] settlement recovered → HEALTHY"
-                                                        );
-                                                    }
-                                                }
-                                                // a landed settlement is a success — resume the
-                                                // normal settle cadence (mirror the clean Ok arm).
-                                                if let Some(p) = admission.as_mut() {
-                                                    if let Err(error) = snapshot_now(&app.snapshot_req).await {
-                                                        hold_settlement_for_recovery(&app, format!("clock recovered snapshot not durable: {error}")).await;
-                                                        break;
-                                                    }
-                                                    p.resolved();
+                                                    hold_settlement_for_recovery(&app, format!("clock recovered snapshot not durable: {error}")).await;
+                                                    break;
                                                 }
                                                 next_attempt = tokio::time::Instant::now();
                                                 // Task 3 (WAL): the journal outlives the commit —
@@ -12153,6 +12262,22 @@ async fn main() {
                                                 );
                                             }
                                         }
+                                        RollAction::Hold if clock_mode && now_bc == batch_id => {
+                                            // The settle may still land, or never: the
+                                            // recovery decides at finalized blocks, with
+                                            // the window sealed and admission closed.
+                                            eprintln!("[recovery] window {batch_id}: settle failed and finalized batchCount is still {now_bc}: {err}");
+                                            let delay = note_clock_failure(&app, batch_id, &err).await;
+                                            pending = Some(clock_recovery::PendingRecovery::new(
+                                                batch_id,
+                                                window_phase,
+                                                err,
+                                                prune_rb,
+                                                gate_was_closed,
+                                                l1.nonce_ceiling(),
+                                            ));
+                                            next_attempt = tokio::time::Instant::now() + delay;
+                                        }
                                         RollAction::Hold => {
                                             // Task 2: HOLD keeps the journal (rollback inputs preserved
                                             // for the operator / Task-3 boot recovery).
@@ -12161,6 +12286,19 @@ async fn main() {
                                             break;
                                         }
                                     }
+                                }
+                                _ if clock_mode => {
+                                    eprintln!("[recovery] window {batch_id}: settle failed ({err}) and the pinned observation failed; the recovery reads the settlement again");
+                                    let delay = note_clock_failure(&app, batch_id, &err).await;
+                                    pending = Some(clock_recovery::PendingRecovery::new(
+                                        batch_id,
+                                        window_phase,
+                                        err,
+                                        prune_rb,
+                                        gate_was_closed,
+                                        l1.nonce_ceiling(),
+                                    ));
+                                    next_attempt = tokio::time::Instant::now() + delay;
                                 }
                                 _ => {
                                     // Task 2: HOLD keeps the journal.
@@ -14681,8 +14819,11 @@ mod tests {
     /// The anchor-cancel endpoint is operator-only, validates its body, needs a
     /// clock-bound bridge, refuses the window the settle loop is working on before
     /// any L1 read, and is reachable while a window holds clock admission closed.
+    /// While a recovery step holds the in-flight lock every request is refused at
+    /// once with a retryable answer; between steps, while the loop waits, a
+    /// request goes on to the L1 checks.
     #[tokio::test]
-    async fn cancel_anchor_endpoint_is_gated_and_refuses_an_in_flight_window() {
+    async fn cancel_endpoint_is_accepted_while_the_loop_waits_and_refused_during_a_step() {
         let _env = wind_down::ADMIN_ENV_LOCK.lock().await;
         use tower::ServiceExt as _;
         let key = "0x".to_string() + &"aa".repeat(32);
@@ -14752,15 +14893,24 @@ mod tests {
         let (status, text) = call(&app, Some(&key), body.clone()).await;
         assert_eq!(status, StatusCode::CONFLICT, "{text}");
         assert!(text.contains("settle loop"), "{text}");
+        assert!(text.contains("retry"), "{text}");
         // Another window passes the in-flight check and reaches the L1 check.
-        let (status, _) = call(
-            &app,
-            Some(&key),
-            serde_json::json!({"batchId": 8, "phase": 0, "receipt": receipt}),
-        )
-        .await;
+        let other = serde_json::json!({"batchId": 8, "phase": 0, "receipt": receipt});
+        let (status, text) = call(&app, Some(&key), other.clone()).await;
         assert_ne!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert_ne!(status, StatusCode::OK);
+        assert!(!text.contains("settle loop"), "{text}");
+        // A recovery step holds the lock: refused at once, for any window.
+        *app.settle_in_flight.lock().await = None;
+        let step = app.settle_in_flight.lock().await;
+        let (status, text) = call(&app, Some(&key), other.clone()).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{text}");
+        assert!(text.contains("working on this window; retry"), "{text}");
+        drop(step);
+        // The loop waits between steps: the request reaches the L1 check again.
+        let (status, text) = call(&app, Some(&key), other).await;
+        assert_ne!(status, StatusCode::OK);
+        assert!(!text.contains("settle loop"), "{text}");
         drop(paused);
         match previous {
             Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),

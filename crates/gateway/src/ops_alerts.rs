@@ -61,7 +61,6 @@ pub enum AlertKind {
     /// failing against its own anchor, a deposit halt blocks the retry, repeated
     /// voids stopped the loop, or the recovery has lasted long or used up half of
     /// the close-only budget. Recovered when the recovery resolves.
-    #[allow(dead_code)] // raised by the settle-loop recovery of a clock-bound window
     ClockRecoveryBlocked,
 }
 
