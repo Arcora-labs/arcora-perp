@@ -1,10 +1,12 @@
 """ops_notify: same target rules as the gateway, fixed schema, bounded retry."""
 import http.server
 import json
+import os
 import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import ops_notify
 
@@ -14,6 +16,22 @@ ROOT = Path(__file__).resolve().parents[2]
 # the first two from their own health fields, and the gateway delivers the last
 # two itself while it runs.
 NOT_RELAYED = {"settlement_held", "deposit_halted", "persistence_failed", "archive_pressure"}
+# The variables ops_notify reads as its target defaults. A shell that sourced
+# ops.env exports them; these tests choose every target themselves.
+TARGET_ENV = ("FIN_ALERT_NTFY_TOPIC", "FIN_ALERT_LOCAL_URL")
+
+
+def hide_environment(names):
+    """Drop `names` from os.environ until the calling module's tests are done."""
+    patcher = mock.patch.dict(os.environ)
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+    for name in names:
+        os.environ.pop(name, None)
+
+
+def setUpModule():
+    hide_environment(TARGET_ENV)
 
 
 def gateway_alert_kinds():
@@ -192,6 +210,15 @@ class OneShotCli(unittest.TestCase):
             self.assertEqual(ops_notify.main(argv), 0)
         self.assertEqual([b["episode"] for b in collector.bodies], [1, 2])
         self.assertEqual({b["event"] for b in collector.bodies}, {"gateway_service_failed"})
+
+    def test_target_can_come_from_the_service_environment(self):
+        # darkperp-notify@.service passes no target flag: ops.env supplies it.
+        collector = Collector()
+        self.addCleanup(collector.close)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"FIN_ALERT_LOCAL_URL": collector.url}):
+            argv = ["--event", "backup_failed", "--state-file", str(Path(tmp) / "notify.json")]
+            self.assertEqual(ops_notify.main(argv), 0)
+        self.assertEqual([b["event"] for b in collector.bodies], ["backup_failed"])
 
     def test_unknown_event_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
