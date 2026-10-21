@@ -2553,6 +2553,88 @@ mod tests {
     }
 
     #[test]
+    fn queued_answers_take_over_a_nonce_whose_no_ops_back_off() {
+        // A stuck inherited transaction at 7 and our answer at 8 fill a lane of
+        // two, and the no-op at 7 fails for a reason that is not about its fees:
+        // attempts at 20 and 60 s, the next one due at 120 s. A second answer is
+        // planned from 70 s on and waits for a slot. A round every 10 s.
+        let chain = FakeChain::new();
+        chain.s().mined = 7;
+        chain.s().base_fee = 10_000; // nothing mines
+        chain.s().cancel_fails = Some("insufficient funds for gas * price + value".into());
+        chain.preload(
+            7,
+            Fees {
+                max_fee: 20,
+                priority: 1,
+            },
+        );
+        let clock = TestClock::new();
+        let mut lane = Pipeline::new(Policy {
+            max_in_flight: 2,
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(1),
+            ..calm()
+        });
+        lane.round(&chain, &clock, sends(&[1]));
+        let mut report = RoundReport::default();
+        while clock.elapsed() < Duration::from_secs(110) {
+            clock.advance(Duration::from_secs(10));
+            let plan = if clock.elapsed() >= Duration::from_secs(70) {
+                sends(&[2])
+            } else {
+                vec![]
+            };
+            report = lane.round(&chain, &clock, plan);
+        }
+        // The queued answer does not cut the wait short.
+        assert_eq!(chain.s().cancels, 2);
+        assert!(chain.accepted_nonces().iter().all(|n| *n == 8));
+        assert_eq!(
+            (report.deferred, report.blocked_at),
+            (1, Some(7)),
+            "{report:?}"
+        );
+        assert!(
+            report.first_error.as_deref().is_some_and(
+                |e| e.contains("nonce 7 failed 2 time(s) in a row, next attempt in 10 s")
+            ),
+            "{report:?}"
+        );
+
+        // When the wait ends the queued answer, not a third no-op, takes the
+        // nonce over. The nonce now holds an answer of ours: it no longer blocks
+        // the lane, and no round names the earlier no-op failures.
+        clock.advance(Duration::from_secs(10));
+        let report = lane.round(&chain, &clock, sends(&[2]));
+        assert_eq!(chain.s().cancels, 2);
+        let at_7: Vec<(u64, Vec<Digest>)> = chain
+            .s()
+            .accepted
+            .iter()
+            .filter(|a| a.0 == 7)
+            .map(|a| (a.2, a.3.clone()))
+            .collect();
+        assert_eq!(at_7, vec![(2, vec![h(2)])]);
+        assert_eq!(
+            (report.deferred, report.blocked_at, report.first_error),
+            (0, None, None)
+        );
+
+        // The base fee falls: both answers mine at 7 and 8.
+        chain.s().base_fee = 50;
+        let mut answered = 0;
+        for _ in 0..3 {
+            chain.mine();
+            clock.advance(Duration::from_secs(30));
+            answered += lane.round(&chain, &clock, vec![]).answered;
+        }
+        assert_eq!((chain.s().mined, answered), (9, 2));
+        assert!(chain.cancelled_nonces().is_empty());
+        assert_eq!(lane.in_flight(), 0);
+    }
+
+    #[test]
     fn a_fee_refused_at_one_nonce_never_raises_the_first_offer_at_the_next() {
         // One attempt per round.
         let policy = Policy {
