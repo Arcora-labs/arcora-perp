@@ -218,9 +218,10 @@ fn a_nonce_burn_sends_only_at_the_expected_nonce() {
         sends.set(sends.get() + 1);
         Ok("0xburn".to_string())
     };
+    let quiet = || (true, Some((7, 7)));
     for (latest, known) in [(6, None), (8, Some(8)), (7, Some(9))] {
         let mut lane_next = known;
-        assert!(burn_on(7, &mut lane_next, || Ok(latest), Some(&fence), send).is_err());
+        assert!(burn_on(7, &mut lane_next, || Ok(latest), quiet, Some(&fence), send).is_err());
         assert_eq!(lane_next, known);
     }
     let mut lane_next = None;
@@ -228,10 +229,33 @@ fn a_nonce_burn_sends_only_at_the_expected_nonce() {
         7,
         &mut lane_next,
         || Err("nonce read failed".into()),
+        quiet,
         Some(&fence),
         send
     )
     .is_err());
+    // A sequencer-key transaction pending at the expected nonce on any RPC (a
+    // timed-out send whose transaction is still in a mempool), or a pending
+    // read that failed: a burn would replace it, so nothing is sent.
+    for (seen, why) in [
+        (Some((7, 8)), "pending"),
+        (Some((8, 8)), "pending"),
+        (None, "could not be read"),
+    ] {
+        let mut lane_next = None;
+        let refused = burn_on(
+            7,
+            &mut lane_next,
+            || Ok(7),
+            || (false, seen),
+            Some(&fence),
+            send,
+        )
+        .unwrap_err();
+        assert!(refused.contains(why), "{refused}");
+        assert!(refused.ends_with("; nothing sent"), "{refused}");
+        assert_eq!(lane_next, None);
+    }
     assert_eq!((sends.get(), fence.ceiling()), (0, Ceiling::Nonce(7)));
     // At the expected nonce, at or below the ceiling: one send, the ceiling
     // unchanged, and the lane moves past the burned nonce.
@@ -242,6 +266,7 @@ fn a_nonce_burn_sends_only_at_the_expected_nonce() {
                 expected,
                 &mut lane_next,
                 || Ok(expected),
+                || (true, Some((expected, expected))),
                 Some(&fence),
                 send
             ),
@@ -256,6 +281,7 @@ fn a_nonce_burn_sends_only_at_the_expected_nonce() {
         7,
         &mut lane_next,
         || Ok(7),
+        quiet,
         Some(&fence),
         || Err("cast timed out".to_string())
     )
@@ -361,6 +387,42 @@ fn anvil_nonce_burn_uses_only_the_expected_nonce() {
     *l1.nonce.lock().unwrap() = None;
     l1.burn_sequencer_nonce(1).unwrap();
     assert_eq!((latest(), l1.nonce_ceiling()), (2, Ceiling::Nonce(1)));
+
+    // A sequencer-key transaction at the expected nonce that no block has mined
+    // yet: the latest nonce is still the expected one, but a burn would replace
+    // the pending transaction, so nothing is sent.
+    l1.cast(&["rpc", "evm_setAutomine", "false", "--rpc-url", &rpc])
+        .unwrap();
+    let (keystore, password) = (l1.keystore_path.clone(), l1.password_file.clone());
+    l1.cast(&[
+        "send",
+        &address,
+        "--value",
+        "0",
+        "--gas-limit",
+        "21000",
+        "--nonce",
+        "2",
+        "--keystore",
+        &keystore,
+        "--password-file",
+        &password,
+        "--rpc-url",
+        &rpc,
+        "--async",
+    ])
+    .unwrap();
+    assert_eq!(latest(), 2);
+    let refused = l1.burn_sequencer_nonce(2).unwrap_err();
+    assert!(refused.contains("pending"), "{refused}");
+    assert!(refused.ends_with("nothing sent"), "{refused}");
+    assert_eq!(l1.nonce_ceiling(), Ceiling::Nonce(1));
+    l1.cast(&["rpc", "evm_mine", "--rpc-url", &rpc]).unwrap();
+    assert_eq!(
+        latest(),
+        3,
+        "the pending transaction was mined, not replaced"
+    );
     let _ = std::fs::remove_dir_all(dir);
     let _ = std::fs::remove_file(fence_path);
 }

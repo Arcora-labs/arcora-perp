@@ -330,7 +330,11 @@ used (a send refused before broadcast) would keep the fence from passing. After 
 consecutive polls with quiet nonces and the finalized nonce at or below the
 window's recorded ceiling, the loop sends a 0-value transfer from the sequencer key
 to itself at exactly that nonce, with gas limit 21000 and no estimate, at most three
-times per window. It touches no contract and cancels nothing. A window with timed
+times per window. Under the sequencer key's nonce lock it reads the latest and
+pending nonces again on every configured RPC and sends nothing unless they are all
+that nonce, so it never replaces a sequencer-key transaction still in a mempool.
+Configure `L1_ANSWER_KEYSTORE`, so challenge answers never use the sequencer key's
+nonces. It touches no contract and cancels nothing. A window with timed
 operations waits for the chain clock instead, unless the block time could not be
 read.
 

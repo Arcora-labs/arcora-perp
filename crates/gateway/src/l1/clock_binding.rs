@@ -515,15 +515,35 @@ pub(super) fn burn_send_args(
 }
 
 /// A nonce burn under the caller's lane lock, in order: the checks, the fence
-/// record, then the send. `lane_next` follows the send as in `send_on`.
+/// record, then the send. `quiet` is [`nonces_quiet`] at `expected` on every
+/// configured endpoint: a sequencer-key transaction that is pending anywhere
+/// (a send that took the lane before the burn's read and timed out with its
+/// transaction still in a mempool) holds `expected`, and a burn at it would
+/// replace that transaction. `lane_next` follows the send as in `send_on`.
 pub(super) fn burn_on(
     expected: u64,
     lane_next: &mut Option<u64>,
     latest: impl FnOnce() -> Result<u64, String>,
+    quiet: impl FnOnce() -> (bool, Option<(u64, u64)>),
     fence: Option<&NonceFence>,
     send: impl FnOnce() -> Result<String, String>,
 ) -> Result<String, String> {
     check_burn(expected, latest()?, *lane_next)?;
+    match quiet() {
+        (true, _) => {}
+        (false, Some((latest, pending))) => {
+            return Err(format!(
+                "a sequencer-key transaction is pending (latest nonce up to {latest}, pending \
+                 up to {pending}, expected {expected}); nothing sent"
+            ))
+        }
+        (false, None) => {
+            return Err(
+                "the sequencer's pending nonces could not be read on every RPC; nothing sent"
+                    .into(),
+            )
+        }
+    }
     if let Some(fence) = fence {
         fence.cover(expected)?;
     }
@@ -827,17 +847,33 @@ impl L1 {
     /// itself, so that a nonce recorded for a send that was never broadcast is
     /// used. It runs under the sequencer lane's nonce lock and sends nothing
     /// unless the latest nonce, and the lane's next nonce when it is known, are
-    /// `expected`. The fence records `expected` before the broadcast, like every
-    /// sequencer-key send. With its explicit gas limit cast runs no estimate. It
-    /// touches no contract.
+    /// `expected`, and on `L1_RPC` and, when it is set, `L1_RPC_WITNESS` the
+    /// latest and pending nonces are `expected` too. The fence records
+    /// `expected` before the broadcast, like every sequencer-key send. With its
+    /// explicit gas limit cast runs no estimate. It touches no contract.
     pub(crate) fn burn_sequencer_nonce(&self, expected: u64) -> Result<String, String> {
         let lane = self.sequencer_lane();
         let mut lane_next = lane.nonce.lock().map_err(|_| "nonce lock poisoned")?;
         let address = self.sequencer_address()?;
+        let sequencer = crate::parse_addr20_hex(&address).ok_or("invalid sequencer address")?;
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        let endpoints: Vec<&dyn Rpc> = std::iter::once(&primary as &dyn Rpc)
+            .chain(witness.as_ref().map(|r| r as &dyn Rpc))
+            .collect();
         burn_on(
             expected,
             &mut lane_next,
             || self.account_nonce(&address, "latest"),
+            || nonces_quiet(&endpoints, &sequencer, expected),
             self.nonce_fence.get(),
             || {
                 if self.clock_stopping() {
