@@ -17,6 +17,7 @@ import {
   parseL1Challenge,
   recoverChallengeSigner,
   rememberChallengeKits,
+  seenChallengeKits,
   serializeChallengeKits,
   settledOrderHashes,
   unsettledOrderHashes,
@@ -46,6 +47,17 @@ const V: Vectors = JSON.parse(readFileSync(
 
 const receipt = (): ReceiptWithChallenge => structuredClone(V.acceptReceipt);
 const SIG = V.kit.l1Challenge.signature;
+/// The fixture enclave's key (seed 0x07..07), to sign the fixture order for
+/// another beneficiary, as the gateway does once the account binds another
+/// deposit address.
+const FIXTURE_ENCLAVE_KEY = new Uint8Array(32).fill(7);
+const NEW_BENEFICIARY = "0x" + "34".repeat(20);
+function reboundReceipt(beneficiary = NEW_BENEFICIARY): ReceiptWithChallenge {
+  const r = receipt();
+  const auth = { ...r.l1Challenge!, beneficiary };
+  const sig = secp256k1.sign(challengeAuthDigest({ ...r, ...auth }), FIXTURE_ENCLAVE_KEY);
+  return { ...r, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } };
+}
 
 function memoryStorage(fail: { get?: boolean; set?: boolean } = {}) {
   const map = new Map<string, string>();
@@ -200,8 +212,8 @@ describe("challenge kit", () => {
 describe("newChallengeKits", () => {
   const listed = (r: unknown, finality = "ACCEPTED") => ({ receipt: r, finality });
 
-  it("builds kits only for orders not seen yet, and tries each order once", () => {
-    const seen = new Set<string>(["0x" + "ee".repeat(32)]);
+  it("builds kits only for orders not seen yet, and tries each authorization once", () => {
+    const seen = new Map([["0x" + "ee".repeat(32), SIG.toLowerCase()]]);
     const known = { ...receipt(), orderHash: "0x" + "EE".repeat(32) };
     const unbound = { ...receipt(), orderHash: "0x" + "ab".repeat(32), l1Challenge: null };
     const broken = { ...receipt(), orderHash: "0x" + "cd".repeat(32) };
@@ -213,10 +225,26 @@ describe("newChallengeKits", () => {
   });
 
   it("keeps no kit for an order that is already settled", () => {
-    const seen = new Set<string>();
+    const seen = new Map<string, string>();
     expect(newChallengeKits([listed(receipt(), "SETTLED")], seen)).toEqual([]);
     expect(seen.has(V.kit.orderHash)).toBe(true); // SETTLED never reverts: not retried
-    expect(newChallengeKits([listed(receipt(), "MATCHED")], new Set())).toEqual([V.kit]);
+    expect(newChallengeKits([listed(reboundReceipt(), "SETTLED")], seen)).toEqual([]);
+    expect(newChallengeKits([listed(receipt(), "MATCHED")], new Map())).toEqual([V.kit]);
+  });
+
+  it("builds an order's kit again when the gateway lists it with another authorization", () => {
+    // The account bound another deposit address: the gateway signs the order
+    // for the new beneficiary, so the kept kit no longer pays the address the
+    // account chose.
+    const seen = new Map<string, string>();
+    expect(newChallengeKits([listed(receipt())], seen)).toEqual([V.kit]);
+    const rebound = reboundReceipt();
+    expect(newChallengeKits([listed(rebound)], seen)).toEqual([buildChallengeKit(rebound)]);
+    expect(buildChallengeKit(rebound).l1Challenge.beneficiary).toBe(NEW_BENEFICIARY);
+    expect(newChallengeKits([listed(rebound)], seen)).toEqual([]); // tried once
+    // The same from the kits a browser kept: only another authorization is built.
+    expect(newChallengeKits([listed(receipt())], seenChallengeKits([V.kit]))).toEqual([]);
+    expect(newChallengeKits([listed(rebound)], seenChallengeKits([V.kit]))).toEqual([buildChallengeKit(rebound)]);
   });
 
   it("names the settled orders by lowercase hash", () => {
@@ -238,18 +266,27 @@ describe("challenge kit storage", () => {
   const first = V.kit;
   const second: ChallengeKit = { ...first, orderHash: "0x" + "ee".repeat(32), seqNo: 9 };
 
-  it("remembers by order hash, never drops earlier kits and keeps the first copy", () => {
+  it("remembers by order hash, never drops earlier kits, and a later copy of an order replaces the stored one", () => {
     const storage = memoryStorage();
     expect(rememberChallengeKits([first], storage)).toBe(true);
+    // The account bound another deposit address: the order's new kit pays it.
     const later = {
       ...first, orderHash: first.orderHash.toUpperCase().replace("0X", "0x"),
-      l1Challenge: { ...first.l1Challenge, beneficiary: "0x" + "34".repeat(20) },
+      l1Challenge: { ...first.l1Challenge, beneficiary: NEW_BENEFICIARY },
     };
     expect(rememberChallengeKits([second, later], storage)).toBe(true);
     const saved = loadChallengeKits(storage);
     expect(saved.map((k) => k.seqNo).sort()).toEqual([0, 9]);
-    expect(saved.find((k) => k.seqNo === 0)).toEqual(first);
+    expect(saved.find((k) => k.seqNo === 0)).toEqual(later);
     expect(JSON.parse(storage.map.get(CHALLENGE_KIT_STORAGE_KEY)!)).toHaveLength(2);
+  });
+
+  it("storing the same kit again changes nothing", () => {
+    const storage = memoryStorage();
+    expect(rememberChallengeKits([first, second], storage)).toBe(true);
+    const raw = storage.map.get(CHALLENGE_KIT_STORAGE_KEY);
+    expect(rememberChallengeKits([first], storage)).toBe(true);
+    expect(storage.map.get(CHALLENGE_KIT_STORAGE_KEY)).toBe(raw);
   });
 
   it("stores kits compactly: no schema, no timestamps, no indentation", () => {
@@ -330,14 +367,14 @@ describe("challenge kit storage", () => {
     expect(mergeChallengeKits([], kits)).toHaveLength(MAX_STORED_CHALLENGE_KITS + 20);
   });
 
-  it("merges by order hash: the first copy wins, settled and malformed kits are left out", () => {
-    const copy = { ...kitN(1), l1Challenge: { ...kitN(1).l1Challenge, beneficiary: "0x" + "34".repeat(20) } };
+  it("merges by order hash: a later copy replaces an earlier one, settled and malformed kits are left out", () => {
+    const copy = { ...kitN(1), l1Challenge: { ...kitN(1).l1Challenge, beneficiary: NEW_BENEFICIARY } };
     const merged = mergeChallengeKits(
       [kitN(1), kitN(2)],
       [copy, kitN(3), { schema: "x" }, kitN(4)],
       new Set([kitN(3).orderHash.toLowerCase()]),
     );
-    expect(merged).toEqual([kitN(4), kitN(2), kitN(1)]);
+    expect(merged).toEqual([kitN(4), kitN(2), copy]);
   });
 
   it("evicts the oldest kits until the rest fits when the browser refuses the write, and reports it", () => {

@@ -7,6 +7,12 @@
 /// Kits stay with the user: they are kept in this browser's storage and offered
 /// as a download, never sent anywhere. Opening a challenge publishes the
 /// beneficiary next to the order hash on L1.
+///
+/// One kit per order: the gateway's latest authorization for it. The gateway
+/// signs an order's authorization for the deposit address the account has
+/// bound when it answers, so once the account binds another address, the next
+/// listing carries a kit for the new beneficiary, and that kit replaces the one
+/// kept for the order (see `mergeChallengeKits`).
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils";
@@ -177,27 +183,42 @@ export function buildChallengeKit(receipt: unknown): ChallengeKit {
 const orderHashOf = (receipt: unknown): string | null =>
   isRecord(receipt) && typeof receipt.orderHash === "string" ? receipt.orderHash.toLowerCase() : null;
 
-/// Kits for listed orders whose hash is not in `seen` yet. Each order is tried
-/// once (`seen` grows). A SETTLED order gets no kit (settled is never undone,
-/// and a challenge of it is answered at once, forfeiting the stake). A receipt
-/// without an authorization is not marked, since it gains one when the account
-/// binds a deposit address.
-export function newChallengeKits(orders: readonly ChallengeKitOrder[], seen: Set<string>): ChallengeKit[] {
+/// What `newChallengeKits` marks for a SETTLED order (never a signature).
+const SETTLED_MARK = "SETTLED";
+
+/// Kits for listed orders `seen` has not tried with their current
+/// authorization. `seen` maps a lowercase order hash to the signature of the
+/// authorization last tried for it (and grows), so each authorization is
+/// tried once, and an order the gateway lists with another one (the account
+/// bound another deposit address) is built again. A SETTLED order gets no kit
+/// (settled is never undone, and a challenge of it is answered at once,
+/// forfeiting the stake). A receipt without a well-formed authorization is not
+/// marked, since it gains one when the account binds a deposit address.
+export function newChallengeKits(orders: readonly ChallengeKitOrder[], seen: Map<string, string>): ChallengeKit[] {
   const kits: ChallengeKit[] = [];
   for (const o of orders) {
     const key = orderHashOf(o.receipt);
-    if (!key || seen.has(key)) continue;
+    if (!key || seen.get(key) === SETTLED_MARK) continue;
     if (o.finality === "SETTLED") {
-      seen.add(key);
+      seen.set(key, SETTLED_MARK);
       continue;
     }
-    if (!(o.receipt as ReceiptWithChallenge).l1Challenge) continue; // may gain one once an address is bound
-    seen.add(key);
+    const auth = parseL1Challenge((o.receipt as ReceiptWithChallenge).l1Challenge);
+    if (!auth) continue; // may gain one once an address is bound
+    const tried = auth.signature.toLowerCase();
+    if (seen.get(key) === tried) continue;
+    seen.set(key, tried);
     try {
       kits.push(buildChallengeKit(o.receipt));
     } catch { /* unusable authorization: nothing to keep */ }
   }
   return kits;
+}
+
+/// The `seen` map of `newChallengeKits` for kits already kept: their orders are
+/// built again only when listed with another authorization.
+export function seenChallengeKits(kits: readonly ChallengeKit[]): Map<string, string> {
+  return new Map(kits.map((k) => [k.orderHash.toLowerCase(), k.l1Challenge.signature.toLowerCase()]));
 }
 
 /// Lowercase hashes of the listed orders the gateway reports SETTLED: their
@@ -305,9 +326,14 @@ const hashKey = (k: ChallengeKit) => k.orderHash.toLowerCase();
 /// offered in, and, within listed and other kits, stored in.
 const newestFirst = (a: ChallengeKit, b: ChallengeKit) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo;
 
-/// The kits to keep: `existing`, then `added`, merged by order hash (the first
-/// copy wins), without the kits of orders in `settled` (lowercase hashes),
-/// newest first. Not bounded: this is also the session's offer, which must hold
+/// The kits to keep: `existing`, then `added`, merged by order hash, without
+/// the kits of orders in `settled` (lowercase hashes), newest first. A later
+/// copy of an order's kit replaces an earlier one, so callers pass kits oldest
+/// source first: after the account binds another deposit address, the gateway
+/// lists its orders with kits for the new beneficiary, and those must replace
+/// the kits kept for the old one (the settlement pays a fine to whichever
+/// beneficiary the kit names). Merging a copy equal to the kept one changes
+/// nothing. Not bounded: this is also the session's offer, which must hold
 /// every listed order's kit. Malformed entries are skipped.
 export function mergeChallengeKits(
   existing: readonly unknown[],
@@ -317,16 +343,18 @@ export function mergeChallengeKits(
   const byHash = new Map<string, ChallengeKit>();
   for (const value of [...existing, ...added]) {
     const kit = normalizeKit(value);
-    if (kit && !byHash.has(hashKey(kit)) && !settled.has(hashKey(kit))) byHash.set(hashKey(kit), kit);
+    if (kit && !settled.has(hashKey(kit))) byHash.set(hashKey(kit), kit);
   }
   return [...byHash.values()].sort(newestFirst);
 }
 
 /// Keep `kits` in this browser, merged with the stored ones as
-/// `mergeChallengeKits` does: the kits of orders in `settled` (orders the
-/// gateway lists as SETTLED, which a settled batch includes or rejects) are
-/// dropped. The store holds at most MAX_STORED_CHALLENGE_KITS, and its quota is
-/// shared with claim bundles, the deposit journal and the credential record.
+/// `mergeChallengeKits` does: a kit in `kits` replaces the stored kit of its
+/// order (the last of `kits` for an order wins), and the kits of orders in
+/// `settled` (orders the gateway lists as SETTLED, which a settled batch
+/// includes or rejects) are dropped. The store holds at most
+/// MAX_STORED_CHALLENGE_KITS, and its quota is shared with claim bundles, the
+/// deposit journal and the credential record.
 /// When not every kit fits (the bound, or a write the browser refuses), kits
 /// are kept in this order and evicted from its end: the kits of orders in
 /// `listed` (lowercase hashes of the orders the gateway lists and does not

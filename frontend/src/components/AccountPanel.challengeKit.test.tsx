@@ -52,9 +52,9 @@ const tampered = order("o3", { ...ACCEPTED, orderHash: "0x" + "cd".repeat(32) })
 /// the fixture order by `seqNo` milliseconds.
 const TEST_ENCLAVE_KEY = new Uint8Array(32).fill(9);
 const TEST_ENCLAVE_SIGNER = "0x" + bytesToHex(keccak_256(secp256k1.getPublicKey(TEST_ENCLAVE_KEY, false).subarray(1)).subarray(12));
-function signedReceiptFor(orderHash: string, seqNo: number): ReceiptWithChallenge {
+function signedReceiptFor(orderHash: string, seqNo: number, beneficiary = ACCEPTED.l1Challenge!.beneficiary): ReceiptWithChallenge {
   const fields = { ...ACCEPTED, orderHash, seqNo, recvTimeMs: ACCEPTED.recvTimeMs + seqNo, enclaveSigner: TEST_ENCLAVE_SIGNER };
-  const auth = ACCEPTED.l1Challenge!;
+  const auth = { ...ACCEPTED.l1Challenge!, beneficiary };
   const sig = secp256k1.sign(challengeAuthDigest({ ...auth, ...fields }), TEST_ENCLAVE_KEY);
   return { ...fields, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } };
 }
@@ -224,6 +224,61 @@ describe("ChallengeKitSection", () => {
     rerender(<ChallengeKitSection orders={[order("o1", ACCEPTED, "SETTLED")]} />);
     await waitFor(() => expect(loadChallengeKits()).toEqual([]));
     expect(screen.queryByText(/challenge kits/i)).toBeNull();
+  });
+});
+
+describe("ChallengeKitSection after the account binds another deposit address", () => {
+  // The gateway signs every listed order's authorization for the address bound
+  // now, so a fine pays the address the account chose last.
+  const NEW_BENEFICIARY = "0x" + "34".repeat(20);
+  const before = order("o6", signedReceipt("a6", 6));
+  const after = order("o6", signedReceiptFor("0x" + "a6".repeat(32), 6, NEW_BENEFICIARY));
+  const beneficiaries = (kits: ChallengeKit[]) => kits.map((k) => k.l1Challenge.beneficiary);
+
+  async function expectNewBeneficiaryExported() {
+    await waitFor(() => expect(beneficiaries(loadChallengeKits())).toEqual([NEW_BENEFICIARY]));
+    fireEvent.click(await screen.findByRole("button", { name: /export all challenge kits \(1\)/i }));
+    expect(JSON.parse(await downloads[downloads.length - 1].blob.text())).toEqual(kitOf(after));
+  }
+
+  it("replaces the kit it keeps for an order with the new beneficiary's, and exports that one", async () => {
+    expect(rememberChallengeKits([kitOf(before)])).toBe(true);
+    render(<ChallengeKitSection orders={[after]} />);
+    await expectNewBeneficiaryExported();
+  });
+
+  it("does the same while the panel is open", async () => {
+    const { rerender } = render(<ChallengeKitSection orders={[before]} />);
+    await waitFor(() => expect(beneficiaries(loadChallengeKits())).toEqual([ACCEPTED.l1Challenge!.beneficiary]));
+    rerender(<ChallengeKitSection orders={[after]} />);
+    await expectNewBeneficiaryExported();
+  });
+
+  it("offers the new beneficiary's kit and warns when a full storage still holds the old one", async () => {
+    const { storage } = fullStorage([kitOf(before)]);
+    const { rerender } = render(<ChallengeKitSection orders={[after]} storage={storage} />);
+    fireEvent.click(await screen.findByRole("button", { name: /export all challenge kits \(1\)/i }));
+    expect(JSON.parse(await downloads[0].blob.text())).toEqual(kitOf(after));
+    expect(beneficiaries(loadChallengeKits(storage))).toEqual([ACCEPTED.l1Challenge!.beneficiary]);
+    expect(screen.getByRole("alert").textContent).toMatch(/did not keep this kit \(its storage is blocked or full\)/i);
+    // The next listing does not bring the old kit back into the offer.
+    rerender(<ChallengeKitSection orders={[after, withKit]} storage={storage} />);
+    expect(await exportedKits(2)).toContainEqual(kitOf(after));
+    expect(screen.getByRole("alert").textContent).toMatch(/did not keep these kits/i);
+  });
+
+  it("a panel open for another account in this browser does not put the old kit back", async () => {
+    const storage = memoryStorage([kitOf(before)]);
+    // Another tab, another account: its panel offers the stored kit too.
+    const { rerender } = render(<ChallengeKitSection orders={[withKit]} storage={storage} />);
+    await screen.findByRole("button", { name: /export all challenge kits \(2\)/i });
+    // The first account's tab stores the kit for its new deposit address.
+    expect(rememberChallengeKits([kitOf(after)], storage)).toBe(true);
+    // This account's next listing stores its new order's kit.
+    rerender(<ChallengeKitSection orders={[withKit, order("o7", signedReceipt("a7", 7))]} storage={storage} />);
+    await screen.findByRole("button", { name: /export all challenge kits \(3\)/i });
+    expect(loadChallengeKits(storage).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+    expect((await exportedKits(3)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
   });
 });
 
