@@ -420,6 +420,20 @@ fn boot_clock_plan(
             wait();
         }
         match read() {
+            // At the window's batch the settled root must be the window's
+            // pre-state root, whatever the slot holds: another root contradicts
+            // the journal or the snapshot, and nothing is decided from it.
+            Ok(check)
+                if check.evidence.batch_count == intent.batch
+                    && check.evidence.state_root != intent.prev_root =>
+            {
+                let plan = BootClockPlan::Hold(format!(
+                    "at finalized block {} the settled state root is not window {}'s pre-state \
+                     root",
+                    check.evidence.block, intent.batch
+                ));
+                return (plan, Some(check));
+            }
             Ok(check) => {
                 let plan = match (check.classified, check.dead) {
                     (Classified::MaySettle, _) => BootClockPlan::MaySettle(if intent.timed {
@@ -525,7 +539,9 @@ fn boot_wait_hint(
 /// undone for a dead intent, and no transaction of ours can still let it settle.
 /// An automatic policy returns the window's operations to the open window exactly
 /// as the rollback row does, or voids a timed phase-0 window
-/// (`Gw::live_void_window`). Every other dead intent HOLDs with the reason.
+/// (`Gw::live_void_window`). Every other dead intent HOLDs with the reason, and
+/// so does every dead intent while `chain_root` is not the window's pre-state
+/// root.
 fn apply_boot_recovery_classified(
     gw: &mut Gw,
     j: rollback_journal::RollbackJournal,
@@ -557,6 +573,20 @@ fn apply_boot_recovery_classified(
         dead.map(|d| d.dead),
     ) {
         RecoveryAction::VoidDeadIntent(reason) => {
+            // Decided only at the window's pre-state root, as the settle loop
+            // decides: another settled root contradicts the journal or the
+            // restored snapshot, and nothing is returned, voided or deleted.
+            let pre_root = hex32(&j.witness.pre_state.state_root());
+            if !chain_root.eq_ignore_ascii_case(&pre_root) {
+                eprintln!(
+                    "[recovery] HOLDING: the clock intent of window {} can never settle \
+                     ({reason:?}), but the finalized settled root {chain_root} is not its \
+                     pre-state root {pre_root}. Keeping the journal; startup is refused until \
+                     it resolves",
+                    j.batch_id
+                );
+                return BootRecoveryOutcome::KeepJournal;
+            }
             let action = dead.map_or(
                 rollback_journal::DeadIntentAction::Hold("no recovery policy was given"),
                 |d| d.action,
@@ -19169,12 +19199,13 @@ mod tests {
         };
         let plain = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
         let restored = || Gw::boot_restored(&plain).expect("restore");
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
         let run = |gw: &mut Gw, dead, chain_bc| {
             apply_boot_recovery_classified(
                 gw,
                 journal.clone(),
                 chain_bc,
-                "0x00",
+                &pre_root,
                 0,
                 trading_gate::GateObservation::Inconclusive,
                 dead,
@@ -19232,12 +19263,13 @@ mod tests {
         let window = timed.batch_id;
         let plain =
             snapshot::open(&snapshot::seal(&sealed.snapshot_plain(), &seed), &seed).unwrap();
+        let timed_root = hex32(&timed.witness.pre_state.state_root());
         let classified = |gw: &mut Gw, dead| {
             apply_boot_recovery_classified(
                 gw,
                 timed.clone(),
                 window,
-                "0x00",
+                &timed_root,
                 0,
                 trading_gate::GateObservation::Inconclusive,
                 dead,
@@ -19291,6 +19323,92 @@ mod tests {
         );
         assert_eq!(gw.snapshot_plain(), before);
         assert!(gw.last_void.is_none());
+    }
+
+    /// Boot decides a dead intent only at the window's pre-state root, as the
+    /// settle loop does. Another finalized root (another deployment, or a
+    /// snapshot that does not belong to this chain) keeps the journal and changes
+    /// nothing, whatever the policy. The plan already holds when the evidence
+    /// itself shows another root at the window's batch.
+    #[test]
+    fn boot_holds_a_dead_intent_whose_settled_root_is_not_the_window_pre_state() {
+        use rollback_journal::{AnchorSlot, ClockIntent, DeadIntent, DeadIntentAction};
+        let crate::live_void::tests::Voidable {
+            gw: sealed,
+            journal,
+            ..
+        } = crate::live_void::tests::voidable(false);
+        let window = journal.batch_id;
+        let plain = sealed.snapshot_plain();
+        let apply = |gw: &mut Gw, root: &str, dead| {
+            apply_boot_recovery_classified(
+                gw,
+                journal.clone(),
+                window,
+                root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                dead,
+            )
+        };
+        let foreign = hex32(&[0xee; 32]);
+        for dead in [
+            boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid),
+            boot_dead(DeadIntent::Cancelled, DeadIntentAction::LiveVoid),
+            boot_dead(
+                DeadIntent::CloseOnlyPhaseZero,
+                DeadIntentAction::ReturnToOpenWindow,
+            ),
+        ] {
+            let mut gw = Gw::boot_restored(&plain).unwrap();
+            let before = gw.snapshot_plain();
+            assert_eq!(
+                apply(&mut gw, &foreign, dead),
+                BootRecoveryOutcome::KeepJournal,
+                "{dead:?}"
+            );
+            assert_eq!(gw.snapshot_plain(), before, "{dead:?}");
+            assert_eq!(gw.seq.state.next_batch_id, window + 1);
+            assert!(gw.last_void.is_none());
+        }
+        // The pre-state root, in any hex casing, voids.
+        let mut gw = Gw::boot_restored(&plain).unwrap();
+        let pre_root = hex32(&journal.witness.pre_state.state_root()).to_uppercase();
+        assert_eq!(
+            apply(
+                &mut gw,
+                &pre_root,
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid)
+            ),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert_eq!(gw.seq.state.next_batch_id, window);
+        // The evidence at the window's batch names another root: the plan holds,
+        // dead or not, and nothing is resumed.
+        let intent = ClockIntent::of(&journal).unwrap();
+        for slot in [
+            AnchorSlot::Empty,
+            AnchorSlot::Cancelled,
+            AnchorSlot::Matching,
+        ] {
+            let mut e = boot_check(intent, slot).evidence;
+            e.state_root = [0xee; 32];
+            e.block_time_ms = intent.last_ms.map(|last| last + e.clock_skew_ms + 1);
+            let (plan, check) = boot_clock_plan(
+                intent,
+                || Ok(clock_client::classify(intent, e)),
+                || panic!("read once"),
+            );
+            match &plan {
+                BootClockPlan::Hold(why) => assert!(why.contains("pre-state root"), "{why}"),
+                other => panic!("{slot:?}: expected a hold, got {other:?}"),
+            }
+            assert!(check.is_some());
+            assert_eq!(
+                boot_resume_mode(&plan, &journal, window, &pre_root, window + 1),
+                None
+            );
+        }
     }
 
     /// A journaled intent and the evidence that it may still settle: its own
@@ -19603,13 +19721,14 @@ mod tests {
         let seed = [45u8; 32];
         let (v, state, jp) = voidable_on_disk("boot-void-persist", &seed);
         let window = v.journal.batch_id;
+        let pre_root = hex32(&v.journal.witness.pre_state.state_root());
         let void = |gw: &mut Gw| {
             let j = rollback_journal::read(&jp, &seed).unwrap().unwrap();
             apply_boot_recovery_classified(
                 gw,
                 j,
                 window,
-                "0x00",
+                &pre_root,
                 0,
                 trading_gate::GateObservation::Inconclusive,
                 boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid),
@@ -19677,12 +19796,13 @@ mod tests {
             Ok(live_void::LiveVoidOutcome::Applied(_))
         ));
         let voided = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
         let resolve = |gw: &mut Gw, j: &rollback_journal::RollbackJournal| {
             apply_boot_recovery_classified(
                 gw,
                 j.clone(),
                 window,
-                "0x00",
+                &pre_root,
                 0,
                 trading_gate::GateObservation::Inconclusive,
                 boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid),
@@ -19894,7 +20014,7 @@ mod tests {
                 &mut returned,
                 replacement.clone(),
                 window,
-                "0x00",
+                &hex32(&replacement.witness.pre_state.state_root()),
                 0,
                 trading_gate::GateObservation::Inconclusive,
                 Some(dead),
