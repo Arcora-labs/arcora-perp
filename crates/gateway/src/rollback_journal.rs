@@ -393,6 +393,10 @@ pub struct DeadIntentEvidence {
     /// equalled `nonce` on every configured endpoint, so no sequencer-key
     /// transaction was visible as pending. A failed read is not quiet.
     pub quiet: bool,
+    /// The highest latest and pending nonces that read saw over the configured
+    /// endpoints; `None` when one of its reads failed. Reported in the recovery
+    /// status only: the classification reads `quiet`.
+    pub seen_nonces: Option<(u64, u64)>,
     /// The block's header-bound time in milliseconds; `None` when the header did
     /// not hash to the block hash.
     pub block_time_ms: Option<u64>,
@@ -1462,6 +1466,7 @@ mod tests {
             nonce: 10,
             fence_passed: fenced,
             quiet: fenced,
+            seen_nonces: Some((10, 10)),
             block_time_ms: Some(LAST_MS + SKEW_MS),
             clock_skew_ms: SKEW_MS,
         }

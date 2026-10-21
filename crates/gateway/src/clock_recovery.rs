@@ -67,8 +67,21 @@ pub(crate) struct PendingRecovery {
     pub reproved: bool,
     /// Steps taken.
     pub steps: u32,
-    /// The last wait reason or settle error class.
+    /// What the last step waited for or failed with, in full, for the log.
     pub last: String,
+    /// The same as the recovery status names it: a wait reason or a settle error
+    /// class, never an error message.
+    pub last_class: &'static str,
+    /// What only the operator can do about the last step's outcome, if anything.
+    pub operator_action: Option<&'static str>,
+    /// Wall-clock milliseconds when the recovery began.
+    pub since_ms: u64,
+    /// The window's last timed operation (`lastMs`); `None` for an untimed window
+    /// or one whose time bounds do not derive.
+    pub last_ms: Option<u64>,
+    /// The last successful finalized read and close-only budget read.
+    pub last_evidence: Option<DeadIntentEvidence>,
+    pub last_budget: Option<CloseOnlyBudget>,
     /// A void applied in memory whose snapshot or journal delete has not
     /// completed: its report, basis and finalized block.
     voided: Option<(VoidReport, DeadBasis, u64)>,
@@ -97,9 +110,155 @@ impl PendingRecovery {
             reproved: false,
             steps: 0,
             last: String::new(),
+            last_class: "the window failed after its clock intent was journaled",
+            operator_action: None,
+            since_ms: crate::now_ms(),
+            last_ms: None,
+            last_evidence: None,
+            last_budget: None,
             voided: None,
         }
     }
+
+    /// The window's last timed operation, from its operations.
+    pub(crate) fn with_ops(mut self, ops: &[perp_core::engine::BatchOp]) -> Self {
+        self.last_ms = perp_core::clock::TimeBounds::derive(ops)
+            .ok()
+            .filter(|b| b.count > 0)
+            .map(|b| b.last_ms);
+        self
+    }
+
+    /// The recovery as `/api/state` shows it.
+    pub(crate) fn status(&self) -> RecoveryStatus {
+        let e = self.last_evidence.as_ref();
+        RecoveryStatus {
+            batch_id: self.batch_id,
+            phase: self.phase,
+            since_ms: self.since_ms,
+            steps: self.steps,
+            last: self.last_class,
+            basis: if self.last_ms.is_some() {
+                "chainClock"
+            } else {
+                "fence"
+            },
+            fence: e.map(|e| FenceStatus {
+                block: e.block,
+                ceiling: match self.ceiling {
+                    Ceiling::Nonce(n) => CeilingView::Nonce(n),
+                    Ceiling::None => CeilingView::Other("none"),
+                    Ceiling::Unknown => CeilingView::Other("unknown"),
+                },
+                finalized_nonce: e.nonce,
+                latest_nonce: e.seen_nonces.map(|(latest, _)| latest),
+                pending_nonce: e.seen_nonces.map(|(_, pending)| pending),
+                quiet: e.quiet,
+                passed: self.ceiling.passed_by(e.nonce),
+            }),
+            chain_clock: self.last_ms.map(|last_ms| ChainClockStatus {
+                block_time_ms: e.and_then(|e| e.block_time_ms),
+                last_ms,
+                skew_ms: e.map(|e| e.clock_skew_ms),
+            }),
+            burns: self.burns,
+            retry_failures: self.retry_failures,
+            close_only_budget: self.last_budget.map(|b| BudgetStatus {
+                stalled_blocks_left: b.stalled_blocks_left(),
+                starved_blocks_left: b.starved_blocks_left(),
+            }),
+            operator_action: self.operator_action,
+        }
+    }
+}
+
+/// A pending recovery as `/api/state` shows it (`clockRecovery`). Reasons are
+/// fixed text; it never carries an error message.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RecoveryStatus {
+    pub batch_id: u64,
+    pub phase: u8,
+    pub since_ms: u64,
+    pub steps: u32,
+    /// The last wait reason or settle error class.
+    pub last: &'static str,
+    /// What can show that the window is dead: `chainClock` for a window with
+    /// timed operations (the quiet nonce fence can too), `fence` otherwise.
+    pub basis: &'static str,
+    /// The nonce fence at the last finalized read.
+    pub fence: Option<FenceStatus>,
+    /// For a window with timed operations: the finalized block time against its
+    /// last operation time plus `clockSkewMs`.
+    pub chain_clock: Option<ChainClockStatus>,
+    pub burns: u8,
+    pub retry_failures: u32,
+    pub close_only_budget: Option<BudgetStatus>,
+    pub operator_action: Option<&'static str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FenceStatus {
+    /// The finalized block of the read.
+    pub block: u64,
+    /// The window's nonce ceiling: a nonce, `none` (no send recorded) or `unknown`.
+    pub ceiling: CeilingView,
+    pub finalized_nonce: u64,
+    /// The highest latest and pending nonces over the configured endpoints; null
+    /// when a read failed. A pending nonce above the finalized one is a pending
+    /// sequencer-key transaction; quiet nonces below the ceiling are a recorded
+    /// nonce that no transaction used.
+    pub latest_nonce: Option<u64>,
+    pub pending_nonce: Option<u64>,
+    pub quiet: bool,
+    /// The finalized nonce is past the ceiling.
+    pub passed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
+pub(crate) enum CeilingView {
+    Nonce(u64),
+    Other(&'static str),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChainClockStatus {
+    pub block_time_ms: Option<u64>,
+    pub last_ms: u64,
+    pub skew_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BudgetStatus {
+    pub stalled_blocks_left: u64,
+    pub starved_blocks_left: Option<u64>,
+}
+
+/// What the operator can do, by the reason a recovery raised
+/// `ClockRecoveryBlocked` (`RecoveryStatus::operator_action`).
+mod operator {
+    pub(super) const REPLACED: &str = "cancel the other anchor once it is older than \
+        anchorTimeoutMs (POST /v1/admin/settlement/cancel-anchor)";
+    pub(super) const RETRY_FAILING: &str = "the settle keeps failing against our anchor: fix \
+        the prover or RPC, or cancel the anchor once it is older than anchorTimeoutMs, after \
+        which the window is voided (timed) or returned to the open window (untimed)";
+    pub(super) const DEPOSIT_HALT: &str = "clear the deposit halt, or cancel the anchor once \
+        it is older than anchorTimeoutMs";
+    pub(super) const BURNS_USED: &str = "the nonce burns are used up: let the pending \
+        sequencer-key transaction be mined, or mine any transaction from the sequencer key";
+    pub(super) const BUDGET: &str = "less than half of the close-only budget is left: \
+        resolve the window before anyone can trigger close-only";
+    pub(super) const PENDING_LONG: &str = "the recovery has been pending for many polls: see \
+        the [recovery] lines in the gateway log";
+    pub(super) const VOID_BREAKER: &str = "repeated live voids: find the delay between a \
+        window's last operation and its registration in the gateway log (clock, RPC, disk), \
+        then restart";
+    pub(super) const STOPPED: &str = "the settle loop stopped and settlement is held: \
+        reconcile the window from the gateway log, then restart";
 }
 
 /// How long until anyone may put the settlement in close-only
@@ -489,15 +648,34 @@ async fn persist_and_delete(app: &Shared, jpath: &Path) -> Result<(), String> {
 }
 
 /// Raise `ClockRecoveryBlocked`: the recovery needs the operator, or time is
-/// running out. It clears when the recovery resolves.
-fn blocked(gw: &crate::Gw, why: &str, batch_id: u64) {
-    eprintln!("[recovery] window {batch_id}: operator action needed: {why}");
+/// running out. It clears when the recovery resolves. `action` becomes the
+/// status's operator action, unless `weak` and the step already named one.
+fn blocked(gw: &crate::Gw, rec: &mut PendingRecovery, why: &str, action: &'static str) {
+    blocked_as(gw, rec, why, action, false)
+}
+
+fn blocked_as(
+    gw: &crate::Gw,
+    rec: &mut PendingRecovery,
+    why: &str,
+    action: &'static str,
+    weak: bool,
+) {
+    eprintln!(
+        "[recovery] window {}: operator action needed: {why}",
+        rec.batch_id
+    );
     gw.ops_alerts.activate(AlertKind::ClockRecoveryBlocked);
+    if weak {
+        rec.operator_action.get_or_insert(action);
+    } else {
+        rec.operator_action = Some(action);
+    }
 }
 
 /// Wait with the settle backoff: the failure counts toward HELD, whose line names
-/// the window and no error text.
-async fn wait(app: &Shared, rec: &mut PendingRecovery, why: String) -> Step {
+/// the window and no error text. `class` names the reason in the status.
+async fn wait(app: &Shared, rec: &mut PendingRecovery, class: &'static str, why: String) -> Step {
     let batch_id = rec.batch_id;
     eprintln!(
         "[recovery] window {batch_id}: waiting ({} polls, {} s): {why}",
@@ -505,6 +683,7 @@ async fn wait(app: &Shared, rec: &mut PendingRecovery, why: String) -> Step {
         rec.since.elapsed().as_secs()
     );
     rec.last = why.clone();
+    rec.last_class = class;
     let mut gw = app.gw.lock().await;
     let (action, just_held) =
         gw.settle_breaker_failed(format!("clock window {batch_id} unresolved: {why}"));
@@ -515,29 +694,34 @@ async fn wait(app: &Shared, rec: &mut PendingRecovery, why: String) -> Step {
         );
     }
     if rec.steps >= gw.settle_health.threshold() {
-        blocked(
+        blocked_as(
             &gw,
+            rec,
             &format!("the recovery has been pending for {} polls", rec.steps),
-            batch_id,
+            operator::PENDING_LONG,
+            true,
         );
     }
     Step::Wait(action.delay())
 }
 
 /// Classify again on the next poll, without a backoff: the chain moved.
-fn reclassify(rec: &mut PendingRecovery, why: String) -> Step {
+fn reclassify(rec: &mut PendingRecovery, class: &'static str, why: String) -> Step {
     eprintln!("[recovery] window {}: {why}", rec.batch_id);
     rec.last = why;
+    rec.last_class = class;
     Step::Wait(Duration::ZERO)
 }
 
-async fn stop(app: &Shared, rec: &mut PendingRecovery, why: String) -> Step {
+async fn stop(app: &Shared, rec: &mut PendingRecovery, class: &'static str, why: String) -> Step {
     eprintln!(
         "[recovery] HOLDING: window {} (it failed with: {}): {why}; the settle loop stops \
          until a restart",
         rec.batch_id, rec.cause
     );
     rec.last = why.clone();
+    rec.last_class = class;
+    rec.operator_action.get_or_insert(operator::STOPPED);
     crate::hold_settlement_for_recovery(
         app,
         format!("clock window {} unresolved: {why}", rec.batch_id),
@@ -563,12 +747,13 @@ async fn resolved(app: &Shared, admission: &mut Option<Paused>, close_only: bool
 /// Feed the close-only budget into the alerts while the window is pending.
 async fn note_budget(
     app: &Shared,
-    rec: &PendingRecovery,
+    rec: &mut PendingRecovery,
     budget: &Result<CloseOnlyBudget, String>,
 ) {
     let Ok(b) = budget else {
         return;
     };
+    rec.last_budget = Some(*b);
     let gw = app.gw.lock().await;
     if b.liveness_low() {
         gw.ops_alerts.activate(AlertKind::LivenessLow);
@@ -576,22 +761,68 @@ async fn note_budget(
         gw.ops_alerts.recover(AlertKind::LivenessLow);
     }
     if b.half_spent() {
-        blocked(
+        blocked_as(
             &gw,
+            rec,
             &format!(
                 "less than half of the close-only budget is left ({} blocks without \
                  progress, {:?} for the oldest unconsumed deposit)",
                 b.stalled_blocks_left(),
                 b.starved_blocks_left()
             ),
-            rec.batch_id,
+            operator::BUDGET,
+            true,
         );
     }
 }
 
+/// How the recovery status names a step's outcome, besides the wait reasons
+/// (`RecoveryStatus::last`).
+mod class {
+    pub(super) const JOURNAL_READ: &str = "the rollback journal read failed";
+    pub(super) const CONTRADICTION: &str = "the chain or the journal contradicts the window";
+    pub(super) const BURNED: &str = "an unused sequencer nonce was burned";
+    pub(super) const BURN_FAILED: &str = "the nonce burn failed";
+    pub(super) const SETTLE_HELD: &str = "the challenge watcher holds the settle";
+    pub(super) const DEPOSIT_HALT: &str = "a deposit halt blocks the retry";
+    pub(super) const DEPOSIT_READINESS: &str = "deposit readiness is not confirmed";
+    pub(super) const RETRY_TRANSIENT: &str = "the settle failed (transient)";
+    pub(super) const RETRY_RECLASSIFY: &str = "the chain moved since the decision (reclassify)";
+    pub(super) const RETRY_DETERMINISTIC: &str = "the settle failed (deterministic)";
+    pub(super) const RETRY_WORKER: &str = "the settle worker failed";
+    pub(super) const NOT_CORROBORATED: &str = "the landed settle is not corroborated yet";
+    pub(super) const NOT_DURABLE: &str = "the resolution is not durable yet";
+    pub(super) const VOID_REFUSED: &str = "the live void was refused";
+    pub(super) const VOID_BREAKER: &str = "the void breaker tripped";
+}
+
+/// Publish a pending recovery's status on `/api/state`, before its first step.
+pub(crate) async fn publish(app: &Shared, rec: &PendingRecovery) {
+    app.gw.lock().await.clock_recovery = Some(rec.status());
+}
+
 /// One recovery step for the pending window `rec`, with clock admission paused
-/// (`admission`) and armed by the seal. See the module documentation.
+/// (`admission`) and armed by the seal. See the module documentation. The
+/// recovery's status on `/api/state` follows each step, and is cleared once the
+/// window is resolved.
 pub(crate) async fn run_step(
+    app: &Shared,
+    chain: &Arc<dyn RecoveryChain>,
+    rec: &mut PendingRecovery,
+    jpath: &Path,
+    seed: &[u8; 32],
+    admission: &mut Option<Paused>,
+) -> Step {
+    rec.operator_action = None;
+    let step = step(app, chain, rec, jpath, seed, admission).await;
+    app.gw.lock().await.clock_recovery = match step {
+        Step::Resolved { .. } => None,
+        Step::Wait(_) | Step::Stop => Some(rec.status()),
+    };
+    step
+}
+
+async fn step(
     app: &Shared,
     chain: &Arc<dyn RecoveryChain>,
     rec: &mut PendingRecovery,
@@ -602,13 +833,14 @@ pub(crate) async fn run_step(
     rec.steps = rec.steps.saturating_add(1);
     let j = match reread(jpath, seed, rec.batch_id) {
         Ok(j) => j,
-        Err(Reread::Wait(why)) => return wait(app, rec, why).await,
-        Err(Reread::Stop(why)) => return stop(app, rec, why).await,
+        Err(Reread::Wait(why)) => return wait(app, rec, class::JOURNAL_READ, why).await,
+        Err(Reread::Stop(why)) => return stop(app, rec, class::CONTRADICTION, why).await,
     };
     let Some(intent) = ClockIntent::of(&j).filter(|i| i.phase == rec.phase) else {
         return stop(
             app,
             rec,
+            class::CONTRADICTION,
             format!(
                 "the rollback journal holds no phase-{} clock intent",
                 rec.phase
@@ -616,6 +848,7 @@ pub(crate) async fn run_step(
         )
         .await;
     };
+    rec.last_ms = intent.last_ms;
     // Held from the read until the decision is carried out: no anchor cancel can
     // be sent in between. One sent before the read and not final yet is caught by
     // the latest-block check in front of a settle.
@@ -630,6 +863,9 @@ pub(crate) async fn run_step(
         Ok(e) if e.quiet => rec.quiet_steps.saturating_add(1),
         _ => 0,
     };
+    if let Ok(e) = &evidence {
+        rec.last_evidence = Some(*e);
+    }
     note_budget(app, rec, &budget).await;
     let committed = app.gw.lock().await.last_settled_root;
     let decision = decide(
@@ -665,19 +901,20 @@ pub(crate) async fn run_step(
             {
                 let gw = app.gw.lock().await;
                 if reason == WaitReason::Replaced {
-                    blocked(&gw, reason.as_str(), rec.batch_id);
+                    blocked(&gw, rec, reason.as_str(), operator::REPLACED);
                 }
                 if matches!(reason, WaitReason::NonceFence | WaitReason::NotQuiet)
                     && rec.burns >= MAX_NONCE_BURNS
                 {
                     blocked(
                         &gw,
+                        rec,
                         "the nonce burns are used up and the fence has not passed",
-                        rec.batch_id,
+                        operator::BURNS_USED,
                     );
                 }
             }
-            wait(app, rec, why).await
+            wait(app, rec, reason.as_str(), why).await
         }
         Decision::Burn(nonce) => {
             rec.burns = rec.burns.saturating_add(1);
@@ -698,19 +935,30 @@ pub(crate) async fn run_step(
             match burned {
                 Ok(tx) => {
                     rec.last = format!("burned unused sequencer nonce {nonce} ({tx})");
+                    rec.last_class = class::BURNED;
                     Step::Wait(Duration::ZERO)
                 }
-                Err(e) => reclassify(rec, format!("the nonce burn at {nonce} failed: {e}")),
+                Err(e) => reclassify(
+                    rec,
+                    class::BURN_FAILED,
+                    format!("the nonce burn at {nonce} failed: {e}"),
+                ),
             }
         }
         Decision::Retry => {
             if let Err(e) = chain.settle_permitted() {
                 drop(in_flight);
-                return wait(app, rec, format!("window settle held: {e}")).await;
+                return wait(
+                    app,
+                    rec,
+                    class::SETTLE_HELD,
+                    format!("window settle held: {e}"),
+                )
+                .await;
             }
-            if let Err(why) = deposit_gate(app, rec.batch_id).await {
+            if let Err((class, why)) = deposit_gate(app, rec).await {
                 drop(in_flight);
-                return wait(app, rec, why).await;
+                return wait(app, rec, class, why).await;
             }
             *in_flight = Some((j.batch_id, intent.phase));
             let reprove = rec.retry_failures >= RETRY_FAILURES_BEFORE_REPROVE
@@ -732,6 +980,7 @@ pub(crate) async fn run_step(
                     stop(
                         app,
                         rec,
+                        class::RETRY_WORKER,
                         format!("the recovery settle worker failed after a possible broadcast: {join}"),
                     )
                     .await
@@ -747,23 +996,35 @@ pub(crate) async fn run_step(
                 }
                 Ok((_, Ok((bc, _, _)))) => reclassify(
                     rec,
+                    class::RETRY_RECLASSIFY,
                     format!("the recovery settle returned at finalized batch count {bc}; classify again"),
                 ),
                 Ok((_, Err(e))) => match classify_retry_error(&e) {
-                    RetryError::Deterministic => stop(app, rec, e).await,
-                    RetryError::Reclassify => reclassify(rec, e),
+                    RetryError::Deterministic => {
+                        stop(app, rec, class::RETRY_DETERMINISTIC, e).await
+                    }
+                    RetryError::Reclassify => reclassify(rec, class::RETRY_RECLASSIFY, e),
                     RetryError::Transient => {
                         rec.retry_failures = rec.retry_failures.saturating_add(1);
                         if rec.retry_failures == RETRY_FAILURES_BEFORE_REPROVE {
                             let gw = app.gw.lock().await;
                             blocked(
                                 &gw,
+                                rec,
                                 "the settle keeps failing against a matching anchor; cancel-anchor \
                                  after anchorTimeoutMs voids (timed) or returns (untimed) the window",
-                                rec.batch_id,
+                                operator::RETRY_FAILING,
                             );
+                        } else if rec.retry_failures > RETRY_FAILURES_BEFORE_REPROVE {
+                            rec.operator_action = Some(operator::RETRY_FAILING);
                         }
-                        wait(app, rec, format!("the recovery settle failed: {e}")).await
+                        wait(
+                            app,
+                            rec,
+                            class::RETRY_TRANSIENT,
+                            format!("the recovery settle failed: {e}"),
+                        )
+                        .await
                     }
                 },
             }
@@ -778,6 +1039,7 @@ pub(crate) async fn run_step(
                 return wait(
                     app,
                     rec,
+                    class::NOT_DURABLE,
                     format!("the committed window is not durable yet: {e}"),
                 )
                 .await;
@@ -814,6 +1076,7 @@ pub(crate) async fn run_step(
                 return wait(
                     app,
                     rec,
+                    class::NOT_DURABLE,
                     format!("the returned window is not durable yet: {e}"),
                 )
                 .await;
@@ -851,43 +1114,63 @@ pub(crate) async fn run_step(
             match applied {
                 Ok(Some(report)) => rec.voided = Some((report, basis, block)),
                 Ok(None) => {}
-                Err(e) => return stop(app, rec, format!("live void refused: {e}")).await,
+                Err(e) => {
+                    return stop(
+                        app,
+                        rec,
+                        class::VOID_REFUSED,
+                        format!("live void refused: {e}"),
+                    )
+                    .await
+                }
             }
             if let Err(e) = persist_and_delete(app, jpath).await {
                 return wait(
                     app,
                     rec,
+                    class::NOT_DURABLE,
                     format!("the voided window is not durable yet: {e}"),
                 )
                 .await;
             }
-            match rec.voided.take() {
-                Some((report, basis, block)) => {
-                    println!(
-                        "[recovery] VOIDED window {} ({:?}, basis {basis:?}) at finalized block \
-                         {block}: {}",
-                        report.batch_id,
-                        report.cause,
-                        report.summary()
-                    );
-                    for event in &report.order_events {
-                        let _ = app.events_tx.send(event.clone());
-                    }
+            // Durable and the journal gone: only now do users hear of it.
+            let notice = rec.voided.take().map(|(report, basis, block)| {
+                println!(
+                    "[recovery] VOIDED window {} ({}, basis {basis:?}) at finalized block \
+                     {block}: {}",
+                    report.batch_id,
+                    report.cause_name(),
+                    report.summary()
+                );
+                for event in report.account_events() {
+                    let _ = app.events_tx.send(event);
                 }
-                None => println!(
+                report.notice(crate::now_ms())
+            });
+            if notice.is_none() {
+                println!(
                     "[recovery] window {}: the snapshot already holds its void; journal deleted",
                     rec.batch_id
-                ),
+                );
             }
             {
                 let mut gw = app.gw.lock().await;
+                if notice.is_some() {
+                    gw.last_void = notice;
+                }
                 gw.ops_alerts.activate(AlertKind::WindowVoided);
                 if let Some(why) = gw.void_breaker.record(Instant::now()) {
-                    blocked(&gw, &format!("repeated live voids: {why}"), rec.batch_id);
+                    blocked(
+                        &gw,
+                        rec,
+                        &format!("repeated live voids: {why}"),
+                        operator::VOID_BREAKER,
+                    );
                     drop(gw);
                     return stop(
                         app,
                         rec,
+                        class::VOID_BREAKER,
                         format!(
                             "repeated live voids: {why}; admission stays closed until a restart"
                         ),
@@ -899,15 +1182,18 @@ pub(crate) async fn run_step(
         }
         Decision::Stop(why) => {
             drop(in_flight);
-            stop(app, rec, why).await
+            stop(app, rec, class::CONTRADICTION, why).await
         }
     }
 }
 
 /// The deposit barrier in front of a recovery settle. While admission is closed
 /// ingestion cannot clear it, so its readiness is read once here. A halt blocks
-/// the settle until the operator clears it.
-async fn deposit_gate(app: &Shared, batch_id: u64) -> Result<(), String> {
+/// the settle until the operator clears it. An error names its status class.
+async fn deposit_gate(
+    app: &Shared,
+    rec: &mut PendingRecovery,
+) -> Result<(), (&'static str, String)> {
     if app.gw.lock().await.deposits.check_ready().is_ok() {
         return Ok(());
     }
@@ -916,10 +1202,10 @@ async fn deposit_gate(app: &Shared, batch_id: u64) -> Result<(), String> {
     if gw.deposits.halt.is_some() {
         let why = "a deposit halt blocks the retry: clear it, or cancel the anchor after \
                    anchorTimeoutMs";
-        blocked(&gw, why, batch_id);
-        return Err(why.into());
+        blocked(&gw, rec, why, operator::DEPOSIT_HALT);
+        return Err((class::DEPOSIT_HALT, why.into()));
     }
-    refreshed
+    refreshed.map_err(|why| (class::DEPOSIT_READINESS, why))
 }
 
 /// Our settle of `j` landed: corroborate and commit it, and make the commit
@@ -937,6 +1223,7 @@ async fn commit_landed(
         return stop(
             app,
             rec,
+            class::CONTRADICTION,
             "the rollback journal holds no prepared outcome".into(),
         )
         .await;
@@ -959,6 +1246,7 @@ async fn commit_landed(
             return wait(
                 app,
                 rec,
+                class::NOT_CORROBORATED,
                 format!("the landed settle is not corroborated yet: {e}"),
             )
             .await
@@ -985,6 +1273,7 @@ async fn commit_landed(
         return wait(
             app,
             rec,
+            class::NOT_DURABLE,
             format!("the committed window is not durable yet: {e}"),
         )
         .await;

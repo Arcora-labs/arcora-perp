@@ -590,12 +590,16 @@ fn apply_boot_recovery_classified(
                     match gw.live_void_window(&j, reason) {
                         Ok(live_void::LiveVoidOutcome::Applied(report)) => {
                             println!(
-                                "[recovery] VOIDED window {} ({:?}, basis {basis:?}) at finalized \
+                                "[recovery] VOIDED window {} ({}, basis {basis:?}) at finalized \
                                  block {block}: {}",
                                 report.batch_id,
-                                report.cause,
+                                report.cause_name(),
                                 report.summary()
                             );
+                            // Nobody is subscribed before startup, so the notice
+                            // carries the void; boot refuses to start unless the
+                            // void is persisted.
+                            gw.last_void = Some(report.notice(now_ms()));
                             BootRecoveryOutcome::DeleteJournal { mutated: true }
                         }
                         Ok(live_void::LiveVoidOutcome::AlreadyVoided) => {
@@ -1457,6 +1461,14 @@ struct WState {
     /// Operational alerts currently active (snake_case kinds, as delivered to
     /// FIN_ALERT_* collectors), for monitors that poll this surface.
     ops_alerts: Vec<ops_alerts::AlertKind>,
+    /// The last live void of a settlement window since the gateway started:
+    /// `{ batchId, cause, atMs, orders, fills, withdrawals, deposits }`, counts
+    /// only (omitted when none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settlement_void: Option<serde_json::Value>,
+    /// The settle loop's pending recovery of a clock window (omitted when none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock_recovery: Option<clock_recovery::RecoveryStatus>,
     /// The verified TEE attestation the enclave is bound to (else null = stub).
     attestation: Option<WAttestation>,
     /// The LP pool (counterparty) — TVL, NAV/share, and the demo user's stake.
@@ -1905,6 +1917,15 @@ struct Gw {
     /// Runtime-only: a restart is the operator's acknowledgment.
     #[serde(skip)]
     void_breaker: live_void::VoidBreaker,
+    /// The last live void since this process started (`/api/state`
+    /// `settlementVoid`, and `voided` in each owner's withdrawals view).
+    /// Runtime-only: a restart forgets it.
+    #[serde(skip)]
+    last_void: Option<live_void::VoidNotice>,
+    /// The settle loop's pending recovery of a clock window, as `/api/state`
+    /// shows it (`clockRecovery`). Runtime-only, like the recovery itself.
+    #[serde(skip)]
+    clock_recovery: Option<clock_recovery::RecoveryStatus>,
 }
 
 /// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
@@ -2454,6 +2475,8 @@ impl Gw {
             oracle_crosschecks: HashMap::new(),
             admission_cap: admission::measured_cap(),
             void_breaker: Default::default(),
+            last_void: None,
+            clock_recovery: None,
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -3658,7 +3681,9 @@ impl Gw {
     /// An account's withdrawals with the claim data: each carries its leaf and, once
     /// the cumulative root has been published on-chain, the Merkle `proof` to call
     /// `vault.claim(to, amount, nonce, proof)`. `claimable=false` means it is recorded
-    /// but awaiting its first on-chain publish (the next settle).
+    /// but awaiting its first on-chain publish (the next settle). `voided` lists the
+    /// account's withdrawals the last live void since the gateway started removed:
+    /// their leaves can never be claimed, and the balance is back in the position.
     fn v1_withdrawals_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let owner = self.accounts.get(key)?.wallet.owner;
         // the published cumulative root the served proofs verify against — the caller
@@ -3690,7 +3715,12 @@ impl Gw {
                 })
             })
             .collect();
-        Some(serde_json::json!({ "withdrawals": items }))
+        let voided = self
+            .last_void
+            .as_ref()
+            .map(|v| v.withdrawals_of(&owner))
+            .unwrap_or_default();
+        Some(serde_json::json!({ "withdrawals": items, "voided": voided }))
     }
 
     /// Per-owner free margin in a market (the multi-tenant analog of `market_free`).
@@ -5824,6 +5854,8 @@ impl Gw {
             settlement_last_error: self.settle_health.last_error().map(|s| s.to_string()),
             settlement_held_since_ms: self.settlement_held_since_ms,
             ops_alerts: self.ops_alerts.active(),
+            settlement_void: self.last_void.as_ref().map(live_void::VoidNotice::json),
+            clock_recovery: self.clock_recovery.clone(),
             attestation: self.attestation.as_ref().map(|a| WAttestation {
                 measurement: hex0x(&a.measurement),
                 tcb: a.tcb.clone(),
@@ -8912,7 +8944,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
                 "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
-            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
+            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null)", "security": auth["security"], "responses": ok("orders") }
@@ -12131,14 +12163,17 @@ async fn main() {
                             let delay = note_clock_failure(&app, batch_id, &e).await;
                             // Taken after the worker returned: a send holds its lane
                             // until cast returns, so this covers every send it made.
-                            pending = Some(clock_recovery::PendingRecovery::new(
+                            let rec = clock_recovery::PendingRecovery::new(
                                 batch_id,
                                 window_phase,
                                 e,
                                 prune_rb,
                                 gate_was_closed,
                                 l1.nonce_ceiling(),
-                            ));
+                            )
+                            .with_ops(&witness_rb.ops);
+                            clock_recovery::publish(&app, &rec).await;
+                            pending = Some(rec);
                             next_attempt = tokio::time::Instant::now() + delay;
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
@@ -12268,14 +12303,17 @@ async fn main() {
                                             // the window sealed and admission closed.
                                             eprintln!("[recovery] window {batch_id}: settle failed and finalized batchCount is still {now_bc}: {err}");
                                             let delay = note_clock_failure(&app, batch_id, &err).await;
-                                            pending = Some(clock_recovery::PendingRecovery::new(
+                                            let rec = clock_recovery::PendingRecovery::new(
                                                 batch_id,
                                                 window_phase,
                                                 err,
                                                 prune_rb,
                                                 gate_was_closed,
                                                 l1.nonce_ceiling(),
-                                            ));
+                                            )
+                                            .with_ops(&witness_rb.ops);
+                                            clock_recovery::publish(&app, &rec).await;
+                                            pending = Some(rec);
                                             next_attempt = tokio::time::Instant::now() + delay;
                                         }
                                         RollAction::Hold => {
@@ -12290,14 +12328,17 @@ async fn main() {
                                 _ if clock_mode => {
                                     eprintln!("[recovery] window {batch_id}: settle failed ({err}) and the pinned observation failed; the recovery reads the settlement again");
                                     let delay = note_clock_failure(&app, batch_id, &err).await;
-                                    pending = Some(clock_recovery::PendingRecovery::new(
+                                    let rec = clock_recovery::PendingRecovery::new(
                                         batch_id,
                                         window_phase,
                                         err,
                                         prune_rb,
                                         gate_was_closed,
                                         l1.nonce_ceiling(),
-                                    ));
+                                    )
+                                    .with_ops(&witness_rb.ops);
+                                    clock_recovery::publish(&app, &rec).await;
+                                    pending = Some(rec);
                                     next_attempt = tokio::time::Instant::now() + delay;
                                 }
                                 _ => {
@@ -19213,6 +19254,7 @@ mod tests {
         );
         assert_eq!(gw.snapshot_plain(), before);
         assert_eq!(gw.seq.state.next_batch_id, window + 1);
+        assert!(gw.last_void.is_none());
         assert_eq!(
             classified(
                 &mut gw,
@@ -19225,6 +19267,13 @@ mod tests {
             gw.seq.state.state_root(),
             timed.witness.pre_state.state_root()
         );
+        // Nobody is subscribed at boot: the notice carries the void.
+        let notice = gw.snapshot().settlement_void.expect("the void's notice");
+        assert_eq!(
+            (notice["batchId"].clone(), notice["cause"].clone()),
+            (window.into(), "EmptyAfterFence".into())
+        );
+        assert_eq!(notice["withdrawals"], timed.ww.len());
         // A void the window's checks refuse keeps the journal and changes nothing.
         let mut gw = Gw::boot_restored(&plain).unwrap();
         gw.bootstrap = bootstrap::Bootstrap::DepositApplied {
@@ -19241,6 +19290,7 @@ mod tests {
             BootRecoveryOutcome::KeepJournal
         );
         assert_eq!(gw.snapshot_plain(), before);
+        assert!(gw.last_void.is_none());
     }
 
     /// A journaled intent and the evidence that it may still settle: its own
@@ -19260,6 +19310,7 @@ mod tests {
                 nonce: 3,
                 fence_passed: false,
                 quiet: true,
+                seen_nonces: Some((3, 3)),
                 block_time_ms: intent.last_ms,
                 clock_skew_ms: 30_000,
             },

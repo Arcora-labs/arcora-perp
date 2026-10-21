@@ -168,12 +168,13 @@ pub fn held_alert_message(consecutive: u32, _last_error: &str) -> String {
 }
 
 /// The HELD line while the settle loop is recovering a clock window. As above,
-/// it carries no diagnostic text; the operator action is in `/health`.
+/// it carries no diagnostic text; the operator action is in `/api/state`
+/// `clockRecovery`.
 pub fn held_recovery_alert_message(batch_id: u64, polls: u32) -> String {
     format!(
         "[l1][HELD] clock window {batch_id} unresolved for {polls} polls — trading, \
-         liquidation and funding ticks are paused (clock admission closed); see /health \
-         clockRecovery for the operator action"
+         liquidation and funding ticks are paused (clock admission closed); see \
+         clockRecovery in /api/state for the operator action"
     )
 }
 
@@ -302,7 +303,7 @@ mod tests {
         let m = held_recovery_alert_message(7, 4);
         assert!(m.contains("[l1][HELD] clock window 7 unresolved for 4 polls"));
         assert!(m.contains("paused (clock admission closed)"));
-        assert!(m.contains("/health clockRecovery"));
+        assert!(m.contains("clockRecovery in /api/state"));
         assert!(!m.contains("trading continues"));
     }
 

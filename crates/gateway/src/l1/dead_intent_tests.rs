@@ -457,6 +457,27 @@ fn the_fence_basis_needs_quiet_nonces() {
         classify(&empty, None, Ceiling::Nonce(10)),
         (false, true, Classified::MaySettle)
     );
+    // An endpoint behind the finalized nonce is not quiet either, even when the
+    // other one is.
+    let behind = Chain {
+        latest_nonce: Some(9),
+        pending_nonce: Some(9),
+        ..empty.clone()
+    };
+    assert_eq!(
+        classify(&empty, Some(&behind), Ceiling::Nonce(9)),
+        (true, false, Classified::MaySettle)
+    );
+    // The recovery status reports the highest latest and pending nonces seen.
+    let seen = |primary: &Chain, witness: Option<&Chain>| {
+        evidence_on(primary, witness, &untimed, Ceiling::Nonce(9)).seen_nonces
+    };
+    assert_eq!(seen(&empty, Some(&empty)), Some((10, 10)));
+    assert_eq!(seen(&empty, Some(&pending)), Some((10, 11)));
+    assert_eq!(seen(&mined, None), Some((11, 11)));
+    assert_eq!(seen(&empty, Some(&behind)), Some((10, 10)));
+    assert_eq!(seen(&unreadable, None), None);
+    assert_eq!(seen(&empty, Some(&unreadable)), None);
 }
 
 fn preconditions(chain: &Chain) -> Result<crate::prover_client::RegisterPreconditions, String> {

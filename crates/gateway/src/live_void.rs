@@ -60,6 +60,8 @@ pub(crate) struct VoidReport {
     pub withdrawals: Vec<Withdrawal>,
     /// The ids of the deposits restored for re-ingestion, in order.
     pub deposits: Vec<u64>,
+    /// The same ids by the owner of the account each is credited to.
+    pub depositors: std::collections::BTreeMap<PubKey, Vec<u64>>,
     /// An insurance bootstrap the window applied returned to `NotStarted`.
     pub bootstrap_restored: bool,
     /// Note-archive records dropped.
@@ -124,7 +126,111 @@ impl VoidBreaker {
     }
 }
 
+/// The last live void since the gateway started: `/api/state` shows it as
+/// `settlementVoid`, and each owner's withdrawals view lists its voided
+/// withdrawals. Runtime only, so a restart forgets it.
+#[derive(Clone, Debug)]
+pub(crate) struct VoidNotice {
+    pub batch_id: u64,
+    /// `Cancelled`, `EmptyAfterFence` or `UnderivableTimeBounds`.
+    pub cause: &'static str,
+    pub at_ms: u64,
+    pub orders: usize,
+    pub fills: usize,
+    pub withdrawals: Vec<Withdrawal>,
+    pub deposits: usize,
+}
+
+impl VoidNotice {
+    /// `/api/state` `settlementVoid`: counts only, no account data.
+    pub(crate) fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "batchId": self.batch_id,
+            "cause": self.cause,
+            "atMs": self.at_ms,
+            "orders": self.orders,
+            "fills": self.fills,
+            "withdrawals": self.withdrawals.len(),
+            "deposits": self.deposits,
+        })
+    }
+
+    /// `owner`'s voided withdrawals, for its withdrawals view.
+    pub(crate) fn withdrawals_of(&self, owner: &PubKey) -> Vec<serde_json::Value> {
+        self.withdrawals
+            .iter()
+            .filter(|w| w.owner == *owner)
+            .map(|w| {
+                serde_json::json!({
+                    "to": hex0x(&w.to),
+                    "amount": w.amount.to_string(),
+                    "nonce": w.nonce,
+                    "leaf": hex0x(&w.leaf()),
+                    "batchId": self.batch_id,
+                })
+            })
+            .collect()
+    }
+}
+
 impl VoidReport {
+    /// The cause as the notice and the log name it.
+    pub(crate) fn cause_name(&self) -> &'static str {
+        match self.cause {
+            _ if self.underivable => "UnderivableTimeBounds",
+            DeadIntent::Cancelled => "Cancelled",
+            DeadIntent::EmptyAfterFence => "EmptyAfterFence",
+            DeadIntent::CloseOnlyPhaseZero => "CloseOnlyPhaseZero",
+            DeadIntent::Replaced => "Replaced",
+        }
+    }
+
+    /// The runtime notice of this void, made at `at_ms`.
+    pub(crate) fn notice(&self, at_ms: u64) -> VoidNotice {
+        VoidNotice {
+            batch_id: self.batch_id,
+            cause: self.cause_name(),
+            at_ms,
+            orders: self.orders,
+            fills: self.fills_reverted,
+            withdrawals: self.withdrawals.clone(),
+            deposits: self.deposits.len(),
+        }
+    }
+
+    /// The per-account events of this void, each tagged with its owner: one
+    /// `execution` event per changed order record, one `withdrawalVoided` per
+    /// withdrawal and one `depositRestored` per depositor. Sent once the void is
+    /// durable.
+    pub(crate) fn account_events(&self) -> Vec<String> {
+        let withdrawals = self.withdrawals.iter().map(|w| {
+            serde_json::json!({
+                "type": "withdrawalVoided",
+                "owner": hex0x(&w.owner),
+                "leaf": hex0x(&w.leaf()),
+                "amount": w.amount.to_string(),
+                "nonce": w.nonce,
+                "batchId": self.batch_id,
+            })
+            .to_string()
+        });
+        let deposits = self.depositors.iter().map(|(owner, ids)| {
+            serde_json::json!({
+                "type": "depositRestored",
+                "owner": hex0x(owner),
+                "depositIds": ids,
+                "batchId": self.batch_id,
+            })
+            .to_string()
+        });
+        self.order_events
+            .iter()
+            .cloned()
+            .chain(withdrawals)
+            .chain(deposits)
+            .collect()
+    }
+
     /// What the void undid, for the recovery log line.
     pub(crate) fn summary(&self) -> String {
         let mut line = format!(
@@ -525,6 +631,10 @@ impl Gw {
             fills_reverted,
             withdrawals,
             deposits: deposits.iter().map(|d| d.id).collect(),
+            depositors: deposits.iter().fold(Default::default(), |mut by, d| {
+                by.entry(d.owner).or_insert_with(Vec::new).push(d.id);
+                by
+            }),
             bootstrap_restored,
             archive_dropped,
             underivable: perp_core::clock::TimeBounds::derive(&j.witness.ops).is_err(),

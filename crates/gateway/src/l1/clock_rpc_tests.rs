@@ -327,6 +327,11 @@ fn runtime_clock_native_cast_dead_intent_evidence_reads_the_quiet_nonces() {
             (crate::rollback_journal::AnchorSlot::Matching, true, quiet),
             "mode {mode}"
         );
+        assert_eq!(
+            e.seen_nonces,
+            Some((10, if quiet { 10 } else { 11 })),
+            "mode {mode}"
+        );
         let calls = server.script.calls.lock().unwrap();
         assert_eq!(
             calls

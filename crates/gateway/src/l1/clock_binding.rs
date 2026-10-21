@@ -337,6 +337,7 @@ pub(super) fn read_dead_intent_evidence(
         nonce,
         fence_passed: ceiling.passed_by(nonce),
         quiet: false,
+        seen_nonces: None,
         block_time_ms: r.timestamp().ok().and_then(|s| s.checked_mul(1000)),
         clock_skew_ms,
     })
@@ -344,19 +345,32 @@ pub(super) fn read_dead_intent_evidence(
 
 /// Whether no sequencer-key transaction is visible as pending: on every
 /// endpoint, the sequencer's latest and pending nonces equal `finalized`. A
-/// failed or malformed read is not quiet.
-pub(super) fn nonces_quiet(endpoints: &[&dyn Rpc], sequencer: &[u8; 20], finalized: u64) -> bool {
+/// failed or malformed read is not quiet. Also returns the highest latest and
+/// pending nonces seen, or `None` when a read failed.
+pub(super) fn nonces_quiet(
+    endpoints: &[&dyn Rpc],
+    sequencer: &[u8; 20],
+    finalized: u64,
+) -> (bool, Option<(u64, u64)>) {
     let account = serde_json::json!(crate::hex0x(sequencer));
-    endpoints.iter().all(|rpc| {
-        ["latest", "pending"].into_iter().all(|tag| {
+    let (mut quiet, mut seen) = (true, Some((0u64, 0u64)));
+    for rpc in endpoints {
+        let read = |tag: &str| {
             rpc.call(
                 "eth_getTransactionCount",
                 vec![account.clone(), serde_json::json!(tag)],
             )
             .and_then(|v| observation::quantity(&v))
-            .is_ok_and(|n| n == finalized)
-        })
-    })
+        };
+        seen = match (seen, read("latest"), read("pending")) {
+            (Some((latest, pending)), Ok(l), Ok(p)) => {
+                quiet &= l == finalized && p == finalized;
+                Some((latest.max(l), pending.max(p)))
+            }
+            _ => None,
+        };
+    }
+    (quiet && seen.is_some(), seen)
 }
 
 /// The dead-intent evidence on `primary`, with `witness` agreeing when it is
@@ -383,7 +397,7 @@ pub(super) fn dead_intent_evidence_from(
         read_dead_intent_evidence(&r, settlement, verifier, sequencer, intent, ceiling)?;
     r.finish()?;
     let endpoints: Vec<&dyn Rpc> = std::iter::once(primary).chain(witness).collect();
-    evidence.quiet = nonces_quiet(&endpoints, sequencer, evidence.nonce);
+    (evidence.quiet, evidence.seen_nonces) = nonces_quiet(&endpoints, sequencer, evidence.nonce);
     Ok(evidence)
 }
 

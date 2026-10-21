@@ -95,6 +95,7 @@ impl RecoveryChain for FakeChain {
             nonce: s.nonce,
             fence_passed: ceiling.passed_by(s.nonce),
             quiet: !s.pending,
+            seen_nonces: Some((s.nonce, s.nonce + u64::from(s.pending))),
             block_time_ms: s.block_time_ms,
             clock_skew_ms: SKEW_MS,
         })
@@ -446,6 +447,7 @@ fn evidence_for(j: &RollbackJournal, slot: AnchorSlot) -> DeadIntentEvidence {
         nonce: 5,
         fence_passed: false,
         quiet: true,
+        seen_nonces: Some((5, 5)),
         block_time_ms: ClockIntent::of(j).unwrap().last_ms.map(|l| l + SKEW_MS),
         clock_skew_ms: SKEW_MS,
     }
@@ -704,27 +706,165 @@ fn decision_matrix() {
 
 /// The main case: the window's registration was refused before broadcast (its
 /// estimate reverted past the skew), so its recorded nonce stays unused and the
-/// fence never passes. The chain clock voids it without a restart.
+/// fence never passes. The chain clock voids it without a restart. While it
+/// waits `/api/state` shows the recovery; once the void is durable the owners
+/// hear of it and the views show it.
 #[tokio::test]
 async fn a_never_broadcast_register_is_voided_by_the_chain_clock_without_restart() {
     let Voidable {
-        gw, journal, chain, ..
+        gw,
+        journal,
+        chain,
+        maker,
+        taker,
+        operator,
+        withdrawal,
+        w,
+        consumed,
+        ..
     } = voidable(false);
+    let owner_of = |key: &[u8; 32]| crate::hex0x(&gw.accounts[key].wallet.owner);
+    let (maker_owner, taker_owner, operator_owner) =
+        (owner_of(&maker.key), owner_of(&taker), owner_of(&operator));
     let h = harness(gw, journal.clone(), chain_at(&journal));
     let window = journal.batch_id;
+    let last_ms = ClockIntent::of(&journal).unwrap().last_ms.unwrap();
     h.seal_hold().await;
     let mut rec = h.pending();
+    let mut events = h.app.events_tx.subscribe();
     // At the registration bound the chain clock has not passed: wait, closed.
     assert!(matches!(h.step(&mut rec).await, Step::Wait(_)));
     assert!(!h.admission_open());
     assert!(h.jpath.exists());
     assert_eq!(h.app.gw.lock().await.seq.state.next_batch_id, window + 1);
+    {
+        let gw = h.app.gw.lock().await;
+        let state = serde_json::to_value(h.app.snapshot(&gw)).unwrap();
+        assert!(state.get("settlementVoid").is_none());
+        let r = &state["clockRecovery"];
+        assert_eq!(r["batchId"], window);
+        assert_eq!(r["phase"], 0);
+        assert_eq!(r["steps"], 1);
+        assert_eq!(r["last"], "awaiting the chain clock");
+        assert_eq!(r["basis"], "chainClock");
+        assert_eq!(
+            r["chainClock"],
+            serde_json::json!({
+                "blockTimeMs": last_ms + SKEW_MS, "lastMs": last_ms, "skewMs": SKEW_MS,
+            })
+        );
+        assert_eq!(
+            r["fence"],
+            serde_json::json!({
+                "block": 100, "ceiling": 5, "finalizedNonce": 5, "latestNonce": 5,
+                "pendingNonce": 5, "quiet": true, "passed": false,
+            })
+        );
+        assert_eq!(
+            r["closeOnlyBudget"],
+            serde_json::json!({ "stalledBlocksLeft": 991, "starvedBlocksLeft": null })
+        );
+        assert_eq!(
+            (r["burns"].clone(), r["retryFailures"].clone()),
+            (0.into(), 0.into())
+        );
+        assert!(r["operatorAction"].is_null(), "waiting needs nobody");
+        assert!(r["sinceMs"].as_u64().unwrap() <= crate::now_ms());
+    }
+    assert!(events.try_recv().is_err(), "nothing is voided yet");
     // Past it: voided, durable before the journal is deleted, and admission reopens.
     h.fake.with(|s| s.block_time_ms = past_skew(&journal));
     assert_eq!(h.step(&mut rec).await, Step::Resolved { close_only: false });
     assert!(h.admission_open());
     assert!(!h.jpath.exists());
     assert!(*h.writes.lock().unwrap().last().unwrap());
+    // Each owner hears of what it lost: its order records, its withdrawal and
+    // its deposits, which are credited again.
+    let events: Vec<serde_json::Value> = std::iter::from_fn(|| events.try_recv().ok())
+        .map(|e| serde_json::from_str(&e).unwrap())
+        .collect();
+    let of = |kind: &str| -> Vec<&serde_json::Value> {
+        events.iter().filter(|e| e["type"] == kind).collect()
+    };
+    let executions = of("execution");
+    assert_eq!(executions.len(), 2);
+    for e in &executions {
+        assert_eq!(e["execution"]["status"], "CANCELLED", "{e}");
+        assert_eq!(e["execution"]["reason"], "WindowVoided", "{e}");
+    }
+    let mut order_owners: Vec<&str> = executions
+        .iter()
+        .map(|e| e["owner"].as_str().unwrap())
+        .collect();
+    order_owners.sort_unstable();
+    let mut expected = vec![maker_owner.as_str(), taker_owner.as_str()];
+    expected.sort_unstable();
+    assert_eq!(order_owners, expected);
+    assert_eq!(
+        of("withdrawalVoided"),
+        vec![&serde_json::json!({
+            "type": "withdrawalVoided",
+            "owner": crate::hex0x(&withdrawal.owner),
+            "leaf": crate::hex0x(&withdrawal.leaf()),
+            "amount": withdrawal.amount.to_string(),
+            "nonce": withdrawal.nonce,
+            "batchId": window,
+        })]
+    );
+    let mut restored: Vec<(String, serde_json::Value)> = of("depositRestored")
+        .iter()
+        .map(|e| {
+            assert_eq!(e["batchId"], window);
+            (
+                e["owner"].as_str().unwrap().to_string(),
+                e["depositIds"].clone(),
+            )
+        })
+        .collect();
+    restored.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut expected = vec![
+        (maker_owner, serde_json::json!([consumed])),
+        (taker_owner, serde_json::json!([consumed + 1])),
+        (operator_owner, serde_json::json!([consumed + 2])),
+    ];
+    expected.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(restored, expected);
+    assert_eq!(events.len(), 2 + 1 + 3);
+    {
+        let gw = h.app.gw.lock().await;
+        let state = serde_json::to_value(h.app.snapshot(&gw)).unwrap();
+        assert!(state.get("clockRecovery").is_none(), "resolved");
+        let notice = &state["settlementVoid"];
+        assert_eq!(notice["batchId"], window);
+        assert_eq!(notice["cause"], "EmptyAfterFence");
+        assert_eq!(notice["orders"], published(&journal).len());
+        assert_eq!(
+            (
+                notice["fills"].clone(),
+                notice["withdrawals"].clone(),
+                notice["deposits"].clone()
+            ),
+            (1.into(), 1.into(), 3.into())
+        );
+        assert!(notice["atMs"].as_u64().unwrap() <= crate::now_ms());
+        // The withdrawer's view lists the voided withdrawal; nobody else's does.
+        let view = gw.v1_withdrawals_json(&w.key).unwrap();
+        assert_eq!(view["withdrawals"], serde_json::json!([]));
+        assert_eq!(
+            view["voided"],
+            serde_json::json!([{
+                "to": crate::hex0x(&withdrawal.to),
+                "amount": withdrawal.amount.to_string(),
+                "nonce": withdrawal.nonce,
+                "leaf": crate::hex0x(&withdrawal.leaf()),
+                "batchId": window,
+            }])
+        );
+        assert_eq!(
+            gw.v1_withdrawals_json(&maker.key).unwrap()["voided"],
+            serde_json::json!([])
+        );
+    }
     let durable = h.durable();
     assert_eq!(durable.seq.state.next_batch_id, window);
     assert_eq!(
@@ -1095,7 +1235,8 @@ async fn a_landed_settle_rolls_forward_in_loop() {
 
 /// A void whose snapshot or journal delete fails keeps the recovery pending,
 /// admission closed and the loop running; the next step finds the void already
-/// applied and completes it.
+/// applied and completes it. Nobody hears of the void before it is durable and
+/// its journal is gone, and then exactly once.
 #[tokio::test]
 async fn a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_next_step() {
     let Voidable { gw, journal, .. } = voidable(false);
@@ -1104,6 +1245,7 @@ async fn a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_nex
     let h = harness(gw, journal.clone(), state);
     h.seal_hold().await;
     let mut rec = h.pending();
+    let mut events = h.app.events_tx.subscribe();
     h.fail_snapshots.store(true, Ordering::SeqCst);
     assert!(matches!(h.step(&mut rec).await, Step::Wait(d) if d > Duration::ZERO));
     assert!(h.jpath.exists());
@@ -1116,6 +1258,16 @@ async fn a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_nex
         h.app.gw.lock().await.seq.state.next_batch_id,
         journal.batch_id
     );
+    assert!(
+        events.try_recv().is_err(),
+        "no event before the void is durable"
+    );
+    {
+        let gw = h.app.gw.lock().await;
+        assert!(gw.last_void.is_none());
+        let status = gw.clock_recovery.as_ref().expect("still pending");
+        assert_eq!(status.last, "the resolution is not durable yet");
+    }
     let voided = h.app.gw.lock().await.snapshot_plain();
     h.fail_snapshots.store(false, Ordering::SeqCst);
     assert_eq!(h.step(&mut rec).await, Step::Resolved { close_only: false });
@@ -1123,6 +1275,17 @@ async fn a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_nex
     assert!(rec.voided.is_none());
     assert!(!h.jpath.exists());
     assert!(h.admission_open());
+    let sent = std::iter::from_fn(|| events.try_recv().ok()).count();
+    assert_eq!(
+        sent,
+        2 + 1 + 3,
+        "the order, withdrawal and deposit events, once"
+    );
+    {
+        let gw = h.app.gw.lock().await;
+        assert_eq!(gw.last_void.as_ref().unwrap().batch_id, journal.batch_id);
+        assert!(gw.clock_recovery.is_none());
+    }
 
     // The delete fails: the void is durable and the journal stays until it goes.
     let Voidable { gw, journal, .. } = voidable(false);
@@ -1136,6 +1299,7 @@ async fn a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_nex
         use std::os::unix::fs::PermissionsExt as _;
         std::fs::set_permissions(&journal_dir, std::fs::Permissions::from_mode(mode)).unwrap();
     };
+    let mut events = h.app.events_tx.subscribe();
     set_mode(0o555);
     let step = h.step(&mut rec).await;
     set_mode(0o755);
@@ -1143,8 +1307,17 @@ async fn a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_nex
     assert!(h.jpath.exists());
     assert!(!h.admission_open());
     assert_eq!(h.durable().seq.state.next_batch_id, h.journal.batch_id);
+    assert!(
+        events.try_recv().is_err(),
+        "no event while the journal is still there"
+    );
+    assert!(h.app.gw.lock().await.last_void.is_none());
     assert_eq!(h.step(&mut rec).await, Step::Resolved { close_only: false });
     assert!(!h.jpath.exists());
+    assert_eq!(
+        std::iter::from_fn(|| events.try_recv().ok()).count(),
+        2 + 1 + 3
+    );
 }
 
 /// A return to the open window whose snapshot failed is not applied again by
@@ -1507,7 +1680,8 @@ async fn an_underivable_window_voids_with_its_cause() {
 /// The recovery's alerts and backoff: `ClockRecoveryBlocked` is raised and
 /// cleared, the HELD line names the window without error text, the backoff
 /// restarts on resolution while `SettlementHeld` stays until the replacement
-/// settles, and `LivenessLow` follows the step's budget read.
+/// settles, and `LivenessLow` follows the step's budget read. `/api/state`
+/// names the reason and the operator action, without error text either.
 #[tokio::test]
 async fn recovery_alerts_and_backoff() {
     let Voidable {
@@ -1547,6 +1721,26 @@ async fn recovery_alerts_and_backoff() {
         !held.contains("secret") && !held.contains("upstream"),
         "{held}"
     );
+    {
+        let gw = h.app.gw.lock().await;
+        let status = serde_json::to_value(h.app.snapshot(&gw)).unwrap()["clockRecovery"].clone();
+        assert_eq!(status["batchId"], journal.batch_id);
+        assert_eq!(status["steps"], 3);
+        assert_eq!(status["last"], WaitReason::Replaced.as_str());
+        // The other anchor's cancel is the operator's; it outranks the budget.
+        assert_eq!(status["operatorAction"], operator::REPLACED);
+        assert_eq!(
+            status["closeOnlyBudget"],
+            serde_json::json!({ "stalledBlocksLeft": 401, "starvedBlocksLeft": null })
+        );
+        assert_eq!(status["fence"]["quiet"], true);
+        assert_eq!(status["fence"]["passed"], false);
+        let text = status.to_string();
+        assert!(
+            !text.contains("secret") && !text.contains("upstream"),
+            "{text}"
+        );
+    }
     // The budget recovers, and the cancel of the other anchor is final.
     h.fake.with(|s| {
         s.budget = healthy_budget();
@@ -1556,6 +1750,10 @@ async fn recovery_alerts_and_backoff() {
     assert_eq!(h.step(&mut rec).await, Step::Resolved { close_only: false });
     {
         let gw = h.app.gw.lock().await;
+        assert!(
+            gw.clock_recovery.is_none(),
+            "the status clears on resolution"
+        );
         assert!(!h.alert(&gw, AlertKind::ClockRecoveryBlocked));
         assert!(!h.alert(&gw, AlertKind::LivenessLow));
         assert!(
