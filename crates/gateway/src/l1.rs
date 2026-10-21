@@ -2026,9 +2026,10 @@ fn log_answer_round(r: &crate::answer_lane::RoundReport) {
     if let Some(nonce) = r.blocked_at {
         eprintln!(
             "[l1] WARN: answer lane blocked at nonce {nonce}, where no answer of ours is \
-             pending; answers behind it wait until a transaction mines there. While they wait \
-             it is replaced within the bump caps, and a no-op there that fails for a reason \
-             other than its fees is retried at growing intervals"
+             pending; answers of ours above it wait until a transaction mines there. Within \
+             the bump caps, queued answers take the nonce over, or, while answers of ours wait \
+             above it, a no-op replaces it (one that fails for a reason other than its fees \
+             is retried at growing intervals); with neither, it is left to mine on its own"
         );
     }
     if r.reverted > 0 {
@@ -2039,8 +2040,9 @@ fn log_answer_round(r: &crate::answer_lane::RoundReport) {
     }
     if r.at_fee_cap > 0 {
         eprintln!(
-            "[l1] WARN: {} answer transaction(s) at the bump limit or fee cap; their fees are \
-             not raised again, so each stays at its last fees until it mines",
+            "[l1] WARN: {} answer transaction(s) at the bump limit or fee cap, whose fees are \
+             not raised again: a pending one keeps its last fees until it mines, and queued \
+             answers the node refused at the cap are offered again at those fees",
             r.at_fee_cap
         );
     }
