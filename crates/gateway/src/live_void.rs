@@ -337,9 +337,15 @@ impl Gw {
         j: &RollbackJournal,
         cause: DeadIntent,
     ) -> Result<LiveVoidOutcome, LiveVoidError> {
+        if !matches!(cause, DeadIntent::Cancelled | DeadIntent::EmptyAfterFence) {
+            return Err(LiveVoidError::Refused(format!(
+                "a {cause:?} intent is not voided: only one whose anchor was cancelled or can \
+                 never exist"
+            )));
+        }
         let deposits = voided_deposits(j);
         match self
-            .live_void_shape(j, cause, &deposits)
+            .live_void_shape(j, &deposits)
             .map_err(LiveVoidError::Refused)?
         {
             Shape::AlreadyVoided => return Ok(LiveVoidOutcome::AlreadyVoided),
@@ -353,19 +359,22 @@ impl Gw {
         Ok(LiveVoidOutcome::Applied(report))
     }
 
+    /// Whether the state already holds the void of window `j`: the void's
+    /// snapshot was made durable and its journal was not deleted yet. Changes
+    /// nothing.
+    pub(crate) fn holds_live_void(&self, j: &RollbackJournal) -> bool {
+        matches!(
+            self.live_void_shape(j, &voided_deposits(j)),
+            Ok(Shape::AlreadyVoided)
+        )
+    }
+
     /// The journal and the state it must be voided in.
     fn live_void_shape(
         &self,
         j: &RollbackJournal,
-        cause: DeadIntent,
         deposits: &[VoidedDeposit],
     ) -> Result<Shape, String> {
-        if !matches!(cause, DeadIntent::Cancelled | DeadIntent::EmptyAfterFence) {
-            return Err(format!(
-                "a {cause:?} intent is not voided: only one whose anchor was cancelled or can \
-                 never exist"
-            ));
-        }
         let prepared = j
             .prepared
             .as_ref()

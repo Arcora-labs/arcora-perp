@@ -563,6 +563,23 @@ fn apply_boot_recovery_classified(
         .l1_status
         .as_ref()
         .is_some_and(|st| chain_root.eq_ignore_ascii_case(&st.settled_root));
+    // The void's snapshot is durable and the journal was not deleted. The window
+    // was decided dead when it was voided, and that decision is final, so the
+    // journal goes without deciding again: boot's own read may not be able to
+    // (it waits for nothing, and its ceiling holds every recorded send). Only
+    // while the chain is still at the window's batch and pre-state root.
+    if j.prepared.is_some()
+        && b_snap == j.batch_id
+        && chain_bc == j.batch_id
+        && chain_root.eq_ignore_ascii_case(&hex32(&j.witness.pre_state.state_root()))
+        && gw.holds_live_void(&j)
+    {
+        println!(
+            "[recovery] window {} was already voided; the restored snapshot holds the void",
+            j.batch_id
+        );
+        return BootRecoveryOutcome::DeleteJournal { mutated: false };
+    }
     match rollback_journal::recovery_action_classified(
         j.batch_id,
         j.prepared.is_some(),
@@ -10682,8 +10699,11 @@ async fn main() {
                                             if check.evidence.close_only {
                                                 gw.deposits.l1_close_only = true;
                                             }
+                                            // A void already durable resolves below
+                                            // without waiting for anything.
                                             if let Some(hint) =
                                                 boot_wait_hint(j.batch_id, &intent, check)
+                                                    .filter(|_| !gw.holds_live_void(&j))
                                             {
                                                 eprintln!("{hint}");
                                             }
@@ -19878,6 +19898,65 @@ mod tests {
             );
             assert_eq!(gw.snapshot_plain(), before, "{what}");
         }
+    }
+
+    /// A restart right after the void's snapshot, before its journal delete:
+    /// boot's own read may not decide the window yet (its ceiling holds every
+    /// recorded send, and it does not wait), so no dead intent reaches the table.
+    /// The restored snapshot holds the void, and the journal is deleted without
+    /// mutation, at the window's batch and pre-state root only.
+    #[test]
+    fn boot_deletes_the_journal_of_a_durable_void_without_a_fresh_dead_read() {
+        let seed = [48u8; 32];
+        let crate::live_void::tests::Voidable {
+            mut gw, journal, ..
+        } = crate::live_void::tests::voidable(false);
+        let window = journal.batch_id;
+        let sealed = gw.snapshot_plain();
+        assert!(!gw.holds_live_void(&journal));
+        assert!(matches!(
+            gw.live_void_window(&journal, rollback_journal::DeadIntent::EmptyAfterFence),
+            Ok(live_void::LiveVoidOutcome::Applied(_))
+        ));
+        let voided = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
+        let resolve = |gw: &mut Gw, chain_bc, root: &str| {
+            apply_boot_recovery_classified(
+                gw,
+                journal.clone(),
+                chain_bc,
+                root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                None,
+            )
+        };
+        let mut restored = Gw::boot_restored(&voided).unwrap();
+        assert!(restored.holds_live_void(&journal));
+        let before = restored.snapshot_plain();
+        assert_eq!(
+            resolve(&mut restored, window, &pre_root),
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
+        );
+        assert_eq!(restored.snapshot_plain(), before, "byte-equal");
+        // Another root, or a batch that moved on: kept, nothing changes.
+        for (chain_bc, root) in [(window, hex32(&[0xee; 32])), (window + 1, pre_root.clone())] {
+            let mut gw = Gw::boot_restored(&voided).unwrap();
+            assert_eq!(
+                resolve(&mut gw, chain_bc, &root),
+                BootRecoveryOutcome::KeepJournal
+            );
+            assert_eq!(gw.snapshot_plain(), before);
+        }
+        // The sealed snapshot does not hold the void: without a dead intent it
+        // keeps holding, as before.
+        let mut gw = Gw::boot_restored(&sealed).unwrap();
+        assert!(!gw.holds_live_void(&journal));
+        assert_eq!(
+            resolve(&mut gw, window, &pre_root),
+            BootRecoveryOutcome::KeepJournal
+        );
+        assert_eq!(gw.snapshot_plain(), sealed);
     }
 
     /// Once the void is durable and the journal is gone, a restart keeps the
