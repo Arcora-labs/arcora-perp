@@ -219,6 +219,8 @@ impl BroadcastStore {
         };
         self.check_paths()?;
         lease.target.set(self.target_cut()?);
+        #[cfg(test)]
+        tests::before_first_check();
         lease.check()?;
         Ok(lease)
     }
@@ -579,6 +581,8 @@ mod tests {
 
     thread_local! {
         static DUPLICATES: RefCell<Option<Vec<File>>> = const { RefCell::new(None) };
+        static BEFORE_FIRST_CHECK: RefCell<Option<Box<dyn FnOnce()>>> =
+            const { RefCell::new(None) };
     }
 
     /// `try_lease` calls this as soon as it holds the lock. While a test on this
@@ -590,6 +594,15 @@ mod tests {
                 held.push(lock.try_clone().unwrap());
             }
         });
+    }
+
+    /// `try_lease` calls this after it has read the target's cut and before its
+    /// first `Lease::check`. A change a test on this thread set up runs here, as
+    /// another writer's could, so only that check can see it.
+    pub(super) fn before_first_check() {
+        if let Some(change) = BEFORE_FIRST_CHECK.with(|slot| slot.borrow_mut().take()) {
+            change();
+        }
     }
 
     /// Run `f` and return, with its value, a duplicate of every lock that
@@ -832,6 +845,37 @@ mod tests {
             assert_eq!(peer.try_lease().unwrap().load(), Ok(None));
             drop(duplicates);
         }
+    }
+
+    /// A refusal by the first `Lease::check` inside `try_lease` must release the
+    /// lock too, while another reference to the locked description is still
+    /// open. The target changes in place after the lease has read its cut.
+    #[test]
+    fn broadcast_store_first_check_refusal_releases_the_lock() {
+        let dir = Scratch::new();
+        let store = dir.store();
+        let peer = dir.store();
+        let pending = store.try_lease().unwrap().create_pending(b"plan").unwrap();
+        let target = dir.path();
+        BEFORE_FIRST_CHECK.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(move || {
+                OpenOptions::new()
+                    .write(true)
+                    .open(target)
+                    .unwrap()
+                    .set_modified(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap();
+            }))
+        });
+        let (refused, duplicates) = holding_duplicates(|| store.try_lease().map(|_| ()));
+        assert_eq!(refused, Err(StoreError::Identity));
+        assert!(
+            BEFORE_FIRST_CHECK.with(|slot| slot.borrow().is_none()),
+            "the refusal must come from the first check"
+        );
+        assert_eq!(duplicates.len(), 1, "the refusal must come after locking");
+        assert_eq!(peer.try_lease().unwrap().load(), Ok(Some(pending)));
+        drop(duplicates);
     }
 
     #[test]

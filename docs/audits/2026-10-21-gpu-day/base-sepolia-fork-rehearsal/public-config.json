@@ -1,0 +1,61 @@
+{
+  "addresses": {
+    "clock_verifier": "0x6ecb8fb37f1ac7b0cc2f8b524d0550b22779b2f6",
+    "settlement": "0xade3075449533260e3812cc49c830f0db0c754f8",
+    "sp1_adapter": "0x14f55ca36e83120b6b54bff541fc49d425802a5d",
+    "sp1_gateway": "0x2270b8bae948229699ad3b8229486d2cd1035519",
+    "sp1_verifier": "0x63bc903cdb691c10ad7cc9d543268e96245d5661",
+    "token": "0xd899f8d9b44befab28cafe7320f138e51737af55",
+    "vault": "0x279addbeb307d459f6a0eeffb98dfeca6a31d964"
+  },
+  "chain_id": 84532,
+  "clock": {
+    "anchor_timeout_ms": 3600000,
+    "clock_skew_ms": 30000,
+    "max_window_ms": 30000
+  },
+  "gateway": {
+    "CLOCK_BOUND_VERIFIER": "0x6ecb8fb37f1ac7b0cc2f8b524d0550b22779b2f6",
+    "DEPOSIT_PERMIT_TTL_SECS": "1800",
+    "L1_ALLOW_MOCK_PROOF": "0",
+    "L1_CHAIN_ID": "84532",
+    "L1_SETTLEMENT": "0xade3075449533260e3812cc49c830f0db0c754f8",
+    "L1_USDC": "0xd899f8d9b44befab28cafe7320f138e51737af55",
+    "L1_VAULT": "0x279addbeb307d459f6a0eeffb98dfeca6a31d964",
+    "PROVER_EXPECTED_ELF_SHA256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+    "WIND_DOWN_RECIPIENT": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+  },
+  "genesis": {
+    "oracle_signer": "0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "root": "0x900609506cd774309e8238498290321114134a4a1dfa464d042b2a11777f7f23",
+    "wind_down_recipient": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+  },
+  "operator_policy": {
+    "clock_verifier": {
+      "configurator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    },
+    "settlement": {
+      "challenge_bond_wei": 10000000000000000,
+      "challenge_grace_blocks": 3600,
+      "enclave_signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "final_settle_grace_blocks": 300,
+      "governance": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+      "inclusion_deadline_seconds": 3600,
+      "liveness_timeout_blocks": 43200,
+      "progress_batches": 2,
+      "sequencer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "slash_payout_cap_usdc": 1000000000
+    },
+    "sp1_gateway": {
+      "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    },
+    "vault": {
+      "gateway_signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+    }
+  },
+  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+  "prover": {
+    "guest_elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+    "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec"
+  }
+}

@@ -27,8 +27,8 @@
 //! (the account's balance, the RPC, the keystore) counts toward the round's
 //! `max_failures` but not toward the bump caps, so the nonce is never given up:
 //! each such failure in a row adds one `bump_after` to the wait before the next
-//! attempt there, up to `MAX_NOOP_BACKOFF` intervals, and an accepted broadcast
-//! there clears the wait.
+//! attempt there, up to `MAX_NOOP_BACKOFF` intervals, and a broadcast there that
+//! is accepted or refused for its fees clears the wait.
 //!
 //! A payload the estimate refuses is halved depth-first (the left half next), so
 //! one refused entry among n is isolated after about log2(n) refused attempts,
@@ -220,7 +220,7 @@ struct Slot {
     bumps: u32,
     /// No-op broadcasts here that failed in a row for a reason other than their
     /// fees, and the last such error. Each one lengthens the wait before the next
-    /// attempt; an accepted broadcast here clears it.
+    /// attempt; a broadcast here that is accepted or refused for its fees clears it.
     failed_noops: Option<(u32, String)>,
     /// The latest broadcast attempt (or the start, for an inherited slot).
     since: Instant,
@@ -843,12 +843,15 @@ impl Pipeline {
                     // Mined meanwhile: the next poll releases the slot.
                     SendError::NonceTooLow => Ok(false),
                     // The pending transaction pays more than we knew, or the node
-                    // wants more: start the next attempt from these fees.
+                    // wants more: start the next attempt from these fees. A fee
+                    // refusal also ends a run of failed no-ops here, so neither
+                    // their longer wait nor their last error carries over.
                     SendError::Occupied | SendError::Underpriced => {
                         if bump {
                             slot.fees = Some(fees);
                             slot.bumps += 1;
                         }
+                        slot.failed_noops = None;
                         Ok(false)
                     }
                     // The pending transaction stays; retry after the next interval.
@@ -2487,6 +2490,147 @@ mod tests {
         );
         assert_eq!(chain.s().mined, 9, "nonces 7 and 8 were filled");
         assert_eq!(answered, 1, "the answer mined");
+        assert_eq!(lane.in_flight(), 0);
+    }
+
+    #[test]
+    fn a_no_op_refused_for_its_fees_ends_the_run_of_failures_before_it() {
+        // A stuck inherited transaction at 7, our answer behind it at 8, and the
+        // no-op at 7 fails at 20 and 60 s for a reason that is not about its fees.
+        // From 100 s the node refuses it for its fees instead. A round every 10 s.
+        for refusal in [
+            "replacement transaction underpriced",
+            "transaction underpriced",
+        ] {
+            let chain = FakeChain::new();
+            chain.s().mined = 7;
+            chain.s().base_fee = 10_000; // nothing mines
+            chain.s().cancel_fails = Some("insufficient funds for gas * price + value".into());
+            chain.preload(
+                7,
+                Fees {
+                    max_fee: 20,
+                    priority: 1,
+                },
+            );
+            let clock = TestClock::new();
+            let mut lane = Pipeline::new(Policy {
+                bump_after: Duration::from_secs(20),
+                round_budget: Duration::from_secs(1),
+                ..calm()
+            });
+            lane.round(&chain, &clock, sends(&[1]));
+            let (mut attempts, mut errors) = (Vec::new(), Vec::new());
+            while clock.elapsed() < Duration::from_secs(160) {
+                clock.advance(Duration::from_secs(10));
+                let at = clock.elapsed().as_secs();
+                if at == 100 {
+                    chain.s().cancel_fails = Some(refusal.into());
+                }
+                let before = chain.s().cancels;
+                let report = lane.round(&chain, &clock, vec![]);
+                if chain.s().cancels > before {
+                    attempts.push(at);
+                }
+                errors.push((at, report.first_error));
+            }
+            // The fee refusal at 120 s ends the run of failures: the next attempt
+            // is one interval later, and no round names the earlier failures.
+            assert_eq!(attempts, vec![20, 60, 120, 140, 160], "{refusal}");
+            for (at, error) in errors {
+                if (20..120).contains(&at) {
+                    assert!(
+                        error
+                            .as_deref()
+                            .is_some_and(|e| e.contains("insufficient funds")),
+                        "{refusal} at {at} s: {error:?}"
+                    );
+                } else {
+                    assert_eq!(error, None, "{refusal} at {at} s");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn queued_answers_take_over_a_nonce_whose_no_ops_back_off() {
+        // A stuck inherited transaction at 7 and our answer at 8 fill a lane of
+        // two, and the no-op at 7 fails for a reason that is not about its fees:
+        // attempts at 20 and 60 s, the next one due at 120 s. A second answer is
+        // planned from 70 s on and waits for a slot. A round every 10 s.
+        let chain = FakeChain::new();
+        chain.s().mined = 7;
+        chain.s().base_fee = 10_000; // nothing mines
+        chain.s().cancel_fails = Some("insufficient funds for gas * price + value".into());
+        chain.preload(
+            7,
+            Fees {
+                max_fee: 20,
+                priority: 1,
+            },
+        );
+        let clock = TestClock::new();
+        let mut lane = Pipeline::new(Policy {
+            max_in_flight: 2,
+            bump_after: Duration::from_secs(20),
+            round_budget: Duration::from_secs(1),
+            ..calm()
+        });
+        lane.round(&chain, &clock, sends(&[1]));
+        let mut report = RoundReport::default();
+        while clock.elapsed() < Duration::from_secs(110) {
+            clock.advance(Duration::from_secs(10));
+            let plan = if clock.elapsed() >= Duration::from_secs(70) {
+                sends(&[2])
+            } else {
+                vec![]
+            };
+            report = lane.round(&chain, &clock, plan);
+        }
+        // The queued answer does not cut the wait short.
+        assert_eq!(chain.s().cancels, 2);
+        assert!(chain.accepted_nonces().iter().all(|n| *n == 8));
+        assert_eq!(
+            (report.deferred, report.blocked_at),
+            (1, Some(7)),
+            "{report:?}"
+        );
+        assert!(
+            report.first_error.as_deref().is_some_and(
+                |e| e.contains("nonce 7 failed 2 time(s) in a row, next attempt in 10 s")
+            ),
+            "{report:?}"
+        );
+
+        // When the wait ends the queued answer, not a third no-op, takes the
+        // nonce over. The nonce now holds an answer of ours: it no longer blocks
+        // the lane, and no round names the earlier no-op failures.
+        clock.advance(Duration::from_secs(10));
+        let report = lane.round(&chain, &clock, sends(&[2]));
+        assert_eq!(chain.s().cancels, 2);
+        let at_7: Vec<(u64, Vec<Digest>)> = chain
+            .s()
+            .accepted
+            .iter()
+            .filter(|a| a.0 == 7)
+            .map(|a| (a.2, a.3.clone()))
+            .collect();
+        assert_eq!(at_7, vec![(2, vec![h(2)])]);
+        assert_eq!(
+            (report.deferred, report.blocked_at, report.first_error),
+            (0, None, None)
+        );
+
+        // The base fee falls: both answers mine at 7 and 8.
+        chain.s().base_fee = 50;
+        let mut answered = 0;
+        for _ in 0..3 {
+            chain.mine();
+            clock.advance(Duration::from_secs(30));
+            answered += lane.round(&chain, &clock, vec![]).answered;
+        }
+        assert_eq!((chain.s().mined, answered), (9, 2));
+        assert!(chain.cancelled_nonces().is_empty());
         assert_eq!(lane.in_flight(), 0);
     }
 

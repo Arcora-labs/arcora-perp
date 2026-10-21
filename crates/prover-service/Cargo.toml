@@ -31,6 +31,13 @@ futures-util = "0.3"
 sp1-build = "=6.1.0"
 serde_json = "1"
 
+[features]
+# Prove on an NVIDIA GPU through SP1's native `sp1-gpu-server` (Linux x86_64,
+# CUDA 12) instead of the CPU prover. Off by default and in CI. The SDK fetches
+# that server binary from the SP1 release when it is missing; an attested
+# deployment ships it in the measured image instead.
+cuda = ["sp1-sdk/cuda"]
+
 # standalone: not part of the host workspace
 [workspace]
 

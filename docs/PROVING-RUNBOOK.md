@@ -68,6 +68,27 @@ the commitment bound to the window's L1 clock receipt; `ClockBoundVerifier` reco
 and passes it to `SP1ZkVerifier`. For the reviewed fixture, `clock-proof` in
 `crates/sp1-host` builds the witness and runs this flow.
 
+### GPU proving
+
+`crates/sp1-host` (`clock-proof`, `prove-witness`) and `crates/prover-service` prove on
+an NVIDIA GPU when built with `--features cuda` (off by default and in CI). Execution,
+the native twin and every check are the same; only setup and proving move to SP1
+6.1.0's native `sp1-gpu-server`, which also runs the Groth16 wrap. No Docker is needed.
+It needs Linux x86_64, an NVIDIA GPU with at least 24 GB, and a CUDA 12 driver.
+
+```bash
+# Pin the server the SDK would otherwise fetch unchecked from the SP1 release.
+curl -fsSLO https://github.com/succinctlabs/sp1/releases/download/v6.1.0/sp1_gpu_server_v6.1.0_x86_64.tar.gz
+echo "f76d0430df8602dbeeda881453580936acb976179d743f5e31a8f42ddb1719c0  sp1_gpu_server_v6.1.0_x86_64.tar.gz" | sha256sum -c -
+mkdir -p ~/.sp1/bin && tar -xzf sp1_gpu_server_v6.1.0_x86_64.tar.gz -C ~/.sp1/bin
+python3 scripts/local-verification/download_clock_circuit.py ~/.sp1/circuits/groth16/v6.1.0
+SP1_SKIP_PROGRAM_BUILD=true cargo build --release --locked \
+  --manifest-path crates/sp1-host/Cargo.toml --features cuda --bin clock-proof --bin prove-witness
+```
+
+An attested prover ships that server binary in its measured image instead of
+fetching it. Measured times on one H100 are in `docs/audits/2026-10-21-gpu-day/`.
+
 ## 5. Deploy the on-chain verifier
 - Find the Base Sepolia **SP1VerifierGateway** address in
   `github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments`.

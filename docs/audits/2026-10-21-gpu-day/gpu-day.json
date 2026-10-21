@@ -1,0 +1,325 @@
+{
+  "kind": "arcora-gpu-day",
+  "date": "2026-10-21",
+  "scope": "Public synthetic witnesses only. Real SP1 6.1.0 proofs of the reviewed guest on one rented NVIDIA H100; no chain, RPC, proving network or production key was used. Wall times are this host's; the prover was not in confidential-computing mode.",
+  "host": {
+    "provider": "Runpod Secure Cloud pod",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "gpu_memory": "81559 MiB",
+    "driver": "595.91.07",
+    "compute_capability": "9.0",
+    "host_cuda": "13.2",
+    "allotted_vcpu": 26,
+    "allotted_ram_gb": 251,
+    "image": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404"
+  },
+  "tools": {
+    "repository_commit": "6fb38a5",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "features": "sp1-host --features cuda",
+    "binary_sha256": {
+      "clock-proof": "d8bdf1d5f8ea02eba5c1d68d98444385c3a40067f1c2a5e8395f4f394d52d182",
+      "prove-witness": "07465fb0de67e75eb08b5fcd43b20bc456122e08d32dee05a707fa07ff6d8321",
+      "prover-service": "71b877a9f953c999e760853169b8ef0bf5d313e00a8f33fbecc7f5ea162680c7",
+      "seal-client": "200e788adcd28ff73d8e2e3653b9f1d87cb5dd46556b82653e8d6873da71577f"
+    }
+  },
+  "prover": {
+    "sdk_version": "6.1.0",
+    "sp1_gpu_server": {
+      "version": "6.1.0",
+      "release_asset": "sp1_gpu_server_v6.1.0_x86_64.tar.gz",
+      "release_archive_sha256": "f76d0430df8602dbeeda881453580936acb976179d743f5e31a8f42ddb1719c0",
+      "binary_sha256": "eede5df89e9e8957f5d06cf9abdca3e979a80224c25d84796a60f47766ab58da"
+    },
+    "groth16_circuit": "download_clock_circuit.py pins (archive 18beebb6..., groth16_vk.bin 4388a21c...)",
+    "groth16_backend": "gnark on the CPU inside sp1-gpu-server (acceleration=none in its log)"
+  },
+  "fixture_proof": {
+    "dir": "contracts/integration/fixtures/clock-pkg3-verified",
+    "cycles": 5750329,
+    "groth16_prove_wall_s": 78.228204721,
+    "setup_wall_s": 4.839023943,
+    "local_sdk_verified": true,
+    "gnark_stages": [
+      {
+        "stage": "Reading R1CS",
+        "seconds": 21.215
+      },
+      {
+        "stage": "Reading proving key",
+        "seconds": 3.977
+      },
+      {
+        "stage": "Generating witness",
+        "seconds": 1.274
+      },
+      {
+        "stage": "Generating proof",
+        "seconds": 37.791
+      }
+    ]
+  },
+  "dry_runs": {
+    "cap-h13280": [
+      {
+        "name": "phase1-haircut-h13280",
+        "cycles": 129942028,
+        "gas": 188853499,
+        "prove_wall_s": 97.108913709,
+        "verify_wall_s": 0.315510909,
+        "witness_bytes": 802764,
+        "witness_sha256": "0caa3b391b7eb0d6fdd4f4c0077e1037f90dd60ba8217487680a9276f62ac4a6",
+        "proof_bytes": 356
+      },
+      {
+        "name": "phase0-h13280",
+        "cycles": 101771486,
+        "gas": 153645768,
+        "prove_wall_s": 66.744976823,
+        "verify_wall_s": 0.340272791,
+        "witness_bytes": 803596,
+        "witness_sha256": "6576c849a4c34b55f6803bbd05e05d70e15ecf35ae3ce18ea78676d3b627ec77",
+        "proof_bytes": 356
+      },
+      {
+        "name": "phase1-h13280",
+        "cycles": 92280122,
+        "gas": 144421353,
+        "prove_wall_s": 69.846810735,
+        "verify_wall_s": 0.323564616,
+        "witness_bytes": 802776,
+        "witness_sha256": "f3520c1ca310029e62d425a0e4fb09ca48833f8afa99528554e1b94c6b165a6f",
+        "proof_bytes": 356
+      }
+    ],
+    "cases": [
+      {
+        "name": "bad-debt-treasury-adl",
+        "cycles": 2981347,
+        "gas": 2974078,
+        "prove_wall_s": 68.715870074,
+        "verify_wall_s": 0.33272204,
+        "witness_bytes": 765,
+        "witness_sha256": "5e9e4268cf9a9a5487191282419b3289ee11e24201e6a07d9975afbc577c559f",
+        "proof_bytes": 356
+      },
+      {
+        "name": "debt-top-up-next-batch",
+        "cycles": 2972380,
+        "gas": 2970690,
+        "prove_wall_s": 44.835374965,
+        "verify_wall_s": 0.305902523,
+        "witness_bytes": 718,
+        "witness_sha256": "c9becc2b21847c1b0efd3854dc934ecdad2a7d90b9f6956fc1f82f22666be559",
+        "proof_bytes": 356
+      },
+      {
+        "name": "debt-top-up-prune",
+        "cycles": 252270,
+        "gas": 401194,
+        "prove_wall_s": 46.785558822,
+        "verify_wall_s": 0.290493196,
+        "witness_bytes": 854,
+        "witness_sha256": "4cdb2225a4136ea06e1b8c8b39b9416bd81dbcee3785cecc50e4cb9447e3898c",
+        "proof_bytes": 356
+      },
+      {
+        "name": "empty-keepalive",
+        "cycles": 251800,
+        "gas": 403831,
+        "prove_wall_s": 57.693444405,
+        "verify_wall_s": 0.308953962,
+        "witness_bytes": 841,
+        "witness_sha256": "5a95daffab5531f5aa2a400a392be7f5dbbaca11da4b3b43c9ea95c4ec1a29ce",
+        "proof_bytes": 356
+      },
+      {
+        "name": "epoch-price-refresh",
+        "cycles": 2971773,
+        "gas": 2968935,
+        "prove_wall_s": 48.817561041,
+        "verify_wall_s": 0.293031853,
+        "witness_bytes": 740,
+        "witness_sha256": "b83319577b2db742eb13f6939a078ed8b7f0d93ddd2dcb8e2397b6b20827f5e7",
+        "proof_bytes": 356
+      },
+      {
+        "name": "full-exit-prune",
+        "cycles": 5755654,
+        "gas": 5599017,
+        "prove_wall_s": 53.984324334,
+        "verify_wall_s": 0.330019403,
+        "witness_bytes": 1258,
+        "witness_sha256": "ce73e851598af145075a36bdf19c29a3ab6fd23129b57c7ada3c9b0e37d98a00",
+        "proof_bytes": 356
+      },
+      {
+        "name": "pause-reopen-fill",
+        "cycles": 5740006,
+        "gas": 5569590,
+        "prove_wall_s": 45.031398242,
+        "verify_wall_s": 0.312767948,
+        "witness_bytes": 1042,
+        "witness_sha256": "a4759a507b6945bc7c2fc812096475fbe02794b38a428ce3f10c753e5a2904ea",
+        "proof_bytes": 356
+      },
+      {
+        "name": "phase-two-exit",
+        "cycles": 318416,
+        "gas": 502230,
+        "prove_wall_s": 44.415361099,
+        "verify_wall_s": 0.306574821,
+        "witness_bytes": 1280,
+        "witness_sha256": "6b0690c798b55ce5b3e2fd14b8253af158428ccce7039c24bac04de9bb117a01",
+        "proof_bytes": 356
+      },
+      {
+        "name": "settle-all-two-markets",
+        "cycles": 290552,
+        "gas": 457064,
+        "prove_wall_s": 46.85091553,
+        "verify_wall_s": 0.306349461,
+        "witness_bytes": 998,
+        "witness_sha256": "fa7c07195d89b5ace497336f611a2d4032be4c44704b5af35de9f96385bfe07f",
+        "proof_bytes": 356
+      }
+    ],
+    "compressed-haircut": [
+      {
+        "name": "phase1-haircut-h13280",
+        "cycles": 129942028,
+        "gas": 188853499,
+        "prove_wall_s": 37.700342571,
+        "verify_wall_s": 0.061086656,
+        "witness_bytes": 802764,
+        "witness_sha256": "0caa3b391b7eb0d6fdd4f4c0077e1037f90dd60ba8217487680a9276f62ac4a6",
+        "proof_bytes": 1272546
+      },
+      {
+        "name": "phase1-haircut-h26560",
+        "cycles": 263319293,
+        "gas": 380055050,
+        "prove_wall_s": 69.47443886,
+        "verify_wall_s": 0.08728592,
+        "witness_bytes": 1604940,
+        "witness_sha256": "0cf7425a457312cba24c2ab7c1fedaca425915202c285a658d7b541d59715386",
+        "proof_bytes": 1272546
+      },
+      {
+        "name": "phase1-haircut-h53120",
+        "cycles": 533028720,
+        "gas": 777691858,
+        "prove_wall_s": 133.622167206,
+        "verify_wall_s": 0.099128177,
+        "witness_bytes": 3209297,
+        "witness_sha256": "cf0c61f56166804d476f3c879500e7fe76d0e881c3ff4e77879c92fd1a0dd10a",
+        "proof_bytes": 1272546
+      }
+    ],
+    "lifecycle": [
+      {
+        "name": "batch-0",
+        "cycles": 268348,
+        "gas": 432716,
+        "prove_wall_s": 69.421441611,
+        "verify_wall_s": 0.311139436,
+        "witness_bytes": 1078,
+        "witness_sha256": "8d0f6c540bfe0624ab08204e1c3aebe9e24dff2306d34a7e3d47010ddfff1cb7",
+        "proof_bytes": 356
+      },
+      {
+        "name": "batch-1",
+        "cycles": 16746175,
+        "gas": 15906910,
+        "prove_wall_s": 49.767263279,
+        "verify_wall_s": 0.299111531,
+        "witness_bytes": 1764,
+        "witness_sha256": "d5b0f13ae8925fe5975b2c67b324ab3869cbb0e94eb82c254d1dcf11226a2c98",
+        "proof_bytes": 356
+      },
+      {
+        "name": "batch-2",
+        "cycles": 16765220,
+        "gas": 15922102,
+        "prove_wall_s": 55.370987791,
+        "verify_wall_s": 0.296101199,
+        "witness_bytes": 1801,
+        "witness_sha256": "79161f155882a14e9db392f8e07c6b8e7e3f74cef000d9ca851b1695eb43767b",
+        "proof_bytes": 356
+      },
+      {
+        "name": "batch-3",
+        "cycles": 5807729,
+        "gas": 5677827,
+        "prove_wall_s": 46.571329819,
+        "verify_wall_s": 0.296970003,
+        "witness_bytes": 1400,
+        "witness_sha256": "97b3965c29aeeac57c8d28acadf968cc8dce871f35daa3b91a11bc5826115a57",
+        "proof_bytes": 356
+      },
+      {
+        "name": "keepalive-batch-4",
+        "cycles": 294272,
+        "gas": 475487,
+        "prove_wall_s": 46.514010042,
+        "verify_wall_s": 0.287971245,
+        "witness_bytes": 944,
+        "witness_sha256": "5c78b6e48ecd8d57e2006afb8e75100ac6840d4880e70a7df7dd51594333379a",
+        "proof_bytes": 356
+      }
+    ],
+    "big-h26560-h53120": [
+      {
+        "name": "phase1-haircut-h26560",
+        "cycles": 263319293,
+        "gas": 380055050,
+        "prove_wall_s": 153.720766664,
+        "verify_wall_s": 0.336618581,
+        "witness_bytes": 1604940,
+        "witness_sha256": "0cf7425a457312cba24c2ab7c1fedaca425915202c285a658d7b541d59715386",
+        "proof_bytes": 356
+      },
+      {
+        "name": "phase1-haircut-h53120",
+        "cycles": 533028720,
+        "gas": 777691858,
+        "prove_wall_s": 186.208732521,
+        "verify_wall_s": 0.340352038,
+        "witness_bytes": 3209297,
+        "witness_sha256": "cf0c61f56166804d476f3c879500e7fe76d0e881c3ff4e77879c92fd1a0dd10a",
+        "proof_bytes": 356
+      }
+    ],
+    "big-h79680-h106240": [
+      {
+        "name": "phase1-haircut-h79680",
+        "cycles": 807423472,
+        "gas": 1175976130,
+        "prove_wall_s": 281.570758439,
+        "verify_wall_s": 0.351700406,
+        "witness_bytes": 4813642,
+        "witness_sha256": "b347aed8520761d4590f3b57361a36baff49f78005c359fad5e7dd899b3cb8db",
+        "proof_bytes": 356
+      },
+      {
+        "name": "phase1-haircut-h106240",
+        "cycles": 1081722393,
+        "gas": 1584210596,
+        "prove_wall_s": 320.218873506,
+        "verify_wall_s": 0.349303032,
+        "witness_bytes": 6417999,
+        "witness_sha256": "35dad335e12eb51422595b1529ca3c0b5fb6673cc61a15317ebcdfea586064a1",
+        "proof_bytes": 356
+      }
+    ]
+  },
+  "dry_run_modes": {
+    "cap-h13280": "groth16",
+    "cases": "groth16",
+    "compressed-haircut": "compressed",
+    "lifecycle": "groth16",
+    "big-h26560-h53120": "groth16",
+    "big-h79680-h106240": "groth16"
+  }
+}

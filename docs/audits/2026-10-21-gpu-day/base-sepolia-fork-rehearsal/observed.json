@@ -1,0 +1,328 @@
+{
+  "bindings": [
+    {
+      "contract": "settlement",
+      "expected": "0x6ecb8fb37f1ac7b0cc2f8b524d0550b22779b2f6",
+      "getter": "verifier()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": "0x279addbeb307d459f6a0eeffb98dfeca6a31d964",
+      "getter": "vault()",
+      "matches": true
+    },
+    {
+      "contract": "vault",
+      "expected": "0xade3075449533260e3812cc49c830f0db0c754f8",
+      "getter": "settlement()",
+      "matches": true
+    },
+    {
+      "contract": "vault",
+      "expected": "0xd899f8d9b44befab28cafe7320f138e51737af55",
+      "getter": "token()",
+      "matches": true
+    },
+    {
+      "contract": "clock_verifier",
+      "expected": "0xade3075449533260e3812cc49c830f0db0c754f8",
+      "getter": "settlement()",
+      "matches": true
+    },
+    {
+      "contract": "clock_verifier",
+      "expected": "0x14f55ca36e83120b6b54bff541fc49d425802a5d",
+      "getter": "innerVerifier()",
+      "matches": true
+    },
+    {
+      "contract": "sp1_adapter",
+      "expected": "0x2270b8bae948229699ad3b8229486d2cd1035519",
+      "getter": "gateway()",
+      "matches": true
+    },
+    {
+      "contract": "sp1_adapter",
+      "expected": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+      "getter": "programVKey()",
+      "matches": true
+    },
+    {
+      "contract": "clock_verifier",
+      "expected": 30000,
+      "getter": "maxWindowMs()",
+      "matches": true
+    },
+    {
+      "contract": "clock_verifier",
+      "expected": 30000,
+      "getter": "clockSkewMs()",
+      "matches": true
+    },
+    {
+      "contract": "clock_verifier",
+      "expected": 3600000,
+      "getter": "anchorTimeoutMs()",
+      "matches": true
+    },
+    {
+      "contract": "clock_verifier",
+      "expected": 2,
+      "getter": "proofVersion()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 3,
+      "getter": "ABI_VERSION()",
+      "matches": true
+    },
+    {
+      "contract": "sp1_verifier",
+      "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "getter": "VERIFIER_HASH()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "getter": "sequencer()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "getter": "enclaveSigner()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+      "getter": "governance()",
+      "matches": true
+    },
+    {
+      "contract": "vault",
+      "expected": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+      "getter": "gatewaySigner()",
+      "matches": true
+    },
+    {
+      "contract": "clock_verifier",
+      "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "getter": "configurator()",
+      "matches": true
+    },
+    {
+      "contract": "sp1_gateway",
+      "expected": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "getter": "owner()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 43200,
+      "getter": "livenessTimeoutBlocks()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 3600,
+      "getter": "challengeGraceBlocks()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 10000000000000000,
+      "getter": "challengeBond()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 3600,
+      "getter": "inclusionDeadlineSecs()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 300,
+      "getter": "finalSettleGraceBlocks()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 2,
+      "getter": "progressBatches()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": 1000000000,
+      "getter": "slashPayoutCap()",
+      "matches": true
+    },
+    {
+      "contract": "settlement",
+      "expected": "0x900609506cd774309e8238498290321114134a4a1dfa464d042b2a11777f7f23",
+      "getter": "currentStateRoot()",
+      "matches": true
+    }
+  ],
+  "block_hash": "0x0059fd6cfc3eb81075c2fc9f06ac01b644e1fb4eade92923cf5188466a098e16",
+  "block_number": 48416349,
+  "chain_id": 84532,
+  "contracts": {
+    "clock_verifier": {
+      "address": "0x6ecb8fb37f1ac7b0cc2f8b524d0550b22779b2f6",
+      "getters": {
+        "anchorTimeoutMs()": 3600000,
+        "clockSkewMs()": 30000,
+        "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "innerVerifier()": "0x14f55ca36e83120b6b54bff541fc49d425802a5d",
+        "maxWindowMs()": 30000,
+        "proofVersion()": 2,
+        "settlement()": "0xade3075449533260e3812cc49c830f0db0c754f8"
+      },
+      "immutable_words_by_compiler_id": {
+        "2258": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "2261": "0x00000000000000000000000014f55ca36e83120b6b54bff541fc49d425802a5d",
+        "2263": "0x0000000000000000000000000000000000000000000000000000000000007530",
+        "2265": "0x0000000000000000000000000000000000000000000000000000000000007530",
+        "2268": "0x000000000000000000000000000000000000000000000000000000000036ee80"
+      },
+      "runtime_bytes": 6569,
+      "runtime_matches_compiler_template": true,
+      "runtime_sha256": "bcb3e1d2f124d2a0a5c6dc36783ae7ddbcc20369dea88f787ac1d921ca4eb337"
+    },
+    "settlement": {
+      "address": "0xade3075449533260e3812cc49c830f0db0c754f8",
+      "getters": {
+        "ABI_VERSION()": 3,
+        "batchCount()": 0,
+        "challengeBond()": 10000000000000000,
+        "challengeGraceBlocks()": 3600,
+        "currentStateRoot()": "0x900609506cd774309e8238498290321114134a4a1dfa464d042b2a11777f7f23",
+        "enclaveSigner()": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "finalSettleGraceBlocks()": 300,
+        "governance()": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+        "inclusionDeadlineSecs()": 3600,
+        "livenessTimeoutBlocks()": 43200,
+        "progressBatches()": 2,
+        "sequencer()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "slashPayoutCap()": 1000000000,
+        "vault()": "0x279addbeb307d459f6a0eeffb98dfeca6a31d964",
+        "verifier()": "0x6ecb8fb37f1ac7b0cc2f8b524d0550b22779b2f6"
+      },
+      "immutable_words_by_compiler_id": {
+        "4181": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "4184": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "4187": "0x0000000000000000000000006ecb8fb37f1ac7b0cc2f8b524d0550b22779b2f6",
+        "4203": "0x000000000000000000000000000000000000000000000000000000000000a8c0",
+        "4206": "0x0000000000000000000000000000000000000000000000000000000000000e10",
+        "4209": "0x000000000000000000000000000000000000000000000000002386f26fc10000",
+        "4212": "0x0000000000000000000000000000000000000000000000000000000000000e10",
+        "4215": "0x0000000000000000000000000000000000000000000000000000000000000002",
+        "4218": "0x000000000000000000000000000000000000000000000000000000003b9aca00",
+        "4227": "0x00000000000000000000000090f79bf6eb2c4f870365e785982e1f101e93b906",
+        "4230": "0x000000000000000000000000000000000000000000000000000000000000012c"
+      },
+      "runtime_bytes": 15462,
+      "runtime_matches_compiler_template": true,
+      "runtime_sha256": "735b9fa633fef462e5a1fb5a7197125f2af73e09cf37bd92d33e5bebef95e5ae"
+    },
+    "sp1_adapter": {
+      "address": "0x14f55ca36e83120b6b54bff541fc49d425802a5d",
+      "getters": {
+        "gateway()": "0x2270b8bae948229699ad3b8229486d2cd1035519",
+        "programVKey()": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec"
+      },
+      "immutable_words_by_compiler_id": {
+        "6785": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+        "6788": "0x0000000000000000000000002270b8bae948229699ad3b8229486d2cd1035519"
+      },
+      "runtime_bytes": 734,
+      "runtime_matches_compiler_template": true,
+      "runtime_sha256": "047c72b320a9e486a3af1a748f9b1fb44b801b4a5a980dfa21e00628c8d0150b"
+    },
+    "sp1_gateway": {
+      "address": "0x2270b8bae948229699ad3b8229486d2cd1035519",
+      "getters": {
+        "owner()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+      },
+      "immutable_words_by_compiler_id": {},
+      "runtime_bytes": 1931,
+      "runtime_matches_compiler_template": true,
+      "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84"
+    },
+    "sp1_verifier": {
+      "address": "0x63bc903cdb691c10ad7cc9d543268e96245d5661",
+      "getters": {
+        "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+      },
+      "immutable_words_by_compiler_id": {},
+      "runtime_bytes": 6741,
+      "runtime_matches_compiler_template": true,
+      "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9"
+    },
+    "vault": {
+      "address": "0x279addbeb307d459f6a0eeffb98dfeca6a31d964",
+      "getters": {
+        "gatewaySigner()": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+        "settlement()": "0xade3075449533260e3812cc49c830f0db0c754f8",
+        "token()": "0xd899f8d9b44befab28cafe7320f138e51737af55"
+      },
+      "immutable_words_by_compiler_id": {
+        "3112": "0x000000000000000000000000ade3075449533260e3812cc49c830f0db0c754f8",
+        "3116": "0x000000000000000000000000d899f8d9b44befab28cafe7320f138e51737af55"
+      },
+      "runtime_bytes": 6113,
+      "runtime_matches_compiler_template": true,
+      "runtime_sha256": "3774732492c4b09cae57ae4b3ba599714181be9af75442261e2245da11fbf50f"
+    }
+  },
+  "genesis": {
+    "batch_count": 0,
+    "oracle_signer": "0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "root": "0x900609506cd774309e8238498290321114134a4a1dfa464d042b2a11777f7f23",
+    "root_observed": true,
+    "wind_down_recipient": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+  },
+  "limitations": [
+    "RPC responses are trusted; no light-client or independent endpoint consensus.",
+    "Declared operator/settlement policy can be matched; its security and economic suitability are not approved.",
+    "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
+    "The genesis root is compared on chain only before the first batch; without --gateway-bin the recipient and oracle signer are not recomputed against it and rest on the print-genesis-root output that listed them with it.",
+    "No proof is generated or submitted; no service identity, state migration or release readiness is established."
+  ],
+  "manifest_sha256": "be11598a2e431a14f4593b5d8c7493f4b6b31578d8110ac08981112b31641516",
+  "observed_at_utc": "2026-10-21T16:41:06.127757+00:00",
+  "operator_policy_sha256": "fda7faca1d8cbdc813ec3d496914aa31eb3dc940870639ed5878d649d7ed0146",
+  "real_proof_status": "PROVEN",
+  "rpc_origin": "http://127.0.0.1:57465",
+  "scope": {
+    "fresh_guest_build_performed": false,
+    "genesis_bindings_recomputed": true,
+    "genesis_root_verified": true,
+    "local_identity_checked": true,
+    "operator_and_settlement_policy_approved": false,
+    "operator_and_settlement_policy_matches": true,
+    "release_gate": "HOLD",
+    "running_services_attested": false,
+    "runtime_bytecode_verified": true,
+    "state_migration_rehearsed": false,
+    "target_chain_observed": true,
+    "token_runtime_verified": false
+  },
+  "sp1_route": {
+    "frozen": false,
+    "selector": "0x4388a21c",
+    "verifier": "0x63bc903cdb691c10ad7cc9d543268e96245d5661"
+  },
+  "status": "VERIFIED_AT_FINALIZED_BLOCK",
+  "token": {
+    "address": "0xd899f8d9b44befab28cafe7320f138e51737af55",
+    "runtime_bytes": 1442,
+    "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa"
+  }
+}

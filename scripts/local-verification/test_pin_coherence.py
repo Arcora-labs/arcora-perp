@@ -25,6 +25,17 @@ import verify_clock_proof as clock
 ROOT = clock.target.ROOT
 REVIEWED = clock.REVIEWED_GUEST
 PROOF = clock.PROOF_FIXTURE
+# The clock-v2 proof the real-proof gate verified before the package-3 proof. The
+# fixture documents under contracts/integration/fixtures/clock-v2*/ describe it as history.
+CLOCK_V2_PROOF = {
+    "elf": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+    "vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+    "witness_sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f",
+    "commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e",
+    "proof_sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89",
+}
+# The GPU-day record of how the committed proof was produced (prover binaries and hashes).
+GPU_DAY_EVIDENCE = "docs/audits/2026-10-21-gpu-day/gpu-day.json"
 
 
 def source(relative):
@@ -382,9 +393,10 @@ DOC_COPIES = {
     "docs/RELEASE_MANIFEST.md": (REVIEWED, ("elf", "vkey")),
     "docs/COLD_GUEST_REBUILD.md": (REVIEWED, ("elf",)),
     "docs/PUBLIC_SERVICE_IDENTITY.md": (REVIEWED, ("elf",)),
-    "contracts/integration/fixtures/clock-v2/README.md": (PROOF, ("elf", "commitment")),
-    "contracts/integration/fixtures/clock-v2/verified-calldata/README.md": (PROOF, ("proof_sha256",)),
-    "contracts/integration/fixtures/clock-v2-verified/README.md": (PROOF, ()),
+    "contracts/integration/fixtures/clock-v2/README.md": (CLOCK_V2_PROOF, ("elf", "commitment")),
+    "contracts/integration/fixtures/clock-v2/verified-calldata/README.md": (CLOCK_V2_PROOF, ("proof_sha256",)),
+    "contracts/integration/fixtures/clock-v2-verified/README.md": (CLOCK_V2_PROOF, ()),
+    "contracts/integration/fixtures/clock-pkg3-verified/README.md": (PROOF, ("proof_sha256", "commitment")),
     "contracts/integration/fixtures/clock-pkg3-reviewed/README.md": (REVIEWED, ("elf", "vkey")),
 }
 
@@ -400,6 +412,10 @@ class DocumentCopies(unittest.TestCase):
         if relative == "contracts/integration/fixtures/clock-pkg3-reviewed/README.md":
             # The reviewed guest's fixture outputs, quoted beside its identity.
             return record_values(clock.REVIEWED_FIXTURE)
+        if relative == "contracts/integration/fixtures/clock-pkg3-verified/README.md":
+            # The SP1 GPU server the proof was generated with, as the GPU-day record pins it.
+            server = json.loads(source(GPU_DAY_EVIDENCE))["prover"]["sp1_gpu_server"]
+            return {server["release_archive_sha256"], server["binary_sha256"]}
         if relative == "contracts/integration/fixtures/clock-v2/README.md":
             # The decompressed recursion witness that the committed proof wraps.
             witness = gzip.decompress((ROOT / "contracts/integration/fixtures/clock-v2/gnark-witness.json.gz").read_bytes())
