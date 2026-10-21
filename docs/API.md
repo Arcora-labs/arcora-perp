@@ -1034,7 +1034,8 @@ fills, liquidations and funding ticks wait. `GET /api/state` then carries
   below the ceiling are a recorded nonce that no transaction used.
 - `chainClock`: for a window with timed operations, the finalized block time
   against the window's last operation time plus `clockSkewMs`.
-- `burns`: the unused sequencer nonces the loop burned for this window (at most 3).
+- `burns`: the nonce burns the loop attempted for this window, sent or refused before
+  a send (at most 3).
 - `closeOnlyBudget`: blocks until anyone may trigger close-only for lack of
   progress, and for the oldest unconsumed deposit (`null` when there is none).
 - `operatorAction`: what only the operator can do, when `clock_recovery_blocked`

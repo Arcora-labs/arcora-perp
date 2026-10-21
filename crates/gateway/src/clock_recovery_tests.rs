@@ -619,13 +619,13 @@ fn decision_matrix() {
             decide_at(&i, pre_root, empty, &quiet(1, 0, Ceiling::Nonce(5))),
             Decision::Wait(WaitReason::NonceFence)
         );
+        // At most three burns per window.
         assert_eq!(
-            decide_at(
-                &i,
-                pre_root,
-                empty,
-                &quiet(2, MAX_NONCE_BURNS, Ceiling::Nonce(5))
-            ),
+            decide_at(&i, pre_root, empty, &quiet(2, 2, Ceiling::Nonce(5))),
+            Decision::Burn(5)
+        );
+        assert_eq!(
+            decide_at(&i, pre_root, empty, &quiet(2, 3, Ceiling::Nonce(5))),
             Decision::Wait(WaitReason::NonceFence)
         );
         assert_eq!(
@@ -981,13 +981,13 @@ async fn an_untimed_dead_window_with_an_unused_nonce_burns_it_and_returns() {
     let h = harness(gw, journal, state);
     h.seal_hold().await;
     let mut rec = h.pending();
+    // Six steps would allow five attempts; refused ones count, and three is the
+    // cap.
     for _ in 0..6 {
         assert!(matches!(h.step(&mut rec).await, Step::Wait(_)));
     }
-    assert_eq!(
-        h.fake.with(|s| s.burned.len()),
-        usize::from(MAX_NONCE_BURNS)
-    );
+    assert_eq!(h.fake.with(|s| s.burned.len()), 3);
+    assert_eq!(rec.burns, 3);
     assert!(h.alert(&*h.app.gw.lock().await, AlertKind::ClockRecoveryBlocked));
     assert!(!h.admission_open());
     assert!(h.jpath.exists());

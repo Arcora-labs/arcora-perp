@@ -34,7 +34,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Nonce burns one pending recovery may send.
+/// Nonce burns one pending recovery may attempt, sent or refused.
 pub(crate) const MAX_NONCE_BURNS: u8 = 3;
 /// Consecutive steps with quiet nonces before a burn.
 const QUIET_STEPS_BEFORE_BURN: u8 = 2;
@@ -61,6 +61,7 @@ pub(crate) struct PendingRecovery {
     pub ceiling: Ceiling,
     /// Consecutive steps whose nonces were quiet.
     pub quiet_steps: u8,
+    /// Nonce burns attempted for the window, sent or refused before a send.
     pub burns: u8,
     pub retry_failures: u32,
     /// The proof was dropped and made again once.
@@ -475,7 +476,7 @@ pub(crate) enum Decision {
 /// 13. An undecided window on the fence basis burns an unused nonce: no chain
 ///     clock applies, the finalized nonce is at most the window's recorded
 ///     ceiling, the nonces were quiet on this and the previous step, and fewer
-///     than [`MAX_NONCE_BURNS`] were sent.
+///     than [`MAX_NONCE_BURNS`] were attempted.
 /// 14. Otherwise it waits.
 /// 15. A batch count below the window's waits: a finalized head that lags (a
 ///     load-balanced or failed-over RPC) shows nothing new.
