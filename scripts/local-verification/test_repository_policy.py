@@ -122,6 +122,32 @@ class RepositoryPolicyTests(unittest.TestCase):
             with self.subTest(gate=gate):
                 self.assertRegex(workflows, rf"\b{gate}=1\b")
 
+    def test_every_ignored_anvil_test_runs_in_a_workflow(self):
+        # An ignored `anvil_*` Rust test runs only where a workflow's
+        # `cargo test ... -- --ignored` names a filter it matches.
+        import re
+        names = set()
+        for path in (ROOT / "crates").rglob("*.rs"):
+            names.update(re.findall(r"#\[ignore[^\]]*\]\s*(?:async\s+)?fn\s+(anvil_\w+)", path.read_text()))
+        self.assertIn("anvil_nonce_burn_uses_only_the_expected_nonce", names)
+        filters = set()
+        workflows = "\n".join(p.read_text() for p in (ROOT / ".github/workflows").glob("*.yml"))
+        for line in workflows.splitlines():
+            if "cargo test" not in line or "--ignored" not in line:
+                continue
+            args = line[line.index("cargo test"):].split(" -- ", 1)[0].split()[2:]
+            skip = False
+            for arg in args:
+                if skip:
+                    skip = False
+                elif arg in ("-p", "--package", "--test", "--features", "--bin"):
+                    skip = True
+                elif not arg.startswith("-"):
+                    filters.add(arg)
+        for name in sorted(names):
+            with self.subTest(test=name):
+                self.assertTrue(any(f in name for f in filters), f"{name} runs in no workflow")
+
 
 if __name__ == "__main__":
     unittest.main()
