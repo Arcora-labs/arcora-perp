@@ -976,6 +976,47 @@ fn double_void_of_the_replacement_restores_reingested_deposits_once() {
     assert_eq!(ingest(&mut gw, &f.chain), 3);
 }
 
+/// A journal is voided only against the window it sealed. After a void the
+/// replacement seals under the same batch id from the same pre-state, with the
+/// same deposits credited again: the voided window's old journal, applied to
+/// the replacement, is refused without a change, and the replacement's own
+/// journal voids it.
+#[test]
+fn the_old_journal_of_a_voided_window_is_refused_on_its_replacement() {
+    let f = voidable(false);
+    let mut gw = f.gw;
+    applied(&mut gw, &f.journal, DeadIntent::EmptyAfterFence);
+    assert_eq!(ingest(&mut gw, &f.chain), 3);
+    let withdrawal = withdraw(&mut gw, &f.w, 50 * QUOTE_SCALE);
+    let replacement = seal(&mut gw);
+    assert_eq!(replacement.batch_id, f.journal.batch_id);
+    assert_eq!(
+        replacement.witness.pre_state.state_root(),
+        f.journal.witness.pre_state.state_root()
+    );
+    let before = gw.snapshot_plain();
+    match gw.live_void_window(&f.journal, DeadIntent::EmptyAfterFence) {
+        Err(LiveVoidError::Refused(e)) => {
+            assert!(e.contains("the journal is not the window"), "{e}")
+        }
+        other => panic!("the old journal was not refused: {other:?}"),
+    }
+    assert_eq!(gw.snapshot_plain(), before, "nothing changed");
+    assert!(!gw.holds_live_void(&f.journal));
+    let report = applied(&mut gw, &replacement, DeadIntent::Cancelled);
+    assert_eq!(report.batch_id, replacement.batch_id);
+    assert_eq!(
+        report
+            .withdrawals
+            .iter()
+            .map(Withdrawal::leaf)
+            .collect::<Vec<_>>(),
+        vec![withdrawal.leaf()]
+    );
+    assert_eq!(report.archive_dropped, 3);
+    gw.validate_deposit_state().unwrap();
+}
+
 /// A credential rotation between the void and re-ingestion moves the restored
 /// records with the account: the state validates and restores, the close-only
 /// rebase keeps them refundable to the new key, and re-ingestion credits the

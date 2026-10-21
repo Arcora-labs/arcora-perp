@@ -405,6 +405,17 @@ impl Gw {
                     j.batch_id
                 ));
             }
+            // The journal must be the window that is sealed, not another window
+            // of the same batch id from the same pre-state (a voided window's
+            // journal against its replacement): the sealed state is exactly the
+            // journal's prepared post-state.
+            if self.seq.window_baseline().state_root() != prepared.outcome.new_root {
+                return Err(format!(
+                    "the sealed state is not the journal's post-state: the journal is not the \
+                     window {} that is sealed",
+                    j.batch_id
+                ));
+            }
             Ok(Shape::Sealed)
         } else if counter == j.batch_id {
             self.already_voided(j, deposits)
