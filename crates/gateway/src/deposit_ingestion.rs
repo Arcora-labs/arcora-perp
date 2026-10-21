@@ -675,7 +675,12 @@ impl Gw {
             self.deposits.uncredited.remove(&credit.event.id);
             self.deposits.credits.insert(credit.event.id, credit);
         }
-        if insurance {
+        // Before completion an insurance deposit records the window that carries it
+        // (`InsuranceApplied`); that window's commit completes the bootstrap. After
+        // completion it is a top-up and keeps `Complete`: the one-shot check reads
+        // `Complete` together with the fund floor, so a drained fund still reopens
+        // it and a top-up that restores the floor closes it again.
+        if insurance && self.bootstrap != bootstrap::Bootstrap::Complete {
             self.bootstrap = bootstrap::Bootstrap::InsuranceApplied {
                 window_id: self.seq.state.next_batch_id,
             };

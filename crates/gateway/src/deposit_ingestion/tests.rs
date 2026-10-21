@@ -513,6 +513,77 @@ fn a01_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
     assert!(state.conservation_holds());
 }
 
+/// Seal, prove (mock) and commit the open window, every earlier window being
+/// settled; returns its batch id.
+fn settle_open_window(gw: &mut Gw) -> u64 {
+    gw.deposits.dirty = false;
+    let chain_batch_count = gw.seq.state.next_batch_id;
+    let (w, ww) = gw.begin_window_settle(chain_batch_count).unwrap().unwrap();
+    let prepared =
+        crate::prover_client::prove_and_prepare(&crate::prover_client::MockProverClient, &w, &ww)
+            .unwrap();
+    gw.commit_window_settle(
+        w.batch_id,
+        w.manifest.ordered.clone(),
+        Vec::new(),
+        prepared,
+        L1Status::default(),
+        trading_gate::GateObservation::StaysClosed,
+    );
+    w.batch_id
+}
+
+/// The first insurance deposit records the window that carries it, and that
+/// window's commit completes the bootstrap. A later insurance deposit is a top-up:
+/// it keeps `Complete`, through its own window's commit, across a restore, and
+/// also when it refills a fund drained below the floor.
+#[test]
+fn an_insurance_top_up_after_complete_keeps_complete() {
+    let floor = bootstrap::MIN_BOOTSTRAP_INSURANCE;
+    let mut gw = fresh();
+    assert_eq!(gw.bootstrap, bootstrap::Bootstrap::NotStarted);
+    let (operator, first) = permit(&mut gw, floor as u128, Purpose::InsuranceBootstrap, 0);
+    gw.apply_deposit_page(page(&gw, &[first])).unwrap();
+    let window = gw.seq.state.next_batch_id;
+    assert_eq!(
+        gw.bootstrap,
+        bootstrap::Bootstrap::InsuranceApplied { window_id: window }
+    );
+    assert_eq!(settle_open_window(&mut gw), window);
+    assert_eq!(gw.bootstrap, bootstrap::Bootstrap::Complete);
+
+    let top_up = |gw: &mut Gw| {
+        let fund = gw.seq.state.insurance_fund;
+        let commit = gw
+            .authorize_routed_deposit(
+                &operator,
+                [0x42; 20],
+                floor as u128,
+                0,
+                Purpose::InsuranceBootstrap,
+                u64::MAX,
+            )
+            .unwrap();
+        assert_eq!(gw.apply_deposit_page(page(gw, &[commit])).unwrap(), 1);
+        assert_eq!(gw.seq.state.insurance_fund, fund + floor);
+    };
+    top_up(&mut gw);
+    assert_eq!(gw.bootstrap, bootstrap::Bootstrap::Complete);
+    assert_eq!(settle_open_window(&mut gw), window + 1);
+    assert_eq!(gw.bootstrap, bootstrap::Bootstrap::Complete);
+    let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    assert_eq!(restored.bootstrap, bootstrap::Bootstrap::Complete);
+
+    // A fund drained below the floor (an internal transfer, conservation-neutral)
+    // and refilled by a top-up keeps the record too.
+    let drain = gw.seq.state.insurance_fund - (floor - 1);
+    gw.seq.state.insurance_fund -= drain;
+    gw.seq.state.treasury += drain;
+    top_up(&mut gw);
+    assert!(gw.seq.state.insurance_fund >= floor);
+    assert_eq!(gw.bootstrap, bootstrap::Bootstrap::Complete);
+}
+
 /// Credits, the consumed prefix and the replay op-log survive a v10 round trip;
 /// the same state behind the earlier deposit-layer header is refused.
 #[test]
