@@ -396,3 +396,28 @@ export function rememberChallengeKits(
     return false;
   }
 }
+
+/// Keep the kit of an order the gateway has just accepted, from the accept
+/// response's receipt (`POST /v1/orders`), before the gateway lists the order:
+/// if it stops in between, this is the order's only kit. The listing builds
+/// the same kit for the order while the account keeps its deposit address, so
+/// keeping both is idempotent; a kit listed for an address bound since replaces
+/// this one, as any later copy does. `orders` are the account's listed orders:
+/// their kits, and this one, are kept ahead of others, as
+/// `rememberChallengeKits` describes. Returns whether every kit to keep is
+/// stored; false without a verifiable authorization. Never throws.
+export function rememberAcceptedChallengeKit(
+  receipt: unknown,
+  orders: readonly ChallengeKitOrder[] = [],
+  storage: ChallengeKitStorage | undefined = defaultStorage(),
+): boolean {
+  let kit: ChallengeKit;
+  try {
+    kit = buildChallengeKit(receipt);
+  } catch {
+    return false; // no authorization (no bound deposit address), or one that does not verify
+  }
+  const listed = unsettledOrderHashes(orders);
+  listed.add(hashKey(kit));
+  return rememberChallengeKits([kit], storage, settledOrderHashes(orders), listed);
+}

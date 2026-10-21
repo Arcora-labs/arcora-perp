@@ -16,6 +16,7 @@ import {
   newChallengeKits,
   parseL1Challenge,
   recoverChallengeSigner,
+  rememberAcceptedChallengeKit,
   rememberChallengeKits,
   seenChallengeKits,
   serializeChallengeKits,
@@ -458,5 +459,61 @@ describe("challenge kit storage", () => {
     expect(loadChallengeKits(storage)).toEqual([]);
     expect(rememberChallengeKits([second], storage)).toBe(true);
     expect(loadChallengeKits(storage)).toEqual([second]);
+  });
+});
+
+describe("the kit of an order the gateway has just accepted", () => {
+  const listed = (r: unknown, finality = "ACCEPTED") => ({ receipt: r, finality });
+
+  it("is kept from the accept response, before the gateway ever lists the order", () => {
+    const storage = memoryStorage();
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    expect(loadChallengeKits(storage)).toEqual([V.kit]);
+  });
+
+  it("keeps nothing without a verifiable authorization, and never throws", () => {
+    const storage = memoryStorage();
+    for (const r of [{ ...receipt(), l1Challenge: null }, { ...receipt(), seqNo: 1 }, null, "x"]) {
+      expect(rememberAcceptedChallengeKit(r, [], storage)).toBe(false);
+    }
+    expect(storage.map.has(CHALLENGE_KIT_STORAGE_KEY)).toBe(false);
+    expect(rememberAcceptedChallengeKit(receipt(), [], memoryStorage({ set: true }))).toBe(false);
+    expect(rememberAcceptedChallengeKit(receipt(), [], undefined)).toBe(false);
+  });
+
+  it("and the listing's copy of it are one kit: keeping both is idempotent", () => {
+    const storage = memoryStorage();
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    const raw = storage.map.get(CHALLENGE_KIT_STORAGE_KEY);
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    // The account panel starts from the kept kits, so the listed order is not rebuilt...
+    expect(newChallengeKits([listed(receipt())], seenChallengeKits(loadChallengeKits(storage)))).toEqual([]);
+    // ...and storing the listing's kit anyway leaves the store as it was.
+    expect(rememberChallengeKits(newChallengeKits([listed(receipt())], new Map()), storage)).toBe(true);
+    expect(storage.map.get(CHALLENGE_KIT_STORAGE_KEY)).toBe(raw);
+  });
+
+  it("is replaced by the listing's kit for a deposit address bound since", () => {
+    const storage = memoryStorage();
+    expect(rememberAcceptedChallengeKit(receipt(), [], storage)).toBe(true);
+    const fresh = newChallengeKits([listed(reboundReceipt())], seenChallengeKits(loadChallengeKits(storage)));
+    expect(rememberChallengeKits(fresh, storage)).toBe(true);
+    expect(loadChallengeKits(storage).map((k) => k.l1Challenge.beneficiary)).toEqual([NEW_BENEFICIARY]);
+  });
+
+  it("is stored ahead of kits of orders not listed, with the listed orders' kits, as the panel stores them", () => {
+    const storage = memoryStorage();
+    // Stored earlier: kits of orders this account lists now, and newer kits of
+    // orders it does not list (older orders, or another account's).
+    const listedKits = Array.from({ length: 10 }, (_, i) => kitN(i + 1));
+    const unlisted = Array.from({ length: MAX_STORED_CHALLENGE_KITS - 10 }, (_, i) => kitN(1_000 + i));
+    expect(rememberChallengeKits([...listedKits, ...unlisted], storage)).toBe(true);
+    // The fixture order is older than every stored kit.
+    expect(rememberAcceptedChallengeKit(receipt(), listedKits.map((k) => listed(k)), storage)).toBe(false);
+    const kept = loadChallengeKits(storage).map((k) => k.orderHash);
+    expect(kept).toHaveLength(MAX_STORED_CHALLENGE_KITS);
+    expect(kept).toContain(V.kit.orderHash);
+    for (const k of listedKits) expect(kept).toContain(k.orderHash);
+    expect(kept).not.toContain(kitN(1_000).orderHash); // the oldest kit of an order not listed went
   });
 });
