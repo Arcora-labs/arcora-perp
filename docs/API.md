@@ -636,9 +636,9 @@ the new one, and either kit opens the challenge. Replace a kept kit only with on
 from the same `enclaveSigner` for the same chain and settlement whose beneficiary is
 the `depositAddress` that `GET /v1/accounts/me` reports in a read sent after the
 kept kit was stored, as the web client does (see `docs/FUNDS_LIFECYCLE.md`): an
-order listing read before the rebind still names the old address.
-`l1Challenge` is `null` when the account has
-no bound deposit address or the gateway has no settlement configured. The signature is the enclave signer's over the settlement's
+order listing read before the rebind still names the old address. `l1Challenge` is
+`null` when the account has no bound deposit address or the gateway has no
+settlement configured. The signature is the enclave signer's over the settlement's
 `challengeAuthDigest(orderHash, seqNo, recvTimeMs, batchIdHint, beneficiary)`:
 
 ```text

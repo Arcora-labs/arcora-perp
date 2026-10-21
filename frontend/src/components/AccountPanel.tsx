@@ -958,12 +958,14 @@ export function ChallengeKitSection({ orders, bound, storage }: {
     // have stored a newer one since (its account bound another deposit address).
     // So does a kit built here that `replacesStored` does not let replace the
     // stored one (a tab still running an older page may have stored an older
-    // kit over it): it waits like a listed kit, so a later read can put it back.
+    // kit over it). Unless its order is SETTLED, it also waits like a listed
+    // kit, so a later read can put it back; meanwhile, like the other kits, it
+    // is stored only while the store holds no kit for its order.
     const builtHere = (k: ChallengeKit) => built.current.get(k.orderHash.toLowerCase()) === k.l1Challenge.signature.toLowerCase();
     const isBuilt = (k: ChallengeKit) => builtHere(k) && replaces(k);
     for (const k of current) {
       const hash = k.orderHash.toLowerCase();
-      if (builtHere(k) && !replaces(k) && !waiting.current.has(hash)) waiting.current.set(hash, k);
+      if (!settled.has(hash) && builtHere(k) && !replaces(k) && !waiting.current.has(hash)) waiting.current.set(hash, k);
     }
     const own = current.filter(isBuilt);
     const others = current.filter((k) => !isBuilt(k));
