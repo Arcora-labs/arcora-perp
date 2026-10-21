@@ -314,7 +314,6 @@ pub(super) fn update(
 /// Call it before any view refreshes finality: the void already dropped the
 /// voided ticks from the pending set, so a refresh would read their fills as
 /// settled.
-#[allow(dead_code)] // the live void of a dead window calls it
 pub(super) fn void(
     o: &mut GwOrder,
     seq: &Sequencer,

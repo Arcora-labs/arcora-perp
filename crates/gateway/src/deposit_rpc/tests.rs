@@ -187,6 +187,125 @@ impl Rpc for MockRpc {
         }
     }
 }
+/// Deposit 0 in block 1 and deposits 1 and 2 in block 2, under a finalized head
+/// at block 3.
+struct TwoDepositBlocks;
+fn two_block_count(n: u64) -> u64 {
+    match n {
+        0 => 0,
+        1 => 1,
+        _ => 3,
+    }
+}
+fn two_block_events() -> Vec<Event> {
+    let mut tip = [0u8; 32];
+    (0..3)
+        .map(|id| {
+            let from = [0x42; 20];
+            let commit = [id as u8 + 20; 32];
+            let amount = (id + 1) as u128 * 1_000_000;
+            tip = deposit_chain_fold(&tip, &deposit_leaf(&from, &commit, amount, id));
+            Event {
+                id,
+                from,
+                commit,
+                amount,
+                tip,
+                tx: [id as u8 + 60; 32],
+                tx_index: 0,
+                log_index: id.saturating_sub(1),
+                block: block(if id == 0 { 1 } else { 2 }),
+            }
+        })
+        .collect()
+}
+impl Rpc for TwoDepositBlocks {
+    fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
+        match m {
+            "eth_chainId" => Ok(json!("0x1")),
+            "eth_getBlockByNumber" => {
+                let n = if p[0] == json!("finalized") {
+                    3
+                } else {
+                    quantity(&p[0]).unwrap()
+                };
+                Ok(header_json(n, false))
+            }
+            "eth_call" => {
+                let n = height_of(&digest(&p[1]["blockHash"]).unwrap());
+                let data = bytes(&p[0]["data"]).unwrap();
+                use sha3::{Digest, Keccak256};
+                if data[..4] == Keccak256::digest(b"depositCount()")[..4] {
+                    let mut w = [0u8; 32];
+                    w[24..].copy_from_slice(&two_block_count(n).to_be_bytes());
+                    Ok(json!(hex0x(&w)))
+                } else {
+                    let id = uint64(&data[4..]).unwrap();
+                    assert!(id > 0 && id <= two_block_count(n));
+                    Ok(json!(hex0x(&two_block_events()[id as usize - 1].tip)))
+                }
+            }
+            "eth_getLogs" => {
+                let hash = digest(&p[0]["blockHash"]).unwrap();
+                Ok(json!(two_block_events()
+                    .iter()
+                    .filter(|e| e.block.hash == hash)
+                    .map(log)
+                    .collect::<Vec<_>>()))
+            }
+            other => panic!("unexpected RPC method: {other}"),
+        }
+    }
+}
+/// A void of the window that credited block 2 returns the engine to deposit
+/// count 1 and rewinds the anchor to block 1, where deposit 0 was credited:
+/// reading on from there returns block 2 again. Left at block 2, the search
+/// would start past the deposits it has to read (a retry error, for good), and
+/// at the head it would halt. A void that restored no deposit rewinds to the
+/// block of the last deposit kept, and the read from there is the empty head.
+#[test]
+fn the_rewound_cursor_reads_the_voided_deposits_again() {
+    let source = VaultSource::new(TwoDepositBlocks);
+    let events = two_block_events();
+    let rewound = Cursor {
+        count: 1,
+        tip: events[0].tip,
+        anchor: Some(block(1)),
+        ..cursor()
+    };
+    let page = source.fetch(rewound.clone()).unwrap();
+    assert_eq!(page.start, rewound);
+    assert_eq!(page.end, block(2));
+    assert_eq!(
+        page.events.iter().map(|e| e.id).collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let stale = Cursor {
+        anchor: Some(block(2)),
+        ..rewound.clone()
+    };
+    assert!(matches!(
+        source.fetch(stale),
+        Err(Error::Retry(e)) if e.contains("deposit block boundary")
+    ));
+    let at_head = Cursor {
+        anchor: Some(block(3)),
+        ..rewound
+    };
+    assert!(matches!(
+        source.fetch(at_head),
+        Err(Error::Halt(e)) if e.contains("anchor/count")
+    ));
+    let kept = Cursor {
+        count: 3,
+        tip: events[2].tip,
+        anchor: Some(block(2)),
+        ..cursor()
+    };
+    let head = source.fetch(kept).unwrap();
+    assert!(head.events.is_empty());
+    assert_eq!(head.end, block(3));
+}
 #[test]
 fn a01_rpc_pages_whole_blocks_in_canonical_order_deduplicates_and_catches_up() {
     let mock = MockRpc {

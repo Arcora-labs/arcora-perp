@@ -122,6 +122,7 @@ mod http_transport_tests;
 mod injected_inputs;
 mod l1;
 mod listen_config;
+mod live_void;
 mod ops_alerts;
 mod oracle_crosscheck;
 #[cfg(test)]
@@ -13333,8 +13334,8 @@ mod tests {
         );
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 11,
-            "expected exactly 11 occurrences of `{deposit_op_needle}` across the \
+            deposit_ops, 13,
+            "expected exactly 13 occurrences of `{deposit_op_needle}` across the \
              gateway sources: 4 in main.rs — the `seq.apply(..)` constructions \
              inside `fund_amount` (the only position-credit minter), \
              `seed_insurance_unbacked` (SEC-024: the UNBACKED insurance funnel, \
@@ -13352,7 +13353,10 @@ mod tests {
              chainlink-oracle's `binding::used_oracle` (inspects ops for the \
              archive binding without constructing one); plus 2 in the explicitly \
              cfg(test)-gated journal candidate codec fixture, with zero in journal \
-             production code checked above; found {deposit_ops}. Applying this op anywhere \
+             production code checked above; plus 1 in live_void.rs — the PATTERN that \
+             reads a voided window's deposits from its journaled ops without \
+             constructing one — and 1 in live_void_tests.rs, a cfg(test) PATTERN that \
+             alters a journaled op's permit blind; found {deposit_ops}. Applying this op anywhere \
              else mints collateral below BOTH `refuse_unbacked_mint` and the \
              funnels' bookkeeping, so a new construction site is almost \
              certainly wrong; a legitimate credit path MUST route through \

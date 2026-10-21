@@ -1229,7 +1229,7 @@ fn confirmed_receipt(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "deposit_ingestion/receipt_tests.rs"]

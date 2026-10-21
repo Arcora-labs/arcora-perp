@@ -1,8 +1,13 @@
 use super::*;
-fn fresh() -> Gw {
+pub(crate) fn fresh() -> Gw {
     Gw::boot_with(GenesisMode::Production)
 }
-fn permit(gw: &mut Gw, amount: u128, purpose: Purpose, market: u64) -> ([u8; 32], [u8; 32]) {
+pub(crate) fn permit(
+    gw: &mut Gw,
+    amount: u128,
+    purpose: Purpose,
+    market: u64,
+) -> ([u8; 32], [u8; 32]) {
     let (key, _) = gw.register_account(None);
     gw.accounts.get_mut(&key).unwrap().deposit_address = Some([0x42; 20]);
     let c = gw
@@ -515,7 +520,7 @@ fn a01_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
 
 /// Seal, prove (mock) and commit the open window, every earlier window being
 /// settled; returns its batch id.
-fn settle_open_window(gw: &mut Gw) -> u64 {
+pub(crate) fn settle_open_window(gw: &mut Gw) -> u64 {
     gw.deposits.dirty = false;
     let chain_batch_count = gw.seq.state.next_batch_id;
     let (w, ww) = gw.begin_window_settle(chain_batch_count).unwrap().unwrap();
@@ -782,7 +787,7 @@ fn ingestion_checks_the_permit_payer_not_the_current_binding() {
 /// Land the permitted deposits `commits` in one block (header time `block_time`)
 /// that the admission cap refuses, and record them as landed and uncredited, as
 /// ingestion does. Returns the refused page, which credits them once there is room.
-fn land_uncredited(gw: &mut Gw, commits: &[[u8; 32]], block_time: Option<u64>) -> Page {
+pub(crate) fn land_uncredited(gw: &mut Gw, commits: &[[u8; 32]], block_time: Option<u64>) -> Page {
     let mut landed = page(gw, commits);
     landed.end.timestamp = block_time;
     for e in &mut landed.events {
@@ -1055,7 +1060,7 @@ async fn close_only_intake_verifies_the_prefix_once_then_stops_polling() {
 }
 
 /// Acknowledge every durability request, as a healthy snapshot writer does.
-fn ack_every_snapshot(
+pub(crate) fn ack_every_snapshot(
     mut rx: tokio::sync::mpsc::Receiver<SnapshotAck>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -1184,7 +1189,10 @@ fn close_only_rebase_keeps_only_the_settled_deposit_prefix() {
 /// Deposit blocks that chain on from `gw`'s consumed prefix: block `i` (number
 /// `i + 1`) holds the permitted deposits `blocks[i]`, in order. Returns each block
 /// keyed by the deposit count it starts at.
-fn chained_blocks(gw: &Gw, blocks: &[&[[u8; 32]]]) -> BTreeMap<u64, (Block, Vec<Event>)> {
+pub(crate) fn chained_blocks(
+    gw: &Gw,
+    blocks: &[&[[u8; 32]]],
+) -> BTreeMap<u64, (Block, Vec<Event>)> {
     let start = gw.deposit_cursor();
     let (mut id, mut tip) = (start.count, start.tip);
     let mut chain = BTreeMap::new();
@@ -1226,7 +1234,7 @@ fn chained_blocks(gw: &Gw, blocks: &[&[[u8; 32]]]) -> BTreeMap<u64, (Block, Vec<
 
 /// A finalized chain: each deposit block is read from the cursor at its start;
 /// past the last one the finalized head holds no further deposit.
-struct Blocks {
+pub(crate) struct Blocks {
     blocks: BTreeMap<u64, (Block, Vec<Event>)>,
     head: Block,
     calls: std::sync::atomic::AtomicUsize,
@@ -1247,7 +1255,7 @@ impl crate::deposit_rpc::DepositSource for Blocks {
     }
 }
 
-fn app_with_blocks(
+pub(crate) fn app_with_blocks(
     gw: Gw,
     blocks: BTreeMap<u64, (Block, Vec<Event>)>,
 ) -> (Shared, Arc<Blocks>, tokio::task::JoinHandle<()>) {
