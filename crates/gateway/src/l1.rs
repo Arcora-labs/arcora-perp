@@ -2025,8 +2025,11 @@ fn log_answer_round(r: &crate::answer_lane::RoundReport) {
     }
     if let Some(nonce) = r.blocked_at {
         eprintln!(
-            "[l1] WARN: answer lane blocked at nonce {nonce} by a transaction this process did \
-             not send; it is replaced while answers wait behind it"
+            "[l1] WARN: answer lane blocked at nonce {nonce}, where no answer of ours is \
+             pending; answers of ours above it wait until a transaction mines there. Within \
+             the bump caps, queued answers take the nonce over, or, while answers of ours wait \
+             above it, a no-op replaces it (one that fails for a reason other than its fees \
+             is retried at growing intervals); with neither, it is left to mine on its own"
         );
     }
     if r.reverted > 0 {
@@ -2037,8 +2040,9 @@ fn log_answer_round(r: &crate::answer_lane::RoundReport) {
     }
     if r.at_fee_cap > 0 {
         eprintln!(
-            "[l1] WARN: {} answer transaction(s) at the bump limit or fee cap; rebroadcasting \
-             unchanged",
+            "[l1] WARN: {} answer transaction(s) at the bump limit or fee cap, whose fees are \
+             not raised again: a pending one keeps its last fees until it mines, and queued \
+             answers the node refused at the cap are offered again at those fees",
             r.at_fee_cap
         );
     }
@@ -2348,35 +2352,58 @@ fn replace_longest_first<S: AsRef<str>>(text: &str, needles: &[S]) -> String {
     })
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Bytes of text `strip_urls` has searched for a separator on this thread.
+    static URL_SEARCH_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Every `scheme://…` token in `text`, also with JSON-escaped slashes, as `<url>`.
 /// A token ends at whitespace, a quote or an angle bracket; closing brackets and
-/// punctuation at its end stay in the text.
+/// punctuation at its end stay in the text. The next position of each separator
+/// is kept until the scan passes it, so the text is searched once per separator,
+/// not once per URL: `send()` redacts cast's errors while it holds the nonce lock.
 fn strip_urls(text: &str) -> String {
+    const SEPARATORS: [&str; 2] = ["://", ":\\/\\/"];
+    let search = |from: usize, separator: &str| {
+        let found = text[from..].find(separator);
+        #[cfg(test)]
+        URL_SEARCH_BYTES
+            .with(|n| n.set(n.get() + found.map_or(text.len() - from, |at| at + separator.len())));
+        found.map(|at| from + at)
+    };
+    let mut next = SEPARATORS.map(|separator| search(0, separator));
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some((at, separator)) = ["://", ":\\/\\/"]
+    let mut from = 0;
+    while let Some((at, separator)) = next
         .iter()
-        .filter_map(|s| rest.find(s).map(|at| (at, s.len())))
+        .zip(SEPARATORS)
+        .filter_map(|(at, separator)| at.map(|at| (at, separator.len())))
         .min()
     {
-        let start = rest[..at]
+        let start = text[from..at]
             .char_indices()
             .rev()
             .take_while(|&(_, c)| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
             .last()
-            .map_or(at, |(i, _)| i);
-        let after = &rest[at + separator..];
+            .map_or(at, |(i, _)| from + i);
+        let after = &text[at + separator..];
         let end = after
             .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '<' | '>'))
             .unwrap_or(after.len());
         let url = after[..end]
             .trim_end_matches([')', ']', '}', ',', '.', ';', ':', '!', '?', '\\'])
             .len();
-        out.push_str(&rest[..start]);
+        out.push_str(&text[from..start]);
         out.push_str(URL_PLACEHOLDER);
-        rest = &after[url..];
+        from = at + separator + url;
+        for (at, separator) in next.iter_mut().zip(SEPARATORS) {
+            if at.is_some_and(|at| at < from) {
+                *at = search(from, separator);
+            }
+        }
     }
-    out.push_str(rest);
+    out.push_str(&text[from..]);
     out
 }
 
@@ -3329,6 +3356,137 @@ witness https://witness.example/SECRET-witness-key (path /SECRET-witness-key)";
             "rpc error at /rpc from <rpc>"
         );
         assert_eq!(redact_endpoints("plain", &[]), "plain");
+    }
+
+    /// `strip_urls` as it was when it searched the rest of the text for both
+    /// separators again after every URL: the reference its output must match.
+    fn strip_urls_reference(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some((at, separator)) = ["://", ":\\/\\/"]
+            .iter()
+            .filter_map(|s| rest.find(s).map(|at| (at, s.len())))
+            .min()
+        {
+            let start = rest[..at]
+                .char_indices()
+                .rev()
+                .take_while(|&(_, c)| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+                .last()
+                .map_or(at, |(i, _)| i);
+            let after = &rest[at + separator..];
+            let end = after
+                .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '<' | '>'))
+                .unwrap_or(after.len());
+            let url = after[..end]
+                .trim_end_matches([')', ']', '}', ',', '.', ';', ':', '!', '?', '\\'])
+                .len();
+            out.push_str(&rest[..start]);
+            out.push_str(URL_PLACEHOLDER);
+            rest = &after[url..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    #[test]
+    fn url_stripping_matches_the_reference_byte_for_byte() {
+        // Schemes, both separators and parts of them, every character that ends a
+        // token or is trimmed from its end, and multi-byte text and whitespace.
+        const PIECES: [&str; 34] = [
+            "",
+            "://",
+            ":\\/\\/",
+            ":/",
+            ":\\/",
+            "/",
+            "\\",
+            "http",
+            "HTTPS://H.EXAMPLE/p?k=v&x=1#f",
+            "ws:\\/\\/h.example\\/p",
+            "a+b-c.d",
+            "x1",
+            "é",
+            "日本",
+            "ü://ß",
+            " ",
+            "\n",
+            "\t",
+            "\u{2003}",
+            "\"",
+            "'",
+            "`",
+            "<",
+            ">",
+            ")",
+            "]",
+            "}",
+            ",",
+            ".",
+            ";",
+            ":",
+            "!",
+            "?",
+            "(",
+        ];
+        let mut texts = Vec::new();
+        for a in PIECES {
+            for b in PIECES {
+                for c in PIECES {
+                    texts.push(format!("{a}{b}{c}"));
+                }
+            }
+        }
+        // Longer texts from a fixed xorshift sequence: adjacent URLs, URLs at
+        // both ends, separators right at a token's boundaries.
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as usize
+        };
+        for _ in 0..20_000 {
+            let pieces = next() % 24;
+            texts.push((0..pieces).map(|_| PIECES[next() % PIECES.len()]).collect());
+        }
+        for text in &texts {
+            assert_eq!(strip_urls(text), strip_urls_reference(text), "{text:?}");
+        }
+    }
+
+    /// Large errors full of URLs, only the last one JSON-escaped. `send()`
+    /// redacts cast's errors while it holds the nonce lock: each separator is
+    /// searched for in one pass over the text, not once per URL, so the work stays
+    /// linear. The escaped URL at the end makes that pass cover the whole text, so
+    /// a count below the text's length means a search went uncounted. A scan that
+    /// starts over after every URL is over a thousand times the bound at 5,000
+    /// URLs (300 KB) and still finishes in under a second, so it fails there before
+    /// the 12 MB error (over 10^12 bytes for the reference) is reached.
+    #[test]
+    fn url_stripping_searches_a_large_url_dense_error_once_per_separator() {
+        for urls in [5_000, 200_000] {
+            let mut text = String::new();
+            let mut expected = String::new();
+            for i in 0..urls {
+                let line = format!("error sending request for url (http://h{i}.example/v2/k{i})\n");
+                text.push_str(&line);
+                expected.push_str(&line.replace(&format!("http://h{i}.example/v2/k{i}"), "<url>"));
+            }
+            text.push_str("{\"url\":\"wss:\\/\\/h.example\\/k\"}");
+            expected.push_str("{\"url\":\"<url>\"}");
+            URL_SEARCH_BYTES.with(|n| n.set(0));
+            assert!(
+                strip_urls(&text) == expected,
+                "the output differs at {urls} URLs"
+            );
+            let searched = URL_SEARCH_BYTES.with(|n| n.get());
+            assert!(
+                (text.len()..=2 * text.len()).contains(&searched),
+                "{searched} bytes searched in {} bytes of text",
+                text.len()
+            );
+        }
     }
 
     #[test]

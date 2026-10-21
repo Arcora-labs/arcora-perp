@@ -1,0 +1,63 @@
+{
+  "chain_id": 84532,
+  "rpc_client": "anvil/v1.7.2",
+  "owned_test_chain": true,
+  "genesis_root": "0x900609506cd774309e8238498290321114134a4a1dfa464d042b2a11777f7f23",
+  "wind_down_recipient": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+  "oracle_signer_address": "0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+  "genesis_recomputed": true,
+  "deploy_block": 48416276,
+  "settlement_block": 48416281,
+  "transactions": [
+    {
+      "step": "sp1_verifier",
+      "hash": "0xdbfefa905126bb9653978e29b293cd7fab5c15b3a12cf416dcd88c7837fb1414",
+      "block": "0x2e2c614"
+    },
+    {
+      "step": "sp1_gateway",
+      "hash": "0xfa0a61a44467702e1388d29aebba636b159c73412a8273270423c1c37da5acff",
+      "block": "0x2e2c615"
+    },
+    {
+      "step": "sp1_gateway.addRoute",
+      "hash": "0x3d6cba1e59c0802ba05e5578843fad232cbc07a2af0dfd37548df932ae2a38b7",
+      "block": "0x2e2c616"
+    },
+    {
+      "step": "sp1_adapter",
+      "hash": "0x6f10c37670140bce5f3b4b2b1ce29c9f6195b293cc52d35fa07b8c8a2dd87ab9",
+      "block": "0x2e2c617"
+    },
+    {
+      "step": "clock_verifier",
+      "hash": "0x6dde72400effa3c665d4efea2af68b88b7e08bc3cc418adc64883986942ed1f3",
+      "block": "0x2e2c618"
+    },
+    {
+      "step": "settlement",
+      "hash": "0x57a21be69529ce7d4003884fadfe55f6d0e99b2c263c584e869616804cad8025",
+      "block": "0x2e2c619"
+    },
+    {
+      "step": "token",
+      "hash": "0x6e080b1b77283fbc547ec5121c06232528a4e2b26360b269f6cff6b63e558e1a",
+      "block": "0x2e2c61a"
+    },
+    {
+      "step": "vault",
+      "hash": "0x8d209f81438e82db66f0c6026fd327d70997f53dd57e6a4d3a2401d0914c0990",
+      "block": "0x2e2c61b"
+    },
+    {
+      "step": "settlement.setVault",
+      "hash": "0x676f00e553ab70022ba07f05f922b4214cfda63e5fd5d9faabf61ff5598b8836",
+      "block": "0x2e2c61c"
+    },
+    {
+      "step": "clock_verifier.bindSettlement",
+      "hash": "0xa1a5787fa71722f38fca14cb582046dbe2fb5c03851e4b016c915c2de27e372b",
+      "block": "0x2e2c61d"
+    }
+  ]
+}

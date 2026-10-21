@@ -1131,7 +1131,8 @@ mod tests {
     /// requires them: the schema tag, a positive chain id, the vault and recipient
     /// as 20-byte lowercase hex, the amount as a decimal string, an integer nonce,
     /// and a root that is the leaf itself with an empty proof. The status read-out
-    /// carries the same object plus `claimable`.
+    /// carries the same object plus `claimable`. Once published, that read-out is
+    /// `scripts/claim/fixtures/reserve-sink.json`, which the tool's own tests check.
     #[test]
     fn the_reserve_claim_data_is_a_claim_bundle() {
         let mut gw = Gw::boot_with(GenesisMode::Production);
@@ -1161,12 +1162,21 @@ mod tests {
         assert_eq!(bundle["root"], leaf);
         assert_eq!(bundle["proof"], serde_json::json!([]));
         assert_ne!(sink.leaf(), [0; 32], "a zero root is never claimable");
-        gw.pending_withdrawals.push(sink);
+        gw.pending_withdrawals.push(sink.clone());
         let status = gw.reserve_sink_json();
         let mut listed = status[0].clone();
         assert_eq!(listed["claimable"], false);
         listed.as_object_mut().unwrap().remove("claimable");
         assert_eq!(listed, bundle);
+        // The phase-1 root is published: the read-out, saved as is, is the file the
+        // claim tool's tests run through its bundle checks and its CLI.
+        gw.withdraw_proofs
+            .insert(sink.leaf(), (sink.leaf(), Vec::new()));
+        let saved: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../scripts/claim/fixtures/reserve-sink.json"
+        ))
+        .unwrap();
+        assert_eq!(serde_json::json!(gw.reserve_sink_json()), saved);
     }
 
     /// With no recipient bound (tests and demos), phase 1 leaves the reserves in

@@ -1,0 +1,14 @@
+[
+ {
+  "schema": "arcora.claim-bundle.v1",
+  "chainId": 84532,
+  "vault": "0xabababababababababababababababababababab",
+  "to": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+  "amount": "1234567",
+  "nonce": 3,
+  "leaf": "0x9b70005e6c1a4d420bac265b81fa429cd6fa2dae864e709fff695e4f5330ea3e",
+  "root": "0x9b70005e6c1a4d420bac265b81fa429cd6fa2dae864e709fff695e4f5330ea3e",
+  "proof": [],
+  "claimable": true
+ }
+]

@@ -24,10 +24,13 @@ pub(crate) fn witness_domains() -> Vec<&'static str> {
     crate::identity::witness_domains(&ELF)
 }
 
-/// Type aliases for the concrete SP1 CPU client + proving key. The `CpuProver`/
-/// `SP1ProvingKey` types are confirmed at build time on the SP1 prover machine (GB10).
+/// Type aliases for the concrete SP1 client + proving key: the CPU prover, or SP1's
+/// GPU prover (`sp1-gpu-server`, CUDA device 0) when built with `--features cuda`.
+#[cfg(not(feature = "cuda"))]
 type Client = sp1_sdk::cpu::CpuProver;
-type Pk = sp1_sdk::SP1ProvingKey;
+#[cfg(feature = "cuda")]
+type Client = sp1_sdk::CudaProver;
+type Pk = <Client as sp1_sdk::Prover>::ProvingKey;
 
 pub struct Sp1GnarkProver {
     client: Arc<Client>,
@@ -38,15 +41,18 @@ pub struct Sp1GnarkProver {
 }
 
 impl Sp1GnarkProver {
-    /// Build the CPU prover, run `setup(ELF)` ONCE (cache pk), capture the vkey. Call from
+    /// Build the prover, run `setup(ELF)` ONCE (cache pk), capture the vkey. Call from
     /// an async context (holds the current runtime handle for later `block_on`).
     pub async fn new(measurement: Digest) -> Self {
         // Worker configuration captures dump paths at construction, so checking
         // only at prove time would be too late if the environment later changed.
         prover::validate_sp1_environment().expect("private SP1 proving environment");
+        #[cfg(not(feature = "cuda"))]
         let client = ProverClient::builder().cpu().build().await;
+        #[cfg(feature = "cuda")]
+        let client = ProverClient::builder().cuda().build().await;
         let pk = client.setup(ELF).await.expect("sp1 setup");
-        let vkey = pk.verifying_key().bytes32();
+        let vkey = ProvingKey::verifying_key(&pk).bytes32();
         Self {
             client: Arc::new(client),
             pk: Arc::new(pk),

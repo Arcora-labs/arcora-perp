@@ -9,9 +9,8 @@ This directory is `REVIEWED_GUEST["identity_dir"]` in
 `scripts/local-verification/verify_clock_proof.py`. It holds the guest program
 the checkout is reviewed to build, its setup key, and its outputs on the normal
 fixture, the case witnesses and the negatives (`REVIEWED_FIXTURE`). It holds no
-proof. The Solidity real-proof gate still verifies the committed proof of the
-earlier clock-v2 guest in `../clock-v2-verified/`, so `proof_status()` reads
-`PENDING_REPROOF` until a proof of this fixture under this guest is committed.
+proof. The real Groth16 proof of this fixture under this guest is in
+`../clock-pkg3-verified/` (`PROOF_FIXTURE`), so `proof_status()` reads `PROVEN`.
 
 | File | Content |
 | --- | --- |
