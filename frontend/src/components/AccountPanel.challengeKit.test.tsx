@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { AccountPanel, ChallengeKitSection, RefundsSection } from "./AccountPanel";
 import { StoreProvider } from "../store";
 import { COLLATERAL_VAULT } from "../api/wallet";
+import { MockDarkPerpClient } from "../api/mockClient";
 import type { DarkPerpClient } from "../api/client";
 import type { Finality, TrackedOrder } from "../domain/types";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -27,6 +28,13 @@ import {
   type ChallengeKitStorage,
   type ReceiptWithChallenge,
 } from "../domain/challengeKit";
+
+/// The store the account panel reads when a test sets one; otherwise the provider's.
+const store = vi.hoisted(() => ({ value: null as ReturnType<typeof import("../store").useStore> | null }));
+vi.mock("../store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../store")>();
+  return { ...actual, useStore: () => store.value ?? actual.useStore() };
+});
 
 // Shared with scripts/challenge/test_challenge_kit.py; read at test time so the
 // production build never depends on a file outside frontend/.
@@ -132,6 +140,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  store.value = null;
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.clear();
@@ -230,10 +240,22 @@ describe("ChallengeKitSection", () => {
 describe("ChallengeKitSection after the account binds another deposit address", () => {
   // The gateway signs every listed order's authorization for the address bound
   // now, so a fine pays the address the account chose last.
+  const OLD_BENEFICIARY = ACCEPTED.l1Challenge!.beneficiary;
   const NEW_BENEFICIARY = "0x" + "34".repeat(20);
   const before = order("o6", signedReceipt("a6", 6));
   const after = order("o6", signedReceiptFor("0x" + "a6".repeat(32), 6, NEW_BENEFICIARY));
   const beneficiaries = (kits: ChallengeKit[]) => kits.map((k) => k.l1Challenge.beneficiary);
+  /// The bound address as a read sent now finds it (the account panel polls it).
+  const boundNow = (depositAddress: string) => ({ depositAddress, readAtMs: performance.now() });
+
+  /// Open the panel on `orders`, then hand it the bound address from a read
+  /// sent after it opened, as the account panel does.
+  function openThenRead(orders: TrackedOrder[], depositAddress: string, storage?: ChallengeKitStorage) {
+    const view = render(<ChallengeKitSection orders={orders} storage={storage} />);
+    const bound = boundNow(depositAddress);
+    view.rerender(<ChallengeKitSection orders={orders} storage={storage} bound={bound} />);
+    return { ...view, bound };
+  }
 
   async function expectNewBeneficiaryExported() {
     await waitFor(() => expect(beneficiaries(loadChallengeKits())).toEqual([NEW_BENEFICIARY]));
@@ -243,26 +265,116 @@ describe("ChallengeKitSection after the account binds another deposit address", 
 
   it("replaces the kit it keeps for an order with the new beneficiary's, and exports that one", async () => {
     expect(rememberChallengeKits([kitOf(before)])).toBe(true);
-    render(<ChallengeKitSection orders={[after]} />);
+    openThenRead([after], NEW_BENEFICIARY);
     await expectNewBeneficiaryExported();
   });
 
-  it("does the same while the panel is open", async () => {
-    const { rerender } = render(<ChallengeKitSection orders={[before]} />);
-    await waitFor(() => expect(beneficiaries(loadChallengeKits())).toEqual([ACCEPTED.l1Challenge!.beneficiary]));
-    rerender(<ChallengeKitSection orders={[after]} />);
+  it("replaces it only after a read of the bound address sent after the panel opened", async () => {
+    expect(rememberChallengeKits([kitOf(before)])).toBe(true);
+    // A read sent earlier may be older than the kit the panel finds stored.
+    const early = boundNow(NEW_BENEFICIARY);
+    const { rerender } = render(<ChallengeKitSection orders={[after]} bound={early} />);
+    expect(await exportedKits(1)).toEqual(kitOf(before));
+    expect(loadChallengeKits()).toEqual([kitOf(before)]);
+    rerender(<ChallengeKitSection orders={[after]} bound={boundNow(NEW_BENEFICIARY)} />);
     await expectNewBeneficiaryExported();
+  });
+
+  it("does the same while the panel is open, once a read finds the new address bound", async () => {
+    const oldRead = boundNow(OLD_BENEFICIARY);
+    const { rerender } = render(<ChallengeKitSection orders={[before]} bound={oldRead} />);
+    await waitFor(() => expect(beneficiaries(loadChallengeKits())).toEqual([OLD_BENEFICIARY]));
+    // The listing after the rebind arrives before the next read of the bound address.
+    rerender(<ChallengeKitSection orders={[after]} bound={oldRead} />);
+    expect(await exportedKits(1)).toEqual(kitOf(before));
+    expect(beneficiaries(loadChallengeKits())).toEqual([OLD_BENEFICIARY]);
+    rerender(<ChallengeKitSection orders={[after]} bound={boundNow(NEW_BENEFICIARY)} />);
+    await expectNewBeneficiaryExported();
+  });
+
+  it("keeps the kit another tab stored for the new address when it opens with a listing from before the rebind", async () => {
+    // Another tab listed the order after the account bound the new address.
+    expect(rememberChallengeKits([kitOf(after)])).toBe(true);
+    // This tab's listing is older than that rebind.
+    openThenRead([before], NEW_BENEFICIARY);
+    expect(await exportedKits(1)).toEqual(kitOf(after));
+    expect(loadChallengeKits()).toEqual([kitOf(after)]);
+  });
+
+  it("keeps it too when its only read, sent before that kit was stored, names the old address", async () => {
+    const early = boundNow(OLD_BENEFICIARY);
+    expect(rememberChallengeKits([kitOf(after)])).toBe(true);
+    render(<ChallengeKitSection orders={[before]} bound={early} />);
+    expect(await exportedKits(1)).toEqual(kitOf(after));
+    expect(loadChallengeKits()).toEqual([kitOf(after)]);
+  });
+
+  it("does not let the old address's kit in when the newer stored kit leaves the store", async () => {
+    expect(rememberChallengeKits([kitOf(after)])).toBe(true);
+    const { rerender } = openThenRead([before], NEW_BENEFICIARY);
+    // The store loses that kit (site data cleared, or other kits evicted it).
+    localStorage.removeItem(CHALLENGE_KIT_STORAGE_KEY);
+    rerender(<ChallengeKitSection orders={[before]} bound={boundNow(NEW_BENEFICIARY)} />);
+    expect(await exportedKits(1)).toEqual(kitOf(after));
+    expect(loadChallengeKits()).toEqual([]);
+    // The next write stores the offered kit again.
+    const bound = boundNow(NEW_BENEFICIARY);
+    rerender(<ChallengeKitSection orders={[before, order("o7", signedReceipt("a7", 7))]} bound={bound} />);
+    await waitFor(() => expect(loadChallengeKits().find((k) => k.seqNo === 6)).toEqual(kitOf(after)));
+    expect((await exportedKits(2)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+  });
+
+  it("stores its own kit for the bound address again once a later read confirms it, after an older page stored the old one", async () => {
+    const { rerender, bound } = openThenRead([after], NEW_BENEFICIARY);
+    await waitFor(() => expect(loadChallengeKits()).toEqual([kitOf(after)]));
+    // A tab still running a page from before this check stores the old address's kit over it.
+    expect(rememberChallengeKits([kitOf(before)])).toBe(true);
+    // This panel's next write finds that kit after its last read, so it keeps it for now.
+    const listing = [after, order("o7", signedReceipt("a7", 7))];
+    rerender(<ChallengeKitSection orders={listing} bound={bound} />);
+    await screen.findByRole("button", { name: /export all challenge kits \(2\)/i });
+    expect(loadChallengeKits().find((k) => k.seqNo === 6)).toEqual(kitOf(before));
+    // The next read still finds the new address bound.
+    rerender(<ChallengeKitSection orders={listing} bound={boundNow(NEW_BENEFICIARY)} />);
+    await waitFor(() => expect(loadChallengeKits().find((k) => k.seqNo === 6)).toEqual(kitOf(after)));
+    expect((await exportedKits(2)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+  });
+
+  it("does not bring its own held-back kit back once the gateway lists the order as SETTLED", async () => {
+    const { rerender, bound } = openThenRead([after], NEW_BENEFICIARY);
+    await waitFor(() => expect(loadChallengeKits()).toEqual([kitOf(after)]));
+    expect(rememberChallengeKits([kitOf(before)])).toBe(true); // a tab running an older page
+    // The next listing reports the order SETTLED, before any newer read.
+    rerender(<ChallengeKitSection orders={[order("o6", after.receipt as ReceiptWithChallenge, "SETTLED")]} bound={bound} />);
+    await waitFor(() => expect(loadChallengeKits()).toEqual([]));
+    // A later listing leaves the order out (the account read failed), and a read names the new address.
+    rerender(<ChallengeKitSection orders={[]} bound={boundNow(NEW_BENEFICIARY)} />);
+    expect(loadChallengeKits()).toEqual([]);
+    expect(screen.queryByRole("heading", { name: /challenge kits/i })).toBeNull();
+  });
+
+  it("does not put this tab's kit for the old address back over the one another tab stored since", async () => {
+    const bound = boundNow(OLD_BENEFICIARY);
+    const { rerender } = render(<ChallengeKitSection orders={[before]} bound={bound} />);
+    await waitFor(() => expect(loadChallengeKits()).toEqual([kitOf(before)]));
+    // Another tab: the account binds the new address, and that tab stores the order's new kit.
+    expect(rememberChallengeKits([kitOf(after)])).toBe(true);
+    // This tab's next listing, from before that rebind, adds an order, so the panel stores again.
+    rerender(<ChallengeKitSection orders={[before, order("o7", signedReceipt("a7", 7))]} bound={bound} />);
+    await screen.findByRole("button", { name: /export all challenge kits \(2\)/i });
+    expect(loadChallengeKits().find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+    expect((await exportedKits(2)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
   });
 
   it("offers the new beneficiary's kit and warns when a full storage still holds the old one", async () => {
     const { storage } = fullStorage([kitOf(before)]);
-    const { rerender } = render(<ChallengeKitSection orders={[after]} storage={storage} />);
+    const { rerender, bound } = openThenRead([after], NEW_BENEFICIARY, storage);
     fireEvent.click(await screen.findByRole("button", { name: /export all challenge kits \(1\)/i }));
     expect(JSON.parse(await downloads[0].blob.text())).toEqual(kitOf(after));
-    expect(beneficiaries(loadChallengeKits(storage))).toEqual([ACCEPTED.l1Challenge!.beneficiary]);
+    expect(beneficiaries(loadChallengeKits(storage))).toEqual([OLD_BENEFICIARY]);
     expect(screen.getByRole("alert").textContent).toMatch(/did not keep this kit \(its storage is blocked or full\)/i);
     // The next listing does not bring the old kit back into the offer.
-    rerender(<ChallengeKitSection orders={[after, withKit]} storage={storage} />);
+    rerender(<ChallengeKitSection orders={[after, withKit]} storage={storage} bound={bound} />);
     expect(await exportedKits(2)).toContainEqual(kitOf(after));
     expect(screen.getByRole("alert").textContent).toMatch(/did not keep these kits/i);
   });
@@ -278,7 +390,7 @@ describe("ChallengeKitSection after the account binds another deposit address", 
     }
     for (const listing of [resigned(new Uint8Array(32).fill(12)), resigned(TEST_ENCLAVE_KEY, "0x" + "23".repeat(20))]) {
       const storage = memoryStorage([kitOf(before)]);
-      render(<ChallengeKitSection orders={[listing]} storage={storage} />);
+      openThenRead([listing], NEW_BENEFICIARY, storage);
       expect(await exportedKits(1)).toEqual(kitOf(before));
       expect(loadChallengeKits(storage)).toEqual([kitOf(before)]);
       expect(screen.queryByRole("alert")).toBeNull();
@@ -297,6 +409,55 @@ describe("ChallengeKitSection after the account binds another deposit address", 
     rerender(<ChallengeKitSection orders={[withKit, order("o7", signedReceipt("a7", 7))]} storage={storage} />);
     await screen.findByRole("button", { name: /export all challenge kits \(3\)/i });
     expect(loadChallengeKits(storage).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+    expect((await exportedKits(3)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+  });
+
+  /// The account panel on `orders`, with a client whose account reads find
+  /// `depositAddress()` bound. `list` hands the panel the next listing.
+  function openAccountPanel(orders: TrackedOrder[], depositAddress: () => string) {
+    const client = new MockDarkPerpClient() as MockDarkPerpClient & Pick<DarkPerpClient, "withdrawAuthInfo">;
+    client.withdrawAuthInfo = async () => ({ depositAddress: depositAddress(), callerSigned: false });
+    const show = (listed: TrackedOrder[]) => {
+      store.value = { client, state: { ...client.getState(), orders: listed }, prefillPrice: null, setPrefillPrice: () => {} };
+    };
+    show(orders);
+    const view = render(<AccountPanel />);
+    return { list: (listed: TrackedOrder[]) => { show(listed); view.rerender(<AccountPanel />); } };
+  }
+
+  it("the account panel replaces the kept kit once it reads the new address bound", async () => {
+    expect(rememberChallengeKits([kitOf(before)])).toBe(true);
+    openAccountPanel([after], () => NEW_BENEFICIARY);
+    await expectNewBeneficiaryExported();
+  });
+
+  it("the account panel keeps another tab's kit for the bound address over a listing from before the rebind", async () => {
+    expect(rememberChallengeKits([kitOf(after)])).toBe(true);
+    openAccountPanel([before], () => NEW_BENEFICIARY);
+    await screen.findByText(NEW_BENEFICIARY); // the bound address, read
+    expect(loadChallengeKits()).toEqual([kitOf(after)]);
+    expect(await exportedKits(1)).toEqual(kitOf(after));
+  });
+
+  it("the account panel keeps another tab's kit while its own reads move from the old address to the new one", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let bound = OLD_BENEFICIARY;
+    const { list } = openAccountPanel([before], () => bound);
+    await screen.findByText(OLD_BENEFICIARY);
+    await waitFor(() => expect(loadChallengeKits()).toEqual([kitOf(before)]));
+    // Another tab: the account binds the new address, and that tab stores the order's new kit.
+    bound = NEW_BENEFICIARY;
+    expect(rememberChallengeKits([kitOf(after)])).toBe(true);
+    // This tab's next listing, from before that rebind, adds an order, so the panel stores again.
+    list([before, order("o7", signedReceipt("a7", 7))]);
+    await screen.findByRole("button", { name: /export all challenge kits \(2\)/i });
+    expect(loadChallengeKits().find((k) => k.seqNo === 6)).toEqual(kitOf(after));
+    // The panel's next read finds the new address bound; another listing comes in.
+    vi.advanceTimersByTime(30_000);
+    await screen.findByText(NEW_BENEFICIARY);
+    list([before, order("o7", signedReceipt("a7", 7)), order("o8", signedReceipt("a8", 8))]);
+    await screen.findByRole("button", { name: /export all challenge kits \(3\)/i });
+    expect(loadChallengeKits().find((k) => k.seqNo === 6)).toEqual(kitOf(after));
     expect((await exportedKits(3)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
   });
 });

@@ -101,8 +101,9 @@ function StatCard({
 
 /// SEC-021 withdrawal-authorization state as the panel sees it: `undefined` =
 /// not yet loaded (or the client doesn't expose it — the mock has no binding
-/// concept), otherwise the client's answer.
-type WithdrawAuth = { depositAddress: string | null; callerSigned: boolean } | undefined;
+/// concept), otherwise the client's answer, with when the read was sent
+/// (`readAtMs`, see BoundDepositAddress).
+type WithdrawAuth = { depositAddress: string | null; callerSigned: boolean; readAtMs: number } | undefined;
 
 export function AccountPanel() {
   const { client, state } = useStore();
@@ -128,8 +129,9 @@ export function AccountPanel() {
     if (!fetchAuth) return;
     let alive = true;
     const load = () => {
+      const readAtMs = performance.now();
       fetchAuth()
-        .then((a) => { if (alive) setAuth(a); })
+        .then((a) => { if (alive) setAuth({ ...a, readAtMs }); })
         .catch(() => { /* transient — keep the last answer, the poll retries */ });
     };
     load();
@@ -254,7 +256,7 @@ export function AccountPanel() {
 
       <WithdrawalsSection client={client} />
       <RefundsSection client={client} closeOnly={state.mode === "CloseOnly"} />
-      <ChallengeKitSection orders={state.orders} />
+      <ChallengeKitSection orders={state.orders} bound={auth} />
     </div>
   );
 }
@@ -842,6 +844,49 @@ function unlistedNote({ count, unlisted }: UnsavedKits): string {
     " (this account's older orders, or another account's in this browser).";
 }
 
+/// The account's bound deposit address, as a read this page sent at
+/// `readAtMs` (`performance.now()`) found it.
+export interface BoundDepositAddress {
+  depositAddress: string | null;
+  readAtMs: number;
+}
+
+/// Per order hash, the authorization of the kit stored for it when the panel
+/// last read the store, and when (`performance.now()`) it first found that one.
+type StoredSince = Map<string, { signature: string; at: number }>;
+
+function noteStored(since: StoredSince, stored: readonly ChallengeKit[]): StoredSince {
+  const at = performance.now();
+  for (const k of stored) {
+    const hash = k.orderHash.toLowerCase();
+    const signature = k.l1Challenge.signature.toLowerCase();
+    if (since.get(hash)?.signature !== signature) since.set(hash, { signature, at });
+  }
+  return since;
+}
+
+/// Whether a kit built from the listing may replace the kit `stored` holds for
+/// its order, or the last one the panel found stored for it (`since`) when that
+/// one has left the store (evicted, or site data cleared): always when there is
+/// none or it is the same authorization. A stored kit of another authorization
+/// may be the newer one: another tab may have stored it from a listing after
+/// the account bound another deposit address, while this page's listing, or a
+/// kit built from it, is older. The listed kit replaces it only when it names
+/// the address `bound` found, from a read sent after the panel first found the
+/// stored kit, so after it was stored: the gateway signs an order's
+/// authorization for the address bound when it answers. Until then the stored
+/// kit stays, in storage and in the offer.
+function replacesStored(stored: readonly ChallengeKit[], since: StoredSince, bound: BoundDepositAddress | undefined) {
+  const storedAuth = seenChallengeKits(stored);
+  return (k: ChallengeKit): boolean => {
+    const hash = k.orderHash.toLowerCase();
+    const signature = storedAuth.get(hash) ?? since.get(hash)?.signature;
+    if (signature === undefined || signature === k.l1Challenge.signature.toLowerCase()) return true;
+    return bound !== undefined && bound.readAtMs > since.get(hash)!.at &&
+      bound.depositAddress?.toLowerCase() === k.l1Challenge.beneficiary.toLowerCase();
+  };
+}
+
 /// The L1 challenge kits of the account's listed orders, kept in this browser
 /// (bounded; see `rememberChallengeKits`). With a kit the user can open
 /// `challengeInclusion` for an order no settled batch includes or rejects,
@@ -856,9 +901,15 @@ function unlistedNote({ count, unlisted }: UnsavedKits): string {
 /// kit kept for it (the account bound another deposit address, which the
 /// gateway now signs for), the new kit replaces the kept one, in storage and in
 /// the offer, when it is the same enclave's authorization for the same order,
-/// chain and settlement (see `mergeChallengeKits`). `storage` defaults to this
-/// origin's localStorage. Exported for tests.
-export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[]; storage?: ChallengeKitStorage }) {
+/// chain and settlement (see `mergeChallengeKits`), and only once `bound`
+/// shows it is for the address bound now (see `replacesStored`): the listing
+/// may be older than the kit stored. `storage` defaults to this origin's
+/// localStorage. Exported for tests.
+export function ChallengeKitSection({ orders, bound, storage }: {
+  orders: TrackedOrder[];
+  bound?: BoundDepositAddress;
+  storage?: ChallengeKitStorage;
+}) {
   const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits(storage));
   const [unsaved, setUnsaved] = useState<UnsavedKits>({ count: 0, unlisted: 0, atBound: false });
   // The offered kits, for the effect (it alone changes them after the first render).
@@ -868,31 +919,63 @@ export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[
   const seen = useRef<Map<string, string> | null>(null);
   seen.current ??= seenChallengeKits(kits);
   // Per order hash, the authorization of the kit this session built from the
-  // listing: the newest copy of that order's kit this browser holds.
+  // listing: the newest copy of that order's kit this browser holds, unless
+  // the store holds another authorization that `replacesStored` does not let
+  // it replace.
   const built = useRef(new Map<string, string>());
+  // Per order hash, the stored kit's authorization and when this panel first found it.
+  const storedSince = useRef<StoredSince | null>(null);
+  storedSince.current ??= noteStored(new Map(), kits);
+  // Per order hash, a kit built from the listing that waits for `bound` to
+  // show it replaces the stored kit of another authorization. It waits while
+  // the panel is open: `seen` keeps the listing from building it again, and a
+  // later rebind can make it the current one.
+  const waiting = useRef(new Map<string, ChallengeKit>());
 
   useEffect(() => {
-    const fresh = newChallengeKits(orders, seen.current!);
+    for (const k of newChallengeKits(orders, seen.current!)) waiting.current.set(k.orderHash.toLowerCase(), k);
     const settled = settledOrderHashes(orders);
     const current = offered.current;
-    if (fresh.length === 0 && !current.some((k) => settled.has(k.orderHash.toLowerCase()))) return;
+    const settles = current.some((k) => settled.has(k.orderHash.toLowerCase()));
+    if (waiting.current.size === 0 && !settles) return;
+    // Stored before this write, including kits another tab stored since this
+    // panel opened: any of them the write evicts is offered (and counted) too.
+    const before = loadChallengeKits(storage);
+    const replaces = replacesStored(before, noteStored(storedSince.current!, before), bound);
+    const fresh: ChallengeKit[] = [];
+    for (const [hash, k] of waiting.current) {
+      if (settled.has(hash)) waiting.current.delete(hash);
+      else if (replaces(k)) {
+        waiting.current.delete(hash);
+        fresh.push(k);
+      }
+    }
+    if (fresh.length === 0 && !settles) return;
     const listed = unsettledOrderHashes(orders);
     for (const [hash, signature] of seenChallengeKits(fresh)) built.current.set(hash, signature);
     // This session's other kits (stored when the panel opened, or another
     // account's) give way to a stored copy of their order: another tab may
     // have stored a newer one since (its account bound another deposit address).
-    const isBuilt = (k: ChallengeKit) => built.current.get(k.orderHash.toLowerCase()) === k.l1Challenge.signature.toLowerCase();
+    // So does a kit built here that `replacesStored` does not let replace the
+    // stored one (a tab still running an older page may have stored an older
+    // kit over it). Unless its order is SETTLED, it also waits like a listed
+    // kit, so a later read can put it back; meanwhile, like the other kits, it
+    // is stored only while the store holds no kit for its order.
+    const builtHere = (k: ChallengeKit) => built.current.get(k.orderHash.toLowerCase()) === k.l1Challenge.signature.toLowerCase();
+    const isBuilt = (k: ChallengeKit) => builtHere(k) && replaces(k);
+    for (const k of current) {
+      const hash = k.orderHash.toLowerCase();
+      if (!settled.has(hash) && builtHere(k) && !replaces(k) && !waiting.current.has(hash)) waiting.current.set(hash, k);
+    }
     const own = current.filter(isBuilt);
     const others = current.filter((k) => !isBuilt(k));
-    // Stored before this write, including kits another tab stored since this
-    // panel opened: any of them the write evicts is offered (and counted) too.
-    const before = loadChallengeKits(storage);
     const inStore = seenChallengeKits(before);
     // This session's unsaved kits go along, so they are stored once there is room.
     rememberChallengeKits(
       [...others.filter((k) => !inStore.has(k.orderHash.toLowerCase())), ...own, ...fresh], storage, settled, listed,
     );
     const stored = loadChallengeKits(storage);
+    noteStored(storedSince.current!, stored);
     // Per order, the authorization stored: a kit is kept only when it is that one.
     const kept = seenChallengeKits(stored);
     // Not bounded: a kit the store evicted stays offered for this session. A
@@ -907,7 +990,7 @@ export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[
       unlisted: notKept.filter((k) => !listed.has(k.orderHash.toLowerCase())).length,
       atBound: stored.length >= MAX_STORED_CHALLENGE_KITS,
     });
-  }, [orders, storage]);
+  }, [orders, storage, bound]);
 
   if (kits.length === 0) return null;
   const newest = [...kits].sort((a, b) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo);
