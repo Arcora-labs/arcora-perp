@@ -340,6 +340,19 @@ describe("ChallengeKitSection after the account binds another deposit address", 
     expect((await exportedKits(2)).find((k) => k.seqNo === 6)).toEqual(kitOf(after));
   });
 
+  it("does not bring its own held-back kit back once the gateway lists the order as SETTLED", async () => {
+    const { rerender, bound } = openThenRead([after], NEW_BENEFICIARY);
+    await waitFor(() => expect(loadChallengeKits()).toEqual([kitOf(after)]));
+    expect(rememberChallengeKits([kitOf(before)])).toBe(true); // a tab running an older page
+    // The next listing reports the order SETTLED, before any newer read.
+    rerender(<ChallengeKitSection orders={[order("o6", after.receipt as ReceiptWithChallenge, "SETTLED")]} bound={bound} />);
+    await waitFor(() => expect(loadChallengeKits()).toEqual([]));
+    // A later listing leaves the order out (the account read failed), and a read names the new address.
+    rerender(<ChallengeKitSection orders={[]} bound={boundNow(NEW_BENEFICIARY)} />);
+    expect(loadChallengeKits()).toEqual([]);
+    expect(screen.queryByRole("heading", { name: /challenge kits/i })).toBeNull();
+  });
+
   it("does not put this tab's kit for the old address back over the one another tab stored since", async () => {
     const bound = boundNow(OLD_BENEFICIARY);
     const { rerender } = render(<ChallengeKitSection orders={[before]} bound={bound} />);
