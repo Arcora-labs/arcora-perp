@@ -1,0 +1,61 @@
+{
+  "elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+  "host_arch": "x86_64",
+  "host_os": "linux",
+  "kind": "pkg3-dry-run-proofs",
+  "mode": "groth16",
+  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+  "prover_backend": "cuda",
+  "runs": [
+    {
+      "commitment": "0x0d41bc42b6a1f0d300e705c11d05236a5c720864189708752194ecdac6e65653",
+      "cycles": 129942028,
+      "gas": 188853499,
+      "guest_execute_wall_s": 3.5858489970000003,
+      "name": "phase1-haircut-h13280",
+      "native_guest_equal": true,
+      "native_twin_wall_s": 0.027135909,
+      "proof_bytes": 356,
+      "proof_sha256": "dceb8dd1ba217b00dec0622746896b6d8ffe37deeb5328a513fb7a061bfbceb2",
+      "prove_wall_s": 97.108913709,
+      "sdk_verified": true,
+      "verify_wall_s": 0.315510909,
+      "witness_bytes": 802764,
+      "witness_sha256": "0caa3b391b7eb0d6fdd4f4c0077e1037f90dd60ba8217487680a9276f62ac4a6"
+    },
+    {
+      "commitment": "0xef312c735bad4fa5ff9682891e91bbb359879b27f929b610a8fef01b9c401def",
+      "cycles": 101771486,
+      "gas": 153645768,
+      "guest_execute_wall_s": 2.9574298260000003,
+      "name": "phase0-h13280",
+      "native_guest_equal": true,
+      "native_twin_wall_s": 0.023146576,
+      "proof_bytes": 356,
+      "proof_sha256": "d8c6c5bd3c795fdffc7b8514f8132d44d462787e9b56fb565ed3b29674f384fa",
+      "prove_wall_s": 66.744976823,
+      "sdk_verified": true,
+      "verify_wall_s": 0.340272791,
+      "witness_bytes": 803596,
+      "witness_sha256": "6576c849a4c34b55f6803bbd05e05d70e15ecf35ae3ce18ea78676d3b627ec77"
+    },
+    {
+      "commitment": "0xd16896d7d5472ff929a7e5519754d70e7096b0f6f0b95e5b50080545a595a715",
+      "cycles": 92280122,
+      "gas": 144421353,
+      "guest_execute_wall_s": 2.811931829,
+      "name": "phase1-h13280",
+      "native_guest_equal": true,
+      "native_twin_wall_s": 0.022049747,
+      "proof_bytes": 356,
+      "proof_sha256": "22f2307b0ac13868924d1304cbb634c9ad9d8eaa280b299983b893a8c9332802",
+      "prove_wall_s": 69.846810735,
+      "sdk_verified": true,
+      "verify_wall_s": 0.323564616,
+      "witness_bytes": 802776,
+      "witness_sha256": "f3520c1ca310029e62d425a0e4fb09ca48833f8afa99528554e1b94c6b165a6f"
+    }
+  ],
+  "sdk_version": "6.1.0",
+  "setup_wall_s": 9.34810725
+}
