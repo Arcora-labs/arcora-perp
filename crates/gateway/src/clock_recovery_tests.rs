@@ -2080,3 +2080,98 @@ async fn the_settle_loop_turn_follows_each_recovery_step() {
     assert!(h.alert(&gw, AlertKind::SettlementHeld));
     assert!(h.jpath.exists());
 }
+
+/// Only a settled window with timed operations ends a run of voids, through
+/// the commit every settle-loop path shares. After a void and a timed
+/// replacement that settles, the next void resolves; after an untimed
+/// replacement (deposits and cancellations only) the next void trips the
+/// breaker.
+#[tokio::test]
+async fn only_a_settled_timed_window_resets_the_void_breaker() {
+    use crate::live_void::tests::{submit, tick};
+    let size = perp_core::fixed::SIZE_SCALE;
+    for timed_replacement in [true, false] {
+        let Voidable {
+            gw,
+            journal,
+            chain,
+            maker,
+            taker,
+            ..
+        } = voidable(false);
+        let trade = |gw: &mut Gw| {
+            let px = gw.px_of(0);
+            submit(gw, &maker.key, "Sell", size / 10, px, "Gtc");
+            tick(gw);
+            submit(gw, &taker, "Buy", size / 40, 0, "Ioc");
+            tick(gw);
+        };
+        let mut state = chain_at(&journal);
+        state.block_time_ms = past_skew(&journal);
+        let h = harness(gw, journal.clone(), state);
+        h.seal_hold().await;
+        let mut rec = h.pending();
+        assert_eq!(h.step(&mut rec).await, Step::Resolved { close_only: false });
+        // The replacement credits the deposits again, and trades when timed.
+        let replacement = {
+            let mut gw = h.app.gw.lock().await;
+            gw.deposits.dirty = false;
+            assert_eq!(ingest(&mut gw, &chain), 3);
+            if timed_replacement {
+                trade(&mut gw);
+            }
+            seal(&mut gw)
+        };
+        assert_eq!(
+            ClockIntent::of(&replacement).unwrap().timed,
+            timed_replacement
+        );
+        let prepared = crate::prover_client::prove_and_prepare(
+            &crate::prover_client::MockProverClient,
+            &replacement.witness,
+            &replacement.ww,
+        )
+        .unwrap();
+        crate::commit_and_resolve(
+            &h.app,
+            &replacement.witness,
+            prepared,
+            L1Status::default(),
+            GateObservation::Inconclusive,
+            &[],
+            &mut None,
+        )
+        .await
+        .unwrap();
+        // The next window trades, and its registration never lands.
+        let next = {
+            let mut gw = h.app.gw.lock().await;
+            trade(&mut gw);
+            seal(&mut gw)
+        };
+        assert_eq!(next.batch_id, journal.batch_id + 1);
+        rollback_journal::write(&h.jpath, &next, &h.seed).unwrap();
+        h.fake.with(|s| {
+            s.batch_count = next.batch_id;
+            s.root = next.witness.pre_state.state_root();
+            s.block_time_ms = past_skew(&next);
+        });
+        let mut rec = PendingRecovery::new(
+            next.batch_id,
+            0,
+            "clock preparation: refused before broadcast".into(),
+            Vec::new(),
+            false,
+            Ceiling::Nonce(5),
+        );
+        let step = h.step(&mut rec).await;
+        assert!(!h.jpath.exists(), "voided either way");
+        if timed_replacement {
+            assert_eq!(step, Step::Resolved { close_only: false });
+            assert!(!h.alert(&*h.app.gw.lock().await, AlertKind::ClockRecoveryBlocked));
+        } else {
+            assert_eq!(step, Step::Stop, "two voids without a settled timed window");
+            assert_eq!(rec.operator_action, Some(operator::VOID_BREAKER));
+        }
+    }
+}

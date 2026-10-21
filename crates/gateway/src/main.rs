@@ -852,6 +852,27 @@ fn finish_boot_recovery(
     deleted
 }
 
+/// After `finish_boot_recovery`: count a live void made at boot toward the void
+/// breaker, once it is durable and its journal is gone (`resolved`). Only a
+/// live void mutates under the `LiveVoid` policy; a void the restored snapshot
+/// already held (`mutated` is false) is not counted. Returns whether the void
+/// counted.
+fn count_boot_void(
+    gw: &mut Gw,
+    mutated: bool,
+    resolved: bool,
+    dead: Option<BootDeadIntent>,
+) -> bool {
+    let counts = mutated
+        && resolved
+        && dead.is_some_and(|d| d.action == rollback_journal::DeadIntentAction::LiveVoid);
+    if counts {
+        // A boot void alone never trips the breaker: a trip needs two voids.
+        let _ = gw.void_breaker.record(std::time::Instant::now());
+    }
+    counts
+}
+
 // ── constants ────────────────────────────────────────────────────────────────
 const IMR_BP: i128 = 1_000; // initial-margin 10% in basis points (matches Market::conservative)
 const MMR_BP: i128 = 500; // maintenance 5%
@@ -10936,20 +10957,19 @@ async fn main() {
                                                             &enclave_seed,
                                                             archive_binding.as_ref(),
                                                         );
-                                                    // Only a live void mutates under the LiveVoid
-                                                    // policy. Once it is durable and the journal is
-                                                    // gone, it counts toward the void breaker; its
-                                                    // alert and headroom check follow once the
-                                                    // alerts are configured.
-                                                    if mutated
-                                                    && !unresolved_startup_journal
-                                                    && dead.is_some_and(|d| {
-                                                        d.action == rollback_journal::DeadIntentAction::LiveVoid
-                                                    })
-                                                {
-                                                    gw.void_breaker.record(std::time::Instant::now());
-                                                    boot_void = Some(batch_id);
-                                                }
+                                                    // A boot void counts toward the void
+                                                    // breaker once it is durable and the
+                                                    // journal is gone; its alert and headroom
+                                                    // check follow once the alerts are
+                                                    // configured.
+                                                    if count_boot_void(
+                                                        &mut gw,
+                                                        mutated,
+                                                        !unresolved_startup_journal,
+                                                        dead,
+                                                    ) {
+                                                        boot_void = Some(batch_id);
+                                                    }
                                                     // The journal found at boot is resolved: a
                                                     // fence that was missing beside it starts
                                                     // recording from the next send.
@@ -19859,6 +19879,11 @@ mod tests {
             &gw, true, &bad_state, &jp, &seed, None
         ));
         assert!(jp.exists(), "a failed persist keeps the journal");
+        let live = boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid);
+        assert!(
+            !count_boot_void(&mut gw, true, false, live),
+            "a void that is not durable does not count"
+        );
         assert_eq!(
             restore_from(&state, &seed).seq.state.next_batch_id,
             window + 1,
@@ -19872,6 +19897,28 @@ mod tests {
         );
         assert!(finish_boot_recovery(&gw, true, &state, &jp, &seed, None));
         assert!(!jp.exists());
+        // Durable with its journal gone, the void counts toward the breaker: one
+        // more void in this run trips it. Nothing else a boot resolves counts.
+        let mut fresh = restore_from(&state, &seed);
+        for (mutated, dead) in [
+            (false, live),
+            (
+                true,
+                boot_dead(
+                    DeadIntent::CloseOnlyPhaseZero,
+                    DeadIntentAction::ReturnToOpenWindow,
+                ),
+            ),
+            (true, None),
+        ] {
+            assert!(!count_boot_void(&mut fresh, mutated, true, dead));
+        }
+        assert!(fresh
+            .void_breaker
+            .record(std::time::Instant::now())
+            .is_none());
+        assert!(count_boot_void(&mut gw, true, true, live));
+        assert!(gw.void_breaker.record(std::time::Instant::now()).is_some());
         let after = restore_from(&state, &seed);
         assert_eq!(after.seq.state.next_batch_id, window);
         assert_eq!(after.snapshot_plain(), gw.snapshot_plain());
