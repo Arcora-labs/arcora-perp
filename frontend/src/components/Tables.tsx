@@ -4,7 +4,7 @@ import { useStore } from "../store";
 import { formatPrice, formatSignedSize, formatUsd, shortHash } from "../domain/format";
 import { FinalityBadge, FinalityProgress } from "./FinalityTracker";
 import { canCancelOrder } from "../domain/cancellation";
-import { describeRejectReason } from "../domain/rejectReason";
+import { describeRejectReason, isExecutionReason } from "../domain/rejectReason";
 
 /// Liquidation-proximity bar: the cushion (in %) between the mark and the
 /// position's liquidation price. Safety-critical, so it's loud and colour-coded.
@@ -166,7 +166,7 @@ function OrdersBody() {
             </td>
             <td title={o.execution?.reason ? describeRejectReason(o.execution.reason) : "Native metadata, not independently ZK-proven"}>
               {o.execution?.status ?? "Execution unavailable"}
-              {o.execution?.status === "REJECTED" && o.execution.reason && (
+              {o.execution?.reason && (o.execution.status === "REJECTED" || isExecutionReason(o.execution.reason)) && (
                 <div className="small muted">{describeRejectReason(o.execution.reason)}</div>
               )}
               {o.execution && !o.execution.available && <div className="small muted">Historical fills unavailable</div>}

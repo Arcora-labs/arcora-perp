@@ -47,6 +47,20 @@ describe("order execution is separate from finality", () => {
     expect(screen.getByText("REJECTED")).toBeTruthy();
     expect(screen.getByText(/below the \$10 minimum order size/i)).toBeTruthy();
   });
+  it("says in words why a voided order was cancelled, not only in a tooltip", () => {
+    const o = order();
+    o.execution = { ...o.execution!, status: "CANCELLED", remainingSize: 0n, reason: "WindowVoided" };
+    fixture.orders = [o]; render(<OrdersTable />);
+    expect(screen.getByText("CANCELLED")).toBeTruthy();
+    expect(screen.getByText(/settlement window was voided/i)).toBeTruthy();
+  });
+  it("adds no line for a cancellation reason it has no words for", () => {
+    const o = order();
+    o.execution = { ...o.execution!, status: "CANCELLED", remainingSize: 0n, reason: "UserCancelled" };
+    fixture.orders = [o]; render(<OrdersTable />);
+    expect(screen.getByText("CANCELLED")).toBeTruthy();
+    expect(screen.queryByText("UserCancelled")).toBeNull();
+  });
   it("surfaces a durability error instead of announcing a durable cancellation", async () => {
     fixture.cancel.mockRejectedValue(new Error("Cancellation durability unconfirmed"));
     render(<OrdersTable />); fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

@@ -27,10 +27,16 @@ export const EXECUTION_REASONS: Record<string, string> = {
   WindowVoided: "Its settlement window was voided; fills in it were undone.",
 };
 
+/// Whether `reason` is one of the execution reasons above, which the orders view
+/// shows in words whatever the order's status.
+export function isExecutionReason(reason: string): boolean {
+  return Object.prototype.hasOwnProperty.call(EXECUTION_REASONS, reason);
+}
+
 /// Readable text for a reason name, or the name itself when it is neither a
 /// known manifest reason nor a known execution reason.
 export function describeRejectReason(reason: string): string {
   if (Object.prototype.hasOwnProperty.call(REJECT_REASONS, reason)) return REJECT_REASONS[reason].text;
-  if (Object.prototype.hasOwnProperty.call(EXECUTION_REASONS, reason)) return EXECUTION_REASONS[reason];
+  if (isExecutionReason(reason)) return EXECUTION_REASONS[reason];
   return reason;
 }
