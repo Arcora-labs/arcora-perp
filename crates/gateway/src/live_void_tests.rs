@@ -825,6 +825,61 @@ fn close_only_after_a_live_void_lists_the_restored_deposits_as_refundable() {
     Gw::boot_restored(&gw.snapshot_plain()).unwrap();
 }
 
+/// The close-only rebase discards the open window's ticks and their fills: the
+/// order records undo those fills as a live void does, so a rebased window's
+/// fills never read as settled, and the orders end cancelled with the reason
+/// `WindowVoided`. The records survive a restore.
+#[test]
+fn the_close_only_rebase_undoes_the_open_window_fills_in_the_order_records() {
+    let mut gw = fresh();
+    open_trading(&mut gw);
+    let maker = keyed(&mut gw, 0x71);
+    let collateral = (50_000 * QUOTE_SCALE) as u128;
+    let maker_commit = routed(&mut gw, &maker, collateral, Purpose::Collateral);
+    let (taker, taker_commit) = permit(&mut gw, collateral, Purpose::Collateral, 0);
+    let chain = chained_blocks(&gw, &[&[maker_commit, taker_commit]]);
+    assert_eq!(ingest(&mut gw, &chain), 2);
+    settle_open_window(&mut gw);
+    let consumed = gw.seq.state.consumed_deposit_count;
+    let px = gw.px_of(0);
+    let rest = submit(&mut gw, &maker.key, "Sell", S / 10, px, "Gtc");
+    tick(&mut gw);
+    let take = submit(&mut gw, &taker, "Buy", S / 40, 0, "Ioc");
+    tick(&mut gw);
+    let row = |gw: &Gw, key: &[u8; 32]| gw.v1_orders_json(key).unwrap()["orders"][0].clone();
+    for (key, hash) in [(maker.key, rest), (taker, take)] {
+        let row = row(&gw, &key);
+        assert_eq!(row["orderHash"], hex0x(&hash));
+        assert_eq!(row["execution"]["filledSize"], (S / 40).to_string());
+        assert_eq!(row["execution"]["settledSize"], "0", "the fill is pending");
+    }
+    let hashes = gw
+        .rebase_to_settled(&SettledL1 {
+            block: 9,
+            close_only: true,
+            settled: false,
+            batch_count: gw.seq.current_window_id(),
+            root: gw.last_settled_root,
+            consumed_deposit_count: consumed,
+        })
+        .unwrap();
+    assert!(hashes.contains(&rest) && hashes.contains(&take));
+    let check = |gw: &Gw| {
+        for key in [maker.key, taker] {
+            let row = row(gw, &key);
+            assert_eq!(row["execution"]["status"], "CANCELLED", "{row}");
+            assert_eq!(row["execution"]["reason"], "WindowVoided", "{row}");
+            assert_eq!(row["execution"]["filledSize"], "0", "{row}");
+            assert_eq!(row["execution"]["settledSize"], "0", "{row}");
+            assert_eq!(row["execution"]["unsettledSize"], "0", "{row}");
+            assert_eq!(row["filledSize"], "0", "{row}");
+        }
+    };
+    check(&gw);
+    gw.validate_deposit_state().unwrap();
+    check(&Gw::boot_restored(&gw.snapshot_plain()).unwrap());
+}
+
 /// A voided withdrawal is requested again with a new signature: the old one is
 /// a replay, and the new leaf takes the next counter nonce.
 #[test]

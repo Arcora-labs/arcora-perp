@@ -544,30 +544,7 @@ impl Gw {
             .seq
             .void_window(&j.witness)
             .map_err(|e| LiveVoidError::Refused(e.to_string()))?;
-        // The order records, before any view refreshes finality: the voided ticks
-        // are no longer pending, and a refresh would read their fills as settled.
-        let hashes: BTreeSet<Digest> = voided.hashes.iter().copied().collect();
-        for o in self
-            .orders
-            .iter_mut()
-            .filter(|o| hashes.contains(&o.order_hash))
-        {
-            let _ = execution::void(o, &self.seq, &voided.ticks);
-        }
-        let mut order_events = Vec::new();
-        for account in self.accounts.values_mut() {
-            let owner = hex0x(&account.wallet.owner);
-            for o in account
-                .orders
-                .iter_mut()
-                .filter(|o| hashes.contains(&o.order_hash))
-            {
-                if let Some(mut event) = execution::void(o, &self.seq, &voided.ticks) {
-                    event["owner"] = serde_json::json!(owner);
-                    order_events.push(event.to_string());
-                }
-            }
-        }
+        let order_events = self.void_order_records(&voided.hashes, &voided.ticks);
         self.seq
             .reject_in_window(&voided.hashes, RejectReason::Cancelled);
 
@@ -650,6 +627,43 @@ impl Gw {
             order_events,
         };
         Ok((report, voided.hashes))
+    }
+
+    /// Undo the fills of the discarded `ticks` in the order records of `hashes`,
+    /// in the gateway's list and in each account's, and end each as cancelled
+    /// with the reason `WindowVoided` (`execution::void`). Call it right after
+    /// the sequencer discarded the ticks and before any view refreshes finality:
+    /// the discarded ticks are no longer pending, and a refresh would read their
+    /// fills as settled. Returns one `execution` event per account record it
+    /// changed, tagged with its owner like the tick's events.
+    pub(crate) fn void_order_records(
+        &mut self,
+        hashes: &[Digest],
+        ticks: &BTreeSet<u64>,
+    ) -> Vec<String> {
+        let hashes: BTreeSet<Digest> = hashes.iter().copied().collect();
+        for o in self
+            .orders
+            .iter_mut()
+            .filter(|o| hashes.contains(&o.order_hash))
+        {
+            let _ = execution::void(o, &self.seq, ticks);
+        }
+        let mut events = Vec::new();
+        for account in self.accounts.values_mut() {
+            let owner = hex0x(&account.wallet.owner);
+            for o in account
+                .orders
+                .iter_mut()
+                .filter(|o| hashes.contains(&o.order_hash))
+            {
+                if let Some(mut event) = execution::void(o, &self.seq, ticks) {
+                    event["owner"] = serde_json::json!(owner);
+                    events.push(event.to_string());
+                }
+            }
+        }
+        events
     }
 
     /// The state a void must reach. Only a bug fails this: every check before

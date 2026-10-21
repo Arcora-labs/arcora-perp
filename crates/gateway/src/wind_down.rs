@@ -208,9 +208,12 @@ impl Gw {
     /// is dropped with its blind, since the vault refuses every deposit in
     /// close-only. A permitted deposit that landed and was never credited keeps its
     /// record in `uncredited` (with the permit's route), which the account view
-    /// lists as refundable. Every precondition is checked before anything changes;
-    /// the result must equal L1's root and counts. Returns the discarded window's
-    /// order hashes, which the wind-down publishes as rejected (`MarketCloseOnly`).
+    /// lists as refundable. The order records undo the discarded window's fills,
+    /// and each order it sequenced, rejected or filled ends cancelled with the
+    /// execution reason `WindowVoided`, as in a live void. Every precondition is
+    /// checked before anything changes; the result must equal L1's root and
+    /// counts. Returns the discarded window's order hashes, which the wind-down
+    /// publishes as rejected (`MarketCloseOnly`).
     ///
     /// A window sealed but not settled must be resolved first (boot recovery
     /// returns a dead phase-0 window to the open window).
@@ -254,7 +257,12 @@ impl Gw {
             }
         }
         let window = self.seq.current_window_id();
-        let voided = self.seq.void_open_window().hashes;
+        let voided = self.seq.void_open_window();
+        // The order records undo the discarded fills before any view refreshes
+        // finality, as in a live void: the discarded ticks are no longer
+        // pending, and a refresh would read their fills as settled.
+        let _ = self.void_order_records(&voided.hashes, &voided.ticks);
+        let voided = voided.hashes;
         let dropped = self.deposits.credits.split_off(&consumed);
         if !dropped.is_empty() {
             // The ingestion anchor may point past the consumed prefix; refetch from
