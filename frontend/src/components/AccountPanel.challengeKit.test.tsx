@@ -376,6 +376,59 @@ describe("ChallengeKitSection past the browser's kit bound", () => {
   }, 30_000);
 });
 
+describe("ChallengeKitSection opened again in this page", () => {
+  // A kit the browser did not keep (storage blocked, or past its bound) is
+  // built again from the listing each time the panel opens. The signatures
+  // here are this describe's own, so the recoveries counted are too.
+  const recoveries = () => vi.spyOn(secp256k1.Signature.prototype, "recoverPublicKey");
+  const seqNos = (kits: ChallengeKit | ChallengeKit[]) => [kits].flat().map((k) => k.seqNo);
+  /// The order's authorization, signed by another key than its receipt's enclave signer.
+  function forged(o: TrackedOrder): TrackedOrder {
+    const r = o.receipt as ReceiptWithChallenge;
+    const sig = secp256k1.sign(challengeAuthDigest({ ...r, ...r.l1Challenge! }), new Uint8Array(32).fill(11));
+    return order(o.id, { ...r, l1Challenge: { ...r.l1Challenge!, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } });
+  }
+
+  it("does not verify a listed order's authorization again", async () => {
+    const orders = [order("o8", signedReceipt("b8", 8)), order("o9", signedReceipt("b9", 9))];
+    const { storage } = deniedStorage();
+    const recover = recoveries();
+    const first = render(<ChallengeKitSection orders={orders} storage={storage} />);
+    expect(seqNos(await exportedKits(2))).toEqual([9, 8]);
+    expect(recover).toHaveBeenCalledTimes(2);
+    first.unmount();
+    render(<ChallengeKitSection orders={orders} storage={storage} />);
+    expect(seqNos(await exportedKits(2))).toEqual([9, 8]);
+    expect(recover).toHaveBeenCalledTimes(2);
+  });
+
+  it("verifies an authorization for another beneficiary, and offers its kit", async () => {
+    const hash = "0x" + "ba".repeat(32);
+    const before = order("o10", signedReceiptFor(hash, 10));
+    const after = order("o10", signedReceiptFor(hash, 10, "0x" + "35".repeat(20)));
+    const { storage } = deniedStorage();
+    const recover = recoveries();
+    const first = render(<ChallengeKitSection orders={[before]} storage={storage} />);
+    expect(await exportedKits(1)).toEqual(kitOf(before));
+    first.unmount();
+    render(<ChallengeKitSection orders={[after]} storage={storage} />);
+    expect(await exportedKits(1)).toEqual(kitOf(after));
+    expect(recover).toHaveBeenCalledTimes(2);
+  });
+
+  it("verifies another signature over the same authorization, and offers no kit when it is not the enclave's", async () => {
+    const genuine = order("o11", signedReceipt("bb", 11));
+    const { storage } = deniedStorage();
+    const recover = recoveries();
+    const first = render(<ChallengeKitSection orders={[genuine]} storage={storage} />);
+    expect(await exportedKits(1)).toEqual(kitOf(genuine));
+    first.unmount();
+    render(<ChallengeKitSection orders={[forged(genuine)]} storage={storage} />);
+    await waitFor(() => expect(recover).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/challenge kits/i)).toBeNull();
+  });
+});
+
 describe("AccountPanel challenge kits", () => {
   it("shows the kits kept in this browser", async () => {
     expect(rememberChallengeKits([KIT])).toBe(true);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import {
   CHALLENGE_KIT_SCHEMA,
   CHALLENGE_KIT_STORAGE_KEY,
+  MAX_CACHED_CHALLENGE_SIGNERS,
   MAX_STORED_CHALLENGE_KITS,
   buildChallengeKit,
   challengeAuthDigest,
@@ -23,6 +24,7 @@ import {
   settledOrderHashes,
   unsettledOrderHashes,
   withL1Challenge,
+  type ChallengeAuthFields,
   type ChallengeKit,
   type ReceiptWithChallenge,
 } from "./challengeKit";
@@ -119,6 +121,81 @@ describe("challenge authorization digest and signer", () => {
     for (const bad of [highS, badV, zeroR]) {
       expect(recoverChallengeSigner(V.digestVectors[0], "0x" + bytesToHex(bad))).toBeNull();
     }
+  });
+});
+
+describe("recoverChallengeSigner's cache", () => {
+  // The cache lives as long as the module, here this file: each test signs its
+  // own authorization, so the recoveries it counts are its own.
+  function authorization(beneficiaryByte: string): { fields: ChallengeAuthFields; signature: string } {
+    const r = reboundReceipt("0x" + beneficiaryByte.repeat(20));
+    return { fields: { ...r, ...r.l1Challenge! }, signature: r.l1Challenge!.signature };
+  }
+  const recoveries = () => vi.spyOn(secp256k1.Signature.prototype, "recoverPublicKey");
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("recovers a digest and signature once", () => {
+    const { fields, signature } = authorization("41");
+    const recover = recoveries();
+    expect(recoverChallengeSigner(fields, signature)).toBe(V.enclaveSigner);
+    expect(recoverChallengeSigner({ ...fields }, "0x" + signature.slice(2).toUpperCase())).toBe(V.enclaveSigner);
+    expect(recover).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers again for any other signed field or signature byte, so only the signed authorization verifies", () => {
+    const { fields, signature } = authorization("42");
+    expect(recoverChallengeSigner(fields, signature)).toBe(V.enclaveSigner);
+    const recover = recoveries();
+    const sig = hexToBytes(signature.slice(2));
+    const flipped = (at: number) => {
+      const other = new Uint8Array(sig);
+      other[at] = at === 64 ? 55 - sig[64] : sig[at] ^ 1; // v: 27 <-> 28
+      return "0x" + bytesToHex(other);
+    };
+    const cases: Array<[ChallengeAuthFields, string]> = [
+      [{ ...fields, chainId: fields.chainId + 1 }, signature],
+      [{ ...fields, settlement: "0x" + "56".repeat(20) }, signature],
+      [{ ...fields, orderHash: "0x" + "57".repeat(32) }, signature],
+      [{ ...fields, seqNo: fields.seqNo + 1 }, signature],
+      [{ ...fields, recvTimeMs: fields.recvTimeMs + 1 }, signature],
+      [{ ...fields, batchIdHint: fields.batchIdHint + 1 }, signature],
+      [{ ...fields, beneficiary: "0x" + "58".repeat(20) }, signature],
+      [fields, flipped(31)], // r
+      [fields, flipped(63)], // s
+      [fields, flipped(64)], // v
+    ];
+    const first = cases.map(([f, s]) => recoverChallengeSigner(f, s));
+    for (const signer of first) expect(signer).not.toBe(V.enclaveSigner);
+    expect(recover).toHaveBeenCalledTimes(cases.length);
+    // Each answer, once recovered, is the cached one.
+    expect(cases.map(([f, s]) => recoverChallengeSigner(f, s))).toEqual(first);
+    expect(recover).toHaveBeenCalledTimes(cases.length);
+  });
+
+  it("still decides against each receipt's own enclave signer", () => {
+    expect(buildChallengeKit(receipt())).toEqual(V.kit);
+    const recover = recoveries();
+    expect(() => buildChallengeKit({ ...receipt(), enclaveSigner: "0x" + "59".repeat(20) })).toThrow(/does not verify/);
+    expect(buildChallengeKit(receipt())).toEqual(V.kit);
+    expect(recover).not.toHaveBeenCalled();
+  });
+
+  it(`keeps at most ${MAX_CACHED_CHALLENGE_SIGNERS} recoveries, dropping the least recently used`, () => {
+    const a = authorization("43");
+    const b = authorization("44");
+    expect(recoverChallengeSigner(a.fields, a.signature)).toBe(V.enclaveSigner);
+    expect(recoverChallengeSigner(b.fields, b.signature)).toBe(V.enclaveSigner);
+    expect(recoverChallengeSigner(a.fields, a.signature)).toBe(V.enclaveSigner); // b is now the older one
+    // Signatures the curve refuses (r = 0) fill the cache without a recovery.
+    const zeroR = "0x" + "00".repeat(32) + "01".repeat(32) + "1b";
+    for (let i = 1; i < MAX_CACHED_CHALLENGE_SIGNERS; i++) {
+      expect(recoverChallengeSigner({ ...a.fields, seqNo: 1_000_000 + i }, zeroR)).toBeNull();
+    }
+    const recover = recoveries();
+    expect(recoverChallengeSigner(a.fields, a.signature)).toBe(V.enclaveSigner);
+    expect(recover).not.toHaveBeenCalled();
+    expect(recoverChallengeSigner(b.fields, b.signature)).toBe(V.enclaveSigner);
+    expect(recover).toHaveBeenCalledTimes(1);
   });
 });
 

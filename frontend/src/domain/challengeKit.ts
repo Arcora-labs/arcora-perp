@@ -110,22 +110,48 @@ export function challengeAuthDigest(f: ChallengeAuthFields): Uint8Array {
   return keccak_256(preimage);
 }
 
+/// Signers `recoverChallengeSigner` cached for this page, least recently used
+/// first. A recovery takes milliseconds, and the account panel verifies every
+/// listed order's kit the browser did not keep (storage blocked, or past its
+/// bound) each time it opens. An entry is about 240 characters, so the cache
+/// stays under 500,000.
+export const MAX_CACHED_CHALLENGE_SIGNERS = 2048;
+const cachedSigners = new Map<string, string | null>();
+
+/// The signer of a 32-byte digest and a 65-byte r||s||v signature, or null.
+function recoverSigner(digest: Uint8Array, sig: Uint8Array): string | null {
+  try {
+    const parsed = secp256k1.Signature.fromCompact(sig.subarray(0, 64));
+    if (parsed.hasHighS()) return null;
+    const pub = parsed.addRecoveryBit(sig[64] - 27).recoverPublicKey(digest).toRawBytes(false);
+    return "0x" + bytesToHex(keccak_256(pub.subarray(1)).subarray(12));
+  } catch {
+    return null;
+  }
+}
+
 /// The lowercase address that signed the authorization, or null when the
 /// signature is one the settlement refuses (high s, v not 27/28, r or s out of
-/// range) or does not recover.
+/// range) or does not recover. Cached by the digest and every signature byte,
+/// all a recovery reads, so another field or signature is recovered anew.
 export function recoverChallengeSigner(f: ChallengeAuthFields, signature: string): string | null {
   if (!SIGNATURE.test(signature)) return null;
   const sig = hexToBytes(signature.slice(2));
   const v = sig[64];
   if (v !== 27 && v !== 28) return null;
+  let digest: Uint8Array;
   try {
-    const parsed = secp256k1.Signature.fromCompact(sig.subarray(0, 64));
-    if (parsed.hasHighS()) return null;
-    const pub = parsed.addRecoveryBit(v - 27).recoverPublicKey(challengeAuthDigest(f)).toRawBytes(false);
-    return "0x" + bytesToHex(keccak_256(pub.subarray(1)).subarray(12));
+    digest = challengeAuthDigest(f);
   } catch {
     return null;
   }
+  const key = bytesToHex(digest) + bytesToHex(sig);
+  const cached = cachedSigners.get(key);
+  const signer = cached === undefined ? recoverSigner(digest, sig) : cached;
+  cachedSigners.delete(key); // re-inserted as the most recently used
+  cachedSigners.set(key, signer);
+  if (cachedSigners.size > MAX_CACHED_CHALLENGE_SIGNERS) cachedSigners.delete(cachedSigners.keys().next().value!);
+  return signer;
 }
 
 /// The receipt's `l1Challenge`: null when the gateway issued none (no bound
