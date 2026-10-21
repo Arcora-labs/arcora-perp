@@ -10329,7 +10329,8 @@ async fn main() {
                                                 if check.evidence.close_only {
                                                     gw.deposits.l1_close_only = true;
                                                 }
-                                                if !check.evidence.fenced && check.dead.is_none() {
+                                                if !check.evidence.fenced() && check.dead.is_none()
+                                                {
                                                     eprintln!(
                                                         "[recovery] window {}: at finalized block {} the sequencer nonce has not passed every recorded sequencer-key send; a transaction of ours may still be mined. If none is pending (a send that was refused before broadcast leaves its nonce unused), mine any transaction from the sequencer key and restart; see docs/PROVING-RUNBOOK.md",
                                                         j.batch_id, check.evidence.block

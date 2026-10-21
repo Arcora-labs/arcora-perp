@@ -187,6 +187,9 @@ pub(crate) fn check_program_identity(
 /// A journaled clock intent's classification at one finalized block.
 pub(crate) struct DeadIntentCheck {
     pub evidence: crate::rollback_journal::DeadIntentEvidence,
+    /// The classification, with the basis of a dead one.
+    #[cfg_attr(not(test), allow(dead_code))] // read by the settle loop's recovery
+    pub classified: crate::rollback_journal::Classified,
     /// Set when the intent can never settle, with what recovery does about it.
     pub dead: Option<(
         crate::rollback_journal::DeadIntent,
@@ -195,7 +198,8 @@ pub(crate) struct DeadIntentCheck {
 }
 
 /// Read the dead-intent evidence for a journal's clock intent
-/// (`ClockIntent::of(journal)`) at one finalized block and classify it.
+/// (`ClockIntent::of(journal)`) at one finalized block and classify it. The
+/// nonce fence is the one recorded so far, every sequencer-key send included.
 pub(crate) fn check_dead_intent(
     l1: &L1,
     intent: crate::rollback_journal::ClockIntent,
@@ -203,7 +207,7 @@ pub(crate) fn check_dead_intent(
     if !l1.clock_enabled() {
         return Err("clock mode not configured".into());
     }
-    let evidence = l1.dead_intent_evidence(&intent)?;
+    let evidence = l1.dead_intent_evidence(&intent, l1.nonce_ceiling())?;
     Ok(classify(intent, evidence))
 }
 
@@ -212,10 +216,17 @@ pub(crate) fn classify(
     intent: crate::rollback_journal::ClockIntent,
     evidence: crate::rollback_journal::DeadIntentEvidence,
 ) -> DeadIntentCheck {
-    use crate::rollback_journal::{classify_dead_intent, dead_intent_action};
-    let dead = classify_dead_intent(intent.batch, intent.phase, &evidence)
-        .map(|d| (d, dead_intent_action(d, intent.phase, intent.timed)));
-    DeadIntentCheck { evidence, dead }
+    use crate::rollback_journal::{classify_dead_intent, dead_intent_action, Classified};
+    let classified = classify_dead_intent(&intent, &evidence);
+    let dead = match classified {
+        Classified::Dead(d, _) => Some((d, dead_intent_action(d, intent.phase, intent.timed))),
+        Classified::MaySettle | Classified::Inconsistent(_) => None,
+    };
+    DeadIntentCheck {
+        evidence,
+        classified,
+        dead,
+    }
 }
 
 /// Version gate for the exact-resume path, hoisted out of `resume_exact` so it

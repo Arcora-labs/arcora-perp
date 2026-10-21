@@ -104,6 +104,19 @@ async fn handle(State(s): State<Arc<Script>>, Json(req): Json<Value>) -> Json<Va
             };
             json!(hex_words(&words))
         }
+        // The sequencer's nonce: 10 at every block; mode 6 shows one pending above it.
+        "eth_getTransactionCount" => {
+            let n = match req["params"][1].as_str() {
+                Some("pending") if mode == 6 => 11,
+                Some("latest" | "pending") => 10,
+                Some(other) => panic!("unexpected nonce tag {other}"),
+                None => {
+                    assert_eq!(req["params"][1]["requireCanonical"], true);
+                    10
+                }
+            };
+            json!(format!("0x{n:x}"))
+        }
         _ => panic!("read-only clock fixture received {method}"),
     };
     Json(json!({"jsonrpc":"2.0","id":req["id"],"result":result}))
@@ -155,6 +168,7 @@ impl Server {
             chain_id: c.chain_id,
             stop: None,
             program_vkey: Default::default(),
+            clock_skew_ms: Default::default(),
         });
         l1
     }
@@ -272,6 +286,49 @@ fn runtime_clock_native_cast_settle_wait_is_terminal_on_cancel_or_replacement() 
             mode == 5,
             "mode {mode}"
         );
+    }
+}
+#[test]
+#[ignore = "requires real cast and owned loopback; run explicitly in CI"]
+fn runtime_clock_native_cast_dead_intent_evidence_reads_the_quiet_nonces() {
+    for (mode, quiet) in [(0, true), (6, false)] {
+        let (_, _, c) = fixture();
+        let server = Server::new(c, mode);
+        let l1 = server.l1();
+        let _ = l1.sequencer_addr.set(crate::hex0x(&[0x44; 20]));
+        let intent = crate::rollback_journal::ClockIntent {
+            batch: c.batch_id,
+            phase: c.phase,
+            prev_root: c.previous_root,
+            base: c.base_commitment,
+            receipt: None,
+            timed: false,
+            last_ms: None,
+            underivable: false,
+        };
+        let e = l1.dead_intent_evidence(&intent, Ceiling::Nonce(9)).unwrap();
+        assert_eq!(
+            (e.batch_count, e.state_root, e.nonce, e.clock_skew_ms),
+            (c.batch_id, c.previous_root, 10, c.clock_skew_ms),
+            "mode {mode}"
+        );
+        assert_eq!(
+            (e.slot, e.fence_passed, e.quiet),
+            (crate::rollback_journal::AnchorSlot::Matching, true, quiet),
+            "mode {mode}"
+        );
+        let calls = server.script.calls.lock().unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|m| *m == "eth_getTransactionCount")
+                .count(),
+            3,
+            "the finalized nonce, then latest and pending"
+        );
+        assert!(calls
+            .iter()
+            .all(|m| !m.contains("send") && m != "eth_estimateGas"));
     }
 }
 #[test]

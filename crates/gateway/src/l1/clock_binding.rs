@@ -11,6 +11,9 @@ pub(crate) struct ClockConfig {
     pub stop: Option<std::sync::Arc<crate::service_shutdown::Shutdown>>,
     /// The route's program vkey once read; shared by every clone.
     pub program_vkey: std::sync::Arc<std::sync::OnceLock<Digest>>,
+    /// The verifier's `clockSkewMs` once read; it is constructor-set, so the
+    /// first successful read holds for every clone.
+    pub clock_skew_ms: std::sync::Arc<std::sync::OnceLock<u64>>,
 }
 
 /// `cell`'s value, or the result of `read`, kept only when it succeeds.
@@ -45,6 +48,7 @@ impl ClockConfig {
             chain_id,
             stop: None,
             program_vkey: Default::default(),
+            clock_skew_ms: Default::default(),
         }))
     }
     pub(crate) fn from_env() -> Result<Option<Self>, String> {
@@ -264,8 +268,10 @@ fn check_binding(
 }
 
 /// The dead-intent evidence for a journaled clock intent, all at one block: the
-/// settlement's batch and close-only flag, the intent's anchor slot, and whether
-/// the sequencer's nonce is past `ceiling`.
+/// settlement's batch, root and close-only flag, the intent's anchor slot, the
+/// sequencer's nonce and whether it is past `ceiling`, the header-bound block
+/// time and the verifier's `clockSkewMs`. `quiet` is left unset; see
+/// [`dead_intent_evidence_from`].
 pub(super) fn read_dead_intent_evidence(
     r: &CanonicalRead<'_>,
     settlement: &str,
@@ -278,6 +284,7 @@ pub(super) fn read_dead_intent_evidence(
     check_binding(r, settlement, verifier)?;
     let v = crate::hex0x(verifier);
     let batch_count = abi_u64(r.word(settlement, "batchCount()", None)?, "batchCount")?;
+    let state_root = r.word(settlement, "currentStateRoot()", None)?;
     let close_only = abi_bool(r.word(settlement, "closeOnly()", None)?, "closeOnly")?;
     let cancelled = match intent.receipt {
         Some(receipt) => abi_bool(
@@ -311,13 +318,64 @@ pub(super) fn read_dead_intent_evidence(
         }
     };
     let nonce = r.nonce(sequencer)?;
+    let clock_skew_ms = abi_u64(r.word(&v, "clockSkewMs()", None)?, "clockSkewMs")?;
     Ok(DeadIntentEvidence {
         block: r.height(),
         batch_count,
+        state_root,
         close_only,
         slot,
-        fenced: ceiling.passed_by(nonce),
+        nonce,
+        fence_passed: ceiling.passed_by(nonce),
+        quiet: false,
+        block_time_ms: r.timestamp().ok().and_then(|s| s.checked_mul(1000)),
+        clock_skew_ms,
     })
+}
+
+/// Whether no sequencer-key transaction is visible as pending: on every
+/// endpoint, the sequencer's latest and pending nonces equal `finalized`. A
+/// failed or malformed read is not quiet.
+pub(super) fn nonces_quiet(endpoints: &[&dyn Rpc], sequencer: &[u8; 20], finalized: u64) -> bool {
+    let account = serde_json::json!(crate::hex0x(sequencer));
+    endpoints.iter().all(|rpc| {
+        ["latest", "pending"].into_iter().all(|tag| {
+            rpc.call(
+                "eth_getTransactionCount",
+                vec![account.clone(), serde_json::json!(tag)],
+            )
+            .and_then(|v| observation::quantity(&v))
+            .is_ok_and(|n| n == finalized)
+        })
+    })
+}
+
+/// The dead-intent evidence on `primary`, with `witness` agreeing when it is
+/// configured: one finalized read ([`read_dead_intent_evidence`]), then, right
+/// after it, the quiet-nonce read on every endpoint ([`nonces_quiet`]).
+#[allow(clippy::too_many_arguments)] // the endpoints and the intent's whole identity
+pub(super) fn dead_intent_evidence_from(
+    primary: &dyn Rpc,
+    witness: Option<&dyn Rpc>,
+    expected_chain: Option<u64>,
+    settlement: &str,
+    verifier: &[u8; 20],
+    sequencer: &[u8; 20],
+    intent: &crate::rollback_journal::ClockIntent,
+    ceiling: super::Ceiling,
+) -> Result<crate::rollback_journal::DeadIntentEvidence, String> {
+    let r = CanonicalRead::with_policy(
+        primary,
+        witness,
+        expected_chain,
+        observation::AnchorPolicy::Finalized,
+    )?;
+    let mut evidence =
+        read_dead_intent_evidence(&r, settlement, verifier, sequencer, intent, ceiling)?;
+    r.finish()?;
+    let endpoints: Vec<&dyn Rpc> = std::iter::once(primary).chain(witness).collect();
+    evidence.quiet = nonces_quiet(&endpoints, sequencer, evidence.nonce);
+    Ok(evidence)
 }
 
 /// The registration state that does not depend on the window: the binding is
@@ -373,6 +431,7 @@ impl L1 {
             chain_id,
             stop: None,
             program_vkey: Default::default(),
+            clock_skew_ms: Default::default(),
         });
         l1
     }
@@ -476,25 +535,39 @@ impl L1 {
             )
         })
     }
-    /// The dead-intent evidence for `intent` at the finalized block.
+    /// The dead-intent evidence for `intent` at the finalized block, with the
+    /// nonce fence at `ceiling` and the quiet-nonce read on `L1_RPC` and, when it
+    /// is set, `L1_RPC_WITNESS`.
     pub(crate) fn dead_intent_evidence(
         &self,
         intent: &crate::rollback_journal::ClockIntent,
+        ceiling: super::Ceiling,
     ) -> Result<crate::rollback_journal::DeadIntentEvidence, String> {
         let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
         let sequencer = crate::parse_addr20_hex(&self.sequencer_address()?)
             .ok_or("invalid sequencer address")?;
-        let ceiling = self.nonce_ceiling();
-        self.observe(|r| {
-            read_dead_intent_evidence(
-                r,
-                &self.settlement,
-                &cfg.verifier,
-                &sequencer,
-                intent,
-                ceiling,
-            )
-        })
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        let evidence = dead_intent_evidence_from(
+            &primary,
+            witness.as_ref().map(|r| r as &dyn Rpc),
+            self.witness_chain,
+            &self.settlement,
+            &cfg.verifier,
+            &sequencer,
+            intent,
+            ceiling,
+        )?;
+        let _ = cfg.clock_skew_ms.set(evidence.clock_skew_ms);
+        Ok(evidence)
     }
     /// The settlement's batch count and wind-down phase at the latest block, with
     /// the clock binding checked at the same block.
@@ -810,6 +883,7 @@ mod configuration_tests {
             chain_id: 84532,
             stop: None,
             program_vkey: Default::default(),
+            clock_skew_ms: Default::default(),
         });
         p.outcome.proof = vec![1; 32];
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());

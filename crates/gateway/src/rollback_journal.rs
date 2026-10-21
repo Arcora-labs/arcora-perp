@@ -341,11 +341,17 @@ pub struct ClockIntent {
     /// Whether the window holds timed operations. A window whose bounds cannot be
     /// derived counts as timed.
     pub timed: bool,
+    /// The window's last operation time (`lastMs`) when its bounds derive with
+    /// timed operations; `None` when it is untimed or its bounds cannot be derived.
+    pub last_ms: Option<u64>,
+    /// The bounds cannot be derived: the operation times are not monotonic.
+    pub underivable: bool,
 }
 impl ClockIntent {
     /// The intent of a journal with a prepared outcome; `None` at stage 1.
     pub fn of(j: &RollbackJournal) -> Option<Self> {
         let p = j.prepared.as_ref()?;
+        let bounds = perp_core::clock::TimeBounds::derive(&j.witness.ops);
         Some(Self {
             batch: j.batch_id,
             phase: p.outcome.wind_down_phase,
@@ -357,23 +363,49 @@ impl ClockIntent {
                 .strip_prefix(perp_core::clock::PROOF_MAGIC)
                 .and_then(|body| body.get(..32))
                 .and_then(|r| r.try_into().ok()),
-            timed: perp_core::clock::TimeBounds::derive(&j.witness.ops)
-                .map_or(true, |b| b.count > 0),
+            timed: bounds.as_ref().map_or(true, |b| b.count > 0),
+            last_ms: bounds
+                .as_ref()
+                .ok()
+                .filter(|b| b.count > 0)
+                .map(|b| b.last_ms),
+            underivable: bounds.is_err(),
         })
     }
 }
 
-/// Everything the dead-intent row needs, read at one finalized block.
+/// Everything the dead-intent classification needs. All of it is read at one
+/// finalized block, except `quiet`, which the reader sets right after that read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeadIntentEvidence {
     pub block: u64,
     pub batch_count: u64,
+    /// The settlement's `currentStateRoot` at the same block.
+    pub state_root: perp_core::Digest,
     pub close_only: bool,
     pub slot: AnchorSlot,
-    /// The sequencer's account nonce at the block is past every nonce this
-    /// gateway has handed to a sequencer-key transaction, so no register or
-    /// settle of the journaled window can still be mined.
-    pub fenced: bool,
+    /// The sequencer's account nonce (its next unused nonce) at the block.
+    pub nonce: u64,
+    /// `nonce` is past the nonce ceiling the reader was given: every nonce up to
+    /// that ceiling handed to a sequencer-key transaction is used.
+    pub fence_passed: bool,
+    /// Right after the finalized read, the sequencer's latest and pending nonces
+    /// equalled `nonce` on every configured endpoint, so no sequencer-key
+    /// transaction was visible as pending. A failed read is not quiet.
+    pub quiet: bool,
+    /// The block's header-bound time in milliseconds; `None` when the header did
+    /// not hash to the block hash.
+    pub block_time_ms: Option<u64>,
+    /// The clock verifier's `clockSkewMs`, which is immutable.
+    pub clock_skew_ms: u64,
+}
+impl DeadIntentEvidence {
+    /// The nonce fence: the ceiling has passed and no sequencer-key transaction is
+    /// pending, so no register or settle of ours up to the ceiling can still be
+    /// mined.
+    pub fn fenced(&self) -> bool {
+        self.fence_passed && self.quiet
+    }
 }
 
 /// Why a journaled clock intent can never settle.
@@ -384,44 +416,89 @@ pub enum DeadIntent {
     /// (b) a phase-0 window while the settlement is in close-only: `settleBatch`
     /// and phase-0 registration both revert there, for good.
     CloseOnlyPhaseZero,
-    /// (c) no anchor exists and no pending transaction can create one.
+    /// (c) no anchor exists, and none can be created.
     EmptyAfterFence,
     /// (d) another anchor holds this batch and phase.
     Replaced,
 }
 
-/// Classify a journaled clock intent at one finalized block. `None` when the
-/// window may still settle: the batch moved on, a transaction of ours could still
-/// be mined, or its own anchor is registered (outside close-only).
+/// What makes a dead classification final: why no transaction of ours can still
+/// let the window settle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadBasis {
+    /// A phase-0 window in close-only: from then on every phase-0 `register`
+    /// reverts (`BadContext`) and every `settleBatch` reverts (`InCloseOnly`).
+    CloseOnly,
+    /// The finalized block time is past `lastMs + clockSkewMs`. Block times never
+    /// decrease, so every later `register` of this intent reverts (`InvalidTime`).
+    ChainClock,
+    /// The nonce fence ([`DeadIntentEvidence::fenced`]).
+    Fence,
+    /// What recovery does with the classification never mutates, so it needs no
+    /// basis.
+    NotNeeded,
+}
+
+/// A journaled clock intent at one finalized block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Classified {
+    /// The window may still settle: the batch moved on, its own anchor is
+    /// registered, or a transaction of ours may still create one.
+    MaySettle,
+    /// The window can never settle, and why that is final.
+    Dead(DeadIntent, DeadBasis),
+    /// The chain contradicts the journal; nothing is decided automatically.
+    Inconsistent(&'static str),
+}
+
+/// Classify a journaled clock intent at one finalized block.
 ///
-/// A phase-0 window in close-only needs no nonce fence: close-only never ends, and
-/// from then on every phase-0 `register` reverts (`BadContext`) and every
-/// `settleBatch` reverts (`InCloseOnly`), so a transaction of ours that is still
-/// pending can never land. It also takes precedence over a cancelled receipt, since
-/// its recovery (the close-only rebase) is the one a cancelled timed phase-0
-/// window is directed to.
-pub fn classify_dead_intent(
-    j_batch: u64,
-    j_phase: u8,
-    e: &DeadIntentEvidence,
-) -> Option<DeadIntent> {
-    if e.batch_count != j_batch {
-        return None;
+/// - A phase-0 window in close-only is dead whatever its slot holds: close-only
+///   never ends, so a transaction of ours that is still pending can never land.
+///   It takes precedence over every other row, since its recovery is the
+///   close-only rebase.
+/// - Another anchor in the slot is reported without a basis: what recovery does
+///   with it never mutates.
+/// - An empty slot for a journaled receipt is inconsistent: that anchor was
+///   registered at a finalized block, and only `cancel` removes an anchor, which
+///   reads as cancelled.
+/// - A cancelled or empty slot is dead once either basis holds. On the chain
+///   clock, a timed intent whose `lastMs + clockSkewMs` is behind the finalized
+///   block time can never register again, and a registration mined at or before
+///   that block reads as its anchor unless it was cancelled; a cancelled receipt
+///   never verifies. On the nonce fence, every nonce up to the ceiling is used
+///   and none is pending. Untimed and underivable intents have no chain-clock
+///   basis.
+pub fn classify_dead_intent(i: &ClockIntent, e: &DeadIntentEvidence) -> Classified {
+    if e.batch_count != i.batch {
+        return Classified::MaySettle;
     }
-    if j_phase == 0 && e.close_only {
-        return Some(DeadIntent::CloseOnlyPhaseZero);
+    if i.phase == 0 && e.close_only {
+        return Classified::Dead(DeadIntent::CloseOnlyPhaseZero, DeadBasis::CloseOnly);
     }
-    if !e.fenced {
-        return None;
-    }
-    if e.slot == AnchorSlot::Cancelled {
-        Some(DeadIntent::Cancelled)
-    } else if e.slot == AnchorSlot::Empty {
-        Some(DeadIntent::EmptyAfterFence)
-    } else if e.slot == AnchorSlot::Different {
-        Some(DeadIntent::Replaced)
+    let dead = match e.slot {
+        AnchorSlot::Matching => return Classified::MaySettle,
+        AnchorSlot::Different => {
+            return Classified::Dead(DeadIntent::Replaced, DeadBasis::NotNeeded)
+        }
+        AnchorSlot::Empty if i.receipt.is_some() => {
+            return Classified::Inconsistent(
+                "the anchor of a journaled receipt is gone without a cancellation",
+            )
+        }
+        AnchorSlot::Empty => DeadIntent::EmptyAfterFence,
+        AnchorSlot::Cancelled => DeadIntent::Cancelled,
+    };
+    let by_clock = matches!(
+        (i.last_ms, e.block_time_ms),
+        (Some(last), Some(t)) if t as u128 > last as u128 + e.clock_skew_ms as u128
+    );
+    if by_clock {
+        Classified::Dead(dead, DeadBasis::ChainClock)
+    } else if e.fenced() {
+        Classified::Dead(dead, DeadBasis::Fence)
     } else {
-        None
+        Classified::MaySettle
     }
 }
 
@@ -1344,6 +1421,24 @@ mod tests {
             }
         }
     }
+    const SKEW_MS: u64 = 30_000;
+    const LAST_MS: u64 = 1_000_000;
+
+    /// An intent for batch 5: untimed unless `last_ms` is given.
+    fn intent(phase: u8, receipt: Option<perp_core::Digest>, last_ms: Option<u64>) -> ClockIntent {
+        ClockIntent {
+            batch: 5,
+            phase,
+            prev_root: [1; 32],
+            base: [2; 32],
+            receipt,
+            timed: last_ms.is_some(),
+            last_ms,
+            underivable: false,
+        }
+    }
+    /// Evidence at a block whose time is exactly `LAST_MS + SKEW_MS`, so the chain
+    /// clock has not passed a timed intent yet. `fenced` sets both halves of the fence.
     fn evidence(
         slot: AnchorSlot,
         close_only: bool,
@@ -1353,73 +1448,327 @@ mod tests {
         DeadIntentEvidence {
             block: 100,
             batch_count,
+            state_root: [1; 32],
             close_only,
             slot,
-            fenced,
+            nonce: 10,
+            fence_passed: fenced,
+            quiet: fenced,
+            block_time_ms: Some(LAST_MS + SKEW_MS),
+            clock_skew_ms: SKEW_MS,
         }
     }
+    const RECEIPT: perp_core::Digest = [3; 32];
 
     #[test]
     fn dead_intent_classification_matrix() {
-        use AnchorSlot::{Different, Empty, Matching};
+        use AnchorSlot::{Cancelled, Different, Empty, Matching};
+        use Classified::{Dead, MaySettle};
+        use DeadBasis::{CloseOnly, Fence, NotNeeded};
         use DeadIntent::{CloseOnlyPhaseZero, EmptyAfterFence, Replaced};
-        // (a) a cancelled receipt is dead in every phase, inside or outside
-        // close-only, except a phase-0 window in close-only, which is (b).
+        let ours = |phase| intent(phase, Some(RECEIPT), None);
+        let untimed = |phase| intent(phase, None, None);
+        let timed = |phase| intent(phase, None, Some(LAST_MS));
+        // (a) a cancelled receipt is dead on the fence in every phase, inside or
+        // outside close-only, except a phase-0 window in close-only, which is (b).
         for (phase, close_only) in [(0, false), (1, false), (1, true), (2, false), (2, true)] {
             assert_eq!(
-                classify_dead_intent(
-                    5,
-                    phase,
-                    &evidence(AnchorSlot::Cancelled, close_only, true, 5)
-                ),
-                Some(DeadIntent::Cancelled)
+                classify_dead_intent(&ours(phase), &evidence(Cancelled, close_only, true, 5)),
+                Dead(DeadIntent::Cancelled, Fence)
             );
         }
         // (b) phase 0 in close-only is dead whatever the slot holds, with or without
         // the nonce fence: no pending register or settle of it can land there.
-        for slot in [Matching, AnchorSlot::Cancelled, Empty, Different] {
+        for slot in [Matching, Cancelled, Empty, Different] {
+            for fenced in [false, true] {
+                for i in [ours(0), untimed(0), timed(0)] {
+                    assert_eq!(
+                        classify_dead_intent(&i, &evidence(slot, true, fenced, 5)),
+                        Dead(CloseOnlyPhaseZero, CloseOnly)
+                    );
+                }
+            }
+        }
+        // (c) an empty slot after the fence; (d) another anchor, fenced or not.
+        for (phase, close_only) in [(0, false), (1, true), (2, true)] {
+            for i in [untimed(phase), timed(phase)] {
+                assert_eq!(
+                    classify_dead_intent(&i, &evidence(Empty, close_only, true, 5)),
+                    Dead(EmptyAfterFence, Fence)
+                );
+            }
             for fenced in [false, true] {
                 assert_eq!(
-                    classify_dead_intent(5, 0, &evidence(slot, true, fenced, 5)),
-                    Some(CloseOnlyPhaseZero)
+                    classify_dead_intent(&ours(phase), &evidence(Different, close_only, fenced, 5)),
+                    Dead(Replaced, NotNeeded)
+                );
+                // Our own registered anchor may still settle.
+                assert_eq!(
+                    classify_dead_intent(&ours(phase), &evidence(Matching, close_only, fenced, 5)),
+                    MaySettle
                 );
             }
         }
-        // (c) an empty slot after the fence, and (d) another anchor.
-        for (phase, close_only) in [(0, false), (1, true), (2, true)] {
-            assert_eq!(
-                classify_dead_intent(5, phase, &evidence(Empty, close_only, true, 5)),
-                Some(EmptyAfterFence)
-            );
-            assert_eq!(
-                classify_dead_intent(5, phase, &evidence(Different, close_only, true, 5)),
-                Some(Replaced)
-            );
-            // Our own registered anchor may still settle.
-            assert_eq!(
-                classify_dead_intent(5, phase, &evidence(Matching, close_only, true, 5)),
-                None
-            );
-        }
-        // Nothing else is dead before the fence, and nothing once the batch moved on.
-        for slot in [Matching, AnchorSlot::Cancelled, Empty, Different] {
-            for close_only in [false, true] {
-                for phase in 0..=2 {
-                    if !(phase == 0 && close_only) {
+        // Before the fence and the chain clock nothing cancelled or empty is dead,
+        // and nothing is classified once the batch moved on.
+        for close_only in [false, true] {
+            for phase in 0..=2 {
+                if !(phase == 0 && close_only) {
+                    for i in [untimed(phase), timed(phase)] {
                         assert_eq!(
-                            classify_dead_intent(5, phase, &evidence(slot, close_only, false, 5)),
-                            None
+                            classify_dead_intent(&i, &evidence(Empty, close_only, false, 5)),
+                            MaySettle
                         );
                     }
+                    assert_eq!(
+                        classify_dead_intent(
+                            &ours(phase),
+                            &evidence(Cancelled, close_only, false, 5)
+                        ),
+                        MaySettle
+                    );
+                }
+                for slot in [Matching, Cancelled, Empty, Different] {
                     for bc in [4, 6] {
+                        for fenced in [false, true] {
+                            assert_eq!(
+                                classify_dead_intent(
+                                    &ours(phase),
+                                    &evidence(slot, close_only, fenced, bc)
+                                ),
+                                MaySettle
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        // Each half of the fence alone is not enough.
+        for (fence_passed, quiet) in [(true, false), (false, true)] {
+            let e = DeadIntentEvidence {
+                fence_passed,
+                quiet,
+                ..evidence(Empty, false, false, 5)
+            };
+            assert!(!e.fenced());
+            assert_eq!(classify_dead_intent(&untimed(0), &e), MaySettle);
+        }
+    }
+
+    /// A timed intent is dead on the chain clock once the finalized, header-bound
+    /// block time is strictly past `lastMs + clockSkewMs`, with no nonce fence.
+    #[test]
+    fn chain_clock_death_boundary() {
+        use AnchorSlot::{Cancelled, Different, Empty, Matching};
+        use Classified::{Dead, MaySettle};
+        use DeadBasis::{ChainClock, Fence};
+        let at = |t: Option<u64>, slot, fenced| DeadIntentEvidence {
+            block_time_ms: t,
+            ..evidence(slot, false, fenced, 5)
+        };
+        let past = Some(LAST_MS + SKEW_MS + 1);
+        for phase in 0..=2 {
+            for (receipt, slot, dead) in [
+                (None, Empty, DeadIntent::EmptyAfterFence),
+                (Some(RECEIPT), Cancelled, DeadIntent::Cancelled),
+            ] {
+                let timed = intent(phase, receipt, Some(LAST_MS));
+                // At the bound a register mined now would still be accepted.
+                assert_eq!(
+                    classify_dead_intent(&timed, &at(Some(LAST_MS + SKEW_MS), slot, false)),
+                    MaySettle
+                );
+                for fenced in [false, true] {
+                    assert_eq!(
+                        classify_dead_intent(&timed, &at(past, slot, fenced)),
+                        Dead(dead, ChainClock)
+                    );
+                }
+                // A header that did not hash gives no block time and no clock basis.
+                assert_eq!(
+                    classify_dead_intent(&timed, &at(None, slot, false)),
+                    MaySettle
+                );
+                assert_eq!(
+                    classify_dead_intent(&timed, &at(None, slot, true)),
+                    Dead(dead, Fence)
+                );
+                // Untimed and underivable intents never use the chain clock.
+                let untimed = intent(phase, receipt, None);
+                let underivable = ClockIntent {
+                    timed: true,
+                    underivable: true,
+                    ..untimed
+                };
+                for i in [untimed, underivable] {
+                    assert_eq!(
+                        classify_dead_intent(&i, &at(Some(u64::MAX), slot, false)),
+                        MaySettle
+                    );
+                    assert_eq!(
+                        classify_dead_intent(&i, &at(Some(u64::MAX), slot, true)),
+                        Dead(dead, Fence)
+                    );
+                }
+            }
+            // The clock decides nothing about a registered anchor.
+            let ours = intent(phase, Some(RECEIPT), Some(LAST_MS));
+            assert_eq!(
+                classify_dead_intent(&ours, &at(Some(u64::MAX), Matching, false)),
+                MaySettle
+            );
+            assert_eq!(
+                classify_dead_intent(&ours, &at(Some(u64::MAX), Different, false)),
+                Dead(DeadIntent::Replaced, DeadBasis::NotNeeded)
+            );
+        }
+        // The comparison cannot overflow.
+        let latest = intent(0, None, Some(u64::MAX));
+        let e = DeadIntentEvidence {
+            clock_skew_ms: u64::MAX,
+            ..at(Some(u64::MAX), Empty, false)
+        };
+        assert_eq!(classify_dead_intent(&latest, &e), MaySettle);
+    }
+
+    /// An anchor that was registered for a journaled receipt can only leave its
+    /// slot through `cancel`, which reads as cancelled. An empty slot for it
+    /// contradicts the journal, on any basis.
+    #[test]
+    fn an_empty_slot_for_a_journaled_receipt_is_inconsistent() {
+        use Classified::{Dead, Inconsistent, MaySettle};
+        for phase in 0..=2 {
+            for last_ms in [None, Some(LAST_MS)] {
+                let journaled = intent(phase, Some(RECEIPT), last_ms);
+                for fenced in [false, true] {
+                    for t in [None, Some(LAST_MS + SKEW_MS + 1)] {
+                        let e = DeadIntentEvidence {
+                            block_time_ms: t,
+                            ..evidence(AnchorSlot::Empty, phase > 0, fenced, 5)
+                        };
+                        assert!(
+                            matches!(
+                                classify_dead_intent(&journaled, &e),
+                                Inconsistent(why) if why.contains("journaled receipt")
+                            ),
+                            "phase {phase} fenced {fenced} time {t:?}"
+                        );
+                    }
+                }
+                // Without a journaled receipt the same slot is (c) once fenced.
+                let unproved = ClockIntent {
+                    receipt: None,
+                    ..journaled
+                };
+                assert_eq!(
+                    classify_dead_intent(
+                        &unproved,
+                        &evidence(AnchorSlot::Empty, phase > 0, true, 5)
+                    ),
+                    Dead(DeadIntent::EmptyAfterFence, DeadBasis::Fence)
+                );
+            }
+        }
+        // Phase 0 in close-only still takes precedence; a moved batch is not classified.
+        let journaled = intent(0, Some(RECEIPT), None);
+        assert_eq!(
+            classify_dead_intent(&journaled, &evidence(AnchorSlot::Empty, true, false, 5)),
+            Dead(DeadIntent::CloseOnlyPhaseZero, DeadBasis::CloseOnly)
+        );
+        assert_eq!(
+            classify_dead_intent(&journaled, &evidence(AnchorSlot::Empty, false, true, 6)),
+            MaySettle
+        );
+    }
+
+    /// What recovery does with another anchor never mutates, so neither the nonce
+    /// fence nor the chain clock is consulted.
+    #[test]
+    fn replaced_is_reported_without_the_fence() {
+        for phase in 0..=2 {
+            for i in [
+                intent(phase, Some(RECEIPT), None),
+                intent(phase, None, Some(LAST_MS)),
+                intent(phase, None, None),
+            ] {
+                for (fence_passed, quiet) in
+                    [(false, false), (true, false), (false, true), (true, true)]
+                {
+                    for block_time_ms in [None, Some(0), Some(u64::MAX)] {
+                        let e = DeadIntentEvidence {
+                            fence_passed,
+                            quiet,
+                            block_time_ms,
+                            ..evidence(AnchorSlot::Different, phase > 0, false, 5)
+                        };
                         assert_eq!(
-                            classify_dead_intent(5, phase, &evidence(slot, close_only, true, bc)),
-                            None
+                            classify_dead_intent(&i, &e),
+                            Classified::Dead(DeadIntent::Replaced, DeadBasis::NotNeeded)
                         );
                     }
                 }
             }
         }
+    }
+
+    /// The intent carries the window's last operation time when its bounds derive
+    /// with timed operations, and says when they cannot be derived.
+    #[test]
+    fn clock_intent_carries_the_last_operation_time() {
+        use perp_core::{clock::TimeBounds, BatchOp};
+        fn op_time(op: &mut BatchOp) -> Option<&mut u64> {
+            match op {
+                BatchOp::Fill { now_ms, .. }
+                | BatchOp::AccrueFunding { now_ms, .. }
+                | BatchOp::Liquidate { now_ms, .. }
+                | BatchOp::Unbind { now_ms, .. } => Some(now_ms),
+                _ => None,
+            }
+        }
+        let timed_op = |op: &BatchOp| op_time(&mut op.clone()).is_some();
+        let (witness, ww) = sealed_window();
+        let prepared = crate::prover_client::prepare_unproved(&witness, &ww).unwrap();
+        let journal = RollbackJournal {
+            batch_id: witness.batch_id,
+            witness,
+            ww,
+            prepared: Some(prepared),
+        };
+        let bounds = TimeBounds::derive(&journal.witness.ops).unwrap();
+        assert!(
+            bounds.count > 0,
+            "the fixture window holds a timed operation"
+        );
+        let i = ClockIntent::of(&journal).unwrap();
+        assert_eq!(
+            (i.batch, i.timed, i.last_ms, i.underivable, i.receipt),
+            (journal.batch_id, true, Some(bounds.last_ms), false, None)
+        );
+        // Stage 1 has no intent.
+        let stage1 = RollbackJournal {
+            prepared: None,
+            ..journal.clone()
+        };
+        assert!(ClockIntent::of(&stage1).is_none());
+        // Without timed operations the window is untimed and has no last time.
+        let mut untimed = journal.clone();
+        untimed.witness.ops.retain(|op| !timed_op(op));
+        let i = ClockIntent::of(&untimed).unwrap();
+        assert_eq!((i.timed, i.last_ms, i.underivable), (false, None, false));
+        // A time that steps backwards cannot be derived and counts as timed.
+        let mut backwards = journal.clone();
+        let mut earlier = backwards
+            .witness
+            .ops
+            .iter()
+            .rev()
+            .find(|op| timed_op(op))
+            .unwrap()
+            .clone();
+        *op_time(&mut earlier).unwrap() -= 1;
+        backwards.witness.ops.push(earlier);
+        let i = ClockIntent::of(&backwards).unwrap();
+        assert_eq!((i.timed, i.last_ms, i.underivable), (true, None, true));
     }
 
     #[test]
