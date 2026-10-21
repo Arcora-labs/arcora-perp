@@ -131,15 +131,17 @@ class Bundle(unittest.TestCase):
 
 # The wind-down reserve leaf as the gateway publishes it (the POST /v1/admin/wind-down
 # `reserveSink` and the status read-out, which adds `claimable`): the only leaf of
-# its batch, so its root is the leaf itself and its proof is empty. The vector is
-# the one the gateway test `the_reserve_claim_data_is_a_claim_bundle` pins.
+# its batch, so its root is the leaf itself and its proof is empty. The file is the
+# status read-out's `windDown.reserveSink` once phase 1 is published, saved as is; the
+# gateway test `the_reserve_claim_data_is_a_claim_bundle` requires its own read-out to
+# equal it.
+RESERVE_SINK = HERE / "fixtures" / "reserve-sink.json"
 RESERVE_LEAF = "0x9b70005e6c1a4d420bac265b81fa429cd6fa2dae864e709fff695e4f5330ea3e"
 
 
 def reserve_bundle(**overrides):
-    bundle = {"schema": "arcora.claim-bundle.v1", "chainId": 84532, "vault": "0x" + "ab" * 20,
-              "to": "0x" + "c0" * 20, "amount": "1234567", "nonce": 3, "leaf": RESERVE_LEAF,
-              "root": RESERVE_LEAF, "proof": []}
+    [listed] = json.loads(RESERVE_SINK.read_text())
+    bundle = {key: value for key, value in listed.items() if key != "claimable"}
     bundle.update(overrides)
     return bundle
 
@@ -169,6 +171,17 @@ class SingleLeafBundle(unittest.TestCase):
         self.assertIn("1234567 base units to 0x" + "c0" * 20 + " (nonce 3)", out.getvalue())
         self.assertIn(f'cast send 0x{"ab" * 20} "claim(address,uint256,uint256,bytes32,bytes32[])" '
                       f'0x{"c0" * 20} 1234567 3 {RESERVE_LEAF} "[]"', out.getvalue())
+
+    def test_the_saved_gateway_read_out_checks_as_is(self):
+        listed = json.loads(RESERVE_SINK.read_text())
+        self.assertEqual([entry["claimable"] for entry in listed], [True])
+        self.assertEqual(cw.check_bundle(listed[0]), [])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cw.main([str(RESERVE_SINK)])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("[0] OK: 1234567 base units to 0x" + "c0" * 20 + " (nonce 3)", out.getvalue())
+        self.assertIn(f'{RESERVE_LEAF} "[]"', out.getvalue())
 
 
 FAKE_CAST = textwrap.dedent("""\
