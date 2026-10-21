@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify pinned, real clock-v2 proof calldata in an owned EVM.
+"""Verify the pinned, real clock proof calldata (PROOF_FIXTURE) in an owned EVM.
 
 The proof is public synthetic test data, not a mock proof. This gate independently
 verifies cryptography on the real target contracts and does not trust a claim
@@ -13,8 +13,9 @@ import sys
 import verify_clock_proof as clock
 import verify_real_proof as target
 
-# Calldata copy of the committed real proof; its hash is PROOF_FIXTURE["proof_sha256"].
-CALLDATA = "integration/fixtures/clock-v2/verified-calldata/proof.bin"
+# The committed real proof's calldata; its hash is PROOF_FIXTURE["proof_sha256"]. The
+# clock-v2 calldata copy in integration/fixtures/clock-v2/verified-calldata/ is history.
+CALLDATA = "integration/fixtures/clock-pkg3-verified/proof.bin"
 EXPECTED_TESTS = {"SP1RealVerifierGuardTest": 8, "SP1RealProofTest": 10, "ClockBoundRealProofTest": 6}
 
 

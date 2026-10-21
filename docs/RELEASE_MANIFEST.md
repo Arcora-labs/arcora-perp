@@ -121,20 +121,22 @@ committed proof files from disk and returns `PROVEN` only when they are a proof 
 the reviewed fixture under the reviewed guest; otherwise `PENDING_REPROOF`. Editing
 a record without committing new proof files does not change the status.
 
-In this checkout the two differ: the reviewed guest's ELF, setup key and normal
-fixture are committed in `contracts/integration/fixtures/clock-pkg3-reviewed/`
-(no proof), while the committed proof in
-`contracts/integration/fixtures/clock-v2-verified/` is of the earlier clock-v2
-guest. The status is therefore `PENDING_REPROOF` until a proof of the reviewed
-fixture under the reviewed guest is committed.
+In this checkout the two agree. The reviewed guest's ELF, setup key and normal
+fixture are committed in `contracts/integration/fixtures/clock-pkg3-reviewed/`, and
+`PROOF_FIXTURE` names `contracts/integration/fixtures/clock-pkg3-verified/`, a real
+Groth16 proof of that fixture under that guest (generated on 2026-10-21 with SP1
+6.1.0's GPU prover; see that directory's README). The status is therefore `PROVEN`.
+The earlier clock-v2 proof stays in `contracts/integration/fixtures/clock-v2-verified/`
+as history.
 
-Committing that proof means repointing `PROOF_FIXTURE` at its directory with that
-proof's identity, and its `sources` (the proof guest's source pins, recorded in
-the evidence beside its ELF) at `REVIEWED_GUEST["sources"]`. `verify_clock_proof.py`
-reads `PROOF_FIXTURE["dir"]` unless `--artifact-dir` names another directory, and
-`test_pin_coherence.py` requires a workflow that names one to name that one. The
-reviewed fixture's case witnesses are executed on CPU and never proven, so they
-stay in `REVIEWED_FIXTURE` either way.
+A later guest change makes the checkout's guest differ from the proof's again, and
+the status returns to `PENDING_REPROOF` until a new proof is committed. Committing
+it means repointing `PROOF_FIXTURE` at its directory with that proof's identity, and
+its `sources` (the proof guest's source pins, recorded in the evidence beside its
+ELF) at that guest's pins. `verify_clock_proof.py` reads `PROOF_FIXTURE["dir"]`
+unless `--artifact-dir` names another directory, and `test_pin_coherence.py`
+requires a workflow that names one to name that one. The reviewed fixture's case
+witnesses are executed on CPU, so they stay in `REVIEWED_FIXTURE` either way.
 
 Every manifest records `real_proof` (that status plus both identities). `create`
 requires `PROVEN`. While the status is not `PROVEN`, `validate` and
