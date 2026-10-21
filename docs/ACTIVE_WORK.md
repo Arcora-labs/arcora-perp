@@ -67,7 +67,7 @@ throughput, servis gecikmesi veya kapasite garantisi değildir.
 | #74 | Kişiye özel claim dosyası ve operatörden bağımsız claim kontrol aracı | [FUNDS_LIFECYCLE](FUNDS_LIFECYCLE.md) |
 | #75 | `--print-genesis-root`, release artifact'larıyla deploy aracı, env tabanlı frontend adresleri, Linux release binary workflow'u | [clock-stack-deploy-kit](audits/2026-10-16-clock-stack-deploy-kit/README.md) |
 | #76 | Restore/alarm tatbikatı; `RestartMode=direct` düzeltmesi | [g5-restore-alarm-drill](audits/2026-10-16-g5-restore-alarm-drill/README.md) |
-| bu PR | Settle edilemeyecek clock penceresi restart gerektirmeden çözülür: settle döngüsünde kurtarma, faz-0 pencerenin canlı void'i, kullanıcı olayları ve `/api/state` `clockRecovery`/`settlementVoid`; kimlik rotasyonu ve sigorta bootstrap düzeltmeleri | [PROVING-RUNBOOK](PROVING-RUNBOOK.md) (§ Dead clock window) |
+| #91 | Settle edilemeyecek clock penceresi restart gerektirmeden çözülür: settle döngüsünde kurtarma, faz-0 pencerenin canlı void'i, kullanıcı olayları ve `/api/state` `clockRecovery`/`settlementVoid`; kimlik rotasyonu ve sigorta bootstrap düzeltmeleri | [PROVING-RUNBOOK](PROVING-RUNBOOK.md) (§ Dead clock window) |
 
 ## Açık kabul kapıları
 
