@@ -81,7 +81,7 @@ impl RecoveryChain for FakeChain {
         self.hook("evidence");
         let mut s = self.s.lock().unwrap();
         s.ceilings.push(ceiling);
-        assert_eq!(i.batch, s.batch_count.min(i.batch));
+        assert!(i.batch <= s.batch_count + 1, "the intent of another window");
         if s.failing_reads > 0 {
             s.failing_reads -= 1;
             return Err("finalized block read timed out".into());
@@ -678,21 +678,35 @@ fn decision_matrix() {
         ),
         Decision::Burn(5)
     );
-    // 15. Any other batch count.
-    for bc in [j.batch_id + 2, j.batch_id - 1] {
-        assert!(matches!(
+    // 15. A finalized head behind the window waits, whatever else it shows.
+    for (bc, state_root) in [(j.batch_id - 1, pre_root), (j.batch_id - 1, [0xee; 32])] {
+        assert_eq!(
             decide_at(
                 &timed,
                 pre_root,
                 DeadIntentEvidence {
                     batch_count: bc,
-                    ..e
+                    state_root,
+                    ..past
                 },
                 &p
             ),
-            Decision::Stop(_)
-        ));
+            Decision::Wait(WaitReason::FinalizedBehind)
+        );
     }
+    // 16. Beyond the next batch.
+    assert!(matches!(
+        decide_at(
+            &timed,
+            pre_root,
+            DeadIntentEvidence {
+                batch_count: j.batch_id + 2,
+                ..e
+            },
+            &p
+        ),
+        Decision::Stop(why) if why.contains("beyond window")
+    ));
     // A journal without a prepared intent cannot be decided.
     let stage1 = RollbackJournal {
         prepared: None,
@@ -1139,6 +1153,33 @@ async fn a_cancelled_receipt_after_an_operator_cancel_voids_the_timed_window() {
         h.app.gw.lock().await.seq.state.next_batch_id,
         journal.batch_id
     );
+}
+
+/// A finalized head behind the window (a load-balanced or failed-over RPC that
+/// lags) waits instead of stopping the loop and holding settlement; once it
+/// catches up the window is decided.
+#[tokio::test]
+async fn a_finalized_head_behind_the_window_waits() {
+    let Voidable { gw, journal, .. } = voidable(false);
+    let mut state = chain_at(&journal);
+    state.batch_count = journal.batch_id - 1;
+    state.block_time_ms = past_skew(&journal);
+    let h = harness(gw, journal.clone(), state);
+    h.seal_hold().await;
+    let mut rec = h.pending();
+    assert!(matches!(h.step(&mut rec).await, Step::Wait(d) if d > Duration::ZERO));
+    assert_eq!(rec.last_class, WaitReason::FinalizedBehind.as_str());
+    assert!(rec.last.contains("finalized batch count"), "{}", rec.last);
+    assert!(h.jpath.exists());
+    assert!(!h.admission_open());
+    {
+        let gw = h.app.gw.lock().await;
+        assert!(!gw.settle_health.recovery_required(), "not held");
+        assert_eq!(gw.seq.state.next_batch_id, journal.batch_id + 1);
+    }
+    h.fake.with(|s| s.batch_count = journal.batch_id);
+    assert_eq!(h.step(&mut rec).await, Step::Resolved { close_only: false });
+    assert!(!h.jpath.exists());
 }
 
 /// A dead untimed window returns to the open window in the loop.

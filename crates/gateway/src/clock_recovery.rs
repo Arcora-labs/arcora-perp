@@ -418,6 +418,9 @@ pub(crate) enum WaitReason {
     NonceFence,
     /// A sequencer-key transaction is pending.
     NotQuiet,
+    /// The finalized batch count is below the window's batch: the read's
+    /// finalized head is behind the settles this gateway already committed.
+    FinalizedBehind,
 }
 
 impl WaitReason {
@@ -428,6 +431,7 @@ impl WaitReason {
             Self::ChainClock => "awaiting the chain clock",
             Self::NonceFence => "awaiting the nonce fence",
             Self::NotQuiet => "sequencer nonces not quiet",
+            Self::FinalizedBehind => "the finalized batch count is behind the window",
         }
     }
 }
@@ -473,7 +477,9 @@ pub(crate) enum Decision {
 ///     ceiling, the nonces were quiet on this and the previous step, and fewer
 ///     than [`MAX_NONCE_BURNS`] were sent.
 /// 14. Otherwise it waits.
-/// 15. Any other batch count stops.
+/// 15. A batch count below the window's waits: a finalized head that lags (a
+///     load-balanced or failed-over RPC) shows nothing new.
+/// 16. A batch count beyond the next batch stops.
 pub(crate) fn decide(
     j: &RollbackJournal,
     i: &ClockIntent,
@@ -500,9 +506,12 @@ pub(crate) fn decide(
             Decision::RollForward
         };
     }
+    if e.batch_count < j.batch_id {
+        return Decision::Wait(WaitReason::FinalizedBehind);
+    }
     if e.batch_count != j.batch_id {
         return Decision::Stop(format!(
-            "the finalized batch count is {}, neither window {} nor the next",
+            "the finalized batch count is {}, beyond window {} and the next",
             e.batch_count, j.batch_id
         ));
     }
@@ -896,6 +905,12 @@ async fn step(
                     e.block_time_ms.unwrap_or_default(),
                     intent.last_ms.unwrap_or_default(),
                     e.clock_skew_ms
+                ),
+                (Ok(e), WaitReason::FinalizedBehind) => format!(
+                    "{} (finalized batch count {} at block {block}, window {})",
+                    reason.as_str(),
+                    e.batch_count,
+                    rec.batch_id
                 ),
                 (Ok(e), WaitReason::NonceFence | WaitReason::NotQuiet) => format!(
                     "{} (finalized nonce {} at block {block}, window ceiling {:?}, {} burns)",
