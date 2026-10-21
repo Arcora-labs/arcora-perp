@@ -216,6 +216,14 @@ The Python tree is pinned to the Rust one:
 root and proof in it against perp-core. The keccak and leaf vectors in the
 Python tests come from `cast`.
 
+The wind-down reserve leaf has a shared vector too:
+`scripts/claim/fixtures/reserve-sink.json` is the gateway's
+`windDown.reserveSink` read-out once its root is published, saved as is. The
+gateway test `wind_down::tests::the_reserve_claim_data_is_a_claim_bundle`
+requires its own read-out to equal the file, and the Python tests run the file
+through the bundle checks and the CLI. No script writes it, so a deliberate
+change to that read-out updates the file by hand.
+
 **Limits.**
 - A bundle exists only for withdrawals that were claimable while the user had
   the page open. A browser that never saw one, or cleared its storage without a
