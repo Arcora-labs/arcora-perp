@@ -50,12 +50,26 @@ pub enum AlertKind {
     /// unconsumed deposit, and once it is older than the settlement's
     /// `livenessTimeoutBlocks` anyone can put the settlement in close-only.
     DepositBlockedAtCap,
+    /// A sealed phase-0 window whose clock intent can never settle was voided: the
+    /// state returned to the window's pre-state, its fills and withdrawals were
+    /// undone, its orders were published as cancelled and its deposits were
+    /// restored for re-ingestion. Recovered once the next window settles. Not
+    /// persisted: a restart clears it.
+    #[allow(dead_code)] // raised by the boot and settle-loop recovery of a dead window
+    WindowVoided,
+    /// The settle loop is recovering a clock-bound window and needs the operator,
+    /// or is running out of time: another anchor holds the batch, the settle keeps
+    /// failing against its own anchor, a deposit halt blocks the retry, repeated
+    /// voids stopped the loop, or the recovery has lasted long or used up half of
+    /// the close-only budget. Recovered when the recovery resolves.
+    #[allow(dead_code)] // raised by the settle-loop recovery of a clock-bound window
+    ClockRecoveryBlocked,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 14] = [
+    pub const ALL: [AlertKind; 16] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -70,6 +84,8 @@ impl AlertKind {
         AlertKind::AdmissionCapReached,
         AlertKind::WithdrawNonceRepaired,
         AlertKind::DepositBlockedAtCap,
+        AlertKind::WindowVoided,
+        AlertKind::ClockRecoveryBlocked,
     ];
 }
 
