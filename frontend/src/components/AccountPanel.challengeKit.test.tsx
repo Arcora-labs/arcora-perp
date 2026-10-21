@@ -267,6 +267,25 @@ describe("ChallengeKitSection after the account binds another deposit address", 
     expect(screen.getByRole("alert").textContent).toMatch(/did not keep these kits/i);
   });
 
+  it("keeps the kit it holds when a listing names the order with another enclave signer or settlement", async () => {
+    /// The order signed by `key`, also its receipt's enclave signer, for `settlement`.
+    function resigned(key: Uint8Array, settlement = ACCEPTED.l1Challenge!.settlement): TrackedOrder {
+      const r = before.receipt as ReceiptWithChallenge;
+      const enclaveSigner = "0x" + bytesToHex(keccak_256(secp256k1.getPublicKey(key, false).subarray(1)).subarray(12));
+      const auth = { ...r.l1Challenge!, beneficiary: NEW_BENEFICIARY, settlement };
+      const sig = secp256k1.sign(challengeAuthDigest({ ...r, ...auth }), key);
+      return order("o6", { ...r, enclaveSigner, l1Challenge: { ...auth, signature: "0x" + sig.toCompactHex() + (27 + sig.recovery).toString(16) } });
+    }
+    for (const listing of [resigned(new Uint8Array(32).fill(12)), resigned(TEST_ENCLAVE_KEY, "0x" + "23".repeat(20))]) {
+      const storage = memoryStorage([kitOf(before)]);
+      render(<ChallengeKitSection orders={[listing]} storage={storage} />);
+      expect(await exportedKits(1)).toEqual(kitOf(before));
+      expect(loadChallengeKits(storage)).toEqual([kitOf(before)]);
+      expect(screen.queryByRole("alert")).toBeNull();
+      cleanup();
+    }
+  });
+
   it("a panel open for another account in this browser does not put the old kit back", async () => {
     const storage = memoryStorage([kitOf(before)]);
     // Another tab, another account: its panel offers the stored kit too.

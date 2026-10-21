@@ -12,7 +12,8 @@
 /// signs an order's authorization for the deposit address the account has
 /// bound when it answers, so once the account binds another address, the next
 /// listing carries a kit for the new beneficiary, and that kit replaces the one
-/// kept for the order (see `mergeChallengeKits`).
+/// kept for the order. Only the same enclave's authorization for the same
+/// order, chain and settlement replaces a kept kit (see `mergeChallengeKits`).
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils";
@@ -352,15 +353,30 @@ const hashKey = (k: ChallengeKit) => k.orderHash.toLowerCase();
 /// offered in, and, within listed and other kits, stored in.
 const newestFirst = (a: ChallengeKit, b: ChallengeKit) => b.recvTimeMs - a.recvTimeMs || b.seqNo - a.seqNo;
 
+/// Whether `later` is the same enclave's authorization as `kept` for the same
+/// order, chain and settlement: only the beneficiary, and with it the
+/// signature, may differ.
+function sameAuthority(kept: ChallengeKit, later: ChallengeKit): boolean {
+  const a = kept.l1Challenge;
+  const b = later.l1Challenge;
+  return later.enclaveSigner.toLowerCase() === kept.enclaveSigner.toLowerCase() &&
+    later.seqNo === kept.seqNo && later.recvTimeMs === kept.recvTimeMs && later.batchIdHint === kept.batchIdHint &&
+    b.chainId === a.chainId && b.settlement.toLowerCase() === a.settlement.toLowerCase();
+}
+
 /// The kits to keep: `existing`, then `added`, merged by order hash, without
 /// the kits of orders in `settled` (lowercase hashes), newest first. A later
-/// copy of an order's kit replaces an earlier one, so callers pass kits oldest
-/// source first: after the account binds another deposit address, the gateway
-/// lists its orders with kits for the new beneficiary, and those must replace
-/// the kits kept for the old one (the settlement pays a fine to whichever
-/// beneficiary the kit names). Merging a copy equal to the kept one changes
-/// nothing. Not bounded: this is also the session's offer, which must hold
-/// every listed order's kit. Malformed entries are skipped.
+/// copy of an order's kit replaces an earlier one when it is the same
+/// enclave's authorization for the same order, chain and settlement, so
+/// callers pass kits oldest source first: after the account binds another
+/// deposit address, the gateway lists its orders with kits for the new
+/// beneficiary, and those must replace the kits kept for the old one (the
+/// settlement pays a fine to whichever beneficiary the kit names). Any other
+/// copy leaves the earlier kit in place: the settlement accepts no other
+/// enclave signer, and a kit for another chain or settlement does not open the
+/// challenge where the order was accepted. Merging a copy equal to the kept
+/// one changes nothing. Not bounded: this is also the session's offer, which
+/// must hold every listed order's kit. Malformed entries are skipped.
 export function mergeChallengeKits(
   existing: readonly unknown[],
   added: readonly unknown[],
@@ -369,16 +385,19 @@ export function mergeChallengeKits(
   const byHash = new Map<string, ChallengeKit>();
   for (const value of [...existing, ...added]) {
     const kit = normalizeKit(value);
-    if (kit && !settled.has(hashKey(kit))) byHash.set(hashKey(kit), kit);
+    if (!kit || settled.has(hashKey(kit))) continue;
+    const kept = byHash.get(hashKey(kit));
+    if (!kept || sameAuthority(kept, kit)) byHash.set(hashKey(kit), kit);
   }
   return [...byHash.values()].sort(newestFirst);
 }
 
 /// Keep `kits` in this browser, merged with the stored ones as
 /// `mergeChallengeKits` does: a kit in `kits` replaces the stored kit of its
-/// order (the last of `kits` for an order wins), and the kits of orders in
-/// `settled` (orders the gateway lists as SETTLED, which a settled batch
-/// includes or rejects) are dropped. The store holds at most
+/// order when it is the same enclave's authorization for the same order,
+/// chain and settlement (the last such kit for an order wins), and the kits of
+/// orders in `settled` (orders the gateway lists as SETTLED, which a settled
+/// batch includes or rejects) are dropped. The store holds at most
 /// MAX_STORED_CHALLENGE_KITS, and its quota is shared with claim bundles, the
 /// deposit journal and the credential record.
 /// When not every kit fits (the bound, or a write the browser refuses), kits
@@ -428,8 +447,8 @@ export function rememberChallengeKits(
 /// if it stops in between, this is the order's only kit. The listing builds
 /// the same kit for the order while the account keeps its deposit address, so
 /// keeping both is idempotent; a kit listed for an address bound since replaces
-/// this one, as any later copy does. `orders` are the account's listed orders:
-/// their kits, and this one, are kept ahead of others, as
+/// this one, as `mergeChallengeKits` describes. `orders` are the account's
+/// listed orders: their kits, and this one, are kept ahead of others, as
 /// `rememberChallengeKits` describes. Returns whether every kit to keep is
 /// stored; false without a verifiable authorization. Never throws.
 export function rememberAcceptedChallengeKit(

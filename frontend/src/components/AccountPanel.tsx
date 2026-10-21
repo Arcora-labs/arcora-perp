@@ -855,7 +855,9 @@ function unlistedNote({ count, unlisted }: UnsavedKits): string {
 /// none. When the gateway lists an order with another authorization than the
 /// kit kept for it (the account bound another deposit address, which the
 /// gateway now signs for), the new kit replaces the kept one, in storage and in
-/// the offer. `storage` defaults to this origin's localStorage. Exported for tests.
+/// the offer, when it is the same enclave's authorization for the same order,
+/// chain and settlement (see `mergeChallengeKits`). `storage` defaults to this
+/// origin's localStorage. Exported for tests.
 export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[]; storage?: ChallengeKitStorage }) {
   const [kits, setKits] = useState<ChallengeKit[]>(() => loadChallengeKits(storage));
   const [unsaved, setUnsaved] = useState<UnsavedKits>({ count: 0, unlisted: 0, atBound: false });
@@ -894,7 +896,8 @@ export function ChallengeKitSection({ orders, storage }: { orders: TrackedOrder[
     // Per order, the authorization stored: a kit is kept only when it is that one.
     const kept = seenChallengeKits(stored);
     // Not bounded: a kit the store evicted stays offered for this session. A
-    // later copy wins: the listing's, then this session's built ones, then the stored ones.
+    // later copy wins, as `mergeChallengeKits` allows: the listing's, then this
+    // session's built ones, then the stored ones.
     const next = mergeChallengeKits([...others, ...before, ...stored, ...own], fresh, settled);
     offered.current = next;
     setKits(next);
