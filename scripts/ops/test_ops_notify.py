@@ -211,8 +211,19 @@ class OneShotCli(unittest.TestCase):
         self.assertEqual([b["episode"] for b in collector.bodies], [1, 2])
         self.assertEqual({b["event"] for b in collector.bodies}, {"gateway_service_failed"})
 
-    def test_target_can_come_from_the_service_environment(self):
-        # darkperp-notify@.service passes no target flag: ops.env supplies it.
+    def test_ntfy_topic_can_come_from_the_service_environment(self):
+        # darkperp-notify@.service passes no target flag: ops.env supplies
+        # FIN_ALERT_NTFY_TOPIC. `send` is stubbed, so nothing leaves the host.
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"FIN_ALERT_NTFY_TOPIC": "test-topic"}):
+            with mock.patch.object(ops_notify, "send") as send:
+                argv = ["--event", "backup_failed", "--state-file", str(Path(tmp) / "notify.json")]
+                self.assertEqual(ops_notify.main(argv), 0)
+        target, events = send.call_args.args
+        self.assertIsNotNone(target)
+        self.assertEqual(target.url, "https://ntfy.sh/test-topic")
+        self.assertEqual(events, [("backup_failed", "active", 1)])
+
+    def test_local_url_can_come_from_the_environment(self):
         collector = Collector()
         self.addCleanup(collector.close)
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"FIN_ALERT_LOCAL_URL": collector.url}):
