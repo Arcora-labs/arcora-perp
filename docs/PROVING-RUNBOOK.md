@@ -363,8 +363,10 @@ persisted before the journal is deleted and before admission reopens.
 **Operator steps.**
 
 1. While a recovery is pending, read `clockRecovery` in `/api/state` and the
-   `[recovery]` log lines. `clock_recovery_blocked` is raised when only the
-   operator can act, and `clockRecovery.operatorAction` says what to do:
+   `[recovery]` log lines. When only the operator can act,
+   `clockRecovery.operatorAction` says what to do. Each reason below raises
+   `clock_recovery_blocked`, except a stop of the settle loop, which raises
+   `settlement_held`:
 
    | Reason | Action |
    |---|---|
@@ -375,6 +377,7 @@ persisted before the journal is deleted and before admission reopens.
    | less than half of the close-only budget is left | resolve the window before anyone can trigger close-only |
    | the recovery has been pending for many polls | read the `[recovery]` log lines |
    | repeated live voids | see the void breaker below |
+   | the settle loop stopped (the chain or the journal contradicts the window, a deterministic settle error, a refused void) | settlement is held until a restart: reconcile the window from the `[recovery] HOLDING` line, then restart |
 
 2. After a void, `window_voided` stays raised until the replacement window
    settles. Tell the users whose withdrawals were removed to request them again.

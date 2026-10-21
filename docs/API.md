@@ -985,7 +985,7 @@ Each is raised once when it becomes active and once when it recovers:
 
 | Alert | Active while |
 |---|---|
-| `settlement_held` | the settle loop is held after repeated settle failures |
+| `settlement_held` | the settle loop is held after repeated settle failures, or a clock recovery stopped it until a restart (§ Clock recovery status) |
 | `persistence_failed` | a durable state snapshot could not be written |
 | `deposit_halted` | deposit ingestion is stopped by a safety halt |
 | `archive_pressure` | the configured price-report archive is under storage pressure, or a checkpoint with it could not be written |
@@ -1039,7 +1039,8 @@ fills, liquidations and funding ticks wait. `GET /api/state` then carries
 - `closeOnlyBudget`: blocks until anyone may trigger close-only for lack of
   progress, and for the oldest unconsumed deposit (`null` when there is none).
 - `operatorAction`: what only the operator can do, when `clock_recovery_blocked`
-  applies; `null` while the recovery resolves by itself.
+  applies or the recovery stopped the settle loop (which raises
+  `settlement_held`); `null` while the recovery resolves by itself.
 
 After a voided window `GET /api/state` also carries `settlementVoid`
 `{ batchId, cause, atMs, orders, fills, withdrawals, deposits }`, with counts only.
