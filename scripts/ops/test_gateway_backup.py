@@ -12,6 +12,16 @@ from pathlib import Path
 import gateway_backup
 
 
+def setUpModule():
+    # main() takes its offsite target from DARKPERP_BACKUP_OFFSITE: exported in
+    # the shell (ops.env sourced), it would rsync these test backups there. The
+    # tests that want an offsite copy set it themselves.
+    patcher = unittest.mock.patch.dict(os.environ)
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+    os.environ.pop("DARKPERP_BACKUP_OFFSITE", None)
+
+
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
