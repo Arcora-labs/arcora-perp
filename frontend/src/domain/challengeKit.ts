@@ -13,7 +13,11 @@
 /// bound when it answers, so once the account binds another address, the next
 /// listing carries a kit for the new beneficiary, and that kit replaces the one
 /// kept for the order. Only the same enclave's authorization for the same
-/// order, chain and settlement replaces a kept kit (see `mergeChallengeKits`).
+/// order, chain and settlement replaces a kept kit (see `mergeChallengeKits`),
+/// and the account panel lets it only once a read of the bound address, sent
+/// after the kept kit was stored, names its beneficiary: a listing from before
+/// the rebind is older than a kit another tab stored since
+/// (see `ChallengeKitSection`).
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils";

@@ -294,8 +294,13 @@ client keeps it:
   replaces the kept one, in storage and in the export, when it is the same
   enclave signer's authorization for the same order, chain and settlement: only
   the beneficiary and the signature differ. Any other copy leaves the kept kit
-  in place. The accept response's kit and the listing's kit for the same address
-  are the same kit, so keeping both changes nothing.
+  in place. The account panel also waits for its read of the bound deposit
+  address (`GET /v1/accounts/me`): the new kit replaces the kept one only when it
+  names that address and the read was sent after the panel found the kept kit
+  stored. A listing fetched before the rebind, in another tab or before the
+  panel opened, still names the old address, so it never replaces a kit stored
+  for the new one. The accept response's kit and the listing's kit for the same
+  address are the same kit, so keeping both changes nothing.
 - A kit is kept only when its signature recovers to the receipt's enclave signer.
   Receipts without an authorization (`null` when the account has no bound deposit
   address) produce no kit. An order the gateway lists as `SETTLED` gets no kit,
