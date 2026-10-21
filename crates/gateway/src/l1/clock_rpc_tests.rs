@@ -81,7 +81,8 @@ async fn handle(State(s): State<Arc<Script>>, Json(req): Json<Value>) -> Json<Va
             } else if sig == selector("clockSkewMs()") {
                 vec![perp_core::clock::abi_u64(c.clock_skew_ms)]
             } else if sig == selector("anchor(uint64,uint8)") {
-                if req["params"][1]["blockHash"] == crate::hex32(&[19; 32]) {
+                // Mode 7: no anchor at any block.
+                if mode == 7 || req["params"][1]["blockHash"] == crate::hex32(&[19; 32]) {
                     vec![[0; 32]; 8]
                 } else {
                     let mut receipt = c.receipt();
@@ -214,7 +215,10 @@ fn fixture() -> (
 fn runtime_clock_native_cast_waits_for_finality_without_restamping_or_sending() {
     let (w, _, c) = fixture();
     let server = Server::new(c, 1);
-    let result = server.l1().register_clock(&w).unwrap();
+    let result = server
+        .l1()
+        .register_clock_with(&w, crate::clock_client::RegisterMode::SendIfAbsent)
+        .unwrap();
     assert_eq!(result, c);
     assert!(server.script.finalized_reads.load(Ordering::SeqCst) >= 2);
     assert!(server
@@ -231,7 +235,13 @@ fn runtime_clock_native_cast_refuses_wrong_chain_receipt_and_mid_read_reorg() {
     for mode in [2, 3, 4] {
         let (w, _, c) = fixture();
         let server = Server::new(c, mode);
-        assert!(server.l1().register_clock(&w).is_err(), "mode {mode}");
+        assert!(
+            server
+                .l1()
+                .register_clock_with(&w, crate::clock_client::RegisterMode::SendIfAbsent)
+                .is_err(),
+            "mode {mode}"
+        );
         assert!(server
             .script
             .calls
@@ -329,6 +339,109 @@ fn runtime_clock_native_cast_dead_intent_evidence_reads_the_quiet_nonces() {
         assert!(calls
             .iter()
             .all(|m| !m.contains("send") && m != "eth_estimateGas"));
+    }
+}
+/// A fence with ceiling `Nonce(3)` installed on `l1`, and its file.
+fn install_fence(l1: &L1) -> std::path::PathBuf {
+    let mut rnd = [0u8; 8];
+    getrandom::getrandom(&mut rnd).unwrap();
+    let suffix: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+    let path = std::env::temp_dir().join(format!("darkperp-clock-rpc-fence-{suffix}"));
+    let fence = NonceFence::open(path.clone(), [4; 32], false).unwrap();
+    fence.cover(3).unwrap();
+    l1.set_nonce_fence(fence).unwrap();
+    path
+}
+fn sent_nothing(script: &Script) -> bool {
+    script.calls.lock().unwrap().iter().all(|m| {
+        !matches!(
+            m.as_str(),
+            "eth_sendRawTransaction" | "eth_sendTransaction" | "eth_estimateGas"
+        )
+    })
+}
+#[test]
+#[ignore = "requires real cast and owned loopback; run explicitly in CI"]
+fn runtime_clock_native_cast_existing_only_and_a_late_timed_register_send_nothing() {
+    use crate::clock_client::RegisterMode;
+    let (w, _, c) = fixture();
+    assert!(c.timed_ops > 0, "the fixture window is timed");
+    let server = Server::new(c, 7);
+    let l1 = server.l1();
+    let fence = install_fence(&l1);
+    // The skew is read with the registration state before the seal and cached.
+    assert_eq!(l1.clock_register_state().unwrap(), (c.batch_id, 0));
+    assert_eq!(
+        l1.clock.as_ref().unwrap().clock_skew_ms.get(),
+        Some(&c.clock_skew_ms)
+    );
+    assert_eq!(
+        l1.register_clock_with(&w, RegisterMode::ExistingOnly)
+            .unwrap_err(),
+        ANCHOR_NOT_REGISTERED
+    );
+    // Once the gateway clock is past lastMs + clockSkewMs less the margin, the
+    // window is not sent.
+    let margin = c.clock_skew_ms / 10;
+    let due = c.last_ms + c.clock_skew_ms - margin + 1;
+    std::thread::sleep(std::time::Duration::from_millis(
+        due.saturating_sub(crate::now_ms()),
+    ));
+    assert_eq!(
+        l1.register_clock_with(&w, RegisterMode::SendIfAbsent)
+            .unwrap_err(),
+        "timed window is past its registration skew; nothing sent"
+    );
+    assert!(sent_nothing(&server.script));
+    assert_eq!(l1.nonce_ceiling(), Ceiling::Nonce(3));
+    let _ = std::fs::remove_file(fence);
+}
+#[test]
+#[ignore = "requires real cast and owned loopback; run explicitly in CI"]
+fn runtime_clock_native_cast_recovery_resume_sends_nothing_once_the_anchor_is_gone() {
+    use crate::clock_client::{resume_exact_with, ClockProverClient, RegisterMode, ResumeMode};
+    // Mode 5: the receipt was cancelled. Mode 7: no anchor. Mode 2: another receipt.
+    for (mode, reason) in [
+        (5, "cancelled"),
+        (7, "no longer registered"),
+        (2, "another clock anchor"),
+    ] {
+        let (w, ww, c) = fixture();
+        let server = Server::new(c, mode);
+        let l1 = server.l1();
+        let fence = install_fence(&l1);
+        let mut prepared = crate::prover_client::prepare_unproved(&w, &ww).unwrap();
+        prepared.outcome.proof = perp_core::clock::PROOF_MAGIC.to_vec();
+        prepared.outcome.proof.extend(c.receipt());
+        prepared.outcome.proof.extend([7; 32]);
+        let mut journal = crate::rollback_journal::RollbackJournal {
+            batch_id: w.batch_id,
+            witness: w,
+            ww,
+            prepared: Some(prepared),
+        };
+        let client = ClockProverClient {
+            inner: Arc::new(crate::prover_client::MockProverClient),
+            l1: l1.clone(),
+            register: RegisterMode::ExistingOnly,
+        };
+        let path = fence.with_extension("rollback");
+        let refused = resume_exact_with(
+            &l1,
+            &client,
+            &mut journal,
+            None,
+            &path,
+            &[6; 32],
+            ResumeMode::Recovery { reprove: false },
+        )
+        .unwrap_err();
+        assert!(refused.contains(reason), "mode {mode}: {refused}");
+        assert!(refused.ends_with("nothing sent; reclassify"), "{refused}");
+        assert!(sent_nothing(&server.script), "mode {mode}");
+        assert_eq!(l1.nonce_ceiling(), Ceiling::Nonce(3), "mode {mode}");
+        let _ = std::fs::remove_file(fence);
+        let _ = std::fs::remove_file(path);
     }
 }
 #[test]

@@ -9753,6 +9753,7 @@ async fn main() {
             Some(Arc::new(clock_client::ClockProverClient {
                 inner,
                 l1: chain.clone(),
+                register: clock_client::RegisterMode::SendIfAbsent,
             }))
         }
         (p, _) => p,

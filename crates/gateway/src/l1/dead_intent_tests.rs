@@ -502,10 +502,10 @@ fn program_vkey_is_read_once_and_only_a_success_is_kept() {
         reads.set(reads.get() + 1);
         result
     };
-    assert!(super::cached_vkey(&cell, || read(Err("execution reverted".into()))).is_err());
-    assert_eq!(super::cached_vkey(&cell, || read(Ok(VKEY))).unwrap(), VKEY);
+    assert!(super::cached_once(&cell, || read(Err("execution reverted".into()))).is_err());
+    assert_eq!(super::cached_once(&cell, || read(Ok(VKEY))).unwrap(), VKEY);
     assert_eq!(
-        super::cached_vkey(&cell, || panic!("the immutable route was read again")).unwrap(),
+        super::cached_once(&cell, || panic!("the immutable route was read again")).unwrap(),
         VKEY
     );
     assert_eq!(reads.get(), 2);
