@@ -1,7 +1,7 @@
 //! Native order lifecycle, separate from proof finality. No ledger/witness changes.
 use super::*;
 use k256::elliptic_curve::bigint::{Encoding, U256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -15,7 +15,10 @@ pub(super) enum Status {
     Unknown,
 }
 
-#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+/// The reason an order ends with when a void discards its window.
+pub(super) const WINDOW_VOIDED: &str = "WindowVoided";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub(super) struct Execution {
     pub status: Status,
     last_tick: Option<u64>,
@@ -74,6 +77,44 @@ impl Execution {
             .wrapping_div(&U256::from_u128(self.filled as u128))
             .to_be_bytes();
         i128::from_be_bytes(q[16..].try_into().expect("16 bytes"))
+    }
+    /// Undo the fills of the voided ticks `ticks` and end the order: a void
+    /// discarded the window that sequenced those fills, and its order hash is
+    /// published as cancelled. Fills from other ticks stay. The average price
+    /// is exact only while no fill remains or none was undone: fill prices are
+    /// not kept per tick, so a record that keeps some fills and loses others
+    /// becomes unavailable. Returns whether the record changed.
+    pub fn void(&mut self, ticks: &BTreeSet<u64>, size: i128) -> bool {
+        let before = self.clone();
+        let voided: i128 = self
+            .pending
+            .iter()
+            .filter(|(tick, _)| ticks.contains(tick))
+            .map(|(_, n)| *n)
+            .sum();
+        self.pending.retain(|tick, _| !ticks.contains(tick));
+        if self.known {
+            match self.filled.checked_sub(voided).filter(|n| *n >= 0) {
+                Some(0) => {
+                    self.filled = 0;
+                    self.numerator = [0; 32];
+                }
+                Some(kept) if voided > 0 => {
+                    self.filled = kept;
+                    self.known = false;
+                    // The undone fills' share of the price sum is unknown.
+                    self.numerator = [0; 32];
+                }
+                Some(_) => {}
+                // Pending sizes never exceed the filled total of a valid record.
+                None => self.known = false,
+            }
+        }
+        self.status = Status::Cancelled;
+        self.reason = Some(WINDOW_VOIDED.into());
+        self.remaining = 0;
+        self.cancelled_size = size - self.filled.clamp(0, size.max(0));
+        *self != before
     }
     pub fn refresh_finality(&mut self, seq: &Sequencer) {
         self.pending.retain(|tick, _| seq.fill_tick_pending(*tick));
@@ -266,6 +307,32 @@ pub(super) fn update(
     events
 }
 
+/// End an order a void discarded (see [`Execution::void`]): its fills in the
+/// voided ticks are undone and it reads Cancelled with the reason
+/// `WindowVoided`. Returns the `execution` event when the record changed.
+///
+/// Call it before any view refreshes finality: the void already dropped the
+/// voided ticks from the pending set, so a refresh would read their fills as
+/// settled.
+#[allow(dead_code)] // the live void of a dead window calls it
+pub(super) fn void(
+    o: &mut GwOrder,
+    seq: &Sequencer,
+    ticks: &BTreeSet<u64>,
+) -> Option<serde_json::Value> {
+    ensure_record(o, seq);
+    let e = o.execution.as_mut().expect("record initialized");
+    if !e.void(ticks, o.order.size) {
+        return None;
+    }
+    // The old fields follow the record only while it is available (see `update`).
+    if e.known {
+        o.filled = e.filled;
+        o.avg_fill = e.average();
+    }
+    Some(serde_json::json!({"type": "execution", "orderId": o.id, "execution": e.wire()}))
+}
+
 pub(super) fn cancel(
     seq: &mut Sequencer,
     owner: &[u8; 32],
@@ -414,6 +481,78 @@ mod arithmetic_tests {
         assert_eq!(e.filled, i128::MAX);
         assert_eq!(e.average(), i128::MAX - 2);
         assert!(e.known);
+    }
+    /// A fill recorded at `tick` against an order of `size`, with the status the
+    /// tick update gives it.
+    fn filled_at(e: &mut Execution, size: i128, fill: i128, price: i128, tick: u64) {
+        e.last_tick = Some(tick);
+        assert!(e.apply(fill, price, tick, size));
+        e.remaining = size - e.filled;
+        e.status = if e.remaining == 0 {
+            Status::Filled
+        } else {
+            Status::PartiallyFilled
+        };
+        assert!(e.validate(size));
+    }
+    #[test]
+    fn void_undoes_only_the_voided_ticks() {
+        // Every fill is in a voided tick: the record stays exact and reads zero.
+        let mut e = Execution::new(10);
+        filled_at(&mut e, 10, 4, 100, 5);
+        assert!(e.void(&BTreeSet::from([5]), 10));
+        assert!(e.known);
+        assert_eq!((e.filled, e.average(), e.unsettled()), (0, 0, 0));
+        assert_eq!(e.numerator, [0; 32]);
+        assert_eq!(e.status, Status::Cancelled);
+        assert_eq!(e.reason.as_deref(), Some(WINDOW_VOIDED));
+        assert_eq!((e.remaining, e.cancelled_size), (0, 10));
+        assert!(e.validate(10));
+        assert!(
+            !e.void(&BTreeSet::from([5]), 10),
+            "a second void changes nothing"
+        );
+
+        // A settled fill (no longer pending) and a voided one: the kept fill's
+        // average cannot be recovered, so the record becomes unavailable. The
+        // price sum is dropped with it; kept, it would exceed what the reduced
+        // total allows and the record would not restore.
+        let mut e = Execution::new(10);
+        filled_at(&mut e, 10, 1, i128::MAX, 6);
+        e.pending.clear();
+        filled_at(&mut e, 10, 1, i128::MAX, 7);
+        assert!(e.void(&BTreeSet::from([7]), 10));
+        assert!(!e.known);
+        assert_eq!(e.filled, 1);
+        assert!(e.pending.is_empty());
+        assert_eq!(e.status, Status::Cancelled);
+        assert_eq!(e.reason.as_deref(), Some(WINDOW_VOIDED));
+        assert_eq!((e.remaining, e.cancelled_size), (0, 9));
+        assert!(e.validate(10));
+        assert_eq!(e.wire()["filledSize"], serde_json::Value::Null);
+
+        // A pending tick outside the voided set keeps its fill.
+        let mut e = Execution::new(10);
+        filled_at(&mut e, 10, 2, 100, 8);
+        filled_at(&mut e, 10, 3, 100, 9);
+        assert!(e.void(&BTreeSet::from([9]), 10));
+        assert_eq!(e.pending, BTreeMap::from([(8, 2)]));
+        assert_eq!(e.filled, 2);
+        assert!(!e.known);
+        assert!(e.validate(10));
+
+        // No voided fill: the totals are kept exactly and the order still ends.
+        let mut e = Execution::new(10);
+        filled_at(&mut e, 10, 2, 100, 3);
+        e.pending.clear();
+        assert!(e.void(&BTreeSet::from([4]), 10));
+        assert!(e.known);
+        assert_eq!((e.filled, e.average()), (2, 100));
+        assert_eq!(
+            (e.status, e.remaining, e.cancelled_size),
+            (Status::Cancelled, 0, 8)
+        );
+        assert!(e.validate(10));
     }
     #[test]
     fn excess_fill_fails_closed_as_unavailable_metadata() {

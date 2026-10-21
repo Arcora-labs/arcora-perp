@@ -490,6 +490,82 @@ mod execution_regressions {
         assert!(snapshot::open(&sealed, &seed).is_err());
     }
 
+    /// A void of the sealed window undoes the fills of its ticks in the order
+    /// records and ends each voided order as cancelled; fills of a settled
+    /// window stay, and an order the void did not touch keeps its record.
+    #[test]
+    fn execution_void_undoes_only_the_voided_ticks() {
+        let (mut gw, maker, taker, px) = paired();
+        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 40, 0, "Ioc");
+        tick(&mut gw);
+        let settled = assert_replay(&mut gw);
+        gw.seq.mark_window_settled(settled.batch_id);
+        tick(&mut gw);
+        // The maker fills again in the next window, which is then voided.
+        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 40, 0, "Ioc");
+        tick(&mut gw);
+        let voided_window = assert_replay(&mut gw);
+        // Newest first: [0] is the order the voided window filled.
+        let taker_orders = |gw: &Gw| gw.v1_orders_json(&taker).unwrap()["orders"].clone();
+        let first = taker_orders(&gw)[1].clone();
+        assert_eq!(first["execution"]["status"], "FILLED");
+        assert_eq!(taker_orders(&gw)[0]["execution"]["status"], "FILLED");
+        let voided = gw.seq.void_window(&voided_window).unwrap();
+        assert!(!voided.ticks.is_empty());
+        let mut events = Vec::new();
+        for key in [maker, taker] {
+            for o in &mut gw.accounts.get_mut(&key).unwrap().orders {
+                if voided.hashes.contains(&o.order_hash) {
+                    events.extend(execution::void(o, &gw.seq, &voided.ticks));
+                }
+            }
+        }
+        assert_eq!(events.len(), 2, "the maker and the voided taker order");
+        assert!(events.iter().all(|e| e["type"] == "execution"
+            && e["execution"]["status"] == "CANCELLED"
+            && e["execution"]["reason"] == execution::WINDOW_VOIDED));
+
+        // The voided taker order had no other fill: its record stays exact.
+        let gone = taker_orders(&gw)[0].clone();
+        assert_eq!(gone["filledSize"], "0");
+        assert_eq!(gone["avgFillPrice"], "0");
+        assert_eq!(gone["execution"]["status"], "CANCELLED");
+        assert_eq!(gone["execution"]["reason"], "WindowVoided");
+        assert_eq!(gone["execution"]["remainingSize"], "0");
+        assert_eq!(gone["execution"]["unsettledSize"], "0");
+        assert_eq!(gone["execution"]["settledSize"], "0");
+        let o = &gw.accounts[&taker].orders[0];
+        assert_eq!((o.filled, o.avg_fill), (0, 0));
+        // Its first order settled in the earlier window and is untouched.
+        assert_eq!(taker_orders(&gw)[1], first);
+
+        // The maker keeps its settled fill and loses the voided one; with fill
+        // prices not kept per tick its average is unavailable.
+        let m = row(&gw, &maker);
+        assert_eq!(m["execution"]["status"], "CANCELLED");
+        assert_eq!(m["execution"]["reason"], "WindowVoided");
+        assert_eq!(m["execution"]["available"], false);
+        assert!(m["filledSize"].is_null());
+        let o = &gw.accounts[&maker].orders[0];
+        assert_eq!(o.execution.as_ref().unwrap().filled, SIZE_SCALE / 40);
+        assert_eq!(o.avg_fill, px, "the old field keeps its last exact value");
+        assert!(gw.seq.remaining_order_size(&o.order_hash).is_none());
+
+        // A repeated void changes nothing, and the records restore.
+        for key in [maker, taker] {
+            for o in &mut gw.accounts.get_mut(&key).unwrap().orders {
+                if voided.hashes.contains(&o.order_hash) {
+                    assert!(execution::void(o, &gw.seq, &voided.ticks).is_none());
+                }
+            }
+        }
+        let plain = gw.snapshot_plain();
+        let restored = Gw::boot_restored(&plain).unwrap();
+        assert_eq!(row(&restored, &maker), m);
+        assert_eq!(taker_orders(&restored)[0], gone);
+        assert_eq!(restored.snapshot_plain(), plain);
+    }
+
     #[test]
     fn challenge_prefers_earlier_ordered_evidence_over_later_cancellation() {
         let (mut gw, maker, _, _) = paired();
