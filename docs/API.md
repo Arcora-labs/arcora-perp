@@ -51,7 +51,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | POST | `/v1/accounts/deposit/route` | ✓ | `{ ownerCommit, from, amount, marketId, purpose }` — explicitly adopt a legacy pending permit |
 | POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — optional finalized ingestion accelerator / durable receipt |
 | POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
-| GET  | `/v1/accounts/withdrawals` | ✓ | `{ vault, withdrawals[] }` with claim proofs |
+| GET  | `/v1/accounts/withdrawals` | ✓ | `{ vault, withdrawals[], voided[] }` with claim proofs |
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
@@ -174,6 +174,11 @@ the reason the batch manifest records for it (the manifest stores the numeric co
 
 Rejection membership is proven; the truthfulness of a rejection reason is not
 (`docs/SECURITY.md`).
+
+An order of a voided settlement window (§ Voided settlement windows) reads
+`execution.status` `CANCELLED` with `execution.reason` `WindowVoided`, a reason no
+manifest records: the replacement window's manifest rejects its hash as `Cancelled`
+(code 9).
 
 ## Faucet — get test USDC
 
@@ -507,7 +512,11 @@ directly:
    the gateway assigns it, and it is strictly increasing across every withdrawal of
    the deployment. The proven state records the last leaf nonce, and the proof refuses
    a withdrawal whose nonce is not above it (by at most `2^32`), so no two leaves ever
-   share a nonce, including the wind-down's reserve payout.
+   share a nonce, including the wind-down's reserve payout. `voided` lists the
+   account's withdrawals that the last voided settlement window removed since the
+   gateway started, each `{ to, amount, nonce, leaf, batchId }`: their leaves are
+   never published, and the amount is back in the position
+   (§ Voided settlement windows).
 4. On Base Sepolia: `vault.claim(to, amount, nonce, root, proof)`, with `root` and
    `proof` from step 3, releases the USDC.
    The leaf is single-claim (`AlreadyClaimed` on replay). A claim never draws on the
@@ -573,6 +582,36 @@ deposit from the chain.
 `--tx <hash>`, `--id <n>`) finds the `Deposit` log, checks it against the vault's
 deposit chain and the settlement state, and prints the `triggerCloseOnly` and
 `refundDeposit` calls. Like `claim_withdrawal.py`, it never signs or sends.
+
+## Voided settlement windows
+
+In clock mode a sealed window must register its operation times with the clock
+verifier before its proof can settle. A window whose registration can never land
+(its anchor was cancelled, or none exists and none can be created any more) is
+voided by the gateway without a restart (`docs/PROVING-RUNBOOK.md`, § Dead clock
+window). Nothing of it settled on L1, so only off-chain state is undone:
+
+- **Orders and fills.** The engine returns to the state before the window, and
+  every fill of the window is undone. Each order the window sequenced, rejected or
+  filled, including a resting order one of its fills touched, ends with
+  `execution.status` `CANCELLED` and `execution.reason` `WindowVoided`; its
+  `filledSize` no longer counts the undone fills. The replacement window, which
+  settles under the same batch id, rejects every such hash as `Cancelled`, so an
+  inclusion challenge for it is answerable.
+- **Deposits.** A deposit the window credited is credited again with a new note.
+  It stays landed on L1 under its permit; until it is credited again,
+  `POST /v1/accounts/deposit/onchain` answers `202 pendingFinalizedIngestion`. If
+  the settlement enters close-only first, it is refundable (§ Refunds after
+  close-only).
+- **Withdrawals.** A withdrawal requested in the window is removed and can never be
+  claimed; its amount is back in the position. Request it again with the next
+  `nextWithdrawNonce`; it gets a new leaf nonce. `GET /v1/accounts/withdrawals`
+  lists the removed ones under `voided`.
+
+Once the void is durable, each affected account receives events on `/v1/ws`
+(§ WebSocket), and `GET /api/state` carries `settlementVoid` (§ Clock recovery
+status). The `voided` list and `settlementVoid` describe the last void since the
+gateway started; they are not persisted, and a restart clears them.
 
 ## L1 inclusion challenges
 
@@ -833,6 +872,15 @@ To also receive **your own** events, send `{ "type": "auth", "apiKey": "0x<64 he
 - `{ "type": "order", "orderId": "o1", "finality": "MATCHED", "marketId": 0 }`
 - `{ "type": "fill", "orderId": "o1", "marketId": 0, "side": "Buy", "size": "...", "price": "..." }`
 - `{ "type": "adl", "clawed": "..." }` (your position was auto-deleveraged, audit Q2)
+- `{ "type": "execution", "orderId": "o1", "execution": { "status": "CANCELLED", "reason": "WindowVoided", ... } }`
+  (your order's cumulative execution changed; the object is the order's `execution`
+  in `GET /v1/orders`)
+- `{ "type": "withdrawalVoided", "leaf": "0x...", "amount": "...", "nonce": 7, "batchId": 12 }`
+  (a voided window removed this withdrawal; request it again)
+- `{ "type": "depositRestored", "depositIds": [41, 42], "batchId": 12 }` (a voided
+  window credited these deposits; they are credited again)
+
+Each event also carries your `owner`.
 
 An unauthenticated connection sees only public market data.
 
@@ -950,7 +998,53 @@ Each is raised once when it becomes active and once when it recovers:
 | `engine_close_only` | the engine is in close-only while the settlement is not; governance should call `enterCloseOnly()` (§ Deposits after an engine trip) |
 | `admission_cap_reached` | the soft admission cap is reached; new permits that add to the bound at it are refused, and registrations while the state itself is at it (§ Admission cap) |
 | `withdraw_nonce_repaired` | at boot the withdrawal-leaf counter was at or behind the engine's last withdrawal nonce and was moved forward; find out which snapshot was restored |
-| `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the state is beyond an admission bound (only after a bound is lowered under an existing state); it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
+| `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the state is beyond an admission bound (only after a bound is lowered under an existing state, or after a voided window when crediting its deposits again would exceed one); it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
+| `window_voided` | a sealed window whose clock registration can never land was voided, and the window after it has not settled yet (§ Voided settlement windows). Not persisted: a restart clears it |
+| `clock_recovery_blocked` | the settle loop's recovery of a clock window needs the operator or is running out of time; `clockRecovery.operatorAction` says what to do (§ Clock recovery status). Cleared when the recovery resolves |
+
+### Clock recovery status
+
+While the settle loop recovers a clock window that failed after its intent was
+journaled, the window stays sealed and clock admission stays closed: orders,
+fills, liquidations and funding ticks wait. `GET /api/state` then carries
+`clockRecovery`, omitted otherwise:
+
+```json
+{
+  "batchId": 12, "phase": 0, "sinceMs": 1767225600000, "steps": 4,
+  "last": "awaiting the chain clock",
+  "basis": "chainClock",
+  "fence": { "block": 9001, "ceiling": 5, "finalizedNonce": 5, "latestNonce": 5,
+             "pendingNonce": 5, "quiet": true, "passed": false },
+  "chainClock": { "blockTimeMs": 1767225620000, "lastMs": 1767225600000, "skewMs": 30000 },
+  "burns": 0, "retryFailures": 0,
+  "closeOnlyBudget": { "stalledBlocksLeft": 4100, "starvedBlocksLeft": null },
+  "operatorAction": null
+}
+```
+
+- `last`: the last wait reason or settle error class, as fixed text (never an
+  error message).
+- `basis`: what can show that the window can never settle: `chainClock` for a
+  window with timed operations (the nonce fence can too), `fence` otherwise.
+- `fence`: at the last finalized read, the window's nonce ceiling (a nonce, `none`
+  or `unknown`), the sequencer's finalized nonce and the highest latest and pending
+  nonces on the configured RPCs (`null` when a read failed). A pending nonce above
+  the finalized one is a pending sequencer-key transaction; quiet nonces at or
+  below the ceiling are a recorded nonce that no transaction used.
+- `chainClock`: for a window with timed operations, the finalized block time
+  against the window's last operation time plus `clockSkewMs`.
+- `burns`: the unused sequencer nonces the loop burned for this window (at most 3).
+- `closeOnlyBudget`: blocks until anyone may trigger close-only for lack of
+  progress, and for the oldest unconsumed deposit (`null` when there is none).
+- `operatorAction`: what only the operator can do, when `clock_recovery_blocked`
+  applies; `null` while the recovery resolves by itself.
+
+After a voided window `GET /api/state` also carries `settlementVoid`
+`{ batchId, cause, atMs, orders, fills, withdrawals, deposits }`, with counts only.
+`cause` is `Cancelled` (its anchor was cancelled), `EmptyAfterFence` (no anchor
+exists and none can be created) or `UnderivableTimeBounds` (its operation times
+were not monotonic, so it could never register).
 
 ### `POST /v1/admin/settlement/cancel-anchor` — cancel a stale clock anchor
 
@@ -962,7 +1056,11 @@ governance for phases 1 and 2.
 
 The gateway refuses the request:
 
-- while a local settle for that receipt is still in flight;
+- while the settle loop is working on a window: while it registers, proves or
+  settles that batch and phase, and during each recovery step (a settle attempt of
+  a recovery holds it until the attempt ends). The answer is `409`
+  `{ "error": "the settle loop is working on this window; retry" }` at once; retry
+  later;
 - before the anchor is `anchorTimeoutMs()` old, measured against the latest block
   time.
 
@@ -980,8 +1078,11 @@ recover the batch afterwards, is in `docs/PROVING-RUNBOOK.md`.
 | `503` | no L1 key or no clock verifier is configured |
 | `400` | malformed body |
 
-The endpoint is exempt from the clock-admission gate. Cancelling does not resolve
-the local window: restart the gateway, and boot recovery classifies it.
+The endpoint is exempt from the clock-admission gate. A restart is not needed after
+a cancel: the settle loop classifies the window at finality and resolves it. A
+timed phase-0 window is voided (§ Voided settlement windows); an untimed window
+registers again under a new receipt. `POST /v1/admin/settlement/resume` makes the
+loop poll at once.
 
 ### `POST /v1/admin/bond/acknowledge-slash` — resume bond top-ups after a slash
 

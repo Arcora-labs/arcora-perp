@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { REJECT_REASONS, describeRejectReason } from "./rejectReason";
+import { EXECUTION_REASONS, REJECT_REASONS, describeRejectReason } from "./rejectReason";
 
 describe("manifest reject reasons", () => {
   it("cover the stable codes 1..13 exactly once each", () => {
@@ -12,8 +12,16 @@ describe("manifest reject reasons", () => {
     expect(describeRejectReason("BelowMinimumSize")).toMatch(/\$10 minimum order size/);
   });
 
+  it("explains an order whose settlement window was voided", () => {
+    expect(describeRejectReason("WindowVoided")).toBe(
+      "Its settlement window was voided; fills in it were undone.",
+    );
+    expect(Object.keys(EXECUTION_REASONS).filter((r) => r in REJECT_REASONS)).toEqual([]);
+  });
+
   it("passes an unknown or non-manifest reason through unchanged", () => {
     expect(describeRejectReason("UserCancelled")).toBe("UserCancelled");
     expect(describeRejectReason("toString")).toBe("toString");
+    expect(describeRejectReason("hasOwnProperty")).toBe("hasOwnProperty");
   });
 });

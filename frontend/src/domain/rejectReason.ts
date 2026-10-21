@@ -21,8 +21,16 @@ export const REJECT_REASONS: Record<string, { code: number; text: string }> = {
   BelowMinimumSize: { code: 13, text: "Below the $10 minimum order size for an order that opens or increases a position." },
 };
 
-/// Readable text for a reason name, or the name itself when it is not a known
-/// manifest reason (execution metadata can also carry non-manifest reasons).
+// Reasons an order's execution can end with that no batch manifest records. A
+// voided order's manifest entry is `Cancelled`; its execution says why.
+export const EXECUTION_REASONS: Record<string, string> = {
+  WindowVoided: "Its settlement window was voided; fills in it were undone.",
+};
+
+/// Readable text for a reason name, or the name itself when it is neither a
+/// known manifest reason nor a known execution reason.
 export function describeRejectReason(reason: string): string {
-  return Object.prototype.hasOwnProperty.call(REJECT_REASONS, reason) ? REJECT_REASONS[reason].text : reason;
+  if (Object.prototype.hasOwnProperty.call(REJECT_REASONS, reason)) return REJECT_REASONS[reason].text;
+  if (Object.prototype.hasOwnProperty.call(EXECUTION_REASONS, reason)) return EXECUTION_REASONS[reason];
+  return reason;
 }

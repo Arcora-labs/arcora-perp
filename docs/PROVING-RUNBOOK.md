@@ -265,15 +265,144 @@ stale-anchor alert once an anchor is older than `anchorTimeoutMs`.
 **Effects.** The anchor is deleted and `lastTimedMs` is not rolled back. A proof
 bound to the cancelled receipt can never verify again. A re-registration is stamped
 later, so it gets a new receipt. The gateway treats a cancelled receipt as the end
-of that window's settle wait. Reconcile through the rollback journal, restarting the
-gateway if it holds, before repeating a wind-down step. Never edit the state by
-hand.
+of that window's settle wait. The settle loop then classifies the window at a
+finalized block and resolves it (§ Dead clock window); a restart is not needed, and
+`POST /v1/admin/settlement/resume` makes the loop poll at once. If the loop holds
+instead, reconcile through the rollback journal and restart before repeating a
+wind-down step. Never edit the state by hand.
 
-**A dead phase-0 window.** In this release it is recovered through close-only:
+## Dead clock window
 
-1. Governance calls `enterCloseOnly()`.
-2. Once close-only begins, the phase-0 anchor is inert: `settleBatch` refuses, and
-   the clock's phase moves to 1. So no cancel is needed for it.
-3. The gateway's close-only rebase drops the window. Its deposits are refundable on
-   L1, and its order hashes are rejected in the `SettleAll` manifest
-   (`docs/FINAL_SETTLE_RUNBOOK.md`).
+Once a window's clock intent is journaled, a failed registration, proof or settle
+no longer stops the settle loop. The window stays sealed and clock admission stays
+closed, so no orders, fills, liquidations or funding ticks run; the settlement's
+liveness and deposit-inclusion clocks keep running. Each poll reads the durable
+journal again and the settlement, the anchor slot, the sequencer nonce and the
+block time at one finalized block, then:
+
+- commits our settle if it landed;
+- settles the exact journal again if our own anchor is registered, with the settle
+  backoff and a check at the latest block that the anchor is still ours; after
+  three failures the proof is made once more and `clock_recovery_blocked` is raised;
+- resolves the window if it can never settle (below);
+- otherwise waits.
+
+`GET /api/state` shows the pending recovery as `clockRecovery` (`docs/API.md`).
+
+**When a window can never settle.** Our anchor is not in the slot (it was
+cancelled, or none exists), and no transaction of ours can still put it there.
+One of these shows it:
+
+| Basis | Applies to | Rule at the finalized block |
+|---|---|---|
+| chain clock | a window with timed operations | the header-bound block time is past the window's last operation time plus `clockSkewMs`. Block times never decrease, so a registration mined later reverts `InvalidTime`. This is the usual case: a registration sent after `clockSkewMs` is refused by its gas estimate and never broadcast |
+| quiet nonce fence | every window; the only basis for an untimed window or one whose operation times are not monotonic | the sequencer's finalized nonce is past every nonce recorded for the window's sends, and on every configured RPC (`L1_RPC`, `L1_RPC_WITNESS`) its latest and pending nonces equal the finalized nonce |
+
+The chain clock basis relies on header-bound, non-decreasing block times of a
+finalized, witness-agreed block, which Base and other EVM chains provide. The
+gateway also refuses to send a timed registration once its own clock is within a
+small margin of the window's last operation time plus `clockSkewMs`; nothing is
+sent and no nonce is recorded.
+
+**What happens to it.**
+
+| Window | Result |
+|---|---|
+| phase 0 with timed operations | voided (below) |
+| phase 0 whose operation times are not monotonic | voided on the fence basis; the log line says to check the gateway clock (NTP) |
+| untimed (any phase) | returned to the open window; it registers again under a new receipt |
+| phase 0 while the settlement is in close-only | returned to the open window; the close-only rebase drops it in the wind-down (`docs/FINAL_SETTLE_RUNBOOK.md`) |
+| another anchor holds the batch and phase | waits with `clock_recovery_blocked`: cancel that anchor once it is older than `anchorTimeoutMs`, after which the window is resolved as above |
+| an anchor of a journaled receipt is gone without a cancellation | holds: the settle loop stops |
+
+The gateway never cancels an anchor by itself; cancelling stays the operator's
+`POST /v1/admin/settlement/cancel-anchor`. After such a cancel a timed phase-0
+window is voided once the cancel is final: the anchor was at least
+`anchorTimeoutMs` old (1 h at launch), so its last operation time plus
+`clockSkewMs` has passed, or passes at most `clockSkewMs` later with a shorter
+timeout. An untimed window needs the fence; the cancel is itself a sequencer-key
+send.
+Close-only is still available through governance, but a dead phase-0 window no
+longer needs it.
+
+**Bounded nonce burn.** On the fence basis a recorded nonce that no transaction
+used (a send refused before broadcast) would keep the fence from passing. After two
+consecutive polls with quiet nonces and the finalized nonce at or below the
+window's recorded ceiling, the loop sends a 0-value transfer from the sequencer key
+to itself at exactly that nonce, with gas limit 21000 and no estimate, at most three
+times per window. It touches no contract and cancels nothing. A window with timed
+operations waits for the chain clock instead, unless the block time could not be
+read.
+
+**What a void does.** Everything the window did off-chain is discarded; nothing of
+it ever landed on L1.
+
+- The engine returns to the window's pre-state. Every fill of the window is undone.
+  Each order the window sequenced, rejected or filled, including resting orders its
+  fills touched, ends cancelled with the execution reason `WindowVoided`, and is
+  published as `Cancelled` in the replacement window, which settles under the same
+  batch id.
+- Each deposit the window credited is credited again with new notes; the user does
+  nothing. Until then `POST /v1/accounts/deposit/onchain` answers 202.
+- Each withdrawal requested in the window is removed and can never be claimed; its
+  amount is back in the position. The user requests it again with a new signature.
+  No nonce moves back.
+- An insurance bootstrap the window applied returns to `NotStarted`.
+- Display-only figures (candles, ADL totals, house market-maker counters) are not
+  reverted.
+
+Affected accounts get `execution`, `withdrawalVoided` and `depositRestored` events
+once the void is durable, `GET /v1/accounts/withdrawals` lists the removed
+withdrawals as `voided`, and `/api/state` shows `settlementVoid`. The void is
+persisted before the journal is deleted and before admission reopens.
+
+**Operator steps.**
+
+1. While a recovery is pending, read `clockRecovery` in `/api/state` and the
+   `[recovery]` log lines. `clock_recovery_blocked` is raised when only the
+   operator can act, and `clockRecovery.operatorAction` says what to do:
+
+   | Reason | Action |
+   |---|---|
+   | another anchor holds the batch | cancel it once it is older than `anchorTimeoutMs` |
+   | the settle keeps failing against our anchor | fix the prover or RPC, or cancel the anchor once it is older than `anchorTimeoutMs` |
+   | a deposit halt blocks the settle | clear the halt, or cancel the anchor |
+   | the nonce burns are used up | let the pending sequencer-key transaction be mined, or mine one from the sequencer key |
+   | less than half of the close-only budget is left | resolve the window before anyone can trigger close-only |
+   | the recovery has been pending for many polls | read the `[recovery]` log lines |
+   | repeated live voids | see the void breaker below |
+
+2. After a void, `window_voided` stays raised until the replacement window
+   settles. Tell the users whose withdrawals were removed to request them again.
+   The `settlementVoid` notice, the `voided` lists and `window_voided` are not
+   persisted: a restart forgets them, so send the notice before restarting.
+3. **Void breaker.** Two voids without a settled timed window between them, or
+   three within an hour (a void at boot counts), stop the settle loop: the last
+   void is durable and its journal deleted, but admission stays closed and
+   `clock_recovery_blocked` is raised. A systematic delay between a window's last
+   operation and its registration causes this; each failure logs
+   `[recovery] window <n>: clock failed <ms> ms after its last timed op`. Fix the
+   cause (gateway clock, RPC latency, disk), then restart. The restart is the
+   acknowledgment; the next start is a normal boot.
+4. The nonce fence file `<state>.l1-nonce` is part of the state. Never restore an
+   older copy of it, and run only one gateway instance with the sequencer key.
+5. With clock mode, configure `L1_ANSWER_KEYSTORE`, so challenge answers do not
+   share the sequencer key's nonces.
+
+**A restart while a window is undecided.** Boot classifies the journal with the
+same rules, at one finalized block and with every recorded sequencer-key send as
+the ceiling, but it cannot wait and does not burn. The evidence is read up to
+three times; if every read fails, startup is refused and nothing is resumed. A
+window with timed
+operations is decided by the chain clock at boot, and one that may still settle is
+resumed only against its existing anchor. An untimed window, or one whose
+operation times are not monotonic, needs the fence: if boot refuses startup
+because the sequencer nonce has not passed every recorded send, check that no
+sequencer-key transaction is pending. If none is, mine any transaction from the
+sequencer key at the finalized nonce, wait until it is finalized, and restart:
+
+```bash
+NONCE=$(cast nonce <SEQUENCER> --block finalized --rpc-url $RPC)
+cast send <SEQUENCER> --value 0 --nonce $NONCE --gas-limit 21000 \
+  --rpc-url $RPC <sequencer signer flags>
+```

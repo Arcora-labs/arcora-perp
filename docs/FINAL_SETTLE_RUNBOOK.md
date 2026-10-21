@@ -64,8 +64,10 @@ Run the gateway and prover from the deploy block onward so the first keepalive l
 in time.
 
 **Governance close-only** is the emergency brake (for example, a sequencer key that
-must be considered compromised). It is also the recovery for a dead phase-0 clock
-anchor (`docs/PROVING-RUNBOOK.md`) and the orderly way to move users to a new stack:
+must be considered compromised). A dead phase-0 clock window no longer needs it: the
+gateway voids the window, or returns it to the open window, by itself
+(`docs/PROVING-RUNBOOK.md`, § Dead clock window). Close-only remains an option there
+too. It is also the orderly way to move users to a new stack:
 
 1. Announce the migration and the date.
 2. Let users withdraw normally while ordinary settlement still runs.
