@@ -7404,6 +7404,99 @@ async fn note_clock_failure(app: &Shared, batch_id: u64, error: &str) -> Duratio
     action.delay()
 }
 
+/// A clock window failed after its intent was journaled: hand it to the
+/// recovery. The failure counts toward HELD (`note_clock_failure`); the
+/// recovery takes the window's phase, the last time of its operations and the
+/// window's nonce `ceiling`, and `/api/state` shows it before the first step.
+/// Returns the recovery and the delay before that step.
+#[allow(clippy::too_many_arguments)] // the failed window's whole identity
+async fn start_clock_recovery(
+    app: &Shared,
+    batch_id: u64,
+    witness: &WindowWitness,
+    phase: u8,
+    error: String,
+    prune_candidates: Vec<[u8; 32]>,
+    gate_was_closed: bool,
+    ceiling: l1::Ceiling,
+) -> (clock_recovery::PendingRecovery, Duration) {
+    let delay = note_clock_failure(app, batch_id, &error).await;
+    let rec = clock_recovery::PendingRecovery::new(
+        batch_id,
+        phase,
+        error,
+        prune_candidates,
+        gate_was_closed,
+        ceiling,
+    )
+    .with_ops(&witness.ops);
+    clock_recovery::publish(app, &rec).await;
+    (rec, delay)
+}
+
+/// Whether a clock settle that failed after its send goes to the recovery:
+/// while the finalized batch count is still the window's, or could not be read
+/// (`None`). Outside clock mode, or at any other count, the loop holds (a count
+/// at the next batch is first checked as a roll-forward).
+fn settle_failure_recovers(clock_mode: bool, batch_id: u64, now_bc: Option<u64>) -> bool {
+    clock_mode && now_bc.is_none_or(|bc| bc == batch_id)
+}
+
+/// The settle loop's turn while a clock window is pending: one recovery step
+/// with admission paused, then the loop's own bookkeeping. A resolved window
+/// clears the recovery, latches close-only when it returned for it, is
+/// persisted promptly and broadcast, and the next tick attempts at once. A wait
+/// sets the next attempt. A stop, a shutdown, or a recovery without its journal
+/// or bridge ends the loop.
+#[allow(clippy::too_many_arguments)] // the settle loop's state it updates
+async fn settle_loop_recovery_step(
+    app: &Shared,
+    stop: &service_shutdown::Shutdown,
+    chain: Option<&Arc<dyn clock_recovery::RecoveryChain>>,
+    jpath: Option<&std::path::Path>,
+    seed: &[u8; 32],
+    pending: &mut Option<clock_recovery::PendingRecovery>,
+    next_attempt: &mut tokio::time::Instant,
+    close_only_seen: &mut bool,
+    snapshot_notify: &tokio::sync::Notify,
+) -> std::ops::ControlFlow<()> {
+    use std::ops::ControlFlow;
+    let Some(rec) = pending.as_mut() else {
+        return ControlFlow::Continue(());
+    };
+    let Ok(mut admission) = app.clock_admission.pause(stop).await else {
+        return ControlFlow::Break(());
+    };
+    let (Some(chain), Some(jp)) = (chain, jpath) else {
+        hold_settlement_for_recovery(
+            app,
+            format!(
+                "clock window {} unresolved without its journal or bridge",
+                rec.batch_id
+            ),
+        )
+        .await;
+        return ControlFlow::Break(());
+    };
+    match clock_recovery::run_step(app, chain, rec, jp, seed, &mut admission).await {
+        clock_recovery::Step::Resolved { close_only } => {
+            *pending = None;
+            *next_attempt = tokio::time::Instant::now();
+            *close_only_seen |= close_only;
+            snapshot_notify.notify_one();
+            let snap = { app.snapshot(&*app.gw.lock().await) };
+            let _ = app
+                .tx
+                .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
+        }
+        clock_recovery::Step::Wait(delay) => {
+            *next_attempt = tokio::time::Instant::now() + delay;
+        }
+        clock_recovery::Step::Stop => return ControlFlow::Break(()),
+    }
+    ControlFlow::Continue(())
+}
+
 async fn hold_settlement_for_recovery(app: &Shared, error: String) {
     let mut gw = app.gw.lock().await;
     gw.settle_health.hold_for_recovery(error);
@@ -11783,31 +11876,23 @@ async fn main() {
                     };
                     // A pending clock window: one recovery step, admission closed
                     // throughout (the failed attempt left the hold sticky).
-                    if let Some(rec) = pending.as_mut() {
-                        let mut admission = match app.clock_admission.pause(&stop).await {
-                            Ok(p) => p, Err(_) => break,
-                        };
-                        let (Some(chain), Some(jp)) = (recovery_chain.as_ref(), jpath.as_deref()) else {
-                            hold_settlement_for_recovery(&app, format!("clock window {} unresolved without its journal or bridge", rec.batch_id)).await;
-                            break;
-                        };
-                        match clock_recovery::run_step(&app, chain, rec, jp, &enclave_seed, &mut admission).await {
-                            clock_recovery::Step::Resolved { close_only } => {
-                                pending = None;
-                                next_attempt = tokio::time::Instant::now();
-                                close_only_seen |= close_only;
-                                snapshot_notify.notify_one();
-                                let snap = { app.snapshot(&*app.gw.lock().await) };
-                                let _ = app.tx.send(
-                                    serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
-                                );
-                            }
-                            clock_recovery::Step::Wait(delay) => {
-                                next_attempt = tokio::time::Instant::now() + delay;
-                            }
-                            clock_recovery::Step::Stop => break,
+                    if pending.is_some() {
+                        match settle_loop_recovery_step(
+                            &app,
+                            &stop,
+                            recovery_chain.as_ref(),
+                            jpath.as_deref(),
+                            &enclave_seed,
+                            &mut pending,
+                            &mut next_attempt,
+                            &mut close_only_seen,
+                            &snapshot_notify,
+                        )
+                        .await
+                        {
+                            std::ops::ControlFlow::Break(()) => break,
+                            std::ops::ControlFlow::Continue(()) => continue,
                         }
-                        continue;
                     }
                     let mut admission = match app.clock_admission.pause(&stop).await {
                         Ok(p) => p, Err(_) => break,
@@ -12210,19 +12295,20 @@ async fn main() {
                                 ),
                                 _ => eprintln!("[recovery] window {batch_id}: clock failed: {e}"),
                             }
-                            let delay = note_clock_failure(&app, batch_id, &e).await;
-                            // Taken after the worker returned: a send holds its lane
-                            // until cast returns, so this covers every send it made.
-                            let rec = clock_recovery::PendingRecovery::new(
+                            // The ceiling is taken after the worker returned: a send
+                            // holds its lane until cast returns, so it covers every
+                            // send the attempt made.
+                            let (rec, delay) = start_clock_recovery(
+                                &app,
                                 batch_id,
+                                &witness_rb,
                                 window_phase,
                                 e,
                                 prune_rb,
                                 gate_was_closed,
                                 l1.nonce_ceiling(),
                             )
-                            .with_ops(&witness_rb.ops);
-                            clock_recovery::publish(&app, &rec).await;
+                            .await;
                             pending = Some(rec);
                             next_attempt = tokio::time::Instant::now() + delay;
                         }
@@ -12347,22 +12433,28 @@ async fn main() {
                                                 );
                                             }
                                         }
-                                        RollAction::Hold if clock_mode && now_bc == batch_id => {
+                                        RollAction::Hold
+                                            if settle_failure_recovers(
+                                                clock_mode,
+                                                batch_id,
+                                                Some(now_bc),
+                                            ) =>
+                                        {
                                             // The settle may still land, or never: the
                                             // recovery decides at finalized blocks, with
                                             // the window sealed and admission closed.
                                             eprintln!("[recovery] window {batch_id}: settle failed and finalized batchCount is still {now_bc}: {err}");
-                                            let delay = note_clock_failure(&app, batch_id, &err).await;
-                                            let rec = clock_recovery::PendingRecovery::new(
+                                            let (rec, delay) = start_clock_recovery(
+                                                &app,
                                                 batch_id,
+                                                &witness_rb,
                                                 window_phase,
                                                 err,
                                                 prune_rb,
                                                 gate_was_closed,
                                                 l1.nonce_ceiling(),
                                             )
-                                            .with_ops(&witness_rb.ops);
-                                            clock_recovery::publish(&app, &rec).await;
+                                            .await;
                                             pending = Some(rec);
                                             next_attempt = tokio::time::Instant::now() + delay;
                                         }
@@ -12375,19 +12467,19 @@ async fn main() {
                                         }
                                     }
                                 }
-                                _ if clock_mode => {
+                                _ if settle_failure_recovers(clock_mode, batch_id, None) => {
                                     eprintln!("[recovery] window {batch_id}: settle failed ({err}) and the pinned observation failed; the recovery reads the settlement again");
-                                    let delay = note_clock_failure(&app, batch_id, &err).await;
-                                    let rec = clock_recovery::PendingRecovery::new(
+                                    let (rec, delay) = start_clock_recovery(
+                                        &app,
                                         batch_id,
+                                        &witness_rb,
                                         window_phase,
                                         err,
                                         prune_rb,
                                         gate_was_closed,
                                         l1.nonce_ceiling(),
                                     )
-                                    .with_ops(&witness_rb.ops);
-                                    clock_recovery::publish(&app, &rec).await;
+                                    .await;
                                     pending = Some(rec);
                                     next_attempt = tokio::time::Instant::now() + delay;
                                 }

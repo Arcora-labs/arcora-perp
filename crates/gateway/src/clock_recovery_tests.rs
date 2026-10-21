@@ -1874,3 +1874,209 @@ async fn recovery_alerts_and_backoff() {
     assert!(!h.alert(&gw, AlertKind::WindowVoided));
     assert_eq!(gw.settle_health.health(), Health::Healthy);
 }
+
+/// The settle loop hands a failed clock window to the recovery with the
+/// window's phase, the last time of its operations and the window's nonce
+/// ceiling, and `/api/state` shows it before the first step. A settle that
+/// failed after its send goes to the recovery only in clock mode, while the
+/// finalized batch count is still the window's or could not be read.
+#[tokio::test]
+async fn the_settle_loop_starts_a_recovery_with_the_window_identity() {
+    let Voidable { gw, journal, .. } = voidable(false);
+    let h = harness(gw, journal.clone(), chain_at(&journal));
+    let window = journal.batch_id;
+    let last_ms = ClockIntent::of(&journal).unwrap().last_ms.unwrap();
+    for phase in [0, 2] {
+        let (rec, delay) = crate::start_clock_recovery(
+            &h.app,
+            window,
+            &journal.witness,
+            phase,
+            "clock preparation: refused before broadcast".into(),
+            vec![[3; 32]],
+            true,
+            Ceiling::Nonce(7),
+        )
+        .await;
+        assert_eq!(
+            (rec.batch_id, rec.phase, rec.last_ms, rec.ceiling),
+            (window, phase, Some(last_ms), Ceiling::Nonce(7))
+        );
+        assert_eq!(rec.prune_candidates, vec![[3; 32]]);
+        assert!(rec.gate_was_closed);
+        assert!(
+            delay > Duration::ZERO,
+            "the failure counts toward the backoff"
+        );
+        let gw = h.app.gw.lock().await;
+        let status = serde_json::to_value(h.app.snapshot(&gw)).unwrap()["clockRecovery"].clone();
+        assert_eq!(status["batchId"], window);
+        assert_eq!(status["phase"], phase);
+        assert_eq!(status["steps"], 0);
+        assert_eq!(status["basis"], "chainClock");
+        assert_eq!(status["chainClock"]["lastMs"], last_ms);
+    }
+    // An untimed window has no last operation time: the fence decides it.
+    let (gw, untimed) = untimed();
+    let h = harness(gw, untimed.clone(), chain_at(&untimed));
+    let (rec, _) = crate::start_clock_recovery(
+        &h.app,
+        untimed.batch_id,
+        &untimed.witness,
+        0,
+        "settle: timed out".into(),
+        Vec::new(),
+        false,
+        Ceiling::Nonce(5),
+    )
+    .await;
+    assert_eq!(rec.last_ms, None);
+    let status = h.app.gw.lock().await.clock_recovery.clone().unwrap();
+    assert_eq!((status.basis, status.chain_clock), ("fence", None));
+    // Which failed settles the recovery takes.
+    for (clock_mode, now_bc, recovers) in [
+        (true, Some(window), true),
+        (true, None, true),
+        (true, Some(window + 1), false),
+        (true, Some(window + 2), false),
+        (true, Some(window - 1), false),
+        (false, Some(window), false),
+        (false, None, false),
+    ] {
+        assert_eq!(
+            crate::settle_failure_recovers(clock_mode, window, now_bc),
+            recovers,
+            "{clock_mode} {now_bc:?}"
+        );
+    }
+}
+
+/// The settle loop's turn while a window is pending: a wait keeps the recovery
+/// and sets the next attempt; a resolution clears it, latches close-only when
+/// the window returned for it, persists promptly and attempts at once; a stop
+/// ends the loop, and so does a recovery without its bridge, which holds
+/// settlement.
+#[tokio::test]
+async fn the_settle_loop_turn_follows_each_recovery_step() {
+    use std::ops::ControlFlow;
+    let notify = tokio::sync::Notify::new();
+    let Voidable { gw, journal, .. } = voidable(false);
+    let h = harness(gw, journal.clone(), chain_at(&journal));
+    h.seal_hold().await;
+    let mut pending = Some(h.pending());
+    let mut next = tokio::time::Instant::now();
+    let mut close_only_seen = false;
+    let before = tokio::time::Instant::now();
+    // At the registration bound: a wait.
+    assert_eq!(
+        crate::settle_loop_recovery_step(
+            &h.app,
+            &h.stop,
+            Some(&h.chain),
+            Some(h.jpath.as_path()),
+            &h.seed,
+            &mut pending,
+            &mut next,
+            &mut close_only_seen,
+            &notify,
+        )
+        .await,
+        ControlFlow::Continue(())
+    );
+    assert!(pending.is_some());
+    assert!(next > before + Duration::from_secs(1));
+    assert!(!close_only_seen);
+    // Close-only on L1: the window returns and the loop latches close-only.
+    h.fake.with(|s| s.close_only = true);
+    assert_eq!(
+        crate::settle_loop_recovery_step(
+            &h.app,
+            &h.stop,
+            Some(&h.chain),
+            Some(h.jpath.as_path()),
+            &h.seed,
+            &mut pending,
+            &mut next,
+            &mut close_only_seen,
+            &notify,
+        )
+        .await,
+        ControlFlow::Continue(())
+    );
+    assert!(pending.is_none());
+    assert!(close_only_seen);
+    assert!(
+        next <= tokio::time::Instant::now(),
+        "the next tick attempts at once"
+    );
+    tokio::time::timeout(Duration::from_secs(5), notify.notified())
+        .await
+        .expect("the snapshot writer was poked");
+    assert!(!h.jpath.exists());
+    // Nothing pending: nothing to do.
+    assert_eq!(
+        crate::settle_loop_recovery_step(
+            &h.app,
+            &h.stop,
+            Some(&h.chain),
+            Some(h.jpath.as_path()),
+            &h.seed,
+            &mut pending,
+            &mut next,
+            &mut close_only_seen,
+            &notify,
+        )
+        .await,
+        ControlFlow::Continue(())
+    );
+
+    // A contradiction stops the loop.
+    let Voidable { gw, journal, .. } = voidable(false);
+    let mut state = chain_at(&journal);
+    state.batch_count = journal.batch_id + 2;
+    let h = harness(gw, journal, state);
+    h.seal_hold().await;
+    let mut pending = Some(h.pending());
+    let mut close_only_seen = false;
+    assert_eq!(
+        crate::settle_loop_recovery_step(
+            &h.app,
+            &h.stop,
+            Some(&h.chain),
+            Some(h.jpath.as_path()),
+            &h.seed,
+            &mut pending,
+            &mut next,
+            &mut close_only_seen,
+            &notify,
+        )
+        .await,
+        ControlFlow::Break(())
+    );
+    assert!(pending.is_some());
+    assert!(h.app.gw.lock().await.settle_health.recovery_required());
+    // Without its bridge the recovery cannot run: settlement is held.
+    let Voidable { gw, journal, .. } = voidable(false);
+    let h = harness(gw, journal.clone(), chain_at(&journal));
+    h.seal_hold().await;
+    let mut pending = Some(h.pending());
+    assert_eq!(
+        crate::settle_loop_recovery_step(
+            &h.app,
+            &h.stop,
+            None,
+            Some(h.jpath.as_path()),
+            &h.seed,
+            &mut pending,
+            &mut next,
+            &mut close_only_seen,
+            &notify,
+        )
+        .await,
+        ControlFlow::Break(())
+    );
+    let gw = h.app.gw.lock().await;
+    assert!(gw.settle_health.recovery_required());
+    assert!(h.alert(&gw, AlertKind::SettlementHeld));
+    assert!(h.jpath.exists());
+}
