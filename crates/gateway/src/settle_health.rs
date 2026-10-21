@@ -88,6 +88,19 @@ impl SettleHealth {
         self.recovery_required
     }
 
+    /// A clock window was resolved without settling (voided or returned to the
+    /// open window): the window that replaces it starts at the base delay, not at
+    /// the cap. The HELD episode, its alert and the last error stay until a window
+    /// settles.
+    pub fn reset_backoff(&mut self) {
+        self.consecutive_failures = 0;
+    }
+
+    /// Failures before HELD (`FIN_HELD_THRESHOLD`).
+    pub fn threshold(&self) -> u32 {
+        self.threshold
+    }
+
     pub fn on_failure(&mut self, err: String) -> (NextAction, bool) {
         self.consecutive_failures += 1;
         self.last_error = Some(err);
@@ -151,6 +164,17 @@ pub fn held_alert_message(consecutive: u32, _last_error: &str) -> String {
     format!(
         "[l1][HELD] settlement halted after {consecutive} consecutive prove failures \
          — trading continues, L1 finality paused; inspect restricted diagnostics and fix the prover or POST /v1/admin/settlement/resume"
+    )
+}
+
+/// The HELD line while the settle loop is recovering a clock window. As above,
+/// it carries no diagnostic text; the operator action is in `/api/state`
+/// `clockRecovery`.
+pub fn held_recovery_alert_message(batch_id: u64, polls: u32) -> String {
+    format!(
+        "[l1][HELD] clock window {batch_id} unresolved for {polls} polls — trading, \
+         liquidation and funding ticks are paused (clock admission closed); see \
+         clockRecovery in /api/state for the operator action"
     )
 }
 
@@ -252,6 +276,35 @@ mod tests {
         assert_eq!(a, NextAction::Hold(Duration::from_secs(300)));
         assert!(just_held);
         assert_eq!(h.health(), Health::Held);
+    }
+
+    #[test]
+    fn a_reset_backoff_restarts_the_delay_but_keeps_the_held_episode() {
+        let mut h = sh();
+        for e in ["a", "b", "c"] {
+            h.on_failure(e.into());
+        }
+        assert_eq!(h.health(), Health::Held);
+        h.reset_backoff();
+        assert_eq!(h.consecutive_failures(), 0);
+        assert_eq!(h.last_error(), Some("c"));
+        let (a, _) = h.on_failure("d".into());
+        assert_eq!(a, NextAction::Retry(Duration::from_secs(30)));
+        // The episode already alerted: crossing the threshold again does not.
+        h.on_failure("e".into());
+        let (a, just_held) = h.on_failure("f".into());
+        assert_eq!(a, NextAction::Hold(Duration::from_secs(300)));
+        assert!(!just_held);
+        assert_eq!(h.threshold(), 3);
+    }
+
+    #[test]
+    fn the_recovery_held_message_names_the_window_without_raw_error() {
+        let m = held_recovery_alert_message(7, 4);
+        assert!(m.contains("[l1][HELD] clock window 7 unresolved for 4 polls"));
+        assert!(m.contains("paused (clock admission closed)"));
+        assert!(m.contains("clockRecovery in /api/state"));
+        assert!(!m.contains("trading continues"));
     }
 
     #[test]

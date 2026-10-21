@@ -4,7 +4,7 @@
 use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
-use perp_core::hash::{word_u64, Keccak256};
+use perp_core::hash::{word_u64, Digest, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
@@ -1357,6 +1357,46 @@ fn clock_idle_compaction_cannot_drop_actual_funding_or_terminal_intent() {
     assert!(seq.window_has_pending_settle_all());
 }
 
+fn hash_of(o: &Order) -> Digest {
+    o.order_hash::<Keccak256>()
+}
+
+/// What a refused void must leave unchanged, read through the public accessors:
+/// the roots and counters, the open window, and each named order's finality and
+/// remainder and each named tick's pending flag and window.
+#[allow(clippy::type_complexity)]
+fn observed(
+    seq: &Sequencer,
+    hashes: &[Digest],
+    ticks: &[u64],
+) -> (
+    (Digest, Digest, u64, u64, bool, usize, bool),
+    Vec<(Digest, RejectReason)>,
+    Vec<(Option<Finality>, Option<i128>)>,
+    Vec<(bool, Option<u64>)>,
+) {
+    (
+        (
+            seq.state.state_root(),
+            seq.window_baseline().state_root(),
+            seq.current_window_id(),
+            seq.current_batch_id(),
+            seq.open_window_has_ops(),
+            seq.window_op_count(),
+            seq.window_has_pending_manifest(),
+        ),
+        seq.window_rejected().to_vec(),
+        hashes
+            .iter()
+            .map(|h| (seq.finality_of(h), seq.remaining_order_size(h)))
+            .collect(),
+        ticks
+            .iter()
+            .map(|t| (seq.fill_tick_pending(*t), seq.window_for_tick(*t)))
+            .collect(),
+    )
+}
+
 /// A sealed window that can never settle is voided, not re-injected: the state,
 /// baseline and Counter B return to its pre-state, ops gathered since the seal go
 /// with it, and its order hashes come back once each for a later rejected list.
@@ -1376,22 +1416,213 @@ fn void_window_discards_the_sealed_and_open_windows() {
     assert_eq!(w.pre_state.state_root(), settled.state_root());
     // Ops keep arriving in the next window before the void.
     let rest = order(1, Side::Sell, SIZE_SCALE, 101_000 * PRICE_SCALE, 3);
-    let _ = seq.seal_batch(std::slice::from_ref(&rest), 20_700);
+    let open = seq.seal_batch(std::slice::from_ref(&rest), 20_700);
     assert!(seq.window_has_pending_manifest());
-    let voided = seq.void_window(&w);
+    let voided = seq.void_window(&w).expect("the sealed window voids");
     assert_eq!(seq.state.state_root(), settled.state_root());
     assert_eq!(seq.window_baseline().state_root(), settled.state_root());
     assert_eq!(seq.current_window_id(), w.batch_id);
     assert!(!seq.open_window_has_ops() && !seq.window_has_pending_manifest());
     for hash in w.manifest.ordered.iter() {
-        assert_eq!(voided.iter().filter(|h| *h == hash).count(), 1);
+        assert_eq!(voided.hashes.iter().filter(|h| *h == hash).count(), 1);
     }
-    assert!(voided.contains(&rest.order_hash::<Keccak256>()));
+    assert!(voided.hashes.contains(&hash_of(&rest)));
+    assert_eq!(
+        voided.ticks.iter().copied().collect::<Vec<_>>(),
+        vec![sealed.batch_id, open.batch_id]
+    );
+    assert_eq!(seq.remaining_order_size(&hash_of(&rest)), None);
     // The next window starts from the settled state under the same batch id.
     let next = seq.seal_window();
     assert_eq!(next.batch_id, w.batch_id);
     assert_eq!(next.pre_state.state_root(), settled.state_root());
     assert!(next.ops.is_empty());
+}
+
+/// A fill the void discarded is never hardened by the settle of the window that
+/// replaces it under the same batch id: the voided orders stay `Accepted`, their
+/// tick is no longer pending, and the voided resting remainder is off the book.
+#[test]
+fn a_voided_fill_never_settles_with_the_replacement_window() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let maker = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
+    let taker = order(2, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 2);
+    let tick = seq.seal_batch(&[maker, taker], 20_000);
+    for o in [&maker, &taker] {
+        assert_eq!(seq.finality_of(&hash_of(o)), Some(Finality::Matched));
+    }
+    assert_eq!(
+        seq.remaining_order_size(&hash_of(&maker)),
+        Some(SIZE_SCALE / 2)
+    );
+    assert!(seq.fill_tick_pending(tick.batch_id));
+    let w = seq.seal_window();
+    let voided = seq.void_window(&w).unwrap();
+    assert!(voided.ticks.contains(&tick.batch_id));
+    // One replacement tick, the replacement seal under the same id, its settle.
+    let next = seq.seal_batch(&[], 20_700);
+    assert_eq!(seq.window_for_tick(next.batch_id), Some(w.batch_id));
+    let replacement = seq.seal_window();
+    assert_eq!(replacement.batch_id, w.batch_id);
+    seq.mark_window_settled(replacement.batch_id);
+    for o in [&maker, &taker] {
+        assert!(voided.hashes.contains(&hash_of(o)));
+        assert_eq!(seq.finality_of(&hash_of(o)), Some(Finality::Accepted));
+    }
+    assert!(!seq.fill_tick_pending(tick.batch_id));
+    assert!(!seq.fill_tick_pending(next.batch_id));
+    assert_eq!(seq.window_for_tick(tick.batch_id), None);
+    assert_eq!(seq.remaining_order_size(&hash_of(&maker)), None);
+    // The voided remainder cannot fill later either.
+    let late = order(2, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 3);
+    let after = seq.seal_batch(std::slice::from_ref(&late), 21_000);
+    assert!(after.applied_fills.is_empty());
+}
+
+/// A maker resting from a settled earlier window that a voided fill touched is
+/// cancelled with the window and returned with its hashes; the settled finality
+/// of its earlier fill is kept.
+#[test]
+fn a_void_cancels_an_earlier_maker_a_voided_fill_touched() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let maker = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
+    let first = order(2, Side::Buy, SIZE_SCALE / 4, 100_000 * PRICE_SCALE, 2);
+    let earlier_tick = seq.seal_batch(&[maker, first], 20_000);
+    let earlier = seq.seal_window();
+    seq.mark_window_settled(earlier.batch_id);
+    assert_eq!(seq.finality_of(&hash_of(&maker)), Some(Finality::Settled));
+    assert!(!seq.fill_tick_pending(earlier_tick.batch_id));
+    // The window after it fills more of the resting maker, then dies.
+    let second = order(2, Side::Buy, SIZE_SCALE / 4, 100_000 * PRICE_SCALE, 3);
+    let tick = seq.seal_batch(std::slice::from_ref(&second), 20_700);
+    assert!(tick.settled_order_hashes.contains(&hash_of(&maker)));
+    assert_eq!(
+        seq.remaining_order_size(&hash_of(&maker)),
+        Some(SIZE_SCALE / 2)
+    );
+    let w = seq.seal_window();
+    assert!(
+        !w.manifest.ordered.contains(&hash_of(&maker)),
+        "the maker reaches the void through the voided tick, not the manifest"
+    );
+    let voided = seq.void_window(&w).unwrap();
+    assert!(voided.hashes.contains(&hash_of(&maker)));
+    assert_eq!(seq.remaining_order_size(&hash_of(&maker)), None);
+    assert_eq!(seq.finality_of(&hash_of(&maker)), Some(Finality::Settled));
+    assert_eq!(seq.finality_of(&hash_of(&second)), Some(Finality::Accepted));
+    assert_eq!(
+        voided.ticks.iter().copied().collect::<Vec<_>>(),
+        vec![tick.batch_id]
+    );
+    // The settled earlier window keeps its hardened facts.
+    assert_eq!(seq.finality_of(&hash_of(&first)), Some(Finality::Settled));
+    assert!(!voided.hashes.contains(&hash_of(&first)));
+}
+
+/// A witness that is not the sealed, unsettled window is refused in every build
+/// profile, and the refusal changes nothing.
+#[test]
+fn void_window_refuses_a_witness_that_is_not_the_sealed_window() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let maker = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
+    let taker = order(2, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 2);
+    let tick = seq.seal_batch(&[maker, taker], 20_000);
+    let w = seq.seal_window();
+    let rest = order(1, Side::Sell, SIZE_SCALE, 101_000 * PRICE_SCALE, 3);
+    let open = seq.seal_batch(std::slice::from_ref(&rest), 20_700);
+    let hashes = [hash_of(&maker), hash_of(&taker), hash_of(&rest)];
+    let ticks = [tick.batch_id, open.batch_id];
+
+    let mut later = w.clone();
+    later.batch_id += 1;
+    let mut wrong_pre_state = w.clone();
+    wrong_pre_state.pre_state = seq.state.clone();
+    for (bad, counter_b, batch_id) in [
+        (&later, w.batch_id + 1, w.batch_id + 1),
+        (&wrong_pre_state, w.batch_id + 1, w.batch_id),
+    ] {
+        let before = observed(&seq, &hashes, &ticks);
+        assert_eq!(
+            seq.void_preconditions(bad),
+            seq.void_window(bad).map(|_| ())
+        );
+        assert_eq!(
+            seq.void_window(bad),
+            Err(sequencer::VoidError::NotTheSealedWindow {
+                counter_b,
+                batch_id
+            })
+        );
+        assert_eq!(observed(&seq, &hashes, &ticks), before);
+    }
+    // The sealed window voids once; voiding it again is refused and changes nothing.
+    assert_eq!(seq.void_preconditions(&w), Ok(()));
+    let _ = seq.void_window(&w).unwrap();
+    let before = observed(&seq, &hashes, &ticks);
+    assert_eq!(
+        seq.void_window(&w),
+        Err(sequencer::VoidError::NotTheSealedWindow {
+            counter_b: w.batch_id,
+            batch_id: w.batch_id
+        })
+    );
+    assert_eq!(observed(&seq, &hashes, &ticks), before);
+}
+
+/// A tick of an earlier window that is still pending was never hardened by that
+/// window's settle. The void refuses rather than discard it, and changes nothing;
+/// once the earlier window settles, the same void goes through.
+#[test]
+fn void_window_refuses_an_unhardened_earlier_tick() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let a = [
+        order(1, Side::Sell, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 1),
+        order(2, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 2),
+    ];
+    let earlier_tick = seq.seal_batch(&a, 20_000);
+    let earlier = seq.seal_window();
+    let b = [
+        order(1, Side::Sell, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 3),
+        order(2, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 4),
+    ];
+    let tick = seq.seal_batch(&b, 20_700);
+    let w = seq.seal_window();
+    assert_eq!(
+        seq.window_for_tick(earlier_tick.batch_id),
+        Some(earlier.batch_id)
+    );
+    let hashes: Vec<Digest> = a.iter().chain(b.iter()).map(hash_of).collect();
+    let ticks = [earlier_tick.batch_id, tick.batch_id];
+    let before = observed(&seq, &hashes, &ticks);
+    assert_eq!(
+        seq.void_window(&w),
+        Err(sequencer::VoidError::UnhardenedEarlierTick(
+            earlier_tick.batch_id
+        ))
+    );
+    assert_eq!(observed(&seq, &hashes, &ticks), before);
+    // The earlier window's settle hardens its tick; the void then discards only
+    // the dead window's.
+    seq.mark_window_settled(earlier.batch_id);
+    let voided = seq.void_window(&w).unwrap();
+    assert_eq!(
+        voided.ticks.iter().copied().collect::<Vec<_>>(),
+        vec![tick.batch_id]
+    );
+    for o in &a {
+        assert_eq!(seq.finality_of(&hash_of(o)), Some(Finality::Settled));
+    }
+    for o in &b {
+        assert_eq!(seq.finality_of(&hash_of(o)), Some(Finality::Accepted));
+    }
 }
 
 /// Voiding the open window drops its ops and manifest and returns the state to the
@@ -1411,7 +1642,7 @@ fn void_open_window_returns_to_the_baseline_and_rejects_once() {
     let _ = seq.seal_batch(&orders, 20_000);
     fund(&mut seq, 3, 1_000, 0x33);
     assert_ne!(seq.state.state_root(), settled.state_root());
-    let voided = seq.void_open_window();
+    let voided = seq.void_open_window().hashes;
     assert_eq!(voided.len(), 2);
     assert_eq!(seq.state.state_root(), settled.state_root());
     assert_eq!(
@@ -1434,4 +1665,40 @@ fn void_open_window_returns_to_the_baseline_and_rejects_once() {
         perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
             .expect("a manifest of rejections replays");
     assert_eq!(derived.new_state_root, seq.state.state_root());
+}
+
+/// The close-only rebase's void of the open window discards its pending ticks
+/// with the same cleanup as a sealed-window void: no fill of the discarded
+/// window stays pending or `Matched`, and its resting remainder is off the book.
+#[test]
+fn void_open_window_returns_ticks_and_leaves_no_pending_fill() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let maker = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
+    let taker = order(2, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 2);
+    let first = seq.seal_batch(&[maker, taker], 20_000);
+    let second = seq.seal_batch(&[], 20_700);
+    assert!(seq.fill_tick_pending(first.batch_id) && seq.fill_tick_pending(second.batch_id));
+    let voided = seq.void_open_window();
+    assert_eq!(voided.hashes, vec![hash_of(&maker), hash_of(&taker)]);
+    assert_eq!(
+        voided.ticks.iter().copied().collect::<Vec<_>>(),
+        vec![first.batch_id, second.batch_id]
+    );
+    for t in &voided.ticks {
+        assert!(!seq.fill_tick_pending(*t));
+        assert_eq!(seq.window_for_tick(*t), None);
+    }
+    for o in [&maker, &taker] {
+        assert_eq!(seq.finality_of(&hash_of(o)), Some(Finality::Accepted));
+    }
+    assert_eq!(seq.remaining_order_size(&hash_of(&maker)), None);
+    // Nothing is left for a later settle of the same window id to harden.
+    let _ = seq.seal_batch(&[], 21_000);
+    let w = seq.seal_window();
+    seq.mark_window_settled(w.batch_id);
+    for o in [&maker, &taker] {
+        assert_eq!(seq.finality_of(&hash_of(o)), Some(Finality::Accepted));
+    }
 }

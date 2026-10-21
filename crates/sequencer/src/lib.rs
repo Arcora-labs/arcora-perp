@@ -197,6 +197,53 @@ pub struct WindowWitness {
     pub manifest: BatchManifest,
 }
 
+/// What a void ([`Sequencer::void_window`], [`Sequencer::void_open_window`])
+/// discarded.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VoidedWindow {
+    /// Every order hash the discarded windows ordered, rejected or filled, first
+    /// occurrence first: the sealed window's ordered then rejected hashes, the
+    /// open window's, then the hashes each discarded tick filled (makers resting
+    /// from earlier windows included). Each one is off the book; the caller
+    /// publishes them as rejected in a later manifest.
+    pub hashes: Vec<Digest>,
+    /// The per-tick batch ids (Counter A) whose fills were discarded. None of
+    /// them is pending any more, and no window settle hardens them.
+    pub ticks: BTreeSet<u64>,
+}
+
+/// Why [`Sequencer::void_window`] refused a witness. Nothing was changed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VoidError {
+    /// Counter B is not `batch_id + 1`, or the witness's pre-state does not open
+    /// `batch_id`: the witness is not the sealed, unsettled window.
+    NotTheSealedWindow { counter_b: u64, batch_id: u64 },
+    /// This tick is still pending a settle but belongs to a window below the
+    /// witness's: a settled window's tick that was never hardened. A void never
+    /// discards it.
+    UnhardenedEarlierTick(u64),
+}
+
+impl core::fmt::Display for VoidError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NotTheSealedWindow {
+                counter_b,
+                batch_id,
+            } => write!(
+                f,
+                "window {batch_id} is not the sealed, unsettled window (window counter {counter_b})"
+            ),
+            Self::UnhardenedEarlierTick(tick) => write!(
+                f,
+                "tick {tick} of an earlier window is still pending; it is never voided"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for VoidError {}
+
 /// A published auto-deleverage haircut: the affected account recognizes `tag` by
 /// recomputing `adl_tag(&adl_tag_key(spend_key), market, batch)`, and reads how
 /// much of its profit was clawed from `clawed` (quote-scaled). Unlinkable to any
@@ -1899,8 +1946,10 @@ impl Sequencer {
         self.matcher.remaining(hash)
     }
 
-    /// Pending fill ticks are removed only when hardened on the gateway's window
-    /// path. Its rollback_window retains them; mark_failed is a legacy-only API.
+    /// Pending fill ticks are removed when a window settle hardens them on the
+    /// gateway's window path, or when a void discards them (`void_window`,
+    /// `void_open_window`). Its rollback_window retains them; mark_failed is a
+    /// legacy-only API.
     pub fn fill_tick_pending(&self, tick: u64) -> bool {
         self.batch_orders.contains_key(&tick)
     }
@@ -2098,39 +2147,136 @@ impl Sequencer {
         &self.window_start_state
     }
 
+    /// The open window's rejected order hashes with their reasons, in manifest
+    /// order: what the next `seal_window` publishes as `manifest.rejected`.
+    pub fn window_rejected(&self) -> &[(Digest, RejectReason)] {
+        &self.window_rejected
+    }
+
+    /// The checks [`Self::void_window`] makes before it changes anything, made
+    /// without changing anything.
+    ///
+    /// The witness must be the one sealed, unsettled window: the window counter
+    /// (Counter B) is `w.batch_id + 1` and `w.pre_state` opens `w.batch_id`. And
+    /// no tick still pending a settle may belong to a window below `w.batch_id`.
+    /// Every such window has settled, and its settle hardened its ticks, so the
+    /// ticks still pending are exactly the ones the void discards. A tick that no
+    /// window maps counts as one of them.
+    pub fn void_preconditions(&self, w: &WindowWitness) -> Result<(), VoidError> {
+        if w.batch_id.checked_add(1) != Some(self.state.next_batch_id)
+            || w.pre_state.next_batch_id != w.batch_id
+        {
+            return Err(VoidError::NotTheSealedWindow {
+                counter_b: self.state.next_batch_id,
+                batch_id: w.batch_id,
+            });
+        }
+        match self
+            .batch_orders
+            .keys()
+            .find(|tick| !self.tick_in_windows_from(**tick, w.batch_id))
+        {
+            Some(tick) => Err(VoidError::UnhardenedEarlierTick(*tick)),
+            None => Ok(()),
+        }
+    }
+
     /// Discard a sealed window that can never settle, and everything the open
     /// window gathered since it was sealed. Unlike [`Self::rollback_window`] no op is
     /// kept: the state, the window baseline and the window counter return to
-    /// `w.pre_state`, and the window's ordered and rejected order hashes are
-    /// returned (sealed window first, then the open window) so the caller can
-    /// publish them as rejected in a later manifest. The matcher's per-tick
-    /// bookkeeping is left as it is.
-    pub fn void_window(&mut self, w: &WindowWitness) -> Vec<Digest> {
-        debug_assert_eq!(
-            self.state.next_batch_id,
-            w.batch_id + 1,
-            "void_window expects exactly one unsettled seal (Counter B == batch_id + 1)"
-        );
-        let mut voided: Vec<Digest> = w.manifest.ordered.clone();
-        voided.extend(w.manifest.rejected.iter().map(|(h, _)| *h));
-        voided.extend(self.discard_open_window_manifest());
+    /// `w.pre_state`.
+    ///
+    /// The fills go with the state. Every tick still pending a settle is
+    /// discarded, so no later window settle can harden its fills: the order
+    /// hashes those ticks filled keep no `Matched` finality (it returns to
+    /// `Accepted`; a `Settled` finality from an earlier window is kept). Every
+    /// returned hash also leaves the book, the minimum-size exemptions and
+    /// inclusion tracking. That covers the orders the windows ordered or
+    /// rejected and the makers from earlier windows that a discarded fill
+    /// touched, whose remainder the book no longer matches with the restored
+    /// state. The caller publishes the hashes as rejected in a later manifest.
+    ///
+    /// Every check runs first ([`Self::void_preconditions`]); on `Err` nothing
+    /// changed. Counter A, the receipt sequence and the oracles do not move.
+    #[must_use = "the voided order hashes must be published in a later manifest"]
+    pub fn void_window(&mut self, w: &WindowWitness) -> Result<VoidedWindow, VoidError> {
+        self.void_preconditions(w)?;
+        let mut hashes: Vec<Digest> = w.manifest.ordered.clone();
+        hashes.extend(w.manifest.rejected.iter().map(|(h, _)| *h));
+        hashes.extend(self.discard_open_window_manifest());
+        let voided = self.discard_unsettled_ticks(w.batch_id, hashes);
         self.window_ops.clear();
         self.state = w.pre_state.clone();
         self.window_start_state = w.pre_state.clone();
         self.forget_windows_from(w.batch_id);
-        dedup_in_order(voided)
+        self.funding_marks.clear();
+        Ok(voided)
     }
 
     /// Discard the open window: the state returns to the window baseline (the
     /// last sealed, and after a settle the settled, state) and the window's ops
-    /// and manifest are dropped. Returns the window's ordered and rejected order
-    /// hashes. The window counter does not move.
-    pub fn void_open_window(&mut self) -> Vec<Digest> {
-        let voided = self.discard_open_window_manifest();
+    /// and manifest are dropped. The window counter does not move.
+    ///
+    /// The open window's pending ticks are discarded as in
+    /// [`Self::void_window`], with the same book, finality, exemption and
+    /// inclusion cleanup for the returned hashes: the window's ordered and
+    /// rejected hashes, then the hashes its discarded ticks filled.
+    #[must_use = "the voided order hashes must be published in a later manifest"]
+    pub fn void_open_window(&mut self) -> VoidedWindow {
+        let window = self.state.next_batch_id;
+        let hashes = self.discard_open_window_manifest();
+        let voided = self.discard_unsettled_ticks(window, hashes);
         self.window_ops.clear();
         self.state = self.window_start_state.clone();
-        self.forget_windows_from(self.state.next_batch_id);
-        dedup_in_order(voided)
+        self.forget_windows_from(window);
+        self.funding_marks.clear();
+        voided
+    }
+
+    /// Whether a pending tick belongs to window `window` or a later one. A tick
+    /// that no window maps (its entry was evicted, or its window was discarded
+    /// before) counts as one: it is pending, so no settle hardened it.
+    fn tick_in_windows_from(&self, tick: u64, window: u64) -> bool {
+        self.tick_window.get(&tick).is_none_or(|w| *w >= window)
+    }
+
+    /// Discard every pending tick of window `from_window` or later, and end the
+    /// orders in `hashes` together with the orders those ticks filled. Each
+    /// discarded tick leaves the pending set (and its rollback snapshot goes), so
+    /// a later `mark_settled` never hardens its fills. Each hash leaves the book
+    /// (and every retained snapshot's book), the minimum-size exemptions and
+    /// inclusion tracking; a `Matched` finality returns to `Accepted`, as in
+    /// [`Self::mark_failed`], and a `Settled` one is kept.
+    fn discard_unsettled_ticks(
+        &mut self,
+        from_window: u64,
+        mut hashes: Vec<Digest>,
+    ) -> VoidedWindow {
+        let ticks: BTreeSet<u64> = self
+            .batch_orders
+            .keys()
+            .copied()
+            .filter(|tick| self.tick_in_windows_from(*tick, from_window))
+            .collect();
+        for tick in &ticks {
+            if let Some(filled) = self.batch_orders.remove(tick) {
+                hashes.extend(filled);
+            }
+            self.snapshots.remove(tick);
+        }
+        let hashes = dedup_in_order(hashes);
+        for hash in &hashes {
+            let _ = self.matcher.cancel_order(hash);
+            for (_, matcher) in self.snapshots.values_mut() {
+                let _ = matcher.cancel_order(hash);
+            }
+            self.minimum_exempt.remove(hash);
+            self.inclusion.remove(hash);
+            if self.finality.get(hash) == Some(&Finality::Matched) {
+                self.finality.insert(*hash, Finality::Accepted);
+            }
+        }
+        VoidedWindow { hashes, ticks }
     }
 
     /// Record order hashes as rejected in the open window's manifest, after any
@@ -2761,6 +2907,62 @@ mod tests {
         assert_eq!(seq.current_window_id(), m);
         // the failed window's ticks still map to m; re-sealing keeps them at m.
         assert_eq!(seq.window_for_tick(s.batch_id), Some(m));
+    }
+
+    /// A void ends the voided orders' minimum-size exemption and inclusion record
+    /// and resets the funding-mark average, for a sealed window and for the open
+    /// window alike. An order received but never sequenced is not touched.
+    #[test]
+    fn a_void_drops_minimum_exempt_inclusion_and_funding_marks_of_voided_orders() {
+        let mut seq = test_sequencer();
+        seq.seal_genesis_baseline();
+        let fill = sample_orders(1);
+        let _ = seq.seal_batch(&fill, now());
+        // Trader 2 is now long; a sell below the minimum rests only because it
+        // reduces.
+        let tiny = t_order_at(2, Side::Sell, 101_000, SIZE_SCALE / 100_000, 3);
+        let tiny_hash = tiny.order_hash::<Keccak256>();
+        let _ = seq.seal_batch(&[tiny], now());
+        assert!(seq.minimum_exempt.contains(&tiny_hash));
+        assert!(seq.matcher.remaining(&tiny_hash).is_some());
+        let unsequenced = t_order(1, Side::Buy, 9);
+        let unsequenced_hash = unsequenced.order_hash::<Keccak256>();
+        let _ = seq.accept_order(&unsequenced, now());
+        let w = seq.seal_window();
+        // The open window samples the book again before the void.
+        let _ = seq.seal_batch(&[], now() + 700);
+        assert!(!seq.funding_marks.is_empty());
+        let hashes: Vec<Digest> = fill
+            .iter()
+            .chain([&tiny])
+            .map(|o| o.order_hash::<Keccak256>())
+            .collect();
+        for h in &hashes {
+            assert!(seq.inclusion.contains_key(h));
+        }
+        let voided = seq.void_window(&w).unwrap();
+        for h in &hashes {
+            assert!(voided.hashes.contains(h));
+            assert!(!seq.inclusion.contains_key(h));
+            assert!(!seq.minimum_exempt.contains(h));
+        }
+        assert!(seq.matcher.remaining(&tiny_hash).is_none());
+        assert!(seq.funding_marks.is_empty());
+        assert!(seq.batch_orders.is_empty());
+        assert!(
+            seq.snapshots.is_empty(),
+            "the voided ticks' snapshots go too"
+        );
+        assert!(!voided.hashes.contains(&unsequenced_hash));
+        assert!(seq.inclusion.contains_key(&unsequenced_hash));
+        assert_eq!(seq.finality_of(&unsequenced_hash), Some(Finality::Accepted));
+        // The open-window void resets the average the same way.
+        let _ = seq.seal_batch(&[], now() + 1_400);
+        assert!(!seq.funding_marks.is_empty());
+        let voided = seq.void_open_window();
+        assert!(voided.hashes.is_empty() && voided.ticks.len() == 1);
+        assert!(seq.funding_marks.is_empty());
+        assert!(seq.batch_orders.is_empty() && seq.snapshots.is_empty());
     }
 
     #[test]

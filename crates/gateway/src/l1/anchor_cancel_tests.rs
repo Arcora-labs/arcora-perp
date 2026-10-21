@@ -251,6 +251,55 @@ fn anchor_fate_distinguishes_live_cancelled_replaced_and_absent() {
     );
 }
 
+/// Immediately before a recovery settle, its anchor is read at the latest block:
+/// only a live anchor with the proof's receipt lets it be sent. Every other fate
+/// asks the caller to classify the window again.
+#[test]
+fn a_recovery_settle_needs_its_anchor_live_at_latest() {
+    let permits = |clock: Clock| {
+        let r = CanonicalRead::with_policy(&clock, None, None, AnchorPolicy::Latest).unwrap();
+        let fate = super::read_anchor_fate(&r, &crate::hex0x(&VERIFIER), 7, 0, &RECEIPT).unwrap();
+        super::latest_fate_permits_settle(fate)
+    };
+    permits(Clock::default()).unwrap();
+    for (clock, reason) in [
+        (
+            Clock {
+                cancelled: true,
+                exists: false,
+                ..Clock::default()
+            },
+            "cancelled",
+        ),
+        // A cancelled receipt is refused even while an anchor still reads as live.
+        (
+            Clock {
+                cancelled: true,
+                ..Clock::default()
+            },
+            "cancelled",
+        ),
+        (
+            Clock {
+                receipt: [0x5b; 32],
+                ..Clock::default()
+            },
+            "another clock anchor",
+        ),
+        (
+            Clock {
+                exists: false,
+                ..Clock::default()
+            },
+            "no longer registered",
+        ),
+    ] {
+        let refused = permits(clock).unwrap_err();
+        assert!(refused.contains(reason), "{refused}");
+        assert!(refused.ends_with("nothing sent; reclassify"), "{refused}");
+    }
+}
+
 #[test]
 fn proof_receipt_is_read_only_from_a_tagged_proof() {
     let mut proof = perp_core::clock::PROOF_MAGIC.to_vec();

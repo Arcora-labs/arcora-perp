@@ -21,7 +21,8 @@ def gateway_alert_kinds():
     text = (ROOT / "crates/gateway/src/ops_alerts.rs").read_text()
     body = text.split("pub enum AlertKind {", 1)[1].split("\n}", 1)[0]
     lines = [line.strip() for line in body.splitlines()]
-    names = [line.rstrip(",") for line in lines if line and not line.startswith("//")]
+    # Comments and attributes (`#[...]`) are not variants.
+    names = [line.rstrip(",") for line in lines if line and not line.startswith(("//", "#["))]
     snake = lambda name: "".join("_" + c.lower() if c.isupper() else c for c in name).lstrip("_")
     return {snake(name) for name in names}
 
@@ -30,6 +31,8 @@ class GatewayAlertNames(unittest.TestCase):
     def test_every_gateway_alert_is_relayed_or_deliberately_not(self):
         kinds = gateway_alert_kinds()
         self.assertIn("deposit_blocked_at_cap", kinds)
+        self.assertIn("window_voided", kinds)
+        self.assertIn("clock_recovery_blocked", kinds)
         self.assertEqual(set(ops_notify.GATEWAY_ALERTS), kinds - NOT_RELAYED)
         self.assertLessEqual(NOT_RELAYED, kinds)
         self.assertEqual(len(ops_notify.GATEWAY_ALERTS), len(set(ops_notify.GATEWAY_ALERTS)))

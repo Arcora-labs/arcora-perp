@@ -154,6 +154,14 @@ impl DepositState {
         }
         Ok(())
     }
+    /// The `ownerCommit`s of the deposits that landed under a permit this gateway
+    /// holds and were not credited (`uncredited`). Their routes and blinds stay
+    /// until the deposit is credited, but none can carry another deposit: the vault
+    /// refuses a reused `ownerCommit`. Permit GC, the permit capacity bounds,
+    /// permit re-signing and the rebind guard therefore skip them.
+    pub fn landed_commits(&self) -> BTreeSet<[u8; 32]> {
+        self.uncredited.values().map(|c| c.event.commit).collect()
+    }
 }
 
 impl Gw {
@@ -280,10 +288,23 @@ impl Gw {
         }
         Ok(())
     }
+    /// How many of the account's stored permit blinds can still carry a deposit:
+    /// those whose deposit has not landed (`DepositState::landed_commits`).
+    pub(super) fn unlanded_deposit_permits(&self, key: &[u8; 32]) -> usize {
+        let landed = self.deposits.landed_commits();
+        self.accounts.get(key).map_or(0, |a| {
+            a.deposit_authorizations
+                .keys()
+                .filter(|c| !landed.contains(*c))
+                .count()
+        })
+    }
     /// Capacity and pacing for one new user permit, checked before it is issued and
     /// charged with `charge_deposit_permit` only once it is. Global capacity is counted
-    /// by routes: every permit this endpoint issues is routed. The operator's
-    /// insurance bootstrap (FIN_ADMIN_KEY-authenticated) is exempt from these bounds.
+    /// by routes: every permit this endpoint issues is routed. Neither bound counts a
+    /// permit whose deposit already landed (`DepositState::landed_commits`). The
+    /// operator's insurance bootstrap (FIN_ADMIN_KEY-authenticated) is exempt from
+    /// these bounds.
     pub(super) fn admit_deposit_permit(
         &self,
         key: &[u8; 32],
@@ -293,7 +314,13 @@ impl Gw {
         if purpose == Purpose::InsuranceBootstrap {
             return Ok(());
         }
-        if self.deposits.routes.len() >= MAX_OPEN_DEPOSIT_PERMITS {
+        let landed_routes = self
+            .deposits
+            .landed_commits()
+            .iter()
+            .filter(|c| self.deposits.routes.contains_key(*c))
+            .count();
+        if self.deposits.routes.len() - landed_routes >= MAX_OPEN_DEPOSIT_PERMITS {
             return Err((
                 StatusCode::SERVICE_UNAVAILABLE,
                 "deposit authorization capacity reached; retry after pending deposits land".into(),
@@ -303,7 +330,7 @@ impl Gw {
             .accounts
             .get(key)
             .ok_or((StatusCode::BAD_REQUEST, "Unknown account.".to_string()))?;
-        if a.deposit_authorizations.len() >= MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT {
+        if self.unlanded_deposit_permits(key) >= MAX_OPEN_DEPOSIT_PERMITS_PER_ACCOUNT {
             return Err((
                 StatusCode::TOO_MANY_REQUESTS,
                 format!(
@@ -338,6 +365,8 @@ impl Gw {
     /// outstanding permit for exactly `request` (same account, payer, amount, market
     /// and purpose, blind still stored) and at least `PERMIT_REUSE_MARGIN_SECS`
     /// remain at `now_s`. Re-signing that stored permit reproduces its signature.
+    /// A permit whose deposit already landed is never re-signed: the vault refuses
+    /// a reused `ownerCommit`, so a request for the same terms gets a fresh permit.
     pub(super) fn held_permit_deadline(
         &self,
         commit: &[u8; 32],
@@ -346,6 +375,7 @@ impl Gw {
     ) -> Option<u64> {
         let stored = self.deposits.routes.get(commit)?;
         (stored.same_request(request)
+            && !self.deposits.landed_commits().contains(commit)
             && stored.valid_until >= now_s.saturating_add(PERMIT_REUSE_MARGIN_SECS)
             && self.validate_route(stored).is_ok()
             && self
@@ -509,13 +539,16 @@ impl Gw {
     /// Drop permits that can no longer land: un-landed routes, and their blinds,
     /// whose deadline is before `block_time`, the header timestamp of a finalized
     /// block ingestion has passed. Block timestamps strictly increase, so no later
-    /// block can accept them. Never called with the gateway's own clock.
+    /// block can accept them. Never called with the gateway's own clock. A route
+    /// whose deposit already landed (`DepositState::landed_commits`) is kept, with
+    /// its blind, until that deposit is credited.
     fn gc_expired_permits(&mut self, block_time: u64) -> usize {
+        let landed = self.deposits.landed_commits();
         let expired: Vec<([u8; 32], [u8; 32])> = self
             .deposits
             .routes
             .iter()
-            .filter(|(_, r)| r.valid_until < block_time)
+            .filter(|(c, r)| r.valid_until < block_time && !landed.contains(*c))
             .map(|(c, r)| (*c, r.key))
             .collect();
         for (commit, key) in &expired {
@@ -675,7 +708,12 @@ impl Gw {
             self.deposits.uncredited.remove(&credit.event.id);
             self.deposits.credits.insert(credit.event.id, credit);
         }
-        if insurance {
+        // Before completion an insurance deposit records the window that carries it
+        // (`InsuranceApplied`); that window's commit completes the bootstrap. After
+        // completion it is a top-up and keeps `Complete`: the one-shot check reads
+        // `Complete` together with the fund floor, so a drained fund still reopens
+        // it and a top-up that restores the floor closes it again.
+        if insurance && self.bootstrap != bootstrap::Bootstrap::Complete {
             self.bootstrap = bootstrap::Bootstrap::InsuranceApplied {
                 window_id: self.seq.state.next_batch_id,
             };
@@ -715,6 +753,74 @@ impl Gw {
             }
         }
     }
+}
+
+/// Clear the deposit barrier for a settle while clock admission is closed, when
+/// ingestion cannot run: a pending durability acknowledgement is waited for, and a
+/// prefix that is not verified yet is read once from the finalized vault. The page
+/// read is not applied: a page that starts at the engine's cursor shows that the
+/// finalized prefix is the engine's. A halt is never cleared; a halting read is
+/// recorded as ingestion records it.
+pub async fn refresh_readiness(app: &Shared) -> Result<(), String> {
+    let _serial = app.deposit_serial.lock().await;
+    let (halt, dirty, unverified, cursor) = {
+        let gw = app.gw.lock().await;
+        let d = &gw.deposits;
+        (
+            d.halt.clone(),
+            d.dirty,
+            d.required && !d.ready,
+            gw.deposit_cursor(),
+        )
+    };
+    if let Some(reason) = halt {
+        return Err(format!("deposit safety halt: {reason}"));
+    }
+    if dirty {
+        snapshot_now(&app.snapshot_req).await?;
+        app.gw.lock().await.deposits.dirty = false;
+    }
+    if unverified {
+        let source = app
+            .deposit_source
+            .clone()
+            .ok_or("automatic L1 deposit source is not configured")?;
+        let read = cursor.clone();
+        let fetched = match tokio::task::spawn_blocking(move || source.fetch(read)).await {
+            Ok(result) => result,
+            Err(e) => Err(Error::Retry(format!("deposit reader task failed: {e}"))),
+        };
+        match fetched {
+            Ok(page) if page.start == cursor => {
+                let mut gw = app.gw.lock().await;
+                if gw.deposit_cursor() != cursor {
+                    return Err("the deposit cursor moved during the readiness read".into());
+                }
+                gw.deposits.ready = true;
+                gw.deposits.last_error = None;
+            }
+            Ok(_) => return Err("the readiness read did not start at the deposit cursor".into()),
+            Err(error) => {
+                {
+                    let mut gw = app.gw.lock().await;
+                    gw.deposits.ready = false;
+                    gw.deposits.last_error = Some(error.to_string());
+                    if let Error::Halt(reason) = &error {
+                        gw.deposits.halt = Some(reason.clone());
+                        gw.deposits.dirty = true;
+                        gw.ops_alerts
+                            .activate(crate::ops_alerts::AlertKind::DepositHalted);
+                    }
+                }
+                if matches!(error, Error::Halt(_)) {
+                    snapshot_now(&app.snapshot_req).await?;
+                    app.gw.lock().await.deposits.dirty = false;
+                }
+                return Err(error.to_string());
+            }
+        }
+    }
+    app.gw.lock().await.deposits.check_ready()
 }
 
 /// Serialize automatic polling and manual accelerators over RPC, application and
@@ -1191,7 +1297,7 @@ fn confirmed_receipt(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "deposit_ingestion/receipt_tests.rs"]

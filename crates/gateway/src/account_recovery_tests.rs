@@ -294,3 +294,231 @@ fn local_recovery_authority_and_domain_matrix_preserves_rejected_state() {
         );
     }
 }
+
+/// One deposit block that chains on from `gw`'s consumed prefix: the permitted
+/// deposits `commits`, in order, all from transaction `tx`.
+fn deposit_block(gw: &Gw, commits: &[[u8; 32]], tx: [u8; 32]) -> Page {
+    let start = gw.deposit_cursor();
+    let end = Block {
+        number: start.anchor.as_ref().map_or(1, |b| b.number + 1),
+        hash: [tx[0]; 32],
+        timestamp: None,
+    };
+    let mut tip = start.tip;
+    let events = commits
+        .iter()
+        .enumerate()
+        .map(|(i, commit)| {
+            let route = &gw.deposits.routes[commit];
+            let id = start.count + i as u64;
+            tip = perp_core::merkle::deposit_chain_fold(
+                &tip,
+                &perp_core::merkle::deposit_leaf(&route.from, commit, route.amount, id),
+            );
+            Event {
+                id,
+                from: route.from,
+                commit: *commit,
+                amount: route.amount,
+                tip,
+                tx,
+                tx_index: 0,
+                log_index: i as u64,
+                block: end.clone(),
+            }
+        })
+        .collect();
+    Page { start, end, events }
+}
+
+/// Seal, prove (mock) and commit the open window.
+fn settle_open_window(gw: &mut Gw) {
+    let (w, ww) = gw.begin_window_settle(0).unwrap().unwrap();
+    let prepared =
+        crate::prover_client::prove_and_prepare(&crate::prover_client::MockProverClient, &w, &ww)
+            .unwrap();
+    gw.commit_window_settle(
+        w.batch_id,
+        w.manifest.ordered.clone(),
+        Vec::new(),
+        prepared,
+        L1Status::default(),
+        trading_gate::GateObservation::StaysClosed,
+    );
+}
+
+fn refundable_ids(gw: &Gw, key: &[u8; 32]) -> Vec<u64> {
+    gw.refundable_credits(key)
+        .into_iter()
+        .map(|c| c.event.id)
+        .collect()
+}
+
+/// A rotation moves every deposit row of the account to the new key: the refund
+/// records the close-only rebase left and the records of landed deposits that were
+/// never credited, as well as the routes and credits. The ledger still validates
+/// and restores, the refund views and the confirm endpoint answer under the new
+/// key, and another account's rows stay where they are.
+#[tokio::test]
+async fn rotation_rekeys_uncredited_and_refund_rows() {
+    use crate::wind_down::SettledL1;
+    let (mut gw, old, owner, sk, payer) = prepared();
+    let (other, _) = gw.register_account(None);
+    gw.accounts.get_mut(&other).unwrap().deposit_address = Some([0x42; 20]);
+    // Deposit 0 settles.
+    let settled = gw
+        .authorize_routed_deposit(&old, payer, 5_000_000, 0, Purpose::Collateral, u64::MAX)
+        .unwrap();
+    gw.apply_deposit_page(deposit_block(&gw, &[settled], [0x90; 32]))
+        .unwrap();
+    gw.deposits.dirty = false;
+    settle_open_window(&mut gw);
+    let settled_root = gw.seq.state.state_root();
+    // Deposits 1 (this account) and 2 (another account) are credited and never
+    // settle; deposit 3 lands once the engine is in close-only and is not credited.
+    let refunded = gw
+        .authorize_routed_deposit(&old, payer, 7_000_000, 1, Purpose::Collateral, u64::MAX)
+        .unwrap();
+    let foreign = gw
+        .authorize_routed_deposit(
+            &other,
+            [0x42; 20],
+            3_000_000,
+            0,
+            Purpose::Collateral,
+            u64::MAX,
+        )
+        .unwrap();
+    let refund_tx = [0x91; 32];
+    gw.apply_deposit_page(deposit_block(&gw, &[refunded, foreign], refund_tx))
+        .unwrap();
+    let landed = gw
+        .authorize_routed_deposit(&old, payer, 9_000_000, 0, Purpose::Collateral, u64::MAX)
+        .unwrap();
+    gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+    let refused = deposit_block(&gw, &[landed], [0x92; 32]);
+    assert_eq!(
+        gw.apply_deposit_page(refused.clone()).unwrap_err(),
+        crate::admission::ENGINE_CLOSE_ONLY_INTAKE
+    );
+    assert_eq!(gw.record_uncredited(&refused), 1);
+    gw.rebase_to_settled(&SettledL1 {
+        block: 9,
+        close_only: true,
+        settled: false,
+        batch_count: 1,
+        root: settled_root,
+        consumed_deposit_count: 1,
+    })
+    .unwrap();
+    assert_eq!(
+        gw.deposits.refunds.keys().copied().collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    assert_eq!(
+        gw.deposits.uncredited.keys().copied().collect::<Vec<_>>(),
+        vec![3]
+    );
+    assert_eq!(refundable_ids(&gw, &old), vec![1, 3]);
+
+    let sig = signature(&gw, &sk, &owner, 0);
+    let new = gw.recover_account(owner, 0, &sig).unwrap();
+    assert_eq!(gw.deposits.credits[&0].route.key, new);
+    assert_eq!(gw.deposits.refunds[&1].route.key, new);
+    assert_eq!(gw.deposits.uncredited[&3].route.key, new);
+    assert_eq!(
+        gw.deposits.refunds[&2].route.key, other,
+        "another account's row stays"
+    );
+    gw.validate_deposit_state().unwrap();
+    let snapshot = gw.snapshot_plain();
+    let restored = Gw::boot_restored(&snapshot).unwrap();
+    assert_eq!(restored.snapshot_plain(), snapshot);
+    assert_eq!(restored.deposits.refunds, gw.deposits.refunds);
+    assert_eq!(restored.deposits.uncredited, gw.deposits.uncredited);
+    assert_eq!(refundable_ids(&gw, &new), vec![1, 3]);
+    assert!(refundable_ids(&gw, &old).is_empty());
+    assert_eq!(refundable_ids(&gw, &other), vec![2]);
+    assert_eq!(
+        gw.v1_account(&new).unwrap()["refundableDeposits"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+
+    // The confirm endpoint reads the refund record under the new key.
+    let mut app = crate::tests::test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(4);
+    let state = Arc::get_mut(&mut app).unwrap();
+    state.gw = Mutex::new(gw);
+    state.snapshot_req = Some(tx);
+    let writer = tokio::spawn(async move {
+        while let Some(ack) = rx.recv().await {
+            let _ = ack.send(true);
+        }
+    });
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("x-api-key", hex0x(&new).parse().unwrap());
+    let response = crate::deposit_ingestion::confirm(
+        &app,
+        &headers,
+        &hex0x(&refund_tx),
+        1,
+        Purpose::Collateral,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["status"], "refundable");
+    assert_eq!(body["depositIds"], serde_json::json!([1]));
+    assert_eq!(body["refundable"][0]["ownerCommit"], hex0x(&refunded));
+    writer.abort();
+}
+
+/// A landed deposit the admission cap refused keeps its uncredited record across
+/// a rotation, under the new key: the ledger validates and restores, the record
+/// would be refundable to the new key after close-only, and once the state is
+/// within the bound again the same page credits the deposit to the new key.
+#[test]
+fn a_cap_refused_row_survives_rotation_and_is_credited_under_the_new_key() {
+    let (mut gw, old, owner, sk, payer) = prepared();
+    let commit = gw
+        .authorize_routed_deposit(&old, payer, 5_000_000, 1, Purpose::Collateral, u64::MAX)
+        .unwrap();
+    let landed = deposit_block(&gw, &[commit], [0x93; 32]);
+    let id = landed.events[0].id;
+    gw.admission_cap = crate::admission::AdmissionCap {
+        max_history: crate::admission::HistorySize::of(&gw.seq.state).history,
+        max_positions: 1_000,
+        max_notes: 1_000,
+    };
+    assert_eq!(
+        gw.apply_deposit_page(landed.clone()).unwrap_err(),
+        crate::admission::HISTORY_CAP_INTAKE
+    );
+    assert_eq!(gw.record_uncredited(&landed), 1);
+    let sig = signature(&gw, &sk, &owner, 0);
+    let new = gw.recover_account(owner, 0, &sig).unwrap();
+    assert_eq!(gw.deposits.routes[&commit].key, new);
+    assert_eq!(gw.deposits.uncredited[&id].route.key, new);
+    gw.validate_deposit_state().unwrap();
+    let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    assert_eq!(restored.deposits.uncredited, gw.deposits.uncredited);
+    restored.deposits.l1_close_only = true;
+    assert_eq!(refundable_ids(&restored, &new), vec![id]);
+    assert!(refundable_ids(&restored, &old).is_empty());
+    gw.admission_cap = crate::admission::measured_cap();
+    assert_eq!(gw.apply_deposit_page(landed).unwrap(), 1);
+    assert!(gw.deposits.uncredited.is_empty());
+    assert_eq!(gw.deposits.credits[&id].route.key, new);
+    assert_eq!(
+        gw.seq.state.positions[&(owner, 1)].collateral,
+        5_000_000,
+        "credited to the rotated account's position"
+    );
+    gw.validate_deposit_state().unwrap();
+    Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+}

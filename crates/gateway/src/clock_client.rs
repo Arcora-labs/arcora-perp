@@ -9,9 +9,32 @@ use crate::{
 use perp_core::clock::ClockContext;
 use sequencer::WindowWitness;
 use std::sync::Arc;
+
+/// Whether a registration may be sent when the window has no anchor at the
+/// latest block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RegisterMode {
+    /// Send the window's registration, unless it is past its registration skew.
+    SendIfAbsent,
+    /// Prove only against an anchor that already exists; never send.
+    ExistingOnly,
+}
+
 pub(crate) struct ClockProverClient {
     pub inner: Arc<dyn ProverClient>,
     pub l1: L1,
+    pub register: RegisterMode,
+}
+impl ClockProverClient {
+    /// The same prover and bridge, registering nothing: a window without an
+    /// anchor fails with an error that asks the caller to classify it again.
+    pub(crate) fn existing_only(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            l1: self.l1.clone(),
+            register: RegisterMode::ExistingOnly,
+        }
+    }
 }
 impl ProverClient for ClockProverClient {
     fn clock_enabled(&self) -> bool {
@@ -19,7 +42,7 @@ impl ProverClient for ClockProverClient {
     }
     fn clock_context(&self, w: &WindowWitness) -> Result<Option<ClockContext>, ProverClientError> {
         self.l1
-            .register_clock(w)
+            .register_clock_with(w, self.register)
             .map(Some)
             .map_err(ProverClientError::Http)
     }
@@ -185,8 +208,11 @@ pub(crate) fn check_program_identity(
 }
 
 /// A journaled clock intent's classification at one finalized block.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct DeadIntentCheck {
     pub evidence: crate::rollback_journal::DeadIntentEvidence,
+    /// The classification, with the basis of a dead one.
+    pub classified: crate::rollback_journal::Classified,
     /// Set when the intent can never settle, with what recovery does about it.
     pub dead: Option<(
         crate::rollback_journal::DeadIntent,
@@ -195,7 +221,8 @@ pub(crate) struct DeadIntentCheck {
 }
 
 /// Read the dead-intent evidence for a journal's clock intent
-/// (`ClockIntent::of(journal)`) at one finalized block and classify it.
+/// (`ClockIntent::of(journal)`) at one finalized block and classify it. The
+/// nonce fence is the one recorded so far, every sequencer-key send included.
 pub(crate) fn check_dead_intent(
     l1: &L1,
     intent: crate::rollback_journal::ClockIntent,
@@ -203,7 +230,7 @@ pub(crate) fn check_dead_intent(
     if !l1.clock_enabled() {
         return Err("clock mode not configured".into());
     }
-    let evidence = l1.dead_intent_evidence(&intent)?;
+    let evidence = l1.dead_intent_evidence(&intent, l1.nonce_ceiling())?;
     Ok(classify(intent, evidence))
 }
 
@@ -212,10 +239,17 @@ pub(crate) fn classify(
     intent: crate::rollback_journal::ClockIntent,
     evidence: crate::rollback_journal::DeadIntentEvidence,
 ) -> DeadIntentCheck {
-    use crate::rollback_journal::{classify_dead_intent, dead_intent_action};
-    let dead = classify_dead_intent(intent.batch, intent.phase, &evidence)
-        .map(|d| (d, dead_intent_action(d, intent.phase, intent.timed)));
-    DeadIntentCheck { evidence, dead }
+    use crate::rollback_journal::{classify_dead_intent, dead_intent_action, Classified};
+    let classified = classify_dead_intent(&intent, &evidence);
+    let dead = match classified {
+        Classified::Dead(d, _) => Some((d, dead_intent_action(d, intent.phase, intent.timed))),
+        Classified::MaySettle | Classified::Inconsistent(_) => None,
+    };
+    DeadIntentCheck {
+        evidence,
+        classified,
+        dead,
+    }
 }
 
 /// Version gate for the exact-resume path, hoisted out of `resume_exact` so it
@@ -235,6 +269,54 @@ pub(crate) fn ensure_resume_supported(
     Ok(())
 }
 
+/// How an exact resume runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ResumeMode {
+    /// At boot: the window was classified at one finalized block just before.
+    Boot,
+    /// From a running settle loop. Immediately before the settle broadcast, the
+    /// window's anchor must still be registered, and its receipt not cancelled,
+    /// at the latest block. `reprove` drops a durable proof and proves again
+    /// against the same anchor.
+    Recovery { reprove: bool },
+}
+
+/// The settlement side of an exact resume. [`L1`] is the only production
+/// implementation; the trait lets a test follow the order of reads and sends.
+pub(crate) trait ResumeChain {
+    fn clock_enabled(&self) -> bool;
+    /// Batch count, state root and bond at one finalized block.
+    fn settlement_observation(&self) -> Result<(u64, String, u128), String>;
+    /// See [`L1::clock_anchor_live_at_latest`].
+    fn anchor_live_at_latest(
+        &self,
+        batch: u64,
+        phase: u8,
+        receipt: &perp_core::Digest,
+    ) -> Result<(), String>;
+    /// Broadcast the settle and wait for it ([`L1::settle_proved`]).
+    fn settle_proved(&self, out: &crate::prover_client::ProveOutcome) -> Result<String, String>;
+}
+impl ResumeChain for L1 {
+    fn clock_enabled(&self) -> bool {
+        L1::clock_enabled(self)
+    }
+    fn settlement_observation(&self) -> Result<(u64, String, u128), String> {
+        L1::settlement_observation(self)
+    }
+    fn anchor_live_at_latest(
+        &self,
+        batch: u64,
+        phase: u8,
+        receipt: &perp_core::Digest,
+    ) -> Result<(), String> {
+        self.clock_anchor_live_at_latest(batch, phase, receipt)
+    }
+    fn settle_proved(&self, out: &crate::prover_client::ProveOutcome) -> Result<String, String> {
+        L1::settle_proved(self, out)
+    }
+}
+
 /// Reconstruct only from the encrypted WAL, never from the current live op log.
 /// Re-proving is safe after session expiry: the receipt itself stays immutable.
 pub(crate) fn resume_exact(
@@ -245,10 +327,23 @@ pub(crate) fn resume_exact(
     path: &std::path::Path,
     seed: &[u8; 32],
 ) -> Result<(u64, String, u128), String> {
+    resume_exact_with(l1, client, journal, envelope, path, seed, ResumeMode::Boot)
+}
+
+/// [`resume_exact`] in `mode`.
+pub(crate) fn resume_exact_with(
+    chain: &dyn ResumeChain,
+    client: &dyn ProverClient,
+    journal: &mut crate::rollback_journal::RollbackJournal,
+    envelope: Option<&crate::rollback_journal::ArchiveEnvelope>,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+    mode: ResumeMode,
+) -> Result<(u64, String, u128), String> {
     // BEFORE any L1 read, clock registration, prove, or journal rewrite: a
     // candidate-bound journal can never be resumed through the v2 path.
     ensure_resume_supported(envelope)?;
-    if !client.clock_enabled() || !l1.clock_enabled() {
+    if !client.clock_enabled() || !chain.clock_enabled() {
         return Err("clock resume requires version 2".into());
     }
     let expected = crate::prover_client::prepare_unproved(&journal.witness, &journal.ww)?;
@@ -262,29 +357,62 @@ pub(crate) fn resume_exact(
     {
         return Err("journal does not match its immutable witness".into());
     }
-    let (batch, root, _) = l1.settlement_observation()?;
+    let (batch, root, _) = chain.settlement_observation()?;
     if batch != journal.batch_id
         || !root.eq_ignore_ascii_case(&crate::hex32(&expected.outcome.prev_root))
     {
         return Err("clock resume batch/root changed".into());
     }
+    let reprove = mode == ResumeMode::Recovery { reprove: true };
+    let journaled_receipt = journal
+        .prepared
+        .as_ref()
+        .and_then(|p| proof_receipt(&p.outcome.proof));
     // Reuse a durable proof after a crash. It is still tied to the same receipt;
     // no new timestamp or re-proving is needed merely because the reply was lost.
     let prepared = match journal.prepared.as_ref() {
         Some(p)
-            if p.outcome.proof.starts_with(perp_core::clock::PROOF_MAGIC)
+            if !reprove
+                && p.outcome.proof.starts_with(perp_core::clock::PROOF_MAGIC)
                 && p.outcome.proof.len() > perp_core::clock::PROOF_MAGIC.len() + 32 =>
         {
             p.clone()
         }
         _ => crate::prover_client::prove_and_prepare(client, &journal.witness, &journal.ww)?,
     };
+    // A re-proof is bound to the anchor the journal's proof was bound to.
+    if reprove
+        && journaled_receipt.is_some_and(|r| proof_receipt(&prepared.outcome.proof) != Some(r))
+    {
+        return Err(
+            "the new proof is bound to another anchor than the journal's; reclassify".into(),
+        );
+    }
     journal.prepared = Some(prepared.clone());
     // The rewrite keeps the journal's authenticated version: a candidate v6
     // journal must stay v6 (envelope intact), a legacy journal stays v5.
     crate::rollback_journal::write_versioned(path, journal, envelope, seed)?;
-    l1.settle_proved(&prepared.outcome)?;
-    l1.settlement_observation()
+    if let ResumeMode::Recovery { .. } = mode {
+        // A cancel finalized after the classification, or still unfinalized, is
+        // visible here; nothing is sent then, so no nonce is recorded.
+        let receipt = proof_receipt(&prepared.outcome.proof)
+            .ok_or("a clock proof carries no receipt; reclassify")?;
+        chain.anchor_live_at_latest(
+            journal.batch_id,
+            prepared.outcome.wind_down_phase,
+            &receipt,
+        )?;
+    }
+    chain.settle_proved(&prepared.outcome)?;
+    chain.settlement_observation()
+}
+
+/// The receipt inside a clock-tagged proof (`PROOF_MAGIC ‖ receipt ‖ inner`).
+fn proof_receipt(proof: &[u8]) -> Option<perp_core::Digest> {
+    proof
+        .strip_prefix(perp_core::clock::PROOF_MAGIC)
+        .and_then(|body| body.get(..32))
+        .and_then(|r| r.try_into().ok())
 }
 
 #[cfg(test)]
@@ -299,6 +427,7 @@ mod tests {
         let client = ClockProverClient {
             inner: Arc::new(MockProverClient),
             l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+            register: RegisterMode::SendIfAbsent,
         };
         let (w, _) = sample_window();
         let pre = |batch_count, phase| RegisterPreconditions {
@@ -344,6 +473,7 @@ mod tests {
         let client = ClockProverClient {
             inner: Arc::new(UnreadableIdentity),
             l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+            register: RegisterMode::SendIfAbsent,
         };
         match client.register_preconditions_with(true) {
             Err(PreflightRefusal::Refused(e)) => {
@@ -362,6 +492,7 @@ mod tests {
         let local = ClockProverClient {
             inner: Arc::new(MockProverClient),
             l1: L1::test_clocked_reader("http://127.0.0.1:9".into(), [1; 20], 84532),
+            register: RegisterMode::SendIfAbsent,
         };
         match local.register_preconditions_with(true) {
             Err(PreflightRefusal::Refused(e)) => assert!(!e.contains("identity"), "{e}"),
@@ -387,5 +518,251 @@ mod tests {
         }
         assert_eq!(parse_expected_elf_sha256(Some(&hash)), Ok(Some([0xab; 32])));
         assert_eq!(parse_expected_elf_sha256(None), Ok(None));
+    }
+
+    /// A settlement at batch `batch` and root `root` whose latest-block anchor
+    /// check answers `latest`. Each call is recorded, and a settle records its
+    /// nonce in `fence` first, as every sequencer-key send does.
+    struct FakeChain {
+        batch: u64,
+        root: String,
+        latest: Result<(), String>,
+        calls: std::sync::Mutex<Vec<&'static str>>,
+        fence: crate::l1::NonceFence,
+        fence_path: std::path::PathBuf,
+    }
+    impl FakeChain {
+        fn new(batch: u64, root: &str, latest: Result<(), String>) -> Self {
+            let fence_path = scratch("fence");
+            Self {
+                batch,
+                root: root.into(),
+                latest,
+                calls: Default::default(),
+                fence: crate::l1::NonceFence::open(fence_path.clone(), [3; 32], false).unwrap(),
+                fence_path,
+            }
+        }
+        fn calls(&self) -> Vec<&'static str> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+    impl Drop for FakeChain {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.fence_path);
+        }
+    }
+    impl ResumeChain for FakeChain {
+        fn clock_enabled(&self) -> bool {
+            true
+        }
+        fn settlement_observation(&self) -> Result<(u64, String, u128), String> {
+            self.calls.lock().unwrap().push("observe");
+            Ok((self.batch, self.root.clone(), 0))
+        }
+        fn anchor_live_at_latest(
+            &self,
+            batch: u64,
+            phase: u8,
+            receipt: &perp_core::Digest,
+        ) -> Result<(), String> {
+            self.calls.lock().unwrap().push("recheck");
+            assert_eq!((batch, phase), (self.batch, 0));
+            assert_ne!(receipt, &[0; 32]);
+            self.latest.clone()
+        }
+        fn settle_proved(
+            &self,
+            out: &crate::prover_client::ProveOutcome,
+        ) -> Result<String, String> {
+            self.calls.lock().unwrap().push("settle");
+            assert!(proof_receipt(&out.proof).is_some());
+            self.fence.cover(9)?;
+            Ok("0xsettle".into())
+        }
+    }
+
+    /// The mock prover behind an anchor that already exists.
+    struct Anchored(ClockContext);
+    impl ProverClient for Anchored {
+        fn clock_enabled(&self) -> bool {
+            true
+        }
+        fn clock_context(
+            &self,
+            _: &WindowWitness,
+        ) -> Result<Option<ClockContext>, ProverClientError> {
+            Ok(Some(self.0))
+        }
+        fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+            MockProverClient.prove(w)
+        }
+        fn prove_clocked(
+            &self,
+            w: &WindowWitness,
+            c: &ClockContext,
+        ) -> Result<RemoteProveResp, ProverClientError> {
+            MockProverClient.prove_clocked(w, c)
+        }
+    }
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let mut rnd = [0u8; 8];
+        getrandom::getrandom(&mut rnd).unwrap();
+        let suffix: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+        std::env::temp_dir().join(format!("darkperp-resume-{tag}-{suffix}"))
+    }
+
+    /// A sealed window, the anchor its registration made, and its journal with a
+    /// durable proof bound to that anchor (inner proof `[7; 32]`).
+    fn anchored_journal() -> (
+        crate::rollback_journal::RollbackJournal,
+        ClockContext,
+        String,
+    ) {
+        let (w, ww) = sample_window();
+        let d = perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
+            .unwrap();
+        let b = perp_core::clock::TimeBounds::derive(&w.ops).unwrap();
+        let c = ClockContext {
+            chain_id: 84532,
+            verifier: [0x11; 20],
+            settlement: [0x22; 20],
+            batch_id: w.batch_id,
+            previous_root: d.prev_state_root,
+            base_commitment: d.commitment::<perp_core::Keccak256>(),
+            phase: d.wind_down_phase,
+            first_ms: b.first_ms,
+            last_ms: b.last_ms,
+            timed_ops: b.count,
+            anchored_at_ms: b.last_ms,
+            max_window_ms: 10_000,
+            clock_skew_ms: 2_000,
+        };
+        let mut prepared = crate::prover_client::prepare_unproved(&w, &ww).unwrap();
+        let root = crate::hex32(&prepared.outcome.prev_root);
+        prepared.outcome.proof = perp_core::clock::PROOF_MAGIC.to_vec();
+        prepared.outcome.proof.extend(c.receipt());
+        prepared.outcome.proof.extend([7; 32]);
+        let journal = crate::rollback_journal::RollbackJournal {
+            batch_id: w.batch_id,
+            witness: w,
+            ww,
+            prepared: Some(prepared),
+        };
+        (journal, c, root)
+    }
+
+    fn proof_of(j: &crate::rollback_journal::RollbackJournal) -> Vec<u8> {
+        j.prepared.as_ref().unwrap().outcome.proof.clone()
+    }
+
+    #[test]
+    fn the_recovery_settle_rechecks_the_anchor_at_latest() {
+        let (journal, c, root) = anchored_journal();
+        let (path, seed) = (scratch("journal"), [5; 32]);
+        let recovery = ResumeMode::Recovery { reprove: false };
+        // Cancelled, gone or replaced at the latest block, or unreadable there:
+        // nothing is sent, so no nonce is recorded.
+        for refusal in [
+            "clock anchor cancelled at the latest block; nothing sent; reclassify",
+            "clock anchor no longer registered at the latest block; nothing sent; reclassify",
+            "the latest anchor read failed (timed out); nothing sent; reclassify",
+        ] {
+            let chain = FakeChain::new(journal.batch_id, &root, Err(refusal.into()));
+            let mut j = journal.clone();
+            assert_eq!(
+                resume_exact_with(&chain, &Anchored(c), &mut j, None, &path, &seed, recovery),
+                Err(refusal.to_string())
+            );
+            assert_eq!(chain.calls(), ["observe", "recheck"]);
+            assert_eq!(chain.fence.ceiling(), crate::l1::Ceiling::None);
+        }
+        // A live anchor: the recheck comes immediately before the settle.
+        let chain = FakeChain::new(journal.batch_id, &root, Ok(()));
+        let mut j = journal.clone();
+        resume_exact_with(&chain, &Anchored(c), &mut j, None, &path, &seed, recovery).unwrap();
+        assert_eq!(chain.calls(), ["observe", "recheck", "settle", "observe"]);
+        assert_eq!(chain.fence.ceiling(), crate::l1::Ceiling::Nonce(9));
+        // The durable proof is reused.
+        assert_eq!(proof_of(&j), proof_of(&journal));
+        // At boot the window was just classified; there is no latest recheck.
+        let chain = FakeChain::new(journal.batch_id, &root, Err("not read at boot".into()));
+        let mut j = journal.clone();
+        resume_exact_with(
+            &chain,
+            &Anchored(c),
+            &mut j,
+            None,
+            &path,
+            &seed,
+            ResumeMode::Boot,
+        )
+        .unwrap();
+        assert_eq!(chain.calls(), ["observe", "settle", "observe"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_recovery_reprove_proves_again_against_the_same_anchor() {
+        let (journal, c, root) = anchored_journal();
+        let (path, seed) = (scratch("journal"), [5; 32]);
+        let reprove = ResumeMode::Recovery { reprove: true };
+        let chain = FakeChain::new(journal.batch_id, &root, Ok(()));
+        let mut j = journal.clone();
+        resume_exact_with(&chain, &Anchored(c), &mut j, None, &path, &seed, reprove).unwrap();
+        let (old, new) = (
+            &journal.prepared.as_ref().unwrap().outcome.proof,
+            &j.prepared.as_ref().unwrap().outcome.proof,
+        );
+        assert_ne!(new, old, "the durable proof was dropped");
+        assert_eq!(proof_receipt(new), Some(c.receipt()));
+        assert_eq!(
+            crate::rollback_journal::read(&path, &seed)
+                .unwrap()
+                .unwrap()
+                .prepared
+                .unwrap()
+                .outcome
+                .proof,
+            *new,
+            "the journal holds the new proof"
+        );
+        assert_eq!(chain.calls(), ["observe", "recheck", "settle", "observe"]);
+        // A proof bound to another anchor is refused before the journal is
+        // rewritten, and nothing is sent.
+        let other = ClockContext {
+            anchored_at_ms: c.anchored_at_ms + 1,
+            ..c
+        };
+        assert_ne!(other.receipt(), c.receipt());
+        let chain = FakeChain::new(journal.batch_id, &root, Ok(()));
+        let mut j = journal.clone();
+        let refused = resume_exact_with(
+            &chain,
+            &Anchored(other),
+            &mut j,
+            None,
+            &path,
+            &seed,
+            reprove,
+        )
+        .unwrap_err();
+        assert!(refused.ends_with("; reclassify"), "{refused}");
+        assert_eq!(proof_of(&j), proof_of(&journal));
+        assert_eq!(chain.calls(), ["observe"]);
+        assert_eq!(chain.fence.ceiling(), crate::l1::Ceiling::None);
+        assert_eq!(
+            crate::rollback_journal::read(&path, &seed)
+                .unwrap()
+                .unwrap()
+                .prepared
+                .unwrap()
+                .outcome
+                .proof,
+            *new,
+            "the journal on disk is unchanged"
+        );
+        let _ = std::fs::remove_file(&path);
     }
 }

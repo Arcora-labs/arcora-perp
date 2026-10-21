@@ -81,6 +81,12 @@ class Evaluate(unittest.TestCase):
         active, _ = self.run_eval(state, status(7))
         self.assertEqual(active, set())
 
+    def test_window_void_and_clock_recovery_alerts_are_relayed(self):
+        state = doc()
+        state["opsAlerts"] = ["window_voided", "clock_recovery_blocked"]
+        active, _ = self.run_eval(state, status(7))
+        self.assertEqual(active, {"window_voided", "clock_recovery_blocked"})
+
     def test_camel_case_health_fields_are_read(self):
         state = {"settlementHealth": "HELD", "depositIngestion": {"state": "halted"},
                  "l1": {"batchCount": 7}, "opsAlerts": ["bond_shortfall"]}

@@ -11,13 +11,16 @@ pub(crate) struct ClockConfig {
     pub stop: Option<std::sync::Arc<crate::service_shutdown::Shutdown>>,
     /// The route's program vkey once read; shared by every clone.
     pub program_vkey: std::sync::Arc<std::sync::OnceLock<Digest>>,
+    /// The verifier's `clockSkewMs` once read; it is constructor-set, so the
+    /// first successful read holds for every clone.
+    pub clock_skew_ms: std::sync::Arc<std::sync::OnceLock<u64>>,
 }
 
 /// `cell`'s value, or the result of `read`, kept only when it succeeds.
-fn cached_vkey(
-    cell: &std::sync::OnceLock<Digest>,
-    read: impl FnOnce() -> Result<Digest, String>,
-) -> Result<Digest, String> {
+fn cached_once<T: Copy>(
+    cell: &std::sync::OnceLock<T>,
+    read: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     if let Some(v) = cell.get() {
         return Ok(*v);
     }
@@ -45,6 +48,7 @@ impl ClockConfig {
             chain_id,
             stop: None,
             program_vkey: Default::default(),
+            clock_skew_ms: Default::default(),
         }))
     }
     pub(crate) fn from_env() -> Result<Option<Self>, String> {
@@ -63,6 +67,15 @@ pub(crate) const ANCHOR_CANCELLED: &str =
     "clock anchor was cancelled on L1; its bound proof can never settle";
 pub(crate) const ANCHOR_REPLACED: &str =
     "another clock anchor is finalized for this batch and phase; the bound proof can never settle";
+/// `RegisterMode::ExistingOnly` found no anchor for the window at the latest block.
+pub(crate) const ANCHOR_NOT_REGISTERED: &str = "clock anchor no longer registered; reclassify";
+/// The `register` entry point of the clock verifier.
+const REGISTER_SIG: &str = "register(uint64,bytes32,bytes32,uint64,uint64,uint64,uint8)";
+/// The most a registration is held back from the verifier's skew bound, for the
+/// time until it is mined. A tenth of a shorter skew.
+const REGISTER_SKEW_MARGIN_MS: u64 = 2_000;
+/// A zero-value transfer: the plain-transfer gas, so cast runs no estimate.
+const BURN_GAS_LIMIT: &str = "21000";
 
 /// What became of the anchor a proof is bound to, at one block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -264,8 +277,10 @@ fn check_binding(
 }
 
 /// The dead-intent evidence for a journaled clock intent, all at one block: the
-/// settlement's batch and close-only flag, the intent's anchor slot, and whether
-/// the sequencer's nonce is past `ceiling`.
+/// settlement's batch, root and close-only flag, the intent's anchor slot, the
+/// sequencer's nonce and whether it is past `ceiling`, the header-bound block
+/// time and the verifier's `clockSkewMs`. `quiet` is left unset; see
+/// [`dead_intent_evidence_from`].
 pub(super) fn read_dead_intent_evidence(
     r: &CanonicalRead<'_>,
     settlement: &str,
@@ -278,6 +293,7 @@ pub(super) fn read_dead_intent_evidence(
     check_binding(r, settlement, verifier)?;
     let v = crate::hex0x(verifier);
     let batch_count = abi_u64(r.word(settlement, "batchCount()", None)?, "batchCount")?;
+    let state_root = r.word(settlement, "currentStateRoot()", None)?;
     let close_only = abi_bool(r.word(settlement, "closeOnly()", None)?, "closeOnly")?;
     let cancelled = match intent.receipt {
         Some(receipt) => abi_bool(
@@ -311,13 +327,236 @@ pub(super) fn read_dead_intent_evidence(
         }
     };
     let nonce = r.nonce(sequencer)?;
+    let clock_skew_ms = read_clock_skew(r, verifier)?;
     Ok(DeadIntentEvidence {
         block: r.height(),
         batch_count,
+        state_root,
         close_only,
         slot,
-        fenced: ceiling.passed_by(nonce),
+        nonce,
+        fence_passed: ceiling.passed_by(nonce),
+        quiet: false,
+        seen_nonces: None,
+        block_time_ms: r.timestamp().ok().and_then(|s| s.checked_mul(1000)),
+        clock_skew_ms,
     })
+}
+
+/// Whether no sequencer-key transaction is visible as pending: on every
+/// endpoint, the sequencer's latest and pending nonces equal `finalized`. A
+/// failed or malformed read is not quiet. Also returns the highest latest and
+/// pending nonces seen, or `None` when a read failed.
+pub(super) fn nonces_quiet(
+    endpoints: &[&dyn Rpc],
+    sequencer: &[u8; 20],
+    finalized: u64,
+) -> (bool, Option<(u64, u64)>) {
+    let account = serde_json::json!(crate::hex0x(sequencer));
+    let (mut quiet, mut seen) = (true, Some((0u64, 0u64)));
+    for rpc in endpoints {
+        let read = |tag: &str| {
+            rpc.call(
+                "eth_getTransactionCount",
+                vec![account.clone(), serde_json::json!(tag)],
+            )
+            .and_then(|v| observation::quantity(&v))
+        };
+        seen = match (seen, read("latest"), read("pending")) {
+            (Some((latest, pending)), Ok(l), Ok(p)) => {
+                quiet &= l == finalized && p == finalized;
+                Some((latest.max(l), pending.max(p)))
+            }
+            _ => None,
+        };
+    }
+    (quiet && seen.is_some(), seen)
+}
+
+/// The dead-intent evidence on `primary`, with `witness` agreeing when it is
+/// configured: one finalized read ([`read_dead_intent_evidence`]), then, right
+/// after it, the quiet-nonce read on every endpoint ([`nonces_quiet`]).
+#[allow(clippy::too_many_arguments)] // the endpoints and the intent's whole identity
+pub(super) fn dead_intent_evidence_from(
+    primary: &dyn Rpc,
+    witness: Option<&dyn Rpc>,
+    expected_chain: Option<u64>,
+    settlement: &str,
+    verifier: &[u8; 20],
+    sequencer: &[u8; 20],
+    intent: &crate::rollback_journal::ClockIntent,
+    ceiling: super::Ceiling,
+) -> Result<crate::rollback_journal::DeadIntentEvidence, String> {
+    let r = CanonicalRead::with_policy(
+        primary,
+        witness,
+        expected_chain,
+        observation::AnchorPolicy::Finalized,
+    )?;
+    let mut evidence =
+        read_dead_intent_evidence(&r, settlement, verifier, sequencer, intent, ceiling)?;
+    r.finish()?;
+    let endpoints: Vec<&dyn Rpc> = std::iter::once(primary).chain(witness).collect();
+    (evidence.quiet, evidence.seen_nonces) = nonces_quiet(&endpoints, sequencer, evidence.nonce);
+    Ok(evidence)
+}
+
+/// The verifier's `clockSkewMs` (constructor-set).
+fn read_clock_skew(r: &CanonicalRead<'_>, verifier: &[u8; 20]) -> Result<u64, String> {
+    abi_u64(
+        r.word(&crate::hex0x(verifier), "clockSkewMs()", None)?,
+        "clockSkewMs",
+    )
+}
+
+/// A timed window registers only while `lastMs + clockSkewMs` is not behind the
+/// block time it is mined at. The gateway refuses to send once its own clock,
+/// plus a margin for the time until the registration is mined, is past that
+/// bound, so the refusal comes before a nonce is recorded. A local clock ahead
+/// of the chain's can refuse a registration the chain would still accept.
+pub(super) fn check_register_skew(last_ms: u64, skew_ms: u64, now_ms: u64) -> Result<(), String> {
+    let margin = (skew_ms / 10).min(REGISTER_SKEW_MARGIN_MS);
+    if now_ms as u128 + margin as u128 > last_ms as u128 + skew_ms as u128 {
+        return Err("timed window is past its registration skew; nothing sent".into());
+    }
+    Ok(())
+}
+
+/// What a registration does once the window's anchor at the latest block is
+/// known: return an existing anchor for the caller to validate, or send the
+/// registration with `send` and return `None`. `ExistingOnly` never sends, and
+/// a timed window is never sent past its registration skew; `clock_skew_ms` is
+/// read only for a timed window that would be sent. An error from `send` means
+/// nothing was broadcast; a broadcast whose outcome is unknown returns `Ok`.
+pub(super) fn register_or_reuse(
+    mode: crate::clock_client::RegisterMode,
+    existing: Option<ClockContext>,
+    bounds: &TimeBounds,
+    now_ms: u64,
+    clock_skew_ms: impl FnOnce() -> Result<u64, String>,
+    send: impl FnOnce() -> Result<(), String>,
+) -> Result<Option<ClockContext>, String> {
+    if let Some(c) = existing {
+        return Ok(Some(c));
+    }
+    if mode == crate::clock_client::RegisterMode::ExistingOnly {
+        return Err(ANCHOR_NOT_REGISTERED.into());
+    }
+    if bounds.count > 0 {
+        check_register_skew(bounds.last_ms, clock_skew_ms()?, now_ms)?;
+    }
+    send()?;
+    Ok(None)
+}
+
+/// A recovery settle is broadcast only while its anchor is live at the latest
+/// block; anything else asks the caller to classify the window again.
+pub(super) fn latest_fate_permits_settle(fate: AnchorFate) -> Result<(), String> {
+    match fate {
+        AnchorFate::Live => Ok(()),
+        AnchorFate::Cancelled => {
+            Err("clock anchor cancelled at the latest block; nothing sent; reclassify".into())
+        }
+        AnchorFate::Replaced => Err(
+            "another clock anchor holds this batch at the latest block; nothing sent; reclassify"
+                .into(),
+        ),
+        AnchorFate::Absent => Err(
+            "clock anchor no longer registered at the latest block; nothing sent; reclassify"
+                .into(),
+        ),
+    }
+}
+
+/// A nonce burn may use `expected` only while it is the sequencer's latest
+/// nonce, and the lane's next nonce when the lane knows one.
+pub(super) fn check_burn(expected: u64, latest: u64, lane_next: Option<u64>) -> Result<(), String> {
+    if latest != expected {
+        return Err(format!(
+            "the sequencer's latest nonce is {latest}, not {expected}; nothing sent"
+        ));
+    }
+    if let Some(next) = lane_next.filter(|n| *n != expected) {
+        return Err(format!(
+            "the sequencer lane's next nonce is {next}, not {expected}; nothing sent"
+        ));
+    }
+    Ok(())
+}
+
+/// `cast send` for a nonce burn: a zero-value transfer from the sequencer key to
+/// itself at `nonce`, with no calldata and the plain-transfer gas limit.
+pub(super) fn burn_send_args(
+    address: &str,
+    nonce: u64,
+    keystore: &str,
+    password_file: &str,
+    rpc: &str,
+) -> Vec<String> {
+    [
+        "send",
+        address,
+        "--value",
+        "0",
+        "--gas-limit",
+        BURN_GAS_LIMIT,
+        "--nonce",
+        &nonce.to_string(),
+        "--keystore",
+        keystore,
+        "--password-file",
+        password_file,
+        "--rpc-url",
+        rpc,
+        "--json",
+    ]
+    .map(String::from)
+    .into()
+}
+
+/// A nonce burn under the caller's lane lock, in order: the checks, the fence
+/// record, then the send. `quiet` is [`nonces_quiet`] at `expected` on every
+/// configured endpoint: a sequencer-key transaction that is pending anywhere
+/// (a send that took the lane before the burn's read and timed out with its
+/// transaction still in a mempool) holds `expected`, and a burn at it would
+/// replace that transaction. `lane_next` follows the send as in `send_on`.
+pub(super) fn burn_on(
+    expected: u64,
+    lane_next: &mut Option<u64>,
+    latest: impl FnOnce() -> Result<u64, String>,
+    quiet: impl FnOnce() -> (bool, Option<(u64, u64)>),
+    fence: Option<&NonceFence>,
+    send: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    check_burn(expected, latest()?, *lane_next)?;
+    match quiet() {
+        (true, _) => {}
+        (false, Some((latest, pending))) => {
+            return Err(format!(
+                "a sequencer-key transaction is pending (latest nonce up to {latest}, pending \
+                 up to {pending}, expected {expected}); nothing sent"
+            ))
+        }
+        (false, None) => {
+            return Err(
+                "the sequencer's pending nonces could not be read on every RPC; nothing sent"
+                    .into(),
+            )
+        }
+    }
+    if let Some(fence) = fence {
+        fence.cover(expected)?;
+    }
+    match send() {
+        Ok(tx) => {
+            *lane_next = Some(expected + 1);
+            Ok(tx)
+        }
+        Err(e) => {
+            *lane_next = None;
+            Err(e)
+        }
+    }
 }
 
 /// The registration state that does not depend on the window: the binding is
@@ -373,6 +612,7 @@ impl L1 {
             chain_id,
             stop: None,
             program_vkey: Default::default(),
+            clock_skew_ms: Default::default(),
         });
         l1
     }
@@ -476,33 +716,180 @@ impl L1 {
             )
         })
     }
-    /// The dead-intent evidence for `intent` at the finalized block.
+    /// The dead-intent evidence for `intent` at the finalized block, with the
+    /// nonce fence at `ceiling` and the quiet-nonce read on `L1_RPC` and, when it
+    /// is set, `L1_RPC_WITNESS`.
     pub(crate) fn dead_intent_evidence(
         &self,
         intent: &crate::rollback_journal::ClockIntent,
+        ceiling: super::Ceiling,
     ) -> Result<crate::rollback_journal::DeadIntentEvidence, String> {
         let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
         let sequencer = crate::parse_addr20_hex(&self.sequencer_address()?)
             .ok_or("invalid sequencer address")?;
-        let ceiling = self.nonce_ceiling();
-        self.observe(|r| {
-            read_dead_intent_evidence(
-                r,
-                &self.settlement,
-                &cfg.verifier,
-                &sequencer,
-                intent,
-                ceiling,
-            )
-        })
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        let evidence = dead_intent_evidence_from(
+            &primary,
+            witness.as_ref().map(|r| r as &dyn Rpc),
+            self.witness_chain,
+            &self.settlement,
+            &cfg.verifier,
+            &sequencer,
+            intent,
+            ceiling,
+        )?;
+        let _ = cfg.clock_skew_ms.set(evidence.clock_skew_ms);
+        Ok(evidence)
     }
     /// The settlement's batch count and wind-down phase at the latest block, with
-    /// the clock binding checked at the same block.
+    /// the clock binding checked at the same block. Until it is cached, the
+    /// verifier's `clockSkewMs` is read with them, so that a timed registration
+    /// after the seal needs no further read.
     pub(crate) fn clock_register_state(&self) -> Result<(u64, u8), String> {
         let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
-        self.observe_at(observation::AnchorPolicy::Latest, |r| {
-            read_register_state(r, &self.settlement, &cfg.verifier)
+        let skew_cached = cfg.clock_skew_ms.get().is_some();
+        let (count, phase, skew) = self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            let (count, phase) = read_register_state(r, &self.settlement, &cfg.verifier)?;
+            let skew = if skew_cached {
+                None
+            } else {
+                Some(read_clock_skew(r, &cfg.verifier)?)
+            };
+            Ok((count, phase, skew))
+        })?;
+        if let Some(skew) = skew {
+            let _ = cfg.clock_skew_ms.set(skew);
+        }
+        Ok((count, phase))
+    }
+    /// The verifier's `clockSkewMs`. It is constructor-set, so the first
+    /// successful read is kept for every clone of this bridge.
+    pub(crate) fn clock_skew_ms(&self) -> Result<u64, String> {
+        let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
+        cached_once(&cfg.clock_skew_ms, || {
+            self.observe_at(observation::AnchorPolicy::Latest, |r| {
+                read_clock_skew(r, &cfg.verifier)
+            })
         })
+    }
+    /// The terms of `triggerCloseOnly` at the latest block: the settlement's last
+    /// progress and liveness timeout, and the landing block of the oldest
+    /// deposit no settled batch consumed. While a clock window is recovering,
+    /// they tell how long the settlement can wait for it.
+    pub(crate) fn close_only_budget(
+        &self,
+    ) -> Result<crate::clock_recovery::CloseOnlyBudget, String> {
+        let s = &self.settlement;
+        let vault = self.vault.as_ref().ok_or("L1_VAULT not set")?;
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            let consumed = abi_u64(
+                r.word(s, "consumedDepositCount()", None)?,
+                "consumedDepositCount",
+            )?;
+            let deposits = abi_u64(r.word(vault, "depositCount()", None)?, "depositCount")?;
+            let oldest_unconsumed_deposit_block = if deposits > consumed {
+                Some(abi_u64(
+                    r.word(
+                        vault,
+                        "depositBlock(uint64)",
+                        Some(observation::u64_word(consumed)),
+                    )?,
+                    "depositBlock",
+                )?)
+            } else {
+                None
+            };
+            Ok(crate::clock_recovery::CloseOnlyBudget {
+                head: r.height(),
+                last_progress_block: abi_u64(
+                    r.word(s, "lastProgressBlock()", None)?,
+                    "lastProgressBlock",
+                )?,
+                liveness_timeout_blocks: abi_u64(
+                    r.word(s, "livenessTimeoutBlocks()", None)?,
+                    "livenessTimeoutBlocks",
+                )?,
+                oldest_unconsumed_deposit_block,
+                close_only: abi_bool(r.word(s, "closeOnly()", None)?, "closeOnly")?,
+            })
+        })
+    }
+    /// Immediately before a recovery settle: the anchor `receipt` names for
+    /// (batch, phase) must still be registered, and the receipt not cancelled, at
+    /// the latest block. Anything else, a failed read included, sends nothing.
+    pub(crate) fn clock_anchor_live_at_latest(
+        &self,
+        batch: u64,
+        phase: u8,
+        receipt: &Digest,
+    ) -> Result<(), String> {
+        let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
+        let v = crate::hex0x(&cfg.verifier);
+        let fate = self
+            .observe_at(observation::AnchorPolicy::Latest, |r| {
+                read_anchor_fate(r, &v, batch, phase, receipt)
+            })
+            .map_err(|e| {
+                format!("the latest anchor read failed ({e}); nothing sent; reclassify")
+            })?;
+        latest_fate_permits_settle(fate)
+    }
+    /// Use the sequencer's unused nonce `expected` with a zero-value transfer to
+    /// itself, so that a nonce recorded for a send that was never broadcast is
+    /// used. It runs under the sequencer lane's nonce lock and sends nothing
+    /// unless the latest nonce, and the lane's next nonce when it is known, are
+    /// `expected`, and on `L1_RPC` and, when it is set, `L1_RPC_WITNESS` the
+    /// latest and pending nonces are `expected` too. The fence records
+    /// `expected` before the broadcast, like every sequencer-key send. With its
+    /// explicit gas limit cast runs no estimate. It touches no contract.
+    pub(crate) fn burn_sequencer_nonce(&self, expected: u64) -> Result<String, String> {
+        let lane = self.sequencer_lane();
+        let mut lane_next = lane.nonce.lock().map_err(|_| "nonce lock poisoned")?;
+        let address = self.sequencer_address()?;
+        let sequencer = crate::parse_addr20_hex(&address).ok_or("invalid sequencer address")?;
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        let endpoints: Vec<&dyn Rpc> = std::iter::once(&primary as &dyn Rpc)
+            .chain(witness.as_ref().map(|r| r as &dyn Rpc))
+            .collect();
+        burn_on(
+            expected,
+            &mut lane_next,
+            || self.account_nonce(&address, "latest"),
+            || nonces_quiet(&endpoints, &sequencer, expected),
+            self.nonce_fence.get(),
+            || {
+                if self.clock_stopping() {
+                    return Err("nonce burn stopped before broadcast".into());
+                }
+                let args = burn_send_args(
+                    &address,
+                    expected,
+                    lane.keystore_path,
+                    lane.password_file,
+                    &self.rpc,
+                );
+                let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                self.cast(&refs).map(|out| tx_hash(&out))
+            },
+        )
     }
     /// The program vkey of the clock verifier route's SP1 adapter. The route is
     /// immutable (the clock verifier's `innerVerifier`, an oracle wrapper's
@@ -510,7 +897,7 @@ impl L1 {
     /// so the first successful read is kept for every clone of this bridge.
     pub(crate) fn clock_program_vkey(&self) -> Result<Digest, String> {
         let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
-        cached_vkey(&cfg.program_vkey, || {
+        cached_once(&cfg.program_vkey, || {
             self.observe_at(observation::AnchorPolicy::Latest, |r| {
                 read_program_vkey(r, &cfg.verifier)
             })
@@ -663,9 +1050,14 @@ impl L1 {
             Ok(Some(c))
         })
     }
-    pub(crate) fn register_clock(
+    /// Register the window's clock bounds, or reuse the anchor that already
+    /// carries them, then wait until the anchor is finalized. `ExistingOnly`
+    /// never sends, and neither does a timed window past its registration skew
+    /// (see [`register_or_reuse`]).
+    pub(crate) fn register_clock_with(
         &self,
         w: &sequencer::WindowWitness,
+        mode: crate::clock_client::RegisterMode,
     ) -> Result<ClockContext, String> {
         if self.clock_stopping() {
             return Err("clock registration cancelled; retain journal".into());
@@ -674,14 +1066,12 @@ impl L1 {
         let roots = perp_core::commitment::derive_roots(&mut post, &w.ops, &w.manifest)
             .map_err(|e| format!("clock replay: {e:?}"))?;
         let b = TimeBounds::derive(&w.ops).map_err(|e| format!("clock bounds: {e:?}"))?;
-        if let Some(c) = self.clock_read(
+        let existing = self.clock_read(
             w.batch_id,
             roots.wind_down_phase,
             observation::AnchorPolicy::Latest,
-        )? {
-            c.validate(w.batch_id, &roots, &w.ops)
-                .map_err(|_| "existing clock registration differs")?;
-        } else {
+        )?;
+        let send = || {
             let cfg = self
                 .clock
                 .as_ref()
@@ -702,11 +1092,20 @@ impl L1 {
             if self.clock_stopping() {
                 return Err("clock registration cancelled before broadcast; retain journal".into());
             }
-            let _send_result = self.send(
-                &crate::hex0x(&cfg.verifier),
-                "register(uint64,bytes32,bytes32,uint64,uint64,uint64,uint8)",
-                &args,
-            );
+            let _send_result = self.send(&crate::hex0x(&cfg.verifier), REGISTER_SIG, &args);
+            Ok(())
+        };
+        let reused = register_or_reuse(
+            mode,
+            existing,
+            &b,
+            crate::now_ms(),
+            || self.clock_skew_ms(),
+            send,
+        )?;
+        if let Some(c) = reused {
+            c.validate(w.batch_id, &roots, &w.ops)
+                .map_err(|_| "existing clock registration differs")?;
         }
         crate::clock_wait::wait_for(
             crate::clock_wait::FINALITY_BUDGET,
@@ -810,6 +1209,7 @@ mod configuration_tests {
             chain_id: 84532,
             stop: None,
             program_vkey: Default::default(),
+            clock_skew_ms: Default::default(),
         });
         p.outcome.proof = vec![1; 32];
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());
@@ -830,3 +1230,7 @@ mod anchor_cancel_tests;
 #[cfg(test)]
 #[path = "dead_intent_tests.rs"]
 mod dead_intent_tests;
+
+#[cfg(test)]
+#[path = "send_guard_tests.rs"]
+mod send_guard_tests;

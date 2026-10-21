@@ -101,6 +101,7 @@ mod challenge_auth;
 mod challenge_scan;
 mod clock_admission;
 mod clock_client;
+mod clock_recovery;
 mod clock_wait;
 #[cfg(test)]
 mod continuation_settlement_tests;
@@ -122,6 +123,7 @@ mod http_transport_tests;
 mod injected_inputs;
 mod l1;
 mod listen_config;
+mod live_void;
 mod ops_alerts;
 mod oracle_crosscheck;
 #[cfg(test)]
@@ -366,11 +368,180 @@ fn apply_boot_recovery(
     apply_boot_recovery_classified(gw, j, chain_bc, chain_root, bond, gate_observation, None)
 }
 
+/// A dead clock intent as boot classified it, at one finalized block, with what
+/// recovery does about it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BootDeadIntent {
+    dead: rollback_journal::DeadIntent,
+    action: rollback_journal::DeadIntentAction,
+    /// Why the classification is final.
+    basis: rollback_journal::DeadBasis,
+    /// The finalized block it was read at.
+    block: u64,
+}
+
+/// How many times boot reads the dead-intent evidence before it gives up, and
+/// how long it waits between reads.
+const BOOT_DEAD_INTENT_READS: u32 = 3;
+const BOOT_DEAD_INTENT_BACKOFF: Duration = Duration::from_secs(2);
+
+/// What boot does with a journaled clock intent, from its classification at one
+/// finalized block.
+#[derive(Debug, PartialEq, Eq)]
+enum BootClockPlan {
+    /// The intent may still settle: the exact journal may be resumed (when the
+    /// chain and the snapshot present its shape) with this registration mode. A
+    /// timed window, or one whose bounds cannot be derived, resumes only against
+    /// an anchor that already exists: past its registration skew it can never
+    /// register again. An untimed window registers zero times, so re-sending its
+    /// registration is exact.
+    MaySettle(clock_client::RegisterMode),
+    /// The intent can never settle; the recovery table's dead-intent row decides.
+    Dead(BootDeadIntent),
+    /// Keep the journal and resume nothing: the evidence could not be read, or
+    /// the chain contradicts the journal.
+    Hold(String),
+}
+
+/// Classify a journaled clock intent at boot. `read` is one dead-intent read at a
+/// finalized block (`clock_client::check_dead_intent`) and `wait` the pause after
+/// a failed one. A failed read proves nothing: after `BOOT_DEAD_INTENT_READS`
+/// failures the journal is kept and nothing is resumed, since a resume could send
+/// a registration or settle for a window that is already dead.
+fn boot_clock_plan(
+    intent: rollback_journal::ClockIntent,
+    mut read: impl FnMut() -> Result<clock_client::DeadIntentCheck, String>,
+    mut wait: impl FnMut(),
+) -> (BootClockPlan, Option<clock_client::DeadIntentCheck>) {
+    use rollback_journal::Classified;
+    let mut failure = String::new();
+    for attempt in 0..BOOT_DEAD_INTENT_READS {
+        if attempt > 0 {
+            wait();
+        }
+        match read() {
+            // At the window's batch the settled root must be the window's
+            // pre-state root, whatever the slot holds: another root contradicts
+            // the journal or the snapshot, and nothing is decided from it.
+            Ok(check)
+                if check.evidence.batch_count == intent.batch
+                    && check.evidence.state_root != intent.prev_root =>
+            {
+                let plan = BootClockPlan::Hold(format!(
+                    "at finalized block {} the settled state root is not window {}'s pre-state \
+                     root",
+                    check.evidence.block, intent.batch
+                ));
+                return (plan, Some(check));
+            }
+            Ok(check) => {
+                let plan = match (check.classified, check.dead) {
+                    (Classified::MaySettle, _) => BootClockPlan::MaySettle(if intent.timed {
+                        clock_client::RegisterMode::ExistingOnly
+                    } else {
+                        clock_client::RegisterMode::SendIfAbsent
+                    }),
+                    (Classified::Dead(_, basis), Some((dead, action))) => {
+                        BootClockPlan::Dead(BootDeadIntent {
+                            dead,
+                            action,
+                            basis,
+                            block: check.evidence.block,
+                        })
+                    }
+                    (Classified::Dead(..), None) => {
+                        BootClockPlan::Hold("a dead intent was classified without a policy".into())
+                    }
+                    (Classified::Inconsistent(why), _) => BootClockPlan::Hold(format!(
+                        "at finalized block {} the chain contradicts the journal: {why}",
+                        check.evidence.block
+                    )),
+                };
+                return (plan, Some(check));
+            }
+            Err(e) => failure = e,
+        }
+    }
+    (
+        BootClockPlan::Hold(format!(
+            "the dead-intent read failed {BOOT_DEAD_INTENT_READS} times ({failure}); a \
+             transaction of ours may still be mined, so nothing is resumed"
+        )),
+        None,
+    )
+}
+
+/// The registration mode of an exact resume at boot: only for an intent that may
+/// still settle, while the finalized chain is still at the journaled batch and
+/// pre-state root and the restored snapshot still holds the seal.
+fn boot_resume_mode(
+    plan: &BootClockPlan,
+    j: &rollback_journal::RollbackJournal,
+    chain_bc: u64,
+    chain_root: &str,
+    b_snap: u64,
+) -> Option<clock_client::RegisterMode> {
+    match plan {
+        BootClockPlan::MaySettle(mode)
+            if j.prepared.is_some()
+                && chain_bc == j.batch_id
+                && Some(b_snap) == j.batch_id.checked_add(1)
+                && chain_root.eq_ignore_ascii_case(&hex32(&j.witness.pre_state.state_root())) =>
+        {
+            Some(*mode)
+        }
+        _ => None,
+    }
+}
+
+/// Why a journaled intent that may still settle is not decided yet, when its slot
+/// holds no anchor of ours: neither the chain clock nor the nonce fence has
+/// passed. `None` for an anchor that is registered, or a batch that moved on.
+fn boot_wait_hint(
+    batch_id: u64,
+    intent: &rollback_journal::ClockIntent,
+    check: &clock_client::DeadIntentCheck,
+) -> Option<String> {
+    use rollback_journal::{AnchorSlot, Classified};
+    let e = &check.evidence;
+    if check.classified != Classified::MaySettle
+        || e.batch_count != intent.batch
+        || !matches!(e.slot, AnchorSlot::Empty | AnchorSlot::Cancelled)
+    {
+        return None;
+    }
+    let fence = if e.fence_passed {
+        "the sequencer nonces are not quiet (a sequencer-key transaction is pending)"
+    } else {
+        "the sequencer nonce has not passed every recorded sequencer-key send, so a \
+         transaction of ours may still be mined. If none is pending (a send that was \
+         refused before broadcast leaves its nonce unused), mine any transaction from \
+         the sequencer key and restart"
+    };
+    Some(match (intent.last_ms, e.block_time_ms) {
+        (Some(last), Some(t)) => format!(
+            "[recovery] window {batch_id}: at finalized block {} (time {t} ms) the chain \
+             clock has not passed the window's last operation time {last} ms plus \
+             clockSkewMs {} ms, and {fence}. Restart once either has passed; see \
+             docs/PROVING-RUNBOOK.md",
+            e.block, e.clock_skew_ms
+        ),
+        _ => format!(
+            "[recovery] window {batch_id}: at finalized block {} {fence}; see \
+             docs/PROVING-RUNBOOK.md",
+            e.block
+        ),
+    })
+}
+
 /// `apply_boot_recovery` with the journal's dead-intent classification, read at one
-/// finalized block by `clock_client::check_dead_intent`. A dead intent whose policy
-/// is automatic returns the window's operations to the open window exactly as the
-/// rollback row does: nothing on L1 has to be undone, and no transaction of ours
-/// can still be mined. Every other dead intent HOLDs with the reason.
+/// finalized block by `clock_client::check_dead_intent`. Nothing on L1 has to be
+/// undone for a dead intent, and no transaction of ours can still let it settle.
+/// An automatic policy returns the window's operations to the open window exactly
+/// as the rollback row does, or voids a timed phase-0 window
+/// (`Gw::live_void_window`). Every other dead intent HOLDs with the reason, and
+/// so does every dead intent while `chain_root` is not the window's pre-state
+/// root.
 fn apply_boot_recovery_classified(
     gw: &mut Gw,
     j: rollback_journal::RollbackJournal,
@@ -378,10 +549,7 @@ fn apply_boot_recovery_classified(
     chain_root: &str,
     bond: u128,
     gate_observation: trading_gate::GateObservation,
-    dead: Option<(
-        rollback_journal::DeadIntent,
-        rollback_journal::DeadIntentAction,
-    )>,
+    dead: Option<BootDeadIntent>,
 ) -> BootRecoveryOutcome {
     use rollback_journal::RecoveryAction;
     let b_snap = gw.seq.state.next_batch_id;
@@ -395,6 +563,23 @@ fn apply_boot_recovery_classified(
         .l1_status
         .as_ref()
         .is_some_and(|st| chain_root.eq_ignore_ascii_case(&st.settled_root));
+    // The void's snapshot is durable and the journal was not deleted. The window
+    // was decided dead when it was voided, and that decision is final, so the
+    // journal goes without deciding again: boot's own read may not be able to
+    // (it waits for nothing, and its ceiling holds every recorded send). Only
+    // while the chain is still at the window's batch and pre-state root.
+    if j.prepared.is_some()
+        && b_snap == j.batch_id
+        && chain_bc == j.batch_id
+        && chain_root.eq_ignore_ascii_case(&hex32(&j.witness.pre_state.state_root()))
+        && gw.holds_live_void(&j)
+    {
+        println!(
+            "[recovery] window {} was already voided; the restored snapshot holds the void",
+            j.batch_id
+        );
+        return BootRecoveryOutcome::DeleteJournal { mutated: false };
+    }
     match rollback_journal::recovery_action_classified(
         j.batch_id,
         j.prepared.is_some(),
@@ -402,12 +587,26 @@ fn apply_boot_recovery_classified(
         chain_bc,
         root_matches_prepared,
         root_matches_settled,
-        dead.map(|(d, _)| d),
+        dead.map(|d| d.dead),
     ) {
         RecoveryAction::VoidDeadIntent(reason) => {
+            // Decided only at the window's pre-state root, as the settle loop
+            // decides: another settled root contradicts the journal or the
+            // restored snapshot, and nothing is returned, voided or deleted.
+            let pre_root = hex32(&j.witness.pre_state.state_root());
+            if !chain_root.eq_ignore_ascii_case(&pre_root) {
+                eprintln!(
+                    "[recovery] HOLDING: the clock intent of window {} can never settle \
+                     ({reason:?}), but the finalized settled root {chain_root} is not its \
+                     pre-state root {pre_root}. Keeping the journal; startup is refused until \
+                     it resolves",
+                    j.batch_id
+                );
+                return BootRecoveryOutcome::KeepJournal;
+            }
             let action = dead.map_or(
                 rollback_journal::DeadIntentAction::Hold("no recovery policy was given"),
-                |(_, a)| a,
+                |d| d.action,
             );
             match action {
                 rollback_journal::DeadIntentAction::ReturnToOpenWindow
@@ -429,6 +628,47 @@ fn apply_boot_recovery_classified(
                         j.batch_id
                     );
                     BootRecoveryOutcome::DeleteJournal { mutated: false }
+                }
+                rollback_journal::DeadIntentAction::LiveVoid => {
+                    let (basis, block) = dead
+                        .map_or((rollback_journal::DeadBasis::NotNeeded, 0), |d| {
+                            (d.basis, d.block)
+                        });
+                    match gw.live_void_window(&j, reason) {
+                        Ok(live_void::LiveVoidOutcome::Applied(report)) => {
+                            println!(
+                                "[recovery] VOIDED window {} ({}, basis {basis:?}) at finalized \
+                                 block {block}: {}",
+                                report.batch_id,
+                                report.cause_name(),
+                                report.summary()
+                            );
+                            // Nobody is subscribed before startup, so the notice
+                            // carries the void; boot refuses to start unless the
+                            // void is persisted.
+                            gw.last_void = Some(report.notice(now_ms()));
+                            BootRecoveryOutcome::DeleteJournal { mutated: true }
+                        }
+                        Ok(live_void::LiveVoidOutcome::AlreadyVoided) => {
+                            println!(
+                                "[recovery] window {} was already voided; the restored snapshot \
+                                 holds the void",
+                                j.batch_id
+                            );
+                            BootRecoveryOutcome::DeleteJournal { mutated: false }
+                        }
+                        // A post-check failure leaves memory changed. Boot persists
+                        // nothing before startup is refused, so it never reaches disk.
+                        Err(e) => {
+                            eprintln!(
+                                "[recovery] HOLDING: the clock intent of window {} can never \
+                                 settle ({reason:?}), and its {e}. Keeping the journal; startup \
+                                 is refused until it resolves",
+                                j.batch_id
+                            );
+                            BootRecoveryOutcome::KeepJournal
+                        }
+                    }
                 }
                 rollback_journal::DeadIntentAction::Hold(why) => {
                     eprintln!(
@@ -610,6 +850,27 @@ fn finish_boot_recovery(
         }
     }
     deleted
+}
+
+/// After `finish_boot_recovery`: count a live void made at boot toward the void
+/// breaker, once it is durable and its journal is gone (`resolved`). Only a
+/// live void mutates under the `LiveVoid` policy; a void the restored snapshot
+/// already held (`mutated` is false) is not counted. Returns whether the void
+/// counted.
+fn count_boot_void(
+    gw: &mut Gw,
+    mutated: bool,
+    resolved: bool,
+    dead: Option<BootDeadIntent>,
+) -> bool {
+    let counts = mutated
+        && resolved
+        && dead.is_some_and(|d| d.action == rollback_journal::DeadIntentAction::LiveVoid);
+    if counts {
+        // A boot void alone never trips the breaker: a trip needs two voids.
+        let _ = gw.void_breaker.record(std::time::Instant::now());
+    }
+    counts
 }
 
 // ── constants ────────────────────────────────────────────────────────────────
@@ -1268,6 +1529,14 @@ struct WState {
     /// Operational alerts currently active (snake_case kinds, as delivered to
     /// FIN_ALERT_* collectors), for monitors that poll this surface.
     ops_alerts: Vec<ops_alerts::AlertKind>,
+    /// The last live void of a settlement window since the gateway started:
+    /// `{ batchId, cause, atMs, orders, fills, withdrawals, deposits }`, counts
+    /// only (omitted when none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settlement_void: Option<serde_json::Value>,
+    /// The settle loop's pending recovery of a clock window (omitted when none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock_recovery: Option<clock_recovery::RecoveryStatus>,
     /// The verified TEE attestation the enclave is bound to (else null = stub).
     attestation: Option<WAttestation>,
     /// The LP pool (counterparty) — TVL, NAV/share, and the demo user's stake.
@@ -1712,6 +1981,19 @@ struct Gw {
     /// persisted: every boot and restore runs with the binary's cap.
     #[serde(skip, default = "admission::measured_cap")]
     admission_cap: admission::AdmissionCap,
+    /// Repeated automatic live voids stop the settle loop (`live_void::VoidBreaker`).
+    /// Runtime-only: a restart is the operator's acknowledgment.
+    #[serde(skip)]
+    void_breaker: live_void::VoidBreaker,
+    /// The last live void since this process started (`/api/state`
+    /// `settlementVoid`, and `voided` in each owner's withdrawals view).
+    /// Runtime-only: a restart forgets it.
+    #[serde(skip)]
+    last_void: Option<live_void::VoidNotice>,
+    /// The settle loop's pending recovery of a clock window, as `/api/state`
+    /// shows it (`clockRecovery`). Runtime-only, like the recovery itself.
+    #[serde(skip)]
+    clock_recovery: Option<clock_recovery::RecoveryStatus>,
 }
 
 /// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
@@ -2260,6 +2542,9 @@ impl Gw {
             oracle_signer,
             oracle_crosschecks: HashMap::new(),
             admission_cap: admission::measured_cap(),
+            void_breaker: Default::default(),
+            last_void: None,
+            clock_recovery: None,
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -2471,7 +2756,7 @@ impl Gw {
             if old == addr {
                 return Ok(()); // idempotent re-bind of the same address: no-op
             }
-            if !self.accounts[key].deposit_authorizations.is_empty() {
+            if self.unlanded_deposit_permits(key) > 0 {
                 return Err("Pending deposit authorizations have not landed or expired at a finalized block; rebind once they have.".into());
             }
             let cur = current_sig.ok_or(
@@ -3389,6 +3674,8 @@ impl Gw {
             }
         }
         self.batch_orders.insert(batch_id, (ordered, rejected));
+        // A voided window's replacement has settled.
+        self.ops_alerts.recover(ops_alerts::AlertKind::WindowVoided);
         // the window manifest is the source of truth for this batch's roots; the legacy
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
         self.pending_ordered.clear();
@@ -3462,7 +3749,9 @@ impl Gw {
     /// An account's withdrawals with the claim data: each carries its leaf and, once
     /// the cumulative root has been published on-chain, the Merkle `proof` to call
     /// `vault.claim(to, amount, nonce, proof)`. `claimable=false` means it is recorded
-    /// but awaiting its first on-chain publish (the next settle).
+    /// but awaiting its first on-chain publish (the next settle). `voided` lists the
+    /// account's withdrawals the last live void since the gateway started removed:
+    /// their leaves can never be claimed, and the balance is back in the position.
     fn v1_withdrawals_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let owner = self.accounts.get(key)?.wallet.owner;
         // the published cumulative root the served proofs verify against — the caller
@@ -3494,7 +3783,12 @@ impl Gw {
                 })
             })
             .collect();
-        Some(serde_json::json!({ "withdrawals": items }))
+        let voided = self
+            .last_void
+            .as_ref()
+            .map(|v| v.withdrawals_of(&owner))
+            .unwrap_or_default();
+        Some(serde_json::json!({ "withdrawals": items, "voided": voided }))
     }
 
     /// Per-owner free margin in a market (the multi-tenant analog of `market_free`).
@@ -5628,6 +5922,8 @@ impl Gw {
             settlement_last_error: self.settle_health.last_error().map(|s| s.to_string()),
             settlement_held_since_ms: self.settlement_held_since_ms,
             ops_alerts: self.ops_alerts.active(),
+            settlement_void: self.last_void.as_ref().map(live_void::VoidNotice::json),
+            clock_recovery: self.clock_recovery.clone(),
             attestation: self.attestation.as_ref().map(|a| WAttestation {
                 measurement: hex0x(&a.measurement),
                 tcb: a.tcb.clone(),
@@ -7067,6 +7363,161 @@ fn request_settlement_retry(
     Ok(gw.settle_health.health().as_str().to_string())
 }
 
+/// Commit a window whose own settle landed, and make the commit durable before
+/// admission reopens: the tail every settle-loop path shares once it saw its
+/// settle land. A settled window with timed operations ends the run of
+/// consecutive live voids.
+async fn commit_and_resolve(
+    app: &Shared,
+    witness: &WindowWitness,
+    prepared: prover_client::PreparedSettle,
+    status: L1Status,
+    observation: trading_gate::GateObservation,
+    claimed: &[[u8; 32]],
+    admission: &mut Option<clock_admission::Paused>,
+) -> Result<(), String> {
+    let ordered = witness.manifest.ordered.clone();
+    let rejected: Vec<Digest> = witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+    let timed =
+        perp_core::clock::TimeBounds::derive(&witness.ops).is_ok_and(|bounds| bounds.count > 0);
+    {
+        let mut gw = app.gw.lock().await;
+        gw.commit_window_settle(
+            witness.batch_id,
+            ordered,
+            rejected,
+            prepared,
+            status,
+            observation,
+        );
+        gw.prune_claimed_withdrawals(claimed);
+        if timed {
+            gw.void_breaker.timed_window_settled();
+        }
+        // FIN-001: this window settled — clear any failure/HELD state.
+        if gw.settle_breaker_recovered() {
+            println!("[l1] settlement recovered → HEALTHY");
+        }
+    }
+    if let Some(p) = admission.as_mut() {
+        snapshot_now(&app.snapshot_req).await?;
+        p.resolved();
+    }
+    Ok(())
+}
+
+/// A clock window failed after its intent was journaled and is now recovered by
+/// the settle loop: the failure counts toward HELD, whose line names the window
+/// and no error text. Returns the delay before the first recovery step.
+async fn note_clock_failure(app: &Shared, batch_id: u64, error: &str) -> Duration {
+    let mut gw = app.gw.lock().await;
+    let (action, just_held) =
+        gw.settle_breaker_failed(format!("clock window {batch_id} unresolved: {error}"));
+    if just_held {
+        eprintln!(
+            "{}",
+            settle_health::held_recovery_alert_message(
+                batch_id,
+                gw.settle_health.consecutive_failures()
+            )
+        );
+    }
+    action.delay()
+}
+
+/// A clock window failed after its intent was journaled: hand it to the
+/// recovery. The failure counts toward HELD (`note_clock_failure`); the
+/// recovery takes the window's phase, the last time of its operations and the
+/// window's nonce `ceiling`, and `/api/state` shows it before the first step.
+/// Returns the recovery and the delay before that step.
+#[allow(clippy::too_many_arguments)] // the failed window's whole identity
+async fn start_clock_recovery(
+    app: &Shared,
+    batch_id: u64,
+    witness: &WindowWitness,
+    phase: u8,
+    error: String,
+    prune_candidates: Vec<[u8; 32]>,
+    gate_was_closed: bool,
+    ceiling: l1::Ceiling,
+) -> (clock_recovery::PendingRecovery, Duration) {
+    let delay = note_clock_failure(app, batch_id, &error).await;
+    let rec = clock_recovery::PendingRecovery::new(
+        batch_id,
+        phase,
+        error,
+        prune_candidates,
+        gate_was_closed,
+        ceiling,
+    )
+    .with_ops(&witness.ops);
+    clock_recovery::publish(app, &rec).await;
+    (rec, delay)
+}
+
+/// Whether a clock settle that failed after its send goes to the recovery:
+/// while the finalized batch count is still the window's, or could not be read
+/// (`None`). Outside clock mode, or at any other count, the loop holds (a count
+/// at the next batch is first checked as a roll-forward).
+fn settle_failure_recovers(clock_mode: bool, batch_id: u64, now_bc: Option<u64>) -> bool {
+    clock_mode && now_bc.is_none_or(|bc| bc == batch_id)
+}
+
+/// The settle loop's turn while a clock window is pending: one recovery step
+/// with admission paused, then the loop's own bookkeeping. A resolved window
+/// clears the recovery, latches close-only when it returned for it, is
+/// persisted promptly and broadcast, and the next tick attempts at once. A wait
+/// sets the next attempt. A stop, a shutdown, or a recovery without its journal
+/// or bridge ends the loop.
+#[allow(clippy::too_many_arguments)] // the settle loop's state it updates
+async fn settle_loop_recovery_step(
+    app: &Shared,
+    stop: &service_shutdown::Shutdown,
+    chain: Option<&Arc<dyn clock_recovery::RecoveryChain>>,
+    jpath: Option<&std::path::Path>,
+    seed: &[u8; 32],
+    pending: &mut Option<clock_recovery::PendingRecovery>,
+    next_attempt: &mut tokio::time::Instant,
+    close_only_seen: &mut bool,
+    snapshot_notify: &tokio::sync::Notify,
+) -> std::ops::ControlFlow<()> {
+    use std::ops::ControlFlow;
+    let Some(rec) = pending.as_mut() else {
+        return ControlFlow::Continue(());
+    };
+    let Ok(mut admission) = app.clock_admission.pause(stop).await else {
+        return ControlFlow::Break(());
+    };
+    let (Some(chain), Some(jp)) = (chain, jpath) else {
+        hold_settlement_for_recovery(
+            app,
+            format!(
+                "clock window {} unresolved without its journal or bridge",
+                rec.batch_id
+            ),
+        )
+        .await;
+        return ControlFlow::Break(());
+    };
+    match clock_recovery::run_step(app, chain, rec, jp, seed, &mut admission).await {
+        clock_recovery::Step::Resolved { close_only } => {
+            *pending = None;
+            *next_attempt = tokio::time::Instant::now();
+            *close_only_seen |= close_only;
+            snapshot_notify.notify_one();
+            let snap = { app.snapshot(&*app.gw.lock().await) };
+            let _ = app
+                .tx
+                .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
+        }
+        clock_recovery::Step::Wait(delay) => {
+            *next_attempt = tokio::time::Instant::now() + delay;
+        }
+        clock_recovery::Step::Stop => return ControlFlow::Break(()),
+    }
+    ControlFlow::Continue(())
+}
+
 async fn hold_settlement_for_recovery(app: &Shared, error: String) {
     let mut gw = app.gw.lock().await;
     gw.settle_health.hold_for_recovery(error);
@@ -7126,10 +7577,13 @@ async fn post_v1_admin_resume(State(app): State<Shared>, headers: HeaderMap) -> 
 /// `POST /v1/admin/settlement/cancel-anchor {"batchId": n, "phase": p, "receipt": "0x…"}`
 /// (`X-Admin-Key: FIN_ADMIN_KEY`): cancel a clock anchor whose bound proof will never
 /// settle, as the registrant role, once it is older than `anchorTimeoutMs` at the
-/// latest block. Refused while the settle loop is working on that batch and phase.
+/// latest block. Refused with a retryable 409 while the settle loop is working on a
+/// window: while it registers, proves or settles that batch and phase, and during
+/// each recovery step, from its finalized read until its decision is carried out.
 /// Every `cancel` precondition is checked before the transaction is sent; a send
 /// error is ambiguous and must be confirmed with `cancelledReceipt(receipt)`.
-/// Cancelling does not resolve the local window: boot recovery does, after a restart.
+/// The settle loop classifies the window at finality and resolves it; a restart is
+/// not needed.
 async fn post_v1_admin_cancel_anchor(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -7177,12 +7631,20 @@ async fn post_v1_admin_cancel_anchor(
             .into_response();
     };
     // Held across the check and the send, so the settle loop cannot start on
-    // this window in between.
-    let in_flight = app.settle_in_flight.lock().await;
+    // this window in between. Never waited for: a recovery step holds it through
+    // its whole attempt.
+    const BUSY: &str = "the settle loop is working on this window; retry";
+    let Ok(in_flight) = app.settle_in_flight.try_lock() else {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": BUSY })),
+        )
+            .into_response();
+    };
     if *in_flight == Some((batch, phase)) {
         return (
             StatusCode::CONFLICT,
-            Json(serde_json::json!({"error":"the settle loop is registering, proving or settling this window; cancel only once it has stopped"})),
+            Json(serde_json::json!({ "error": BUSY })),
         )
             .into_response();
     }
@@ -8643,7 +9105,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
                 "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
-            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
+            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null)", "security": auth["security"], "responses": ok("orders") }
@@ -9747,14 +10209,20 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let prover: Option<Arc<dyn prover_client::ProverClient>> = match (prover, &l1) {
+    // In clock mode, a second client over the same prover and bridge registers
+    // nothing: a timed window resumes only against an anchor that already exists.
+    type Prover = Arc<dyn prover_client::ProverClient>;
+    let (prover, prover_existing_only): (Option<Prover>, Option<Prover>) = match (prover, &l1) {
         (Some(inner), Some(chain)) if chain.clock_enabled() => {
-            Some(Arc::new(clock_client::ClockProverClient {
+            let client = clock_client::ClockProverClient {
                 inner,
                 l1: chain.clone(),
-            }))
+                register: clock_client::RegisterMode::SendIfAbsent,
+            };
+            let existing_only = client.existing_only();
+            (Some(Arc::new(client)), Some(Arc::new(existing_only)))
         }
-        (p, _) => p,
+        (p, _) => (p, None),
     };
     if prod && !prover.as_ref().is_some_and(|p| p.clock_enabled()) {
         eprintln!("[clock] REFUSING production without CLOCK_BOUND_VERIFIER and L1_CHAIN_ID; explicit legacy mode is development-only");
@@ -9988,6 +10456,8 @@ async fn main() {
             std::process::exit(1);
         });
     let mut unresolved_startup_journal = startup_journal.is_some();
+    // The window boot voided, if any (`Gw::live_void_window`).
+    let mut boot_void: Option<u64> = None;
     // Task 3 (crash recovery): whether a sealed snapshot was actually restored —
     // a rollback journal is only meaningful against the state it was written
     // beside; a journal without its snapshot now refuses startup for reconciliation.
@@ -10310,170 +10780,219 @@ async fn main() {
                                     .await
                                     .unwrap_or_else(|e| Err(e.to_string()))
                                 };
-                                // A clock intent that can never settle is classified at one
-                                // finalized block first: resuming it would re-send a
-                                // registration or settle that cannot succeed.
-                                let dead = match rollback_journal::ClockIntent::of(&j)
-                                    .filter(|_| prover.as_ref().is_some_and(|p| p.clock_enabled()))
-                                {
+                                // A clock intent is classified at one finalized block first:
+                                // resuming a dead one would re-send a registration or settle
+                                // that cannot succeed, and a failed read resumes nothing.
+                                let clock_intent = rollback_journal::ClockIntent::of(&j)
+                                    .filter(|_| prover.as_ref().is_some_and(|p| p.clock_enabled()));
+                                let plan = match clock_intent {
                                     Some(intent) => {
                                         let chain = l1c.clone();
-                                        match tokio::task::spawn_blocking(move || {
-                                            clock_client::check_dead_intent(&chain, intent)
-                                        })
-                                        .await
-                                        .unwrap_or_else(|e| Err(e.to_string()))
-                                        {
-                                            Ok(check) => {
-                                                if check.evidence.close_only {
-                                                    gw.deposits.l1_close_only = true;
-                                                }
-                                                if !check.evidence.fenced && check.dead.is_none() {
-                                                    eprintln!(
-                                                        "[recovery] window {}: at finalized block {} the sequencer nonce has not passed every recorded sequencer-key send; a transaction of ours may still be mined. If none is pending (a send that was refused before broadcast leaves its nonce unused), mine any transaction from the sequencer key and restart; see docs/PROVING-RUNBOOK.md",
-                                                        j.batch_id, check.evidence.block
-                                                    );
-                                                }
-                                                check.dead
+                                        let (plan, check) =
+                                            tokio::task::spawn_blocking(move || {
+                                                boot_clock_plan(
+                                                    intent,
+                                                    || {
+                                                        clock_client::check_dead_intent(
+                                                            &chain, intent,
+                                                        )
+                                                    },
+                                                    || std::thread::sleep(BOOT_DEAD_INTENT_BACKOFF),
+                                                )
+                                            })
+                                            .await
+                                            .unwrap_or_else(|e| {
+                                                (
+                                                    BootClockPlan::Hold(format!(
+                                                        "the dead-intent read task failed: {e}"
+                                                    )),
+                                                    None,
+                                                )
+                                            });
+                                        if let Some(check) = &check {
+                                            if check.evidence.close_only {
+                                                gw.deposits.l1_close_only = true;
                                             }
-                                            Err(e) => {
-                                                eprintln!("[recovery] window {}: dead-intent check failed ({e}); it is not treated as dead", j.batch_id);
-                                                None
+                                            // A void already durable resolves below
+                                            // without waiting for anything.
+                                            if let Some(hint) =
+                                                boot_wait_hint(j.batch_id, &intent, check)
+                                                    .filter(|_| !gw.holds_live_void(&j))
+                                            {
+                                                eprintln!("{hint}");
                                             }
                                         }
+                                        Some(plan)
                                     }
                                     None => None,
                                 };
                                 // Resume only the exact immutable, durably prepared clock
                                 // window. Finality lag or a reorg keeps the WAL and refuses
                                 // startup; it never turns into a legacy rollback/re-seal.
-                                if let (Ok((bc, root, _)), Some(client), None) =
-                                    (&reads, &prover, &dead)
-                                {
-                                    if client.clock_enabled()
-                                        && j.prepared.is_some()
-                                        && *bc == j.batch_id
-                                        && Some(gw.seq.state.next_batch_id)
-                                            == j.batch_id.checked_add(1)
-                                        && root.eq_ignore_ascii_case(&hex32(
-                                            &j.witness.pre_state.state_root(),
-                                        ))
+                                let resume_mode = match (&plan, &reads) {
+                                    (Some(plan), Ok((bc, root, _))) => boot_resume_mode(
+                                        plan,
+                                        &j,
+                                        *bc,
+                                        root,
+                                        gw.seq.state.next_batch_id,
+                                    ),
+                                    _ => None,
+                                };
+                                let resume_client = match resume_mode {
+                                    Some(clock_client::RegisterMode::ExistingOnly) => {
+                                        prover_existing_only.as_ref()
+                                    }
+                                    Some(clock_client::RegisterMode::SendIfAbsent) => {
+                                        prover.as_ref()
+                                    }
+                                    None => None,
+                                };
+                                if let Some(client) = resume_client {
+                                    // A candidate-bound journal is NEVER
+                                    // resumed through the v2 path (which
+                                    // re-submits via prove_and_prepare →
+                                    // settle_proved). resume_exact re-checks
+                                    // this; the boot block refuses earlier so
+                                    // no L1 read/prover construction happens.
+                                    if let Err(error) =
+                                        clock_client::ensure_resume_supported(envelope.as_ref())
                                     {
-                                        // A candidate-bound journal is NEVER
-                                        // resumed through the v2 path (which
-                                        // re-submits via prove_and_prepare →
-                                        // settle_proved). resume_exact re-checks
-                                        // this; the boot block refuses earlier so
-                                        // no L1 read/prover construction happens.
-                                        if let Err(error) =
-                                            clock_client::ensure_resume_supported(envelope.as_ref())
-                                        {
-                                            eprintln!(
-                                                "[chainlink-archive] HOLDING: window {} ({error}) \
-                                                 — keeping the WAL; startup is refused until v3 \
-                                                 submission is wired or the window resolves on-chain",
-                                                j.batch_id
-                                            );
-                                        } else {
-                                            let (chain, client, mut saved, path) = (
-                                                l1c.clone(),
-                                                client.clone(),
-                                                j.clone(),
-                                                jp.clone(),
-                                            );
-                                            let envelope = envelope.clone();
-                                            match tokio::task::spawn_blocking(move || {
-                                    let observation = clock_client::resume_exact(&chain, client.as_ref(), &mut saved, envelope.as_ref(), &path, &enclave_seed)?;
-                                    Ok::<_,String>((saved, observation))
-                                }).await {
-                                    Ok(Ok((saved, observation))) => { j = saved; reads = Ok(observation); }
-                                    _ => eprintln!("[clock] exact-journal recovery unresolved; preserve WAL and retry after canonical finality"),
-                                }
+                                        eprintln!(
+                                            "[chainlink-archive] HOLDING: window {} ({error}) \
+                                             — keeping the WAL; startup is refused until v3 \
+                                             submission is wired or the window resolves on-chain",
+                                            j.batch_id
+                                        );
+                                    } else {
+                                        let (chain, client, mut saved, path) =
+                                            (l1c.clone(), client.clone(), j.clone(), jp.clone());
+                                        let envelope = envelope.clone();
+                                        match tokio::task::spawn_blocking(move || {
+                                            let observation = clock_client::resume_exact(&chain, client.as_ref(), &mut saved, envelope.as_ref(), &path, &enclave_seed)?;
+                                            Ok::<_,String>((saved, observation))
+                                        }).await {
+                                            Ok(Ok((saved, observation))) => { j = saved; reads = Ok(observation); }
+                                            Ok(Err(e)) => eprintln!("[clock] exact-journal recovery of window {} unresolved ({e}); preserve WAL and retry after canonical finality", j.batch_id),
+                                            Err(_) => eprintln!("[clock] exact-journal recovery unresolved; preserve WAL and retry after canonical finality"),
                                         }
                                     }
                                 }
-                                match reads {
-                                    Ok((chain_bc, chain_root, bond)) => {
-                                        // SEC-025-D: the boot roll-forward COMMITS a settle, so it
-                                        // must carry the same block-pinned observation as the live
-                                        // settle paths — it must not shortcut the finalSettle
-                                        // distinction to `StaysClosed`, and a failed read proves
-                                        // nothing (`Inconclusive`). Observed only when this journal
-                                        // actually presents the roll-forward shape (the same
-                                        // conjunction `recovery_action`'s RollForward row requires)
-                                        // and the gate is still Closed. The pre-filter carries no
-                                        // safety weight — the observation re-derives all three
-                                        // terms at one pinned block regardless — and erring on
-                                        // skipping can only leave the gate UNRESOLVED, never open
-                                        // it on a wind-down.
-                                        let gate_observation = match (&gw.trading_gate, &j.prepared)
-                                        {
-                                            (trading_gate::TradingGate::Closed, Some(p))
-                                                if Some(gw.seq.state.next_batch_id)
-                                                    == j.batch_id.checked_add(1)
-                                                    && Some(chain_bc)
+                                let dead = match &plan {
+                                    Some(BootClockPlan::Dead(d)) => Some(*d),
+                                    _ => None,
+                                };
+                                if let Some(BootClockPlan::Hold(why)) = &plan {
+                                    // Nothing about the window is decided: no resume, no
+                                    // recovery row. Startup is refused below.
+                                    eprintln!(
+                                        "[recovery] HOLDING: window {}: {why} — keeping the rollback \
+                                         journal; startup is refused until this journal resolves",
+                                        j.batch_id
+                                    );
+                                } else {
+                                    match reads {
+                                        Ok((chain_bc, chain_root, bond)) => {
+                                            // SEC-025-D: the boot roll-forward COMMITS a settle, so it
+                                            // must carry the same block-pinned observation as the live
+                                            // settle paths — it must not shortcut the finalSettle
+                                            // distinction to `StaysClosed`, and a failed read proves
+                                            // nothing (`Inconclusive`). Observed only when this journal
+                                            // actually presents the roll-forward shape (the same
+                                            // conjunction `recovery_action`'s RollForward row requires)
+                                            // and the gate is still Closed. The pre-filter carries no
+                                            // safety weight — the observation re-derives all three
+                                            // terms at one pinned block regardless — and erring on
+                                            // skipping can only leave the gate UNRESOLVED, never open
+                                            // it on a wind-down.
+                                            let gate_observation =
+                                                match (&gw.trading_gate, &j.prepared) {
+                                                    (
+                                                        trading_gate::TradingGate::Closed,
+                                                        Some(p),
+                                                    ) if Some(gw.seq.state.next_batch_id)
                                                         == j.batch_id.checked_add(1)
-                                                    && chain_root.eq_ignore_ascii_case(&hex32(
-                                                        &p.outcome.new_root,
-                                                    )) =>
-                                            {
-                                                let l1o = l1c.clone();
-                                                let (bid, our_root) =
-                                                    (j.batch_id, p.outcome.new_root);
-                                                tokio::task::spawn_blocking(move || {
+                                                        && Some(chain_bc)
+                                                            == j.batch_id.checked_add(1)
+                                                        && chain_root.eq_ignore_ascii_case(
+                                                            &hex32(&p.outcome.new_root),
+                                                        ) =>
+                                                    {
+                                                        let l1o = l1c.clone();
+                                                        let (bid, our_root) =
+                                                            (j.batch_id, p.outcome.new_root);
+                                                        tokio::task::spawn_blocking(move || {
                                                     observe_gate(&l1o, bid, our_root)
                                                 })
                                                 .await
                                                 .unwrap_or(
                                                     trading_gate::GateObservation::Inconclusive,
                                                 )
-                                            }
-                                            _ => trading_gate::GateObservation::Inconclusive,
-                                        };
-                                        match apply_boot_recovery_classified(
-                                            &mut gw,
-                                            j,
-                                            chain_bc,
-                                            &chain_root,
-                                            bond,
-                                            gate_observation,
-                                            dead,
-                                        ) {
-                                            // Task 3 fix: a MUTATED resolution is persisted
-                                            // synchronously BEFORE the journal is deleted
-                                            // (and a failed persist keeps the journal) —
-                                            // see finish_boot_recovery.
-                                            BootRecoveryOutcome::DeleteJournal { mutated } => {
-                                                unresolved_startup_journal = !finish_boot_recovery(
-                                                    &gw,
-                                                    mutated,
-                                                    sp,
-                                                    &jp,
-                                                    &enclave_seed,
-                                                    archive_binding.as_ref(),
-                                                );
-                                                // The journal found at boot is resolved: a
-                                                // fence that was missing beside it starts
-                                                // recording from the next send.
-                                                if !unresolved_startup_journal {
-                                                    if let Err(e) =
-                                                        l1c.restart_unknown_nonce_fence()
-                                                    {
-                                                        eprintln!("[l1] REFUSING to start: nonce fence: {e}");
-                                                        l1c.cleanup_keystore();
-                                                        std::process::exit(1);
+                                                    }
+                                                    _ => {
+                                                        trading_gate::GateObservation::Inconclusive
+                                                    }
+                                                };
+                                            let batch_id = j.batch_id;
+                                            match apply_boot_recovery_classified(
+                                                &mut gw,
+                                                j,
+                                                chain_bc,
+                                                &chain_root,
+                                                bond,
+                                                gate_observation,
+                                                dead,
+                                            ) {
+                                                // Task 3 fix: a MUTATED resolution is persisted
+                                                // synchronously BEFORE the journal is deleted
+                                                // (and a failed persist keeps the journal) —
+                                                // see finish_boot_recovery.
+                                                BootRecoveryOutcome::DeleteJournal { mutated } => {
+                                                    unresolved_startup_journal =
+                                                        !finish_boot_recovery(
+                                                            &gw,
+                                                            mutated,
+                                                            sp,
+                                                            &jp,
+                                                            &enclave_seed,
+                                                            archive_binding.as_ref(),
+                                                        );
+                                                    // A boot void counts toward the void
+                                                    // breaker once it is durable and the
+                                                    // journal is gone; its alert and headroom
+                                                    // check follow once the alerts are
+                                                    // configured.
+                                                    if count_boot_void(
+                                                        &mut gw,
+                                                        mutated,
+                                                        !unresolved_startup_journal,
+                                                        dead,
+                                                    ) {
+                                                        boot_void = Some(batch_id);
+                                                    }
+                                                    // The journal found at boot is resolved: a
+                                                    // fence that was missing beside it starts
+                                                    // recording from the next send.
+                                                    if !unresolved_startup_journal {
+                                                        if let Err(e) =
+                                                            l1c.restart_unknown_nonce_fence()
+                                                        {
+                                                            eprintln!("[l1] REFUSING to start: nonce fence: {e}");
+                                                            l1c.cleanup_keystore();
+                                                            std::process::exit(1);
+                                                        }
                                                     }
                                                 }
+                                                BootRecoveryOutcome::KeepJournal => {}
                                             }
-                                            BootRecoveryOutcome::KeepJournal => {}
                                         }
-                                    }
-                                    Err(e) => {
-                                        // a failed read proves nothing — HOLD, never guess.
-                                        eprintln!(
+                                        Err(e) => {
+                                            // a failed read proves nothing — HOLD, never guess.
+                                            eprintln!(
                                     "[recovery] HOLDING: cannot read the chain to resolve the \
                                      rollback journal ({e}) — keeping the file; startup is refused until this journal resolves"
                                 );
+                                        }
                                     }
                                 }
                             }
@@ -10694,6 +11213,10 @@ async fn main() {
     });
     if gw.deposits.halt.is_some() {
         gw.ops_alerts.activate(ops_alerts::AlertKind::DepositHalted);
+    }
+    if let Some(window) = boot_void {
+        gw.ops_alerts.activate(ops_alerts::AlertKind::WindowVoided);
+        gw.note_void_headroom(window);
     }
     gw.repair_withdraw_nonce();
     gw.note_engine_close_only();
@@ -11258,6 +11781,15 @@ async fn main() {
         let jpath = state_path.as_deref().map(rollback_journal::journal_path);
         let snapshot_notify = snapshot_notify.clone();
         let stop = service_policy.shutdown.clone();
+        // A clock window the loop recovers is settled only against an anchor that
+        // already exists.
+        let recovery_chain: Option<Arc<dyn clock_recovery::RecoveryChain>> =
+            prover_existing_only.clone().map(|client| {
+                Arc::new(clock_recovery::L1Recovery {
+                    l1: l1.clone(),
+                    client,
+                }) as Arc<dyn clock_recovery::RecoveryChain>
+            });
         background.push(tokio::spawn(async move {
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
@@ -11277,6 +11809,10 @@ async fn main() {
             // Set when the preflight saw close-only at the latest block, before the
             // finalized close-only latch that `begin_window_settle_mode` checks.
             let mut close_only_seen = false;
+            // A clock window that failed after its intent was journaled. While it is
+            // set the window stays sealed and admission closed, and each attempt is
+            // one recovery step instead of a seal.
+            let mut pending: Option<clock_recovery::PendingRecovery> = None;
             loop {
                 if !stop.next_tick(&mut iv).await { break; }
                 // FIN-001 Task 4: an operator forced a resume (POST /v1/admin/settlement/resume) —
@@ -11304,8 +11840,9 @@ async fn main() {
                     // count read skips this tick.
                     let clocked = client.clock_enabled();
                     let liveness_due = tokio::time::Instant::now() >= liveness_read_at;
-                    let read_pre =
-                        clocked && (liveness_due || !app.gw.lock().await.window_is_idle());
+                    let read_pre = clocked
+                        && pending.is_none()
+                        && (liveness_due || !app.gw.lock().await.window_is_idle());
                     let l1c = l1.clone();
                     let pre_client = client.clone();
                     let (bond, swept, bc, pre) = match tokio::task::spawn_blocking(move || {
@@ -11357,6 +11894,26 @@ async fn main() {
                             continue;
                         }
                     };
+                    // A pending clock window: one recovery step, admission closed
+                    // throughout (the failed attempt left the hold sticky).
+                    if pending.is_some() {
+                        match settle_loop_recovery_step(
+                            &app,
+                            &stop,
+                            recovery_chain.as_ref(),
+                            jpath.as_deref(),
+                            &enclave_seed,
+                            &mut pending,
+                            &mut next_attempt,
+                            &mut close_only_seen,
+                            &snapshot_notify,
+                        )
+                        .await
+                        {
+                            std::ops::ControlFlow::Break(()) => break,
+                            std::ops::ControlFlow::Continue(()) => continue,
+                        }
+                    }
                     let mut admission = match app.clock_admission.pause(&stop).await {
                         Ok(p) => p, Err(_) => break,
                     };
@@ -11484,14 +12041,6 @@ async fn main() {
                         break;
                     }
                     if let Some(p) = admission.as_mut() { p.arm(); }
-                    let ordered = journal.witness.manifest.ordered.clone();
-                    let rejected: Vec<Digest> = journal
-                        .witness
-                        .manifest
-                        .rejected
-                        .iter()
-                        .map(|(h, _)| *h)
-                        .collect();
                     let batch_id = journal.batch_id;
                     let witness_rb = journal.witness.clone();
                     let ww_rb = journal.ww.clone();
@@ -11635,6 +12184,7 @@ async fn main() {
                     let envelope_bg = envelope.clone();
                     let deposit_guard_app = app.clone();
                     let clock_mode = client.clock_enabled();
+                    let prune_rb = prune_candidates.clone();
                     let window_phase = journal
                         .prepared
                         .as_ref()
@@ -11725,30 +12275,21 @@ async fn main() {
                                 tx,
                                 status.withdrawals_root
                             );
+                            // FIN-001: this window settled — the shared commit clears any
+                            // failure/HELD state; (below) resume the normal settle cadence.
+                            if let Err(error) = commit_and_resolve(
+                                &app,
+                                &witness_rb,
+                                prepared,
+                                status,
+                                observation,
+                                &claimed,
+                                &mut admission,
+                            )
+                            .await
                             {
-                                let mut gw = app.gw.lock().await;
-                                gw.commit_window_settle(
-                                    batch_id,
-                                    ordered,
-                                    rejected,
-                                    prepared,
-                                    status,
-                                    observation,
-                                );
-                                gw.prune_claimed_withdrawals(&claimed);
-                                // FIN-001: this window settled — clear any failure/HELD state
-                                // and (below) resume the normal settle cadence.
-                                let was_held = gw.settle_breaker_recovered();
-                                if was_held {
-                                    println!("[l1] settlement recovered → HEALTHY");
-                                }
-                            }
-                            if let Some(p) = admission.as_mut() {
-                                if let Err(error) = snapshot_now(&app.snapshot_req).await {
-                                    hold_settlement_for_recovery(&app, format!("clock commit snapshot not durable: {error}")).await;
-                                    break;
-                                }
-                                p.resolved();
+                                hold_settlement_for_recovery(&app, format!("clock commit snapshot not durable: {error}")).await;
+                                break;
                             }
                             next_attempt = tokio::time::Instant::now();
                             // Task 3 (WAL): the journal outlives the commit — boot's STALE
@@ -11764,9 +12305,32 @@ async fn main() {
                         }
                         Ok(SettleAttempt::ClockFailed(e)) => {
                             // A registration may already be mined or pending. Never
-                            // merge this immutable window with newer ops on a retry.
-                            hold_settlement_for_recovery(&app, format!("clock-bound window unresolved: {e}; retain journal and restart to resume exact witness")).await;
-                            break;
+                            // merge this immutable window with newer ops on a retry:
+                            // the window stays sealed, admission stays closed, and the
+                            // recovery decides it at finalized blocks.
+                            match perp_core::clock::TimeBounds::derive(&witness_rb.ops) {
+                                Ok(b) if b.count > 0 => eprintln!(
+                                    "[recovery] window {batch_id}: clock failed {} ms after its last timed op: {e}",
+                                    now_ms().saturating_sub(b.last_ms)
+                                ),
+                                _ => eprintln!("[recovery] window {batch_id}: clock failed: {e}"),
+                            }
+                            // The ceiling is taken after the worker returned: a send
+                            // holds its lane until cast returns, so it covers every
+                            // send the attempt made.
+                            let (rec, delay) = start_clock_recovery(
+                                &app,
+                                batch_id,
+                                &witness_rb,
+                                window_phase,
+                                e,
+                                prune_rb,
+                                gate_was_closed,
+                                l1.nonce_ceiling(),
+                            )
+                            .await;
+                            pending = Some(rec);
+                            next_attempt = tokio::time::Instant::now() + delay;
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
                             eprintln!(
@@ -11854,36 +12418,26 @@ async fn main() {
                                                     ),
                                                 };
                                                 eprintln!("[l1] settle reported '{err}' but the tx LANDED (batchCount {batch_id}->{now_bc}); rolled forward + committed bookkeeping");
+                                                // FIN-001: this ambiguous-but-landed settle
+                                                // reached finality — the shared commit clears
+                                                // any failure/HELD state, exactly like the clean
+                                                // Ok path (else the breaker reports HELD forever
+                                                // after a recovery via this path). A landed
+                                                // settlement is a success — resume the normal
+                                                // settle cadence (mirror the clean Ok arm).
+                                                if let Err(error) = commit_and_resolve(
+                                                    &app,
+                                                    &witness_rb,
+                                                    prepared,
+                                                    status,
+                                                    observation,
+                                                    &[],
+                                                    &mut admission,
+                                                )
+                                                .await
                                                 {
-                                                    let mut gw = app.gw.lock().await;
-                                                    gw.commit_window_settle(
-                                                        batch_id,
-                                                        ordered,
-                                                        rejected,
-                                                        prepared,
-                                                        status,
-                                                        observation,
-                                                    );
-                                                    // FIN-001: this ambiguous-but-landed settle
-                                                    // reached finality — clear any failure/HELD
-                                                    // state, exactly like the clean Ok path (else
-                                                    // the breaker reports HELD forever after a
-                                                    // recovery via this path).
-                                                    let was_held = gw.settle_breaker_recovered();
-                                                    if was_held {
-                                                        println!(
-                                                            "[l1] settlement recovered → HEALTHY"
-                                                        );
-                                                    }
-                                                }
-                                                // a landed settlement is a success — resume the
-                                                // normal settle cadence (mirror the clean Ok arm).
-                                                if let Some(p) = admission.as_mut() {
-                                                    if let Err(error) = snapshot_now(&app.snapshot_req).await {
-                                                        hold_settlement_for_recovery(&app, format!("clock recovered snapshot not durable: {error}")).await;
-                                                        break;
-                                                    }
-                                                    p.resolved();
+                                                    hold_settlement_for_recovery(&app, format!("clock recovered snapshot not durable: {error}")).await;
+                                                    break;
                                                 }
                                                 next_attempt = tokio::time::Instant::now();
                                                 // Task 3 (WAL): the journal outlives the commit —
@@ -11899,6 +12453,31 @@ async fn main() {
                                                 );
                                             }
                                         }
+                                        RollAction::Hold
+                                            if settle_failure_recovers(
+                                                clock_mode,
+                                                batch_id,
+                                                Some(now_bc),
+                                            ) =>
+                                        {
+                                            // The settle may still land, or never: the
+                                            // recovery decides at finalized blocks, with
+                                            // the window sealed and admission closed.
+                                            eprintln!("[recovery] window {batch_id}: settle failed and finalized batchCount is still {now_bc}: {err}");
+                                            let (rec, delay) = start_clock_recovery(
+                                                &app,
+                                                batch_id,
+                                                &witness_rb,
+                                                window_phase,
+                                                err,
+                                                prune_rb,
+                                                gate_was_closed,
+                                                l1.nonce_ceiling(),
+                                            )
+                                            .await;
+                                            pending = Some(rec);
+                                            next_attempt = tokio::time::Instant::now() + delay;
+                                        }
                                         RollAction::Hold => {
                                             // Task 2: HOLD keeps the journal (rollback inputs preserved
                                             // for the operator / Task-3 boot recovery).
@@ -11907,6 +12486,22 @@ async fn main() {
                                             break;
                                         }
                                     }
+                                }
+                                _ if settle_failure_recovers(clock_mode, batch_id, None) => {
+                                    eprintln!("[recovery] window {batch_id}: settle failed ({err}) and the pinned observation failed; the recovery reads the settlement again");
+                                    let (rec, delay) = start_clock_recovery(
+                                        &app,
+                                        batch_id,
+                                        &witness_rb,
+                                        window_phase,
+                                        err,
+                                        prune_rb,
+                                        gate_was_closed,
+                                        l1.nonce_ceiling(),
+                                    )
+                                    .await;
+                                    pending = Some(rec);
+                                    next_attempt = tokio::time::Instant::now() + delay;
                                 }
                                 _ => {
                                     // Task 2: HOLD keeps the journal.
@@ -13333,8 +13928,8 @@ mod tests {
         );
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 11,
-            "expected exactly 11 occurrences of `{deposit_op_needle}` across the \
+            deposit_ops, 13,
+            "expected exactly 13 occurrences of `{deposit_op_needle}` across the \
              gateway sources: 4 in main.rs — the `seq.apply(..)` constructions \
              inside `fund_amount` (the only position-credit minter), \
              `seed_insurance_unbacked` (SEC-024: the UNBACKED insurance funnel, \
@@ -13352,7 +13947,10 @@ mod tests {
              chainlink-oracle's `binding::used_oracle` (inspects ops for the \
              archive binding without constructing one); plus 2 in the explicitly \
              cfg(test)-gated journal candidate codec fixture, with zero in journal \
-             production code checked above; found {deposit_ops}. Applying this op anywhere \
+             production code checked above; plus 1 in live_void.rs — the PATTERN that \
+             reads a voided window's deposits from its journaled ops without \
+             constructing one — and 1 in live_void_tests.rs, a cfg(test) PATTERN that \
+             alters a journaled op's permit blind; found {deposit_ops}. Applying this op anywhere \
              else mints collateral below BOTH `refuse_unbacked_mint` and the \
              funnels' bookkeeping, so a new construction site is almost \
              certainly wrong; a legitimate credit path MUST route through \
@@ -14424,8 +15022,11 @@ mod tests {
     /// The anchor-cancel endpoint is operator-only, validates its body, needs a
     /// clock-bound bridge, refuses the window the settle loop is working on before
     /// any L1 read, and is reachable while a window holds clock admission closed.
+    /// While a recovery step holds the in-flight lock every request is refused at
+    /// once with a retryable answer; between steps, while the loop waits, a
+    /// request goes on to the L1 checks.
     #[tokio::test]
-    async fn cancel_anchor_endpoint_is_gated_and_refuses_an_in_flight_window() {
+    async fn cancel_endpoint_is_accepted_while_the_loop_waits_and_refused_during_a_step() {
         let _env = wind_down::ADMIN_ENV_LOCK.lock().await;
         use tower::ServiceExt as _;
         let key = "0x".to_string() + &"aa".repeat(32);
@@ -14495,15 +15096,30 @@ mod tests {
         let (status, text) = call(&app, Some(&key), body.clone()).await;
         assert_eq!(status, StatusCode::CONFLICT, "{text}");
         assert!(text.contains("settle loop"), "{text}");
+        assert!(text.contains("retry"), "{text}");
         // Another window passes the in-flight check and reaches the L1 check.
-        let (status, _) = call(
-            &app,
-            Some(&key),
-            serde_json::json!({"batchId": 8, "phase": 0, "receipt": receipt}),
-        )
-        .await;
+        let other = serde_json::json!({"batchId": 8, "phase": 0, "receipt": receipt});
+        let (status, text) = call(&app, Some(&key), other.clone()).await;
         assert_ne!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert_ne!(status, StatusCode::OK);
+        assert!(!text.contains("settle loop"), "{text}");
+        // A recovery step holds the lock: refused at once, for any window.
+        *app.settle_in_flight.lock().await = None;
+        let step = app.settle_in_flight.lock().await;
+        // Bounded: a handler that waited for the lock would never answer here.
+        let (status, text) = tokio::time::timeout(
+            Duration::from_secs(10),
+            call(&app, Some(&key), other.clone()),
+        )
+        .await
+        .expect("the endpoint answers at once, without waiting for the lock");
+        assert_eq!(status, StatusCode::CONFLICT, "{text}");
+        assert!(text.contains("working on this window; retry"), "{text}");
+        drop(step);
+        // The loop waits between steps: the request reaches the L1 check again.
+        let (status, text) = call(&app, Some(&key), other).await;
+        assert_ne!(status, StatusCode::OK);
+        assert!(!text.contains("settle loop"), "{text}");
         drop(paused);
         match previous {
             Some(v) => std::env::set_var("FIN_ADMIN_KEY", v),
@@ -18683,11 +19299,24 @@ mod tests {
         assert_eq!(leaves2, ww_leaves, "same withdrawal leaves after recovery");
     }
 
+    /// A dead intent as boot's classification hands it to the recovery table.
+    fn boot_dead(
+        dead: rollback_journal::DeadIntent,
+        action: rollback_journal::DeadIntentAction,
+    ) -> Option<BootDeadIntent> {
+        Some(BootDeadIntent {
+            dead,
+            action,
+            basis: rollback_journal::DeadBasis::Fence,
+            block: 9,
+        })
+    }
+
     /// The dead-intent row: a prepared clock intent that can never settle returns
-    /// to the open window when its policy is automatic (and the restored snapshot
-    /// still holds the seal), resolves without mutation when the snapshot already
-    /// rolled it back, and HOLDs otherwise. Without a classification the prepared
-    /// intent keeps holding, as before.
+    /// to the open window when its policy is to (and the restored snapshot still
+    /// holds the seal), resolves without mutation when the snapshot already rolled
+    /// it back, is voided when its policy is a live void, and HOLDs otherwise.
+    /// Without a classification the prepared intent keeps holding, as before.
     #[test]
     fn boot_recovery_returns_a_dead_clock_intent_to_the_open_window() {
         use rollback_journal::{DeadIntent, DeadIntentAction};
@@ -18708,26 +19337,27 @@ mod tests {
         };
         let plain = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
         let restored = || Gw::boot_restored(&plain).expect("restore");
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
         let run = |gw: &mut Gw, dead, chain_bc| {
             apply_boot_recovery_classified(
                 gw,
                 journal.clone(),
                 chain_bc,
-                "0x00",
+                &pre_root,
                 0,
                 trading_gate::GateObservation::Inconclusive,
                 dead,
             )
         };
-        let automatic = Some((
+        let automatic = boot_dead(
             DeadIntent::CloseOnlyPhaseZero,
             DeadIntentAction::ReturnToOpenWindow,
-        ));
+        );
         // No classification, a HOLD policy, or a landed batch: keep the journal, no mutation.
         for (dead, chain_bc) in [
             (None, bc),
             (
-                Some((DeadIntent::EmptyAfterFence, DeadIntentAction::Hold("timed"))),
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::Hold("timed")),
                 bc,
             ),
             (automatic, bc + 1),
@@ -18760,6 +19390,871 @@ mod tests {
             BootRecoveryOutcome::DeleteJournal { mutated: false }
         );
         assert_eq!(gw.snapshot_plain(), before);
+
+        // A timed phase-0 window whose policy is a live void is voided while the
+        // restored snapshot holds the seal; a HOLD policy keeps it.
+        let crate::live_void::tests::Voidable {
+            gw: sealed,
+            journal: timed,
+            ..
+        } = crate::live_void::tests::voidable(false);
+        let window = timed.batch_id;
+        let plain =
+            snapshot::open(&snapshot::seal(&sealed.snapshot_plain(), &seed), &seed).unwrap();
+        let timed_root = hex32(&timed.witness.pre_state.state_root());
+        let classified = |gw: &mut Gw, dead| {
+            apply_boot_recovery_classified(
+                gw,
+                timed.clone(),
+                window,
+                &timed_root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                dead,
+            )
+        };
+        let mut gw = Gw::boot_restored(&plain).unwrap();
+        let before = gw.snapshot_plain();
+        assert_eq!(
+            classified(
+                &mut gw,
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::Hold("timed"))
+            ),
+            BootRecoveryOutcome::KeepJournal
+        );
+        assert_eq!(gw.snapshot_plain(), before);
+        assert_eq!(gw.seq.state.next_batch_id, window + 1);
+        assert!(gw.last_void.is_none());
+        assert_eq!(
+            classified(
+                &mut gw,
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid)
+            ),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert_eq!(gw.seq.state.next_batch_id, window);
+        assert_eq!(
+            gw.seq.state.state_root(),
+            timed.witness.pre_state.state_root()
+        );
+        // Nobody is subscribed at boot: the notice carries the void.
+        let notice = gw.snapshot().settlement_void.expect("the void's notice");
+        assert_eq!(
+            (notice["batchId"].clone(), notice["cause"].clone()),
+            (window.into(), "EmptyAfterFence".into())
+        );
+        assert_eq!(notice["withdrawals"], timed.ww.len());
+        // A void the window's checks refuse keeps the journal and changes nothing.
+        let mut gw = Gw::boot_restored(&plain).unwrap();
+        gw.bootstrap = bootstrap::Bootstrap::DepositApplied {
+            note_commitment: [0; 32],
+            spend_key: [0; 32],
+            deposit_id: timed.witness.pre_state.consumed_deposit_count,
+        };
+        let before = gw.snapshot_plain();
+        assert_eq!(
+            classified(
+                &mut gw,
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid)
+            ),
+            BootRecoveryOutcome::KeepJournal
+        );
+        assert_eq!(gw.snapshot_plain(), before);
+        assert!(gw.last_void.is_none());
+    }
+
+    /// Boot decides a dead intent only at the window's pre-state root, as the
+    /// settle loop does. Another finalized root (another deployment, or a
+    /// snapshot that does not belong to this chain) keeps the journal and changes
+    /// nothing, whatever the policy. The plan already holds when the evidence
+    /// itself shows another root at the window's batch.
+    #[test]
+    fn boot_holds_a_dead_intent_whose_settled_root_is_not_the_window_pre_state() {
+        use rollback_journal::{AnchorSlot, ClockIntent, DeadIntent, DeadIntentAction};
+        let crate::live_void::tests::Voidable {
+            gw: sealed,
+            journal,
+            ..
+        } = crate::live_void::tests::voidable(false);
+        let window = journal.batch_id;
+        let plain = sealed.snapshot_plain();
+        let apply = |gw: &mut Gw, root: &str, dead| {
+            apply_boot_recovery_classified(
+                gw,
+                journal.clone(),
+                window,
+                root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                dead,
+            )
+        };
+        let foreign = hex32(&[0xee; 32]);
+        for dead in [
+            boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid),
+            boot_dead(DeadIntent::Cancelled, DeadIntentAction::LiveVoid),
+            boot_dead(
+                DeadIntent::CloseOnlyPhaseZero,
+                DeadIntentAction::ReturnToOpenWindow,
+            ),
+        ] {
+            let mut gw = Gw::boot_restored(&plain).unwrap();
+            let before = gw.snapshot_plain();
+            assert_eq!(
+                apply(&mut gw, &foreign, dead),
+                BootRecoveryOutcome::KeepJournal,
+                "{dead:?}"
+            );
+            assert_eq!(gw.snapshot_plain(), before, "{dead:?}");
+            assert_eq!(gw.seq.state.next_batch_id, window + 1);
+            assert!(gw.last_void.is_none());
+        }
+        // The pre-state root, in any hex casing, voids.
+        let mut gw = Gw::boot_restored(&plain).unwrap();
+        let pre_root = hex32(&journal.witness.pre_state.state_root()).to_uppercase();
+        assert_eq!(
+            apply(
+                &mut gw,
+                &pre_root,
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid)
+            ),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert_eq!(gw.seq.state.next_batch_id, window);
+        // The evidence at the window's batch names another root: the plan holds,
+        // dead or not, and nothing is resumed.
+        let intent = ClockIntent::of(&journal).unwrap();
+        for slot in [
+            AnchorSlot::Empty,
+            AnchorSlot::Cancelled,
+            AnchorSlot::Matching,
+        ] {
+            let mut e = boot_check(intent, slot).evidence;
+            e.state_root = [0xee; 32];
+            e.block_time_ms = intent.last_ms.map(|last| last + e.clock_skew_ms + 1);
+            let (plan, check) = boot_clock_plan(
+                intent,
+                || Ok(clock_client::classify(intent, e)),
+                || panic!("read once"),
+            );
+            match &plan {
+                BootClockPlan::Hold(why) => assert!(why.contains("pre-state root"), "{why}"),
+                other => panic!("{slot:?}: expected a hold, got {other:?}"),
+            }
+            assert!(check.is_some());
+            assert_eq!(
+                boot_resume_mode(&plan, &journal, window, &pre_root, window + 1),
+                None
+            );
+        }
+    }
+
+    /// A journaled intent and the evidence that it may still settle: its own
+    /// anchor is registered at the finalized block.
+    fn boot_check(
+        intent: rollback_journal::ClockIntent,
+        slot: rollback_journal::AnchorSlot,
+    ) -> clock_client::DeadIntentCheck {
+        clock_client::classify(
+            intent,
+            rollback_journal::DeadIntentEvidence {
+                block: 40,
+                batch_count: intent.batch,
+                state_root: intent.prev_root,
+                close_only: false,
+                slot,
+                nonce: 3,
+                fence_passed: false,
+                quiet: true,
+                seen_nonces: Some((3, 3)),
+                block_time_ms: intent.last_ms,
+                clock_skew_ms: 30_000,
+            },
+        )
+    }
+
+    /// A failed dead-intent read proves nothing. Boot reads three times, waiting
+    /// between reads, then keeps the journal and resumes nothing: a resume could
+    /// send a registration or settle for a window that is already dead.
+    #[test]
+    fn boot_never_resumes_after_a_failed_dead_intent_read() {
+        let crate::live_void::tests::Voidable { journal, .. } =
+            crate::live_void::tests::voidable(false);
+        let intent = rollback_journal::ClockIntent::of(&journal).unwrap();
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
+        let (mut reads, mut waits) = (0, 0);
+        let (plan, check) = boot_clock_plan(
+            intent,
+            || {
+                reads += 1;
+                Err("finalized block read timed out".into())
+            },
+            || waits += 1,
+        );
+        assert_eq!((reads, waits), (BOOT_DEAD_INTENT_READS, 2));
+        assert!(check.is_none());
+        match &plan {
+            BootClockPlan::Hold(why) => {
+                assert!(why.contains("failed 3 times"), "{why}");
+                assert!(why.contains("timed out"), "{why}");
+                assert!(why.contains("nothing is resumed"), "{why}");
+            }
+            other => panic!("expected a hold, got {other:?}"),
+        }
+        // Whatever the settlement observation shows, nothing is resumed.
+        assert_eq!(
+            boot_resume_mode(
+                &plan,
+                &journal,
+                journal.batch_id,
+                &pre_root,
+                journal.batch_id + 1
+            ),
+            None
+        );
+        // A read that succeeds before the last attempt decides as usual.
+        let mut reads = 0;
+        let (plan, check) = boot_clock_plan(
+            intent,
+            || {
+                reads += 1;
+                if reads < 3 {
+                    Err("timed out".into())
+                } else {
+                    Ok(boot_check(intent, rollback_journal::AnchorSlot::Matching))
+                }
+            },
+            || {},
+        );
+        assert!(check.is_some());
+        assert_eq!(
+            plan,
+            BootClockPlan::MaySettle(clock_client::RegisterMode::ExistingOnly)
+        );
+    }
+
+    /// The chain side of an exact resume at boot, for a window with no anchor at
+    /// the latest block: it records every call and must never be asked to settle.
+    struct UnanchoredChain {
+        batch: u64,
+        root: String,
+        calls: std::sync::Mutex<Vec<&'static str>>,
+    }
+    impl clock_client::ResumeChain for UnanchoredChain {
+        fn clock_enabled(&self) -> bool {
+            true
+        }
+        fn settlement_observation(&self) -> Result<(u64, String, u128), String> {
+            self.calls.lock().unwrap().push("observe");
+            Ok((self.batch, self.root.clone(), 0))
+        }
+        fn anchor_live_at_latest(&self, _: u64, _: u8, _: &Digest) -> Result<(), String> {
+            panic!("boot does not recheck at the latest block")
+        }
+        fn settle_proved(&self, _: &prover_client::ProveOutcome) -> Result<String, String> {
+            panic!("no settle without an anchor")
+        }
+    }
+
+    /// The existing-only client finds no anchor for the window at the latest
+    /// block, as `L1::register_clock_with` reports it, and never registers one.
+    struct NoLatestAnchor;
+    impl prover_client::ProverClient for NoLatestAnchor {
+        fn clock_enabled(&self) -> bool {
+            true
+        }
+        fn clock_context(
+            &self,
+            _: &WindowWitness,
+        ) -> Result<Option<perp_core::clock::ClockContext>, prover_client::ProverClientError>
+        {
+            Err(prover_client::ProverClientError::Http(
+                "clock anchor no longer registered; reclassify".into(),
+            ))
+        }
+        fn prove(
+            &self,
+            _: &WindowWitness,
+        ) -> Result<prover_client::RemoteProveResp, prover_client::ProverClientError> {
+            panic!("nothing is proved without an anchor")
+        }
+    }
+
+    /// A timed window that may still settle resumes at boot only against an
+    /// anchor that already exists, as does one whose bounds cannot be derived; an
+    /// untimed one may register again. With no anchor at the latest block nothing
+    /// is registered or settled, the journal is kept and startup is refused.
+    #[test]
+    fn boot_resumes_a_timed_window_existing_only() {
+        use clock_client::RegisterMode::{ExistingOnly, SendIfAbsent};
+        let crate::live_void::tests::Voidable {
+            gw: sealed,
+            journal,
+            ..
+        } = crate::live_void::tests::voidable(false);
+        let intent = rollback_journal::ClockIntent::of(&journal).unwrap();
+        assert!(intent.timed && intent.last_ms.is_some());
+        let untimed = rollback_journal::ClockIntent {
+            timed: false,
+            last_ms: None,
+            ..intent
+        };
+        let underivable = rollback_journal::ClockIntent {
+            last_ms: None,
+            underivable: true,
+            ..intent
+        };
+        for (i, mode) in [
+            (intent, ExistingOnly),
+            (underivable, ExistingOnly),
+            (untimed, SendIfAbsent),
+        ] {
+            for slot in [
+                rollback_journal::AnchorSlot::Matching,
+                rollback_journal::AnchorSlot::Empty,
+            ] {
+                let (plan, _) = boot_clock_plan(i, || Ok(boot_check(i, slot)), || {});
+                assert_eq!(plan, BootClockPlan::MaySettle(mode), "{i:?} {slot:?}");
+            }
+        }
+        // Resumed only while the chain and the snapshot present the sealed window.
+        let plan = BootClockPlan::MaySettle(ExistingOnly);
+        let (j, pre_root) = (
+            journal.batch_id,
+            hex32(&journal.witness.pre_state.state_root()),
+        );
+        assert_eq!(
+            boot_resume_mode(&plan, &journal, j, &pre_root, j + 1),
+            Some(ExistingOnly)
+        );
+        for (bc, root, b_snap) in [
+            (j + 1, pre_root.as_str(), j + 1),
+            (j, "0x00", j + 1),
+            (j, pre_root.as_str(), j),
+        ] {
+            assert_eq!(boot_resume_mode(&plan, &journal, bc, root, b_snap), None);
+        }
+        // No anchor at the latest block: nothing is registered or settled.
+        let mut rnd = [0u8; 8];
+        getrandom::getrandom(&mut rnd).unwrap();
+        let sfx: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+        let jp = std::env::temp_dir().join(format!("darkperp-boot-existing-only-{sfx}.rollback"));
+        let seed = [44u8; 32];
+        rollback_journal::write(&jp, &journal, &seed).unwrap();
+        let on_disk = std::fs::read(&jp).unwrap();
+        let chain = UnanchoredChain {
+            batch: j,
+            root: pre_root.clone(),
+            calls: Default::default(),
+        };
+        let mut saved = journal.clone();
+        let refused = clock_client::resume_exact_with(
+            &chain,
+            &NoLatestAnchor,
+            &mut saved,
+            None,
+            &jp,
+            &seed,
+            clock_client::ResumeMode::Boot,
+        )
+        .unwrap_err();
+        assert!(
+            refused.contains("no longer registered; reclassify"),
+            "{refused}"
+        );
+        assert_eq!(*chain.calls.lock().unwrap(), ["observe"]);
+        assert_eq!(
+            std::fs::read(&jp).unwrap(),
+            on_disk,
+            "the journal is unchanged"
+        );
+        // The unresolved journal then matches no recovery row: it is kept.
+        let mut gw = sealed;
+        let before = gw.snapshot_plain();
+        assert_eq!(
+            apply_boot_recovery_classified(
+                &mut gw,
+                journal,
+                j,
+                &pre_root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                None,
+            ),
+            BootRecoveryOutcome::KeepJournal
+        );
+        assert_eq!(gw.snapshot_plain(), before);
+        let _ = std::fs::remove_file(&jp);
+    }
+
+    /// An empty slot for a journaled receipt contradicts the journal: boot keeps
+    /// it without resuming and without a recovery row.
+    #[test]
+    fn boot_holds_an_inconsistent_anchor_without_resuming() {
+        let crate::live_void::tests::Voidable { journal, .. } =
+            crate::live_void::tests::voidable(false);
+        let intent = rollback_journal::ClockIntent {
+            receipt: Some([0x5a; 32]),
+            ..rollback_journal::ClockIntent::of(&journal).unwrap()
+        };
+        let check = boot_check(intent, rollback_journal::AnchorSlot::Empty);
+        assert!(matches!(
+            check.classified,
+            rollback_journal::Classified::Inconsistent(_)
+        ));
+        let (plan, check) = boot_clock_plan(intent, || Ok(check), || panic!("read once"));
+        match &plan {
+            BootClockPlan::Hold(why) => {
+                assert!(why.contains("contradicts the journal"), "{why}");
+                assert!(why.contains("journaled receipt"), "{why}");
+            }
+            other => panic!("expected a hold, got {other:?}"),
+        }
+        assert!(check.is_some_and(|c| c.dead.is_none()));
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
+        assert_eq!(
+            boot_resume_mode(
+                &plan,
+                &journal,
+                journal.batch_id,
+                &pre_root,
+                journal.batch_id + 1
+            ),
+            None
+        );
+    }
+
+    /// The sealed snapshot and the journal of a voidable window on disk, as a
+    /// crash before or during the void leaves them.
+    fn voidable_on_disk(
+        tag: &str,
+        seed: &[u8; 32],
+    ) -> (
+        crate::live_void::tests::Voidable,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    ) {
+        let v = crate::live_void::tests::voidable(false);
+        let mut rnd = [0u8; 8];
+        getrandom::getrandom(&mut rnd).unwrap();
+        let sfx: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+        let state = std::env::temp_dir().join(format!("darkperp-{tag}-{sfx}.snap"));
+        let jp = rollback_journal::journal_path(&state);
+        snapshot::write_atomic(&state, &snapshot::seal(&v.gw.snapshot_plain(), seed)).unwrap();
+        rollback_journal::write(&jp, &v.journal, seed).unwrap();
+        (v, state, jp)
+    }
+
+    fn restore_from(state: &std::path::Path, seed: &[u8; 32]) -> Gw {
+        let plain = snapshot::open(&std::fs::read(state).unwrap(), seed).unwrap();
+        Gw::boot_restored(&plain).unwrap()
+    }
+
+    /// The void exists only in memory until boot persists it, and the journal is
+    /// deleted only after that; a failed persist keeps the journal, and the
+    /// snapshot on disk still holds the sealed window for the next boot.
+    #[test]
+    fn boot_live_void_persists_before_deleting_the_journal() {
+        use rollback_journal::{DeadIntent, DeadIntentAction};
+        let seed = [45u8; 32];
+        let (v, state, jp) = voidable_on_disk("boot-void-persist", &seed);
+        let window = v.journal.batch_id;
+        let pre_root = hex32(&v.journal.witness.pre_state.state_root());
+        let void = |gw: &mut Gw| {
+            let j = rollback_journal::read(&jp, &seed).unwrap().unwrap();
+            apply_boot_recovery_classified(
+                gw,
+                j,
+                window,
+                &pre_root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid),
+            )
+        };
+        // A persist that fails keeps the journal and the sealed snapshot.
+        let mut gw = restore_from(&state, &seed);
+        assert_eq!(
+            void(&mut gw),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        let bad_state = std::env::temp_dir()
+            .join(format!("darkperp-no-such-dir-{}", window))
+            .join("state.snap");
+        assert!(!finish_boot_recovery(
+            &gw, true, &bad_state, &jp, &seed, None
+        ));
+        assert!(jp.exists(), "a failed persist keeps the journal");
+        let live = boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid);
+        assert!(
+            !count_boot_void(&mut gw, true, false, live),
+            "a void that is not durable does not count"
+        );
+        assert_eq!(
+            restore_from(&state, &seed).seq.state.next_batch_id,
+            window + 1,
+            "the snapshot on disk still holds the seal"
+        );
+        // The next boot voids again; the persist comes before the delete.
+        let mut gw = restore_from(&state, &seed);
+        assert_eq!(
+            void(&mut gw),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert!(finish_boot_recovery(&gw, true, &state, &jp, &seed, None));
+        assert!(!jp.exists());
+        // Durable with its journal gone, the void counts toward the breaker: one
+        // more void in this run trips it. Nothing else a boot resolves counts.
+        let mut fresh = restore_from(&state, &seed);
+        for (mutated, dead) in [
+            (false, live),
+            (
+                true,
+                boot_dead(
+                    DeadIntent::CloseOnlyPhaseZero,
+                    DeadIntentAction::ReturnToOpenWindow,
+                ),
+            ),
+            (true, None),
+        ] {
+            assert!(!count_boot_void(&mut fresh, mutated, true, dead));
+        }
+        assert!(fresh
+            .void_breaker
+            .record(std::time::Instant::now())
+            .is_none());
+        assert!(count_boot_void(&mut gw, true, true, live));
+        assert!(gw.void_breaker.record(std::time::Instant::now()).is_some());
+        let after = restore_from(&state, &seed);
+        assert_eq!(after.seq.state.next_batch_id, window);
+        assert_eq!(after.snapshot_plain(), gw.snapshot_plain());
+        assert_eq!(
+            after
+                .seq
+                .window_rejected()
+                .iter()
+                .map(|(h, _)| *h)
+                .collect::<Vec<_>>(),
+            crate::live_void::tests::published(&v.journal)
+        );
+        let _ = std::fs::remove_file(&state);
+    }
+
+    /// The void's snapshot is durable and the journal is not deleted yet. The next
+    /// boot recognizes the void, changes nothing and deletes the journal. A state
+    /// that lacks any part of the void keeps the journal unchanged.
+    #[test]
+    fn boot_resolves_an_already_voided_snapshot_without_mutation() {
+        use rollback_journal::{DeadIntent, DeadIntentAction};
+        let seed = [46u8; 32];
+        let crate::live_void::tests::Voidable {
+            mut gw,
+            journal,
+            commits,
+            withdrawal,
+            consumed,
+            ..
+        } = crate::live_void::tests::voidable(false);
+        let window = journal.batch_id;
+        assert!(matches!(
+            gw.live_void_window(&journal, DeadIntent::EmptyAfterFence),
+            Ok(live_void::LiveVoidOutcome::Applied(_))
+        ));
+        let voided = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
+        let resolve = |gw: &mut Gw, j: &rollback_journal::RollbackJournal| {
+            apply_boot_recovery_classified(
+                gw,
+                j.clone(),
+                window,
+                &pre_root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                boot_dead(DeadIntent::EmptyAfterFence, DeadIntentAction::LiveVoid),
+            )
+        };
+        let mut restored = Gw::boot_restored(&voided).unwrap();
+        assert_eq!(restored.seq.state.next_batch_id, window);
+        let before = restored.snapshot_plain();
+        assert_eq!(
+            resolve(&mut restored, &journal),
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
+        );
+        assert_eq!(restored.snapshot_plain(), before, "byte-equal");
+        // Each part of the void, missing: the journal is kept, nothing changes.
+        let mut unpublished = journal.clone();
+        unpublished.witness.manifest.ordered.push([0xab; 32]);
+        type Break<'a> = (
+            &'a str,
+            Box<dyn Fn(&mut Gw) + 'a>,
+            &'a rollback_journal::RollbackJournal,
+        );
+        let breaks: Vec<Break> = vec![
+            (
+                "the state is not the pre-state",
+                Box::new(|gw: &mut Gw| gw.last_settled_root = [0xee; 32]),
+                &journal,
+            ),
+            (
+                "the open window holds a withdrawal",
+                Box::new(|gw: &mut Gw| gw.window_withdrawals.push(withdrawal.clone())),
+                &journal,
+            ),
+            (
+                "an order is not published as cancelled",
+                Box::new(|_: &mut Gw| {}),
+                &unpublished,
+            ),
+            (
+                "a deposit is not restored",
+                Box::new(|gw: &mut Gw| {
+                    gw.deposits.uncredited.remove(&consumed);
+                }),
+                &journal,
+            ),
+            (
+                "a deposit's permit is not restored",
+                Box::new(|gw: &mut Gw| {
+                    gw.deposits.routes.remove(&commits[1]);
+                }),
+                &journal,
+            ),
+            (
+                "the bootstrap is still applied",
+                Box::new(|gw: &mut Gw| {
+                    gw.bootstrap = bootstrap::Bootstrap::InsuranceApplied { window_id: window }
+                }),
+                &journal,
+            ),
+            (
+                "a withdrawal leaf is still pending",
+                Box::new(|gw: &mut Gw| gw.pending_withdrawals.push(withdrawal.clone())),
+                &journal,
+            ),
+        ];
+        for (what, broken, j) in breaks {
+            let mut gw = Gw::boot_restored(&voided).unwrap();
+            broken(&mut gw);
+            let before = gw.snapshot_plain();
+            assert_eq!(
+                resolve(&mut gw, j),
+                BootRecoveryOutcome::KeepJournal,
+                "{what}"
+            );
+            assert_eq!(gw.snapshot_plain(), before, "{what}");
+        }
+    }
+
+    /// A restart right after the void's snapshot, before its journal delete:
+    /// boot's own read may not decide the window yet (its ceiling holds every
+    /// recorded send, and it does not wait), so no dead intent reaches the table.
+    /// The restored snapshot holds the void, and the journal is deleted without
+    /// mutation, at the window's batch and pre-state root only.
+    #[test]
+    fn boot_deletes_the_journal_of_a_durable_void_without_a_fresh_dead_read() {
+        let seed = [48u8; 32];
+        let crate::live_void::tests::Voidable {
+            mut gw, journal, ..
+        } = crate::live_void::tests::voidable(false);
+        let window = journal.batch_id;
+        let sealed = gw.snapshot_plain();
+        assert!(!gw.holds_live_void(&journal));
+        assert!(matches!(
+            gw.live_void_window(&journal, rollback_journal::DeadIntent::EmptyAfterFence),
+            Ok(live_void::LiveVoidOutcome::Applied(_))
+        ));
+        let voided = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
+        let pre_root = hex32(&journal.witness.pre_state.state_root());
+        let resolve = |gw: &mut Gw, chain_bc, root: &str| {
+            apply_boot_recovery_classified(
+                gw,
+                journal.clone(),
+                chain_bc,
+                root,
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                None,
+            )
+        };
+        let mut restored = Gw::boot_restored(&voided).unwrap();
+        assert!(restored.holds_live_void(&journal));
+        let before = restored.snapshot_plain();
+        assert_eq!(
+            resolve(&mut restored, window, &pre_root),
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
+        );
+        assert_eq!(restored.snapshot_plain(), before, "byte-equal");
+        // Another root, or a batch that moved on: kept, nothing changes.
+        for (chain_bc, root) in [(window, hex32(&[0xee; 32])), (window + 1, pre_root.clone())] {
+            let mut gw = Gw::boot_restored(&voided).unwrap();
+            assert_eq!(
+                resolve(&mut gw, chain_bc, &root),
+                BootRecoveryOutcome::KeepJournal
+            );
+            assert_eq!(gw.snapshot_plain(), before);
+        }
+        // The sealed snapshot does not hold the void: without a dead intent it
+        // keeps holding, as before.
+        let mut gw = Gw::boot_restored(&sealed).unwrap();
+        assert!(!gw.holds_live_void(&journal));
+        assert_eq!(
+            resolve(&mut gw, window, &pre_root),
+            BootRecoveryOutcome::KeepJournal
+        );
+        assert_eq!(gw.snapshot_plain(), sealed);
+    }
+
+    /// Once the void is durable and the journal is gone, a restart keeps the
+    /// cancelled rejections, the restored deposits and the rewound cursor; the
+    /// deposits are credited again and the replacement window seals under the
+    /// same batch id.
+    #[test]
+    fn a_restart_after_the_void_keeps_the_cancelled_rejections_and_restored_deposits() {
+        use crate::live_void::tests::{ingest, published, seal};
+        let seed = [47u8; 32];
+        let crate::live_void::tests::Voidable {
+            mut gw,
+            chain,
+            journal,
+            commits,
+            routes,
+            blinds,
+            consumed,
+            ..
+        } = crate::live_void::tests::voidable(false);
+        let window = journal.batch_id;
+        assert!(matches!(
+            gw.live_void_window(&journal, rollback_journal::DeadIntent::Cancelled),
+            Ok(live_void::LiveVoidOutcome::Applied(_))
+        ));
+        let plain = snapshot::open(&snapshot::seal(&gw.snapshot_plain(), &seed), &seed).unwrap();
+        let mut restored = Gw::boot_restored(&plain).unwrap();
+        let hashes = published(&journal);
+        let cancelled = |gw: &Gw| {
+            gw.seq
+                .window_rejected()
+                .iter()
+                .filter(|(_, r)| *r == perp_core::order::RejectReason::Cancelled)
+                .map(|(h, _)| *h)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(cancelled(&restored), hashes);
+        assert_eq!(restored.deposits.routes, routes);
+        for (commit, blind) in &blinds {
+            let key = routes[commit].key;
+            assert_eq!(
+                restored.accounts[&key].deposit_authorizations[commit],
+                *blind
+            );
+        }
+        assert_eq!(
+            restored
+                .deposits
+                .uncredited
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![consumed, consumed + 1, consumed + 2]
+        );
+        assert_eq!(restored.deposits.anchor, gw.deposits.anchor);
+        restored.validate_deposit_state().unwrap();
+        // Re-ingest credits the deposits again; the replacement seals as window j.
+        assert_eq!(ingest(&mut restored, &chain), 3);
+        assert!(restored.deposits.uncredited.is_empty());
+        assert!(commits
+            .iter()
+            .all(|c| !restored.deposits.routes.contains_key(c)));
+        let replacement = seal(&mut restored);
+        assert_eq!(replacement.batch_id, window);
+        for h in &hashes {
+            assert!(replacement
+                .witness
+                .manifest
+                .rejected
+                .contains(&(*h, perp_core::order::RejectReason::Cancelled)));
+        }
+        assert_eq!(
+            replacement
+                .prepared
+                .as_ref()
+                .unwrap()
+                .outcome
+                .new_deposit_count,
+            consumed + 3
+        );
+    }
+
+    /// The replacement window seals under the same batch id with its own
+    /// journal, written after the voided window's journal was deleted. Boot
+    /// classifies it on its own witness: the replacement holds no timed
+    /// operation, so dead on the fence it returns to the open window.
+    #[test]
+    fn a_replacement_journal_for_the_same_batch_is_classified_on_its_own_witness() {
+        use crate::live_void::tests::{ingest, seal};
+        use rollback_journal::{AnchorSlot, ClockIntent, DeadIntent, DeadIntentAction};
+        let crate::live_void::tests::Voidable {
+            mut gw,
+            chain,
+            journal,
+            ..
+        } = crate::live_void::tests::voidable(false);
+        let window = journal.batch_id;
+        assert!(matches!(
+            gw.live_void_window(&journal, DeadIntent::EmptyAfterFence),
+            Ok(live_void::LiveVoidOutcome::Applied(_))
+        ));
+        assert_eq!(ingest(&mut gw, &chain), 3);
+        let replacement = seal(&mut gw);
+        assert_eq!(replacement.batch_id, window);
+        let (old, new) = (
+            ClockIntent::of(&journal).unwrap(),
+            ClockIntent::of(&replacement).unwrap(),
+        );
+        assert_eq!(old.batch, new.batch);
+        assert!(old.timed, "the voided window traded");
+        assert!(
+            !new.timed,
+            "the replacement holds deposits and cancellations only"
+        );
+        assert_ne!(old.base, new.base);
+        // Dead on the fence, the replacement returns to the open window.
+        let mut e = boot_check(new, AnchorSlot::Empty).evidence;
+        e.fence_passed = true;
+        let check = clock_client::classify(new, e);
+        assert_eq!(
+            check.dead,
+            Some((
+                DeadIntent::EmptyAfterFence,
+                DeadIntentAction::ReturnToOpenWindow
+            ))
+        );
+        let (plan, _) = boot_clock_plan(new, || Ok(check), || {});
+        let BootClockPlan::Dead(dead) = plan else {
+            panic!("expected a dead plan, got {plan:?}")
+        };
+        let mut returned = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+        assert_eq!(
+            apply_boot_recovery_classified(
+                &mut returned,
+                replacement.clone(),
+                window,
+                &hex32(&replacement.witness.pre_state.state_root()),
+                0,
+                trading_gate::GateObservation::Inconclusive,
+                Some(dead),
+            ),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert_eq!(returned.seq.state.next_batch_id, window);
+        // Its operations, the re-ingested deposits included, are back in the open
+        // window, and the cancellations of the voided orders are still published.
+        assert!(returned.seq.open_window_has_ops());
+        for (h, _) in &replacement.witness.manifest.rejected {
+            assert!(returned
+                .seq
+                .window_rejected()
+                .contains(&(*h, perp_core::order::RejectReason::Cancelled)));
+        }
     }
 
     /// The ROLL-FORWARD row end-to-end across a simulated restart: the tx landed

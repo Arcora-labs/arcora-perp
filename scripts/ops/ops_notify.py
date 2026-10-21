@@ -36,6 +36,8 @@ GATEWAY_ALERTS = (
     "admission_cap_reached",
     "withdraw_nonce_repaired",
     "deposit_blocked_at_cap",
+    "window_voided",
+    "clock_recovery_blocked",
 )
 # Monitor conditions (episodic) and one-shot unit failures. The monitor's own L1
 # reads also raise liveness_low (the gateway's name for the same condition).

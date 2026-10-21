@@ -208,9 +208,12 @@ impl Gw {
     /// is dropped with its blind, since the vault refuses every deposit in
     /// close-only. A permitted deposit that landed and was never credited keeps its
     /// record in `uncredited` (with the permit's route), which the account view
-    /// lists as refundable. Every precondition is checked before anything changes;
-    /// the result must equal L1's root and counts. Returns the discarded window's
-    /// order hashes, which the wind-down publishes as rejected (`MarketCloseOnly`).
+    /// lists as refundable. The order records undo the discarded window's fills,
+    /// and each order it sequenced, rejected or filled ends cancelled with the
+    /// execution reason `WindowVoided`, as in a live void. Every precondition is
+    /// checked before anything changes; the result must equal L1's root and
+    /// counts. Returns the discarded window's order hashes, which the wind-down
+    /// publishes as rejected (`MarketCloseOnly`).
     ///
     /// A window sealed but not settled must be resolved first (boot recovery
     /// returns a dead phase-0 window to the open window).
@@ -255,6 +258,11 @@ impl Gw {
         }
         let window = self.seq.current_window_id();
         let voided = self.seq.void_open_window();
+        // The order records undo the discarded fills before any view refreshes
+        // finality, as in a live void: the discarded ticks are no longer
+        // pending, and a refresh would read their fills as settled.
+        let _ = self.void_order_records(&voided.hashes, &voided.ticks);
+        let voided = voided.hashes;
         let dropped = self.deposits.credits.split_off(&consumed);
         if !dropped.is_empty() {
             // The ingestion anchor may point past the consumed prefix; refetch from
@@ -643,8 +651,11 @@ mod tests {
         gw.last_settled_root = gw.seq.state.state_root();
         let settled_root = gw.last_settled_root;
         let consumed = gw.seq.state.consumed_deposit_count;
-        // Unsettled work after the last settle: a credit and a rejected order.
+        // Unsettled work after the last settle: a credit, a tick and a rejected
+        // order.
         gw.account_deposit(&key, 0, 5 * QUOTE_SCALE).unwrap();
+        let tick = gw.seq.seal_batch(&[], now_ms()).batch_id;
+        assert!(gw.seq.fill_tick_pending(tick));
         let stray = [0x5c; 32];
         gw.seq
             .reject_in_window(&[stray], perp_core::order::RejectReason::Expired);
@@ -699,6 +710,10 @@ mod tests {
         let mut gw = app.gw.lock().await;
         assert!(gw.wind_down_started && restored.wind_down_started);
         assert!(gw.deposits.l1_close_only);
+        assert!(
+            !gw.seq.fill_tick_pending(tick) && !restored.seq.fill_tick_pending(tick),
+            "the rebase discards the unsettled window's ticks"
+        );
         assert_eq!(gw.seq.state.consumed_deposit_count, consumed);
         let (witness, ww) = gw.begin_window_settle(window).unwrap().unwrap();
         assert_eq!(witness.pre_state.state_root(), settled_root);

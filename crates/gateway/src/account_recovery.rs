@@ -152,17 +152,26 @@ impl Gw {
         // Notify existing subscribers even after restore creates fresh controls.
         a.credential_control.changed.send_replace(next);
         self.accounts.insert(new_key, a);
-        // A01 stores account lookup credentials in permits and credited receipts.
-        // Move those references under the same Gw lock as the account rotation.
-        // Owner, destination market, purpose, event bytes and L1 prefix stay intact.
+        // A01 stores account lookup credentials in permits, credited receipts, refund
+        // records and the records of landed deposits that were not credited. Move
+        // every one of those references under the same Gw lock as the account
+        // rotation: the deposit ledger check requires each row's account, and the
+        // refund and receipt views find rows by key. Owner, destination market,
+        // purpose, event bytes and L1 prefix stay intact.
         for route in self.deposits.routes.values_mut() {
             if route.key == old {
                 route.key = new_key;
             }
         }
-        for credit in self.deposits.credits.values_mut() {
-            if credit.route.key == old {
-                credit.route.key = new_key;
+        let deposits = &mut self.deposits;
+        for row in deposits
+            .credits
+            .values_mut()
+            .chain(deposits.refunds.values_mut())
+            .chain(deposits.uncredited.values_mut())
+        {
+            if row.route.key == old {
+                row.route.key = new_key;
             }
         }
         Ok(new_key)

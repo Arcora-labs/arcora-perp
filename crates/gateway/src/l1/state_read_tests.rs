@@ -653,6 +653,7 @@ fn runtime_state_native_cast_open_set_and_boot_posture_are_hash_pinned() {
         chain_id: 84532,
         stop: None,
         program_vkey: Default::default(),
+        clock_skew_ms: Default::default(),
     });
     assert_eq!(
         l1.open_challenge_set(&Default::default(), 16)

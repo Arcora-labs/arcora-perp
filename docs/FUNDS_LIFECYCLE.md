@@ -242,6 +242,31 @@ Python tests come from `cast`.
   `arcora.claim-bundle.v1` object with `chainId` and `vault`, so saved to a file it
   is a bundle `claim_withdrawal.py` checks as it is (`docs/FINAL_SETTLE_RUNBOOK.md`).
 
+## A voided settlement window
+
+A window whose clock registration can never land on L1 is voided by the gateway
+(`docs/PROVING-RUNBOOK.md`, § Dead clock window). Nothing of it settled, so nothing
+on L1 changes; the gateway undoes what the window did off-chain:
+
+- **Fills are undone.** The account returns to its state before the window. Each
+  order the window sequenced, rejected or filled, including a resting order one of
+  its fills touched, ends cancelled with the execution reason `WindowVoided`. Place
+  it again if you still want it; a caller-signed order needs a new nonce.
+- **Deposits are credited again.** A deposit the window credited stays on L1 under
+  its permit, and ingestion credits it again with a new note. There is nothing to
+  do; until then `POST /v1/accounts/deposit/onchain` answers 202. If close-only
+  begins first, the deposit is refundable like any other deposit the settled state
+  never consumed (below).
+- **Withdrawals are requested again.** A withdrawal requested in the window is
+  removed: its leaf is never published and can never be claimed, and its amount is
+  back in the position. Sign a new request with the next authorization nonce
+  (`nextWithdrawNonce`); it gets a new, higher leaf nonce. Until the gateway
+  restarts, `GET /v1/accounts/withdrawals` lists the removed one under `voided`.
+
+An authenticated `/v1/ws` connection receives `execution`, `withdrawalVoided` and
+`depositRestored` events once the void is durable (`docs/API.md`, § Voided
+settlement windows).
+
 ## Challenge kit for an order the sequencer never settles
 
 An accepted order's receipt carries `l1Challenge`, the enclave's authorization to
