@@ -297,10 +297,11 @@ client keeps it:
   in place. The account panel also waits for its read of the bound deposit
   address (`GET /v1/accounts/me`): the new kit replaces the kept one only when it
   names that address and the read was sent after the panel found the kept kit
-  stored. A listing fetched before the rebind, in another tab or before the
-  panel opened, still names the old address, so it never replaces a kit stored
-  for the new one. The accept response's kit and the listing's kit for the same
-  address are the same kit, so keeping both changes nothing.
+  stored. A listing fetched before a rebind made in another tab, or before the
+  panel opened, still names the old address, so the panel does not let it
+  replace a kit stored for the new one. The accept response's kit and the
+  listing's kit for the same address are the same kit, so keeping both changes
+  nothing.
 - A kit is kept only when its signature recovers to the receipt's enclave signer.
   Receipts without an authorization (`null` when the account has no bound deposit
   address) produce no kit. An order the gateway lists as `SETTLED` gets no kit,

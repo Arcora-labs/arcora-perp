@@ -866,19 +866,21 @@ function noteStored(since: StoredSince, stored: readonly ChallengeKit[]): Stored
 }
 
 /// Whether a kit built from the listing may replace the kit `stored` holds for
-/// its order: always when none or the same authorization is stored. A stored
-/// kit of another authorization may be the newer one: another tab may have
-/// stored it from a listing after the account bound another deposit address,
-/// while this page's listing, or a kit built from it, is older. The listed kit
-/// replaces it only when it names the address `bound` found, from a read sent
-/// after the panel first found the stored kit (`since`), so after it was
-/// stored: the gateway signs an order's authorization for the address bound
-/// when it answers. Until then the stored kit stays, in storage and in the offer.
+/// its order, or the last one the panel found stored for it (`since`) when that
+/// one has left the store (evicted, or site data cleared): always when there is
+/// none or it is the same authorization. A stored kit of another authorization
+/// may be the newer one: another tab may have stored it from a listing after
+/// the account bound another deposit address, while this page's listing, or a
+/// kit built from it, is older. The listed kit replaces it only when it names
+/// the address `bound` found, from a read sent after the panel first found the
+/// stored kit, so after it was stored: the gateway signs an order's
+/// authorization for the address bound when it answers. Until then the stored
+/// kit stays, in storage and in the offer.
 function replacesStored(stored: readonly ChallengeKit[], since: StoredSince, bound: BoundDepositAddress | undefined) {
   const storedAuth = seenChallengeKits(stored);
   return (k: ChallengeKit): boolean => {
     const hash = k.orderHash.toLowerCase();
-    const signature = storedAuth.get(hash);
+    const signature = storedAuth.get(hash) ?? since.get(hash)?.signature;
     if (signature === undefined || signature === k.l1Challenge.signature.toLowerCase()) return true;
     return bound !== undefined && bound.readAtMs > since.get(hash)!.at &&
       bound.depositAddress?.toLowerCase() === k.l1Challenge.beneficiary.toLowerCase();
@@ -917,14 +919,17 @@ export function ChallengeKitSection({ orders, bound, storage }: {
   const seen = useRef<Map<string, string> | null>(null);
   seen.current ??= seenChallengeKits(kits);
   // Per order hash, the authorization of the kit this session built from the
-  // listing: the newest copy of that order's kit this browser holds, unless a
-  // stored kit of another authorization is not shown to be older.
+  // listing: the newest copy of that order's kit this browser holds, unless
+  // the store holds another authorization that `replacesStored` does not let
+  // it replace.
   const built = useRef(new Map<string, string>());
   // Per order hash, the stored kit's authorization and when this panel first found it.
   const storedSince = useRef<StoredSince | null>(null);
   storedSince.current ??= noteStored(new Map(), kits);
   // Per order hash, a kit built from the listing that waits for `bound` to
-  // show it replaces the stored kit of another authorization.
+  // show it replaces the stored kit of another authorization. It waits while
+  // the panel is open: `seen` keeps the listing from building it again, and a
+  // later rebind can make it the current one.
   const waiting = useRef(new Map<string, ChallengeKit>());
 
   useEffect(() => {
@@ -951,9 +956,15 @@ export function ChallengeKitSection({ orders, bound, storage }: {
     // This session's other kits (stored when the panel opened, or another
     // account's) give way to a stored copy of their order: another tab may
     // have stored a newer one since (its account bound another deposit address).
-    // So does a kit built here that is not shown to replace the stored one.
-    const isBuilt = (k: ChallengeKit) =>
-      built.current.get(k.orderHash.toLowerCase()) === k.l1Challenge.signature.toLowerCase() && replaces(k);
+    // So does a kit built here that `replacesStored` does not let replace the
+    // stored one (a tab still running an older page may have stored an older
+    // kit over it): it waits like a listed kit, so a later read can put it back.
+    const builtHere = (k: ChallengeKit) => built.current.get(k.orderHash.toLowerCase()) === k.l1Challenge.signature.toLowerCase();
+    const isBuilt = (k: ChallengeKit) => builtHere(k) && replaces(k);
+    for (const k of current) {
+      const hash = k.orderHash.toLowerCase();
+      if (builtHere(k) && !replaces(k) && !waiting.current.has(hash)) waiting.current.set(hash, k);
+    }
     const own = current.filter(isBuilt);
     const others = current.filter((k) => !isBuilt(k));
     const inStore = seenChallengeKits(before);
