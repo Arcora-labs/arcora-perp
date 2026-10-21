@@ -13,6 +13,7 @@ import {
   rememberClaimBundles,
   serializeClaimBundles,
   type ClaimBundle,
+  type ClaimBundleStorage,
 } from "../domain/claimBundle";
 import {
   MAX_STORED_CHALLENGE_KITS,
@@ -489,14 +490,15 @@ interface ClaimTxState {
 /// the entry shows pending settlement, and once `claimable` the user gets
 /// the on-chain claim — sent directly from a connected wallet, with the
 /// copy-pasteable `cast` command kept as the fallback. Hidden entirely when the
-/// client reports null (mock mode / no provisioned account).
+/// client reports null (mock mode / no provisioned account). `storage` defaults
+/// to this origin's localStorage.
 /// Exported for tests (takes the client as a prop so a fake can drive it).
-export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
+export function WithdrawalsSection({ client, storage }: { client: DarkPerpClient; storage?: ClaimBundleStorage }) {
   const [data, setData] = useState<{ withdrawals: WithdrawalEntry[]; vault: string } | null>(null);
   const [copiedNonce, setCopiedNonce] = useState<number | null>(null);
   const wallet = useWalletAddress();
   const [claims, setClaims] = useState<Record<number, ClaimTxState>>({});
-  const [savedBundles, setSavedBundles] = useState<ClaimBundle[]>(() => loadClaimBundles());
+  const [savedBundles, setSavedBundles] = useState<ClaimBundle[]>(() => loadClaimBundles(storage));
 
   // Keep every claimable entry's bundle in this browser as soon as it is
   // seen, so the claim data survives the operator going away.
@@ -509,8 +511,8 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
         return []; // not claimable yet, or invalid claim data
       }
     });
-    if (fresh.length > 0 && rememberClaimBundles(fresh)) setSavedBundles(loadClaimBundles());
-  }, [data]);
+    if (fresh.length > 0 && rememberClaimBundles(fresh, storage)) setSavedBundles(loadClaimBundles(storage));
+  }, [data, storage]);
 
   useEffect(() => {
     let alive = true;

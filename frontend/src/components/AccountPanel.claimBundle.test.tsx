@@ -9,7 +9,7 @@ import { WithdrawalsSection } from "./AccountPanel";
 import { COLLATERAL_VAULT } from "../api/wallet";
 import type { DarkPerpClient } from "../api/client";
 import type { WithdrawalEntry } from "../domain/types";
-import { CLAIM_BUNDLE_STORAGE_KEY } from "../domain/claimBundle";
+import { CLAIM_BUNDLE_STORAGE_KEY, type ClaimBundleStorage } from "../domain/claimBundle";
 
 const claimable: WithdrawalEntry = {
   to: "0x" + "11".repeat(20),
@@ -37,6 +37,17 @@ function client(withdrawals: WithdrawalEntry[]) {
 
 function saved() {
   return JSON.parse(localStorage.getItem(CLAIM_BUNDLE_STORAGE_KEY) ?? "[]") as Array<{ nonce: number }>;
+}
+
+/// Storage the browser refuses (blocked site data): every access throws, and
+/// each attempt is counted so the test proves the denial was exercised.
+function deniedStorage() {
+  const attempts = { get: 0, set: 0 };
+  const storage: ClaimBundleStorage = {
+    getItem: () => { attempts.get++; throw new DOMException("denied", "SecurityError"); },
+    setItem: () => { attempts.set++; throw new DOMException("denied", "SecurityError"); },
+  };
+  return { storage, attempts };
 }
 
 let downloads: Array<{ name: string; blob: Blob }>;
@@ -100,9 +111,14 @@ describe("WithdrawalsSection claim bundles", () => {
   });
 
   it("still works when browser storage is denied", async () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
-    render(<WithdrawalsSection client={client([claimable])} />);
+    const denied = deniedStorage();
+    render(<WithdrawalsSection client={client([claimable])} storage={denied.storage} />);
     fireEvent.click(await screen.findByRole("button", { name: /download claim file/i }));
+    // The section really ran against the refusing storage, and nothing leaked
+    // into the page's own localStorage.
+    expect(denied.attempts.get).toBeGreaterThan(0);
+    expect(saved()).toEqual([]);
     expect(downloads).toHaveLength(1);
+    expect(JSON.parse(await downloads[0].blob.text())).toMatchObject({ nonce: 3, leaf: claimable.leaf });
   });
 });

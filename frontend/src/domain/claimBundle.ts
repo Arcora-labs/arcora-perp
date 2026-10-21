@@ -59,12 +59,12 @@ export function serializeClaimBundles(bundles: ClaimBundle[]): string {
   return JSON.stringify(bundles.length === 1 ? bundles[0] : bundles, null, 2) + "\n";
 }
 
-interface KeyValueStorage {
+export interface ClaimBundleStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }
 
-function defaultStorage(): KeyValueStorage | undefined {
+function defaultStorage(): ClaimBundleStorage | undefined {
   try {
     return typeof localStorage === "undefined" ? undefined : localStorage;
   } catch {
@@ -94,7 +94,7 @@ function isBundle(value: unknown): value is ClaimBundle {
 }
 
 /// Saved bundles; anything unreadable or malformed is ignored, never trusted.
-export function loadClaimBundles(storage: KeyValueStorage | undefined = defaultStorage()): ClaimBundle[] {
+export function loadClaimBundles(storage: ClaimBundleStorage | undefined = defaultStorage()): ClaimBundle[] {
   if (!storage) return [];
   try {
     const raw = storage.getItem(CLAIM_BUNDLE_STORAGE_KEY);
@@ -109,7 +109,7 @@ export function loadClaimBundles(storage: KeyValueStorage | undefined = defaultS
 /// false when storage is unavailable or refuses the write (never throws).
 export function rememberClaimBundles(
   bundles: ClaimBundle[],
-  storage: KeyValueStorage | undefined = defaultStorage(),
+  storage: ClaimBundleStorage | undefined = defaultStorage(),
 ): boolean {
   if (!storage) return false;
   try {
