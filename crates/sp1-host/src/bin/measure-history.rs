@@ -39,9 +39,13 @@
 //! settlement-tree roots, deposit leaves, oracle-signer addresses) is a fixed few
 //! dozen permutations per batch and is not counted.
 //!
+//! With `--witness-dir DIR`, each measured witness is also written to the new
+//! directory `DIR` as `BATCH-hH.witness.bin`, so it can be proven later
+//! (`prove-witness`).
+//!
 //! Usage:
 //! `measure-history --elf GUEST_ELF --out NEW_JSON [--history H[,H...]]
-//!  [--batch phase0,phase1,phase1-haircut]`
+//!  [--batch phase0,phase1,phase1-haircut] [--witness-dir NEW_DIR]`
 use perp_core::clock::{ClockContext, TimeBounds, WIRE_MAGIC};
 use perp_core::commitment::{batch_time_ms, classify_wind_down_ops, derive_roots, DerivedRoots};
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
@@ -69,7 +73,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 const USAGE: &str = "usage: measure-history --elf GUEST_ELF --out NEW_JSON \
-     [--history H[,H...]] [--batch phase0,phase1,phase1-haircut]";
+     [--history H[,H...]] [--batch phase0,phase1,phase1-haircut] [--witness-dir NEW_DIR]";
 const DEFAULT_HISTORY: [u64; 5] = [10_000, 50_000, 100_000, 250_000, 500_000];
 const BATCHES: [&str; 3] = ["phase0", "phase1", "phase1-haircut"];
 const MAX_ELF_BYTES: u64 = 16 * 1024 * 1024;
@@ -596,6 +600,7 @@ async fn measure<P: Prover>(
     history: u64,
     batch: &str,
     per_permutation: f64,
+    witness_dir: Option<&Path>,
 ) -> Value {
     let shape = Shape::of(history).unwrap_or_else(|e| panic!("{e}"));
     let built = Instant::now();
@@ -634,6 +639,14 @@ async fn measure<P: Prover>(
         .collect();
     let (bytes, expected) = witness(&state, ops, ordered, anchored_at_ms);
     let build_s = built.elapsed().as_secs_f64();
+    if let Some(dir) = witness_dir {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(dir.join(format!("{batch}-h{history}.witness.bin")))
+            .and_then(|mut file| file.write_all(&bytes).and_then(|()| file.sync_all()))
+            .expect("new witness file");
+    }
 
     // Native twin, timed, and its post-state for the record.
     let native_started = Instant::now();
@@ -706,16 +719,19 @@ struct Args {
     out: String,
     history: Vec<u64>,
     batches: Vec<String>,
+    witness_dir: Option<String>,
 }
 
 fn parse_args(args: &[String]) -> Result<Args, String> {
-    let (mut elf, mut out, mut history, mut batches) = (None, None, None, None);
+    let (mut elf, mut out, mut history, mut batches, mut witness_dir) =
+        (None, None, None, None, None);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         let mut value = || rest.next().cloned().ok_or_else(|| USAGE.to_string());
         match arg.as_str() {
             "--elf" if elf.is_none() => elf = Some(value()?),
             "--out" if out.is_none() => out = Some(value()?),
+            "--witness-dir" if witness_dir.is_none() => witness_dir = Some(value()?),
             "--history" if history.is_none() => {
                 let list = value()?
                     .split(',')
@@ -741,6 +757,7 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
         out: out.ok_or(USAGE)?,
         history: history.unwrap_or_else(|| DEFAULT_HISTORY.to_vec()),
         batches: batches.unwrap_or_else(|| BATCHES.iter().map(|b| b.to_string()).collect()),
+        witness_dir,
     })
 }
 
@@ -755,6 +772,10 @@ async fn main() {
         .create_new(true)
         .open(&args.out)
         .expect("new output file");
+    let witness_dir = args.witness_dir.as_deref().map(Path::new);
+    if let Some(dir) = witness_dir {
+        std::fs::create_dir(dir).expect("new witness directory");
+    }
     let oracle_key = k256::ecdsa::SigningKey::from_slice(&ORACLE_KEY).expect("test key");
     let probe = oracle_digest(0, PRICE_SCALE, 1, 0, PRICE_SCALE);
     let oracle_address = OracleSig::sign(&oracle_key, &probe)
@@ -780,6 +801,7 @@ async fn main() {
                     *history,
                     batch,
                     per_permutation,
+                    witness_dir,
                 )
                 .await,
             );

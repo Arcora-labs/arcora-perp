@@ -1,0 +1,82 @@
+Running sp1-gpu-server 6.1.0 with device 0
+2026-10-21T17:00:57.757429Z  INFO sp1_gpu_server::server: Server listening @ /tmp/sp1-cuda-0.sock
+2026-10-21T17:00:57.757518Z  INFO sp1_gpu_server::server: Connection accepted
+2026-10-21T17:00:57.760750Z  INFO sp1_gpu_server::server: Running setup
+PROVE_START batch-0 mode=groth16 cycles=268348
+2026-10-21T17:00:57.966784Z  INFO sp1_gpu_server::server: Proving with mode: Groth16
+2026-10-21T17:01:08.524450Z  INFO sp1_prover::build: [sp1] groth16 circuit artifacts already seem to exist at /root/.sp1/circuits/groth16/v6.1.0. if you want to re-download them, delete the directory
+Setting environment variables took 19.524µs
+Reading R1CS took 15.914389095s
+Reading proving key took 3.769598459s
+Reading witness file took 751.694µs
+Deserializing JSON data took 17.384857ms
+Generating witness took 773.423188ms
+17:01:46 DBG constraint system solver done nbConstraints=15972262 took=17229.710704
+17:02:07 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=21113.652372
+Generating proof took 38.343991037s
+17:02:07 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:02:07 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:02:07 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:02:07 DBG verifier done backend=groth16 curve=bn254 took=1.077551
+PROVED batch-0 mode=groth16 cycles=268348 prove_wall_s=69.4 cycles_per_s=3865
+PROVE_START batch-1 mode=groth16 cycles=16746175
+2026-10-21T17:02:08.214874Z  INFO sp1_gpu_server::server: Proving with mode: Groth16
+2026-10-21T17:02:22.267171Z  INFO sp1_prover::build: [sp1] groth16 circuit artifacts already seem to exist at /root/.sp1/circuits/groth16/v6.1.0. if you want to re-download them, delete the directory
+Setting environment variables took 10.869µs
+Reading witness file took 1.806852ms
+Deserializing JSON data took 19.035666ms
+Generating witness took 1.115190594s
+17:02:38 DBG constraint system solver done nbConstraints=15972262 took=15430.260546
+17:02:57 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=19112.053083
+Generating proof took 34.54289544s
+17:02:57 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:02:57 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:02:57 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:02:57 DBG verifier done backend=groth16 curve=bn254 took=2.745947
+PROVED batch-1 mode=groth16 cycles=16746175 prove_wall_s=49.8 cycles_per_s=336490
+PROVE_START batch-2 mode=groth16 cycles=16765220
+2026-10-21T17:02:58.828118Z  INFO sp1_gpu_server::server: Proving with mode: Groth16
+2026-10-21T17:03:14.257784Z  INFO sp1_prover::build: [sp1] groth16 circuit artifacts already seem to exist at /root/.sp1/circuits/groth16/v6.1.0. if you want to re-download them, delete the directory
+Setting environment variables took 17.564µs
+Reading witness file took 1.393958ms
+Deserializing JSON data took 32.124523ms
+Generating witness took 857.820922ms
+17:03:33 DBG constraint system solver done nbConstraints=15972262 took=18162.924898
+17:03:54 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=20848.90091
+Generating proof took 39.012446874s
+17:03:54 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:03:54 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:03:54 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:03:54 DBG verifier done backend=groth16 curve=bn254 took=2.059789
+PROVED batch-2 mode=groth16 cycles=16765220 prove_wall_s=55.4 cycles_per_s=302780
+PROVE_START batch-3 mode=groth16 cycles=5807729
+2026-10-21T17:03:54.716904Z  INFO sp1_gpu_server::server: Proving with mode: Groth16
+2026-10-21T17:04:02.944013Z  INFO sp1_prover::build: [sp1] groth16 circuit artifacts already seem to exist at /root/.sp1/circuits/groth16/v6.1.0. if you want to re-download them, delete the directory
+Setting environment variables took 15.571µs
+Reading witness file took 1.991191ms
+Deserializing JSON data took 47.929945ms
+Generating witness took 1.067047599s
+17:04:21 DBG constraint system solver done nbConstraints=15972262 took=17740.807646
+17:04:41 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=19416.088546
+Generating proof took 37.157388177s
+17:04:41 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:04:41 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:04:41 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:04:41 DBG verifier done backend=groth16 curve=bn254 took=2.846724
+PROVED batch-3 mode=groth16 cycles=5807729 prove_wall_s=46.6 cycles_per_s=124706
+PROVE_START keepalive-batch-4 mode=groth16 cycles=294272
+2026-10-21T17:04:41.649407Z  INFO sp1_gpu_server::server: Proving with mode: Groth16
+2026-10-21T17:04:52.826214Z  INFO sp1_prover::build: [sp1] groth16 circuit artifacts already seem to exist at /root/.sp1/circuits/groth16/v6.1.0. if you want to re-download them, delete the directory
+Setting environment variables took 36.372µs
+Reading witness file took 673.464µs
+Deserializing JSON data took 31.933698ms
+Generating witness took 1.124327903s
+17:05:08 DBG constraint system solver done nbConstraints=15972262 took=14454.490414
+17:05:28 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=19687.684306
+Generating proof took 34.142775507s
+17:05:28 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:05:28 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:05:28 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:05:28 DBG verifier done backend=groth16 curve=bn254 took=1.685111
+PROVED keepalive-batch-4 mode=groth16 cycles=294272 prove_wall_s=46.5 cycles_per_s=6327
+2026-10-21T17:05:28.452581Z  INFO sp1_gpu_server::server: Destroying key

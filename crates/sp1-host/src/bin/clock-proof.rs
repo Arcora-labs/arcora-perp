@@ -11,6 +11,10 @@
 //! - `--prove`: as default, then generate and verify a Groth16 proof of the
 //!   normal fixture.
 //!
+//! Setup and the proof run on the CPU prover, or on SP1's GPU prover when the
+//! binary is built with `--features cuda`; `proof-evidence.json` records which,
+//! with the setup and proof wall times.
+//!
 //! Every case witness (`sp1_host::case_witnesses`) must succeed with the guest's
 //! public value equal to the native commitment. Every negative (the clock, engine,
 //! case-derived engine and framing refusals) must be refused natively with its
@@ -28,13 +32,20 @@ use sp1_host::{
 use sp1_sdk::{
     Elf, HashableKey, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin, StatusCode,
 };
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, io::Read, path::Path, time::Instant};
 
 /// REVIEWED_GUEST["elf"] in scripts/local-verification/verify_clock_proof.py.
 const REVIEWED_ELF: &str = "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df";
 const MAX_ELF_BYTES: u64 = 16 * 1024 * 1024;
 const USAGE: &str =
     "usage: clock-proof --elf REVIEWED_ELF NEW_OUTPUT_DIRECTORY [--prove | --no-prove]";
+
+/// The backend that runs setup and `--prove`, recorded in the proof evidence.
+const PROVER_BACKEND: &str = if cfg!(feature = "cuda") {
+    "cuda"
+} else {
+    "cpu"
+};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
@@ -233,12 +244,50 @@ async fn main() {
         .unwrap();
         return;
     }
-    let client = ProverClient::builder().cpu().build().await;
+    let client = proving_client().await;
     let (cycles, negatives) =
         execute_fixture(&client, &elf, &bytes, &expected, &negative_cases).await;
     let cases = execute_cases(&client, &elf, &cases).await;
-    let mut evidence = evidence(cycles, cases, negatives);
+    let evidence = evidence(cycles, cases, negatives);
+    setup_and_prove(
+        &client,
+        elf,
+        bytes,
+        &expected,
+        evidence,
+        &dir,
+        mode == Mode::Prove,
+    )
+    .await;
+}
+
+/// The setup and proving client: the CPU prover.
+#[cfg(not(feature = "cuda"))]
+async fn proving_client() -> sp1_sdk::CpuProver {
+    ProverClient::builder().cpu().build().await
+}
+
+/// The setup and proving client: SP1's GPU prover (`sp1-gpu-server`, CUDA device 0).
+#[cfg(feature = "cuda")]
+async fn proving_client() -> sp1_sdk::CudaProver {
+    ProverClient::builder().cuda().build().await
+}
+
+/// Run setup, write the setup key and `execution.json`, then, with `prove`, generate
+/// a Groth16 proof of the fixture `bytes`, verify it with the SDK and write the
+/// proof files and `proof-evidence.json`.
+async fn setup_and_prove<P: Prover>(
+    client: &P,
+    elf: Elf,
+    bytes: Vec<u8>,
+    expected: &[u8; 32],
+    mut evidence: Value,
+    dir: &Path,
+    prove: bool,
+) {
+    let started = Instant::now();
     let pk = client.setup(elf).await.expect("real setup");
+    let setup_s = started.elapsed().as_secs_f64();
     let vkey = pk.verifying_key().bytes32_raw();
     std::fs::write(dir.join("program-vkey.bin"), vkey).unwrap();
     evidence["program_vkey"] = json!(format!("0x{}", hex(&vkey)));
@@ -247,37 +296,43 @@ async fn main() {
         serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();
-    if mode == Mode::Prove {
-        println!("CLOCK_GROTH16_START local CPU");
-        let mut input = SP1Stdin::new();
-        input.write_vec(bytes);
-        let proof = client
-            .prove(&pk, input)
-            .groth16()
-            .await
-            .expect("real local Groth16 proof");
-        let raw = sp1_host::groth16_payload_for_verification(&proof, &expected).unwrap();
-        client
-            .verify(&proof, pk.verifying_key(), None)
-            .expect("local SP1 verifier");
-        std::fs::write(dir.join("proof.bin"), raw).unwrap();
-        std::fs::write(
-            dir.join("proof.sdk.json"),
-            serde_json::to_vec(&proof).unwrap(),
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("public-values.bin"),
-            proof.public_values.as_slice(),
-        )
-        .unwrap();
-        evidence["proof_generated"] = json!(true);
-        evidence["local_sdk_verified"] = json!(true);
-        std::fs::write(
-            dir.join("proof-evidence.json"),
-            serde_json::to_vec_pretty(&evidence).unwrap(),
-        )
-        .unwrap();
-        println!("CLOCK_GROTH16_VERIFIED");
+    if !prove {
+        return;
     }
+    println!("CLOCK_GROTH16_START {PROVER_BACKEND}");
+    let mut input = SP1Stdin::new();
+    input.write_vec(bytes);
+    let started = Instant::now();
+    let proof = client
+        .prove(&pk, input)
+        .groth16()
+        .await
+        .expect("real Groth16 proof");
+    let prove_s = started.elapsed().as_secs_f64();
+    let raw = sp1_host::groth16_payload_for_verification(&proof, expected).unwrap();
+    client
+        .verify(&proof, pk.verifying_key(), None)
+        .expect("local SP1 verifier");
+    std::fs::write(dir.join("proof.bin"), raw).unwrap();
+    std::fs::write(
+        dir.join("proof.sdk.json"),
+        serde_json::to_vec(&proof).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("public-values.bin"),
+        proof.public_values.as_slice(),
+    )
+    .unwrap();
+    evidence["proof_generated"] = json!(true);
+    evidence["local_sdk_verified"] = json!(true);
+    evidence["prover_backend"] = json!(PROVER_BACKEND);
+    evidence["setup_wall_s"] = json!(setup_s);
+    evidence["groth16_prove_wall_s"] = json!(prove_s);
+    std::fs::write(
+        dir.join("proof-evidence.json"),
+        serde_json::to_vec_pretty(&evidence).unwrap(),
+    )
+    .unwrap();
+    println!("CLOCK_GROTH16_VERIFIED {PROVER_BACKEND} prove_wall_s={prove_s:.1}");
 }

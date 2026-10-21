@@ -1,0 +1,33 @@
+2026-10-21T16:15:02Z setup start
+2026-10-21T16:15:52Z apt done
+2026-10-21T16:15:57Z gpu server pinned
+2026-10-21T16:16:05Z rust done
+2026-10-21T16:17:18Z sp1-host built
+2026-10-21T16:24:13Z circuit verified
+2026-10-21T16:24:13Z setup done
+2026-10-21T16:24:28Z fixture start
+2026-10-21T16:25:57Z fixture done
+2026-10-21T16:26:18Z cap start
+2026-10-21T16:30:32Z cap done
+2026-10-21T16:30:34Z cases start
+2026-10-21T16:38:25Z cases done
+2026-10-21T16:38:25Z big start /workspace/cap/phase1-haircut-h26560.witness.bin /workspace/cap/phase1-haircut-h53120.witness.bin
+2026-10-21T16:44:33Z big done
+2026-10-21T16:44:33Z compressed start
+2026-10-21T16:49:05Z compressed done
+2026-10-21T16:49:05Z chain done
+2026-10-21T16:49:08Z big start /workspace/cap/phase1-haircut-h79680.witness.bin /workspace/cap/phase1-haircut-h106240.witness.bin
+2026-10-21T16:59:45Z big done
+2026-10-21T16:59:45Z prover-service build start
+2026-10-21T17:00:37Z prover-service built
+2026-10-21T17:00:47Z prover-service identity read
+2026-10-21T17:00:47Z prover-service prove start
+2026-10-21T17:00:47Z prover-service prove done 422 0.001492
+2026-10-21T17:00:47Z chain2 done
+2026-10-21T17:00:47Z lifecycle start
+2026-10-21T17:05:28Z lifecycle done
+2026-10-21T17:05:28Z chain3 done
+2026-10-21T17:06:25Z prover-service (seal root 0x5e) identity read
+2026-10-21T17:06:25Z prover-service prove start
+2026-10-21T17:07:44Z prover-service prove done 200 78.885266
+2026-10-21T17:07:44Z svc done

@@ -17,7 +17,13 @@ from unittest import mock
 
 import gateway_monitor
 import ops_notify
-from test_ops_notify import Collector
+from test_ops_notify import TARGET_ENV, Collector, hide_environment
+
+
+def setUpModule():
+    # The monitor shares ops_notify's target defaults. Its L1 settings reach
+    # main() only through the environ each test passes.
+    hide_environment(TARGET_ENV)
 
 
 def doc(health="HEALTHY", deposits="ready", batch=7):

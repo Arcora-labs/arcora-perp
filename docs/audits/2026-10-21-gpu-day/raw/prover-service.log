@@ -1,0 +1,9 @@
+Running sp1-gpu-server 6.1.0 with device 0
+2026-10-21T17:00:47.030377Z  INFO sp1_gpu_server::server: Server listening @ /tmp/sp1-cuda-0.sock
+2026-10-21T17:00:47.030515Z  INFO sp1_gpu_server::server: Connection accepted
+2026-10-21T17:00:47.035026Z  INFO sp1_gpu_server::server: Running setup
+WARN prover-service: DEV_INSECURE seal root in use — NEVER production
+WARN prover-service: INSECURE: attestation handshake skipped — never production
+WARN prover-service: SoftwareSealProvider (DEV_INSECURE) — NEVER production
+prover-service on 127.0.0.1:8091
+2026-10-21T17:00:47.779011Z  INFO sp1_gpu_server::server: Connection disconnected
