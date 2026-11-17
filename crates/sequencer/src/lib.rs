@@ -835,8 +835,9 @@ thread_local! {
     /// Matching passes `seal_batch` ran on this thread: the first of each batch
     /// and every rematch.
     static MATCH_ROUNDS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
-    /// Resting orders `seal_batch` copied or put back on this thread to return
-    /// the book to where its batch started, for a rematch.
+    /// Book changes `seal_batch` undid on this thread to return the book to
+    /// where its batch started, for a rematch: each an order put back, a trade
+    /// or a level. (The book used to be copied whole, every batch.)
     static ROLLBACK_ORDERS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
 }
 
@@ -907,6 +908,21 @@ struct FillSettlement {
     /// lookup would commit that earlier, wrong reason into `manifest_hash`
     /// (whole-branch review I2).
     offenders: Vec<(Digest, RejectReason)>,
+    /// The offenders among `offenders` that were the MAKER of a fill their
+    /// owner's collateral could not carry ([`fails_collateral`]), each with that
+    /// owner, the market and the side the order rests on. `seal_batch` bans the
+    /// owner's whole side with such an offender (audit 2026-11-16 SM-2).
+    collateral_makers: BTreeMap<Digest, (PubKey, MarketId, Side)>,
+}
+
+/// Whether a fill failed because its leg's collateral could not carry it: below
+/// initial margin, or left bankrupt or under maintenance. Every other order of
+/// that owner on that side would add the same exposure to the same collateral.
+fn fails_collateral(reason: RejectReason) -> bool {
+    matches!(
+        reason,
+        RejectReason::InsufficientMargin | RejectReason::FillWouldBankrupt
+    )
 }
 
 /// Whether a signed `delta` would INCREASE `owner`'s absolute exposure in
@@ -1062,6 +1078,17 @@ fn settle_fills(
                     Some(FillLeg::Maker) => {
                         out.rejected.push((m.maker_order_hash, reason));
                         out.offenders.push((m.maker_order_hash, reason));
+                        if fails_collateral(reason) {
+                            let side = match m.taker_side {
+                                Side::Buy => Side::Sell,
+                                Side::Sell => Side::Buy,
+                            };
+                            out.collateral_makers.entry(m.maker_order_hash).or_insert((
+                                m.maker,
+                                m.market_id,
+                                side,
+                            ));
+                        }
                     }
                     None => {
                         for oh in [m.taker_order_hash, m.maker_order_hash] {
@@ -1096,6 +1123,12 @@ const TICK_WINDOW_GRACE_WINDOWS: u64 = 8;
 /// Hard backstop on the tick→window map so no path can leak (the legacy path never settles a
 /// window, so it has no window-settle prune event) — evict the oldest entries beyond this cap.
 const TICK_WINDOW_MAX: usize = 16_384;
+/// The matching passes one [`Sequencer::seal_batch`] runs at most (audit
+/// 2026-11-16 SM-2): the first, and a rematch after each pass whose settlement
+/// found an attributable offender. The last pass is kept whatever it finds: its
+/// failed fills are dropped, as a non-attributable failure's always were, and
+/// the poisoned orders it did not reach wait for the next batch.
+pub const MAX_MATCH_ROUNDS: u32 = 8;
 
 /// What the pre-trade gate of [`Sequencer::seal_batch`] decided for a batch
 /// ([`Sequencer::admit_batch`]).
@@ -2313,23 +2346,34 @@ impl Sequencer {
         //    depth during `process_stream`, but settlement only discovers an
         //    out-of-band or bankrupting fill afterwards — so a rejected fill used to
         //    burn liquidity that never executed. On any ATTRIBUTABLE failure we
-        //    restore the book, ban the offending order, and rematch. `MatchingEngine`
-        //    is `Clone` and the restore carries `next_seq` with it, so the final pass
-        //    assigns exactly the seq numbers the banned orders' absence would have
-        //    produced. An offender need not be in `live` at all: a maker resting
-        //    since an EARLIER batch (the drifted-Gtc case) survives the restore, so
-        //    a ban also cancels the hash from the rematch base book — for a
-        //    current-batch offender that cancel is a no-op (it never rested there).
-        let mut rematch_base = self.matcher.clone();
-        #[cfg(test)]
-        count(&ROLLBACK_ORDERS, self.resting_order_count());
+        //    restore the book, ban the offending order, and rematch. Each pass
+        //    records what it changed on the books, and undoing that record puts
+        //    them back, `next_seq` included, so the next pass assigns exactly the
+        //    seq numbers the banned orders' absence would have produced; the
+        //    restore costs what the pass changed, not a copy of the books, and a
+        //    batch that finds no offender copies nothing (audit 2026-11-16 SM-2).
+        //    An offender need not be in `live` at all: a maker resting since an
+        //    EARLIER batch (the drifted-Gtc case) survives the restore, so a ban
+        //    also cancels the hash from the restored book — for a current-batch
+        //    offender that cancel is a no-op (it never rested there).
+        //
+        //    A maker whose own collateral could not carry its fill takes every
+        //    pending order of its owner on that side of that market with it (audit
+        //    2026-11-16 SM-2): its resting orders and this batch's, which would add
+        //    the same exposure to the same collateral; only its reduce-only orders,
+        //    which add none, stay. Thousands of such orders of a few owners then
+        //    cost a pass per owner, not one per order. And the passes are bounded:
+        //    the [`MAX_MATCH_ROUNDS`]th is kept whatever its settlement finds
+        //    (step 3).
         let mut live: Vec<Order> = admitted;
         let mut banned: Vec<(Digest, RejectReason)> = Vec::new();
         let mut banned_set: BTreeSet<Digest> = BTreeSet::new();
+        let mut round: u32 = 0;
         let (stream, probe_outcome) = loop {
+            round += 1;
             #[cfg(test)]
             count(&MATCH_ROUNDS, 1u64);
-            let stream = self.matcher.process_stream(&live, now_ms);
+            let (stream, undo) = self.matcher.process_stream_undoable(&live, now_ms);
             // no fills → nothing to probe (`settle_fills` over no fills is a no-op,
             // so its outcome is `FillSettlement::default()` and the state is left
             // untouched), which also spares the idle 700ms ticks the per-round
@@ -2345,10 +2389,10 @@ impl Sequencer {
                 now_ms,
                 &minimum_exempt,
             );
-            if probed.offenders.is_empty() {
-                // Clean: carry the probe state + its settlement out of the loop;
-                // step 3 ADOPTS them instead of settling the same fills a second
-                // time (whole-branch review I4).
+            if probed.offenders.is_empty() || round == MAX_MATCH_ROUNDS {
+                // Clean (or out of passes): carry the probe state + its settlement
+                // out of the loop; step 3 ADOPTS them instead of settling the same
+                // fills a second time (whole-branch review I4).
                 break (stream, Some((probe, probed)));
             }
             // Roll the book back to exactly where this batch started, drop the
@@ -2356,6 +2400,9 @@ impl Sequencer {
             // its own `settle_fills` push site — never looked up in `rejected`,
             // where an earlier fill of the same pass can have recorded the same
             // hash as an innocent counterparty with a different reason (I2).
+            #[cfg(test)]
+            count(&ROLLBACK_ORDERS, undo.len());
+            self.matcher.undo(undo);
             let banned_before = banned_set.len();
             for (oh, reason) in &probed.offenders {
                 if banned_set.insert(*oh) {
@@ -2370,28 +2417,46 @@ impl Sequencer {
                     // through the gateway today (per-account nonce monotonicity
                     // makes duplicate order hashes impossible), but the library
                     // API does not enforce that.
-                    let cancelled = rematch_base.cancel_order(oh).is_some();
+                    let cancelled = self.matcher.cancel_order(oh).is_some();
                     assert!(
                         cancelled || live.iter().any(|o| o.order_hash::<Keccak256>() == *oh),
                         "ban made no progress: offender {oh:?} neither rests in the \
                          batch-start book nor is a live order of this batch",
                     );
                 }
+                // The rest of an under-collateralized maker's side goes with it,
+                // under the same reason: its orders resting in the book (lower
+                // price first, in queue order), then its orders of this batch;
+                // reduce-only ones excepted.
+                if let Some(&(owner, market_id, side)) = probed.collateral_makers.get(oh) {
+                    let resting = self.matcher.cancel_owner_side(market_id, &owner, side);
+                    let pending = live
+                        .iter()
+                        .filter(|o| {
+                            o.owner == owner
+                                && o.market_id == market_id
+                                && o.side == side
+                                && !o.reduce_only
+                        })
+                        .map(|o| o.order_hash::<Keccak256>());
+                    for hash in resting.into_iter().chain(pending) {
+                        if banned_set.insert(hash) {
+                            banned.push((hash, *reason));
+                        }
+                    }
+                }
             }
             // Termination, made explicit: every round that reaches here bans at least
             // one NEW hash — an already-banned order can appear in no fill, because a
             // banned taker was removed from `live` and a banned resting maker was
-            // cancelled from the rematch base. The bannable set is finite (this
-            // batch's admitted orders + the makers resting at batch start), so the
-            // loop runs at most once per member of it.
+            // cancelled from the restored book. The bannable set is finite (this
+            // batch's admitted orders + the makers resting at batch start), and the
+            // passes are capped at `MAX_MATCH_ROUNDS` besides.
             assert!(
                 banned_set.len() > banned_before,
                 "rematch loop must terminate: a round that produced offenders banned no new order",
             );
             live.retain(|o| !banned_set.contains(&o.order_hash::<Keccak256>()));
-            self.matcher = rematch_base.clone();
-            #[cfg(test)]
-            count(&ROLLBACK_ORDERS, self.resting_order_count());
         };
 
         // 2. issue signed receipts for every accepted (non-rejected) order in the
@@ -2418,20 +2483,20 @@ impl Sequencer {
         //    whose proof RSS already scales with state size. Swapping the probe in
         //    IS the committed settlement; the old "committed pass must reproduce
         //    the dry run" assert is structurally unnecessary now — the loop's break
-        //    condition (`probed.offenders.is_empty()`) is the guarantee, so
-        //    `offenders` is dropped unread. A no-fills break settles nothing and
-        //    leaves `self.state` untouched. See [`settle_fills`] for the
-        //    failure-attribution rule; NON-attributable failures (no offender)
-        //    still reject here, and an order all of whose recorded fills failed is
-        //    moved out of `ordered` into `rejected` below. `ops` becomes the
-        //    batch's replayable op-log: `[applied fills] ++ [maintenance ops]`, in
-        //    application order (Slice 3a).
+        //    condition (`probed.offenders.is_empty()`, or the pass cap) is the
+        //    guarantee. A no-fills break settles nothing and leaves `self.state`
+        //    untouched. See [`settle_fills`] for the failure-attribution rule;
+        //    NON-attributable failures (no offender) still reject here, and an
+        //    order all of whose recorded fills failed is moved out of `ordered`
+        //    into `rejected` below. `ops` becomes the batch's replayable op-log:
+        //    `[applied fills] ++ [maintenance ops]`, in application order (Slice 3a).
         let FillSettlement {
             applied_fills,
             mut ops,
             rejected: settlement_rejected,
             settled_order_hashes,
-            offenders: _,
+            offenders: unbanned,
+            collateral_makers: _,
         } = match probe_outcome {
             Some((mut probe, probed)) => {
                 std::mem::swap(&mut self.state, &mut probe);
@@ -2439,6 +2504,16 @@ impl Sequencer {
             }
             None => FillSettlement::default(),
         };
+        // A pass kept at the `MAX_MATCH_ROUNDS` cap can still carry offenders:
+        // their failed fills are not applied, and one none of whose fills settled
+        // is rejected below, as any order all of whose recorded fills failed is.
+        // Such an offender also leaves the book, as a ban would have taken it
+        // off, so a rejected order cannot rest on to fail the next batch's taker.
+        for (oh, _) in &unbanned {
+            if !settled_order_hashes.contains(oh) {
+                let _ = self.matcher.cancel_order(oh);
+            }
+        }
         // Advance finality for every hash with a settled fill. Lives at the call
         // site (not in `settle_fills`) so a Task-7 probe run cannot touch the real
         // finality map; inserting once per deduped hash is identical to the old
@@ -2663,17 +2738,6 @@ impl Sequencer {
 
     pub fn remaining_order_size(&self, hash: &Digest) -> Option<i128> {
         self.matcher.remaining(hash)
-    }
-
-    /// Every order resting on the books (tests only).
-    #[cfg(test)]
-    fn resting_order_count(&self) -> usize {
-        self.state
-            .markets
-            .keys()
-            .filter_map(|id| self.matcher.book(*id))
-            .map(|book| book.resting_orders().count())
-            .sum()
     }
 
     /// Pending fill ticks are removed when a window settle hardens them on the
@@ -4880,15 +4944,15 @@ mod tests {
 
     /// Audit 2026-11-16 SM-2: returning the book to where its batch started, to
     /// rematch, costs what the batch changed, not a copy of the book. Two thousand
-    /// bids rest untouched far below the mark. A batch that finds no culprit, and
-    /// an idle one, copy nothing; one poisoned maker costs the orders its round
-    /// took off the book.
+    /// bids of a third owner rest untouched far below the mark. A batch that finds
+    /// no culprit, and an idle one, copy nothing; one poisoned maker costs the
+    /// changes its round made to the book.
     #[test]
     fn audit_1116_sm2_rolling_the_book_back_costs_what_the_round_changed() {
         let mut s = test_sequencer();
         underfunded(&mut s, 10..11);
         let untouched: Vec<Order> = (0..2_000u64)
-            .map(|n| t_order_at(1, Side::Buy, 95_000, LOT, 30_000 + n))
+            .map(|n| t_order_at(3, Side::Buy, 95_000, LOT, 30_000 + n))
             .collect();
         restore_onto_book(&mut s, &untouched);
 
@@ -4917,6 +4981,102 @@ mod tests {
         );
         assert_eq!(rounds, 2);
         assert!(copied <= 4, "{copied} orders copied or put back");
+    }
+
+    /// Audit 2026-11-16 SM-2, the pass cap: eight under-margined owners rest one
+    /// sell each ahead of an honest one, the last of them two lots. A taker of one
+    /// lot bans the first seven, one pass each; the eighth pass is the last and is
+    /// kept. Its fill against the two-lot sell fails and is dropped: that sell is
+    /// rejected and leaves the book (its untraded lot does not rest on), the taker
+    /// is not blamed and gets no fill, and the honest sell still rests for the
+    /// next batch's taker, which fills in one pass.
+    #[test]
+    fn audit_1116_sm2_the_last_pass_is_kept_and_its_offender_leaves_the_book() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..18);
+        let mut poisoned: Vec<Order> = (10..17u64)
+            .map(|owner| t_order_at(owner, Side::Sell, 100_000, LOT, 50_000 + owner))
+            .collect();
+        poisoned.push(t_order_at(17, Side::Sell, 100_000, 2 * LOT, 50_017));
+        restore_onto_book(&mut s, &poisoned);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 50_100);
+        let honest_h = honest.order_hash::<Keccak256>();
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 50_101);
+        let taker_h = taker.order_hash::<Keccak256>();
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, u64::from(MAX_MATCH_ROUNDS));
+        let expected: Vec<(Digest, RejectReason)> = poisoned
+            .iter()
+            .map(|o| {
+                (
+                    o.order_hash::<Keccak256>(),
+                    RejectReason::InsufficientMargin,
+                )
+            })
+            .collect();
+        assert_eq!(sealed.manifest.rejected, expected);
+        assert!(s.remaining_order_size(&expected[7].0).is_none());
+        assert!(sealed.manifest.ordered.contains(&taker_h));
+        assert!(sealed.applied_fills.is_empty());
+        assert!(s
+            .state
+            .position(&owner_id(2), 0)
+            .is_none_or(|p| p.size == 0));
+        assert_eq!(s.remaining_order_size(&honest_h), Some(LOT));
+        assert!(s.state.conservation_holds());
+
+        let next = t_order_at(2, Side::Buy, 100_000, LOT, 50_102);
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[next], now()));
+        assert_eq!(rounds, 1);
+        assert!(sealed.settled_order_hashes.contains(&honest_h));
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+    }
+
+    /// Audit 2026-11-16 SM-2: the side ban leaves an under-margined maker's
+    /// reduce-only orders, which add no exposure, where they rest; its plain
+    /// orders on that side go with the one that failed.
+    #[test]
+    fn audit_1116_sm2_a_side_ban_spares_reduce_only_orders() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..11);
+        let failing = t_order_at(10, Side::Sell, 100_000, LOT, 60_000);
+        let plain = t_order_at(10, Side::Sell, 100_500, LOT, 60_001);
+        let mut reducing = t_order_at(10, Side::Sell, 100_500, LOT, 60_002);
+        reducing.reduce_only = true;
+        restore_onto_book(&mut s, &[failing, plain, reducing]);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 60_003);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 60_004);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![
+                (
+                    failing.order_hash::<Keccak256>(),
+                    RejectReason::InsufficientMargin
+                ),
+                (
+                    plain.order_hash::<Keccak256>(),
+                    RejectReason::InsufficientMargin
+                ),
+            ]
+        );
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&honest.order_hash::<Keccak256>()));
+        assert_eq!(
+            s.remaining_order_size(&reducing.order_hash::<Keccak256>()),
+            Some(LOT)
+        );
+        assert!(s
+            .remaining_order_size(&plain.order_hash::<Keccak256>())
+            .is_none());
     }
 
     /// Audit 2026-11-16 SM-3, the original wall: 4,096 such bids, and as many again.
