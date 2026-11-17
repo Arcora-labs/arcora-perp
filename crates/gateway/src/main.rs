@@ -3978,7 +3978,7 @@ impl Gw {
         }
         Err(format!(
             "{}: the open settlement window is closing; orders, withdrawals and other \
-             timed operations are refused until it is sealed. Retry shortly.",
+             timed operations are refused until the settle loop seals it. Retry later.",
             clock_admission::WINDOW_CLOSING
         ))
     }
@@ -9045,8 +9045,7 @@ async fn post_v1_withdraw(
             "status": "recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof",
         }))
         .into_response(),
-        Err(e) if e.starts_with(clock_admission::WINDOW_CLOSING) => mutation_error(e),
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9106,7 +9105,7 @@ async fn post_v1_lp_deposit(
         Ok(shares) => {
             Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 /// LP withdraw for an account: burn `shares` for their current pool value.
@@ -9146,7 +9145,7 @@ async fn post_v1_lp_withdraw(
         Ok(value) => {
             Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 async fn get_v1_account(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
@@ -9276,17 +9275,22 @@ async fn post_v1_order(
     Json(app.gw.lock().await.receipt_json(&receipt, beneficiary)).into_response()
 }
 
+/// A refusal answered 400, except `CLOCK_WINDOW_CLOSING` (audit G2-2), which is
+/// answered like the clock pause: 503 with `Retry-After`.
+fn err400_or_window_closing(e: String) -> axum::response::Response {
+    if e.starts_with(clock_admission::WINDOW_CLOSING) {
+        return clock_admission::closed_response(&e);
+    }
+    err400(e).into_response()
+}
+
 /// A refused mutation: `RATE_LIMIT` is 429, `PERSISTENCE_UNAVAILABLE` is 503 (retry
 /// once a snapshot write succeeds), anything else 400.
 fn mutation_error(e: String) -> axum::response::Response {
-    // Audit G2-2: the open clock window seals within seconds; retry like a pause.
+    // Audit G2-2: the open clock window is sealed on a coming tick; retry like a
+    // pause.
     if e.starts_with(clock_admission::WINDOW_CLOSING) {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            [(axum::http::header::RETRY_AFTER, "2")],
-            Json(serde_json::json!({ "error": e })),
-        )
-            .into_response();
+        return clock_admission::closed_response(&e);
     }
     let status = if e.starts_with("RATE_LIMIT") {
         StatusCode::TOO_MANY_REQUESTS
@@ -9710,7 +9714,7 @@ async fn post_withdraw(State(app): State<Shared>, Json(req): Json<AmountReq>) ->
             app.broadcast(&gw).await;
             Json(serde_json::json!({})).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9735,7 +9739,7 @@ async fn post_lp_deposit(
             app.broadcast(&gw).await;
             Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9770,7 +9774,7 @@ async fn post_lp_withdraw(
             app.broadcast(&gw).await;
             Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9787,7 +9791,7 @@ async fn post_close(State(app): State<Shared>, Json(req): Json<MarketReq>) -> im
             }
             Json(serde_json::json!({})).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9841,7 +9845,7 @@ async fn post_simulate_adl(State(app): State<Shared>) -> impl IntoResponse {
             Json(serde_json::json!({ "clawed": (clawed / QUOTE_SCALE).to_string() }))
                 .into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 

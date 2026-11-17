@@ -307,7 +307,8 @@ mod audit_1116_g2 {
     }
 
     /// G2-2: the refusal reaches a client as 503 with Retry-After, like the clock
-    /// pause, for an order and for a withdrawal, and changes nothing.
+    /// pause, for an order, a withdrawal, an LP transfer and the demo withdrawal,
+    /// and changes nothing.
     #[tokio::test]
     async fn audit_1116_g2_2_a_closing_window_answers_orders_with_retry_after() {
         use sha3::Digest as _;
@@ -354,13 +355,17 @@ mod audit_1116_g2 {
                 "nonce": 1, "signature": hex0x(&sig),
             }),
         );
-        for request in [order, withdrawal] {
+        // The LP and demo paths that apply timed operations answer alike.
+        let lp = post("/v1/lp/deposit", &key, serde_json::json!({"amount": "1000000"}));
+        let demo = post("/api/withdraw", &key, serde_json::json!({"amount": "1"}));
+        for request in [order, withdrawal, lp, demo] {
+            let uri = request.uri().to_string();
             let response = build_router(app.clone(), false)
                 .oneshot(request)
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-            assert_eq!(response.headers()["retry-after"], "2");
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE, "{uri}");
+            assert_eq!(response.headers()["retry-after"], "2", "{uri}");
         }
         let gw = app.gw.lock().await;
         assert_eq!(gw.accounts[&key].orders.len(), 1);
