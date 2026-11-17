@@ -524,6 +524,7 @@ fn alert_kinds_have_stable_names_and_active_lists_open_episodes() {
             "deposit_blocked_at_cap",
             "window_voided",
             "clock_recovery_blocked",
+            "withdraw_reserve_near",
         ]
     );
     let alerts = OpsAlerts::default();

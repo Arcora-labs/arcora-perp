@@ -264,6 +264,11 @@ impl Gw {
         let _ = self.void_order_records(&voided.hashes, &voided.ticks);
         let voided = voided.hashes;
         let dropped = self.deposits.credits.split_off(&consumed);
+        // The discarded credits and withdrawals leave the state: what they were
+        // charged against their accounts' history quota goes too, as in a live void.
+        for credit in dropped.values() {
+            self.refund_credited_deposit(&credit.route);
+        }
         if !dropped.is_empty() {
             // The ingestion anchor may point past the consumed prefix; refetch from
             // the start of the chain, which close-only stops at its first page.
@@ -275,11 +280,12 @@ impl Gw {
                 account.deposit_authorizations.remove(&commit);
             }
         }
+        let discarded = core::mem::take(&mut self.window_withdrawals);
+        for w in &discarded {
+            self.withdraw_limits.refund_withdrawal(&w.owner);
+        }
         let voided_withdrawals: std::collections::BTreeSet<[u8; 32]> =
-            core::mem::take(&mut self.window_withdrawals)
-                .iter()
-                .map(Withdrawal::leaf)
-                .collect();
+            discarded.iter().map(Withdrawal::leaf).collect();
         self.pending_withdrawals
             .retain(|w| !voided_withdrawals.contains(&w.leaf()));
         self.bootstrap =

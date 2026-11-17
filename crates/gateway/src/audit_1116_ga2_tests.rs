@@ -4,7 +4,7 @@ use super::*;
 use crate::admission::{
     ACCOUNT_HISTORY_QUOTA, MAX_WITHDRAWALS_PER_MINUTE, MAX_WITHDRAWALS_PER_WINDOW,
     PARTIAL_WITHDRAWAL_HISTORY_CEILING, WITHDRAW_QUOTA_EXCEEDED, WITHDRAW_RATE_LIMIT_MINUTE,
-    WITHDRAW_RATE_LIMIT_WINDOW, WITHDRAW_RESERVE_REACHED,
+    WITHDRAW_RATE_LIMIT_WINDOW, WITHDRAW_RESERVE_ALERT_HISTORY, WITHDRAW_RESERVE_REACHED,
 };
 
 const MIN_UNITS: i128 = 10 * QUOTE_SCALE;
@@ -179,8 +179,20 @@ fn audit_1116_ga2_the_history_reserve_stops_partials_but_not_full_exits() {
     let mut gw = Gw::boot_with(GenesisMode::Production);
     let (key, sk, to) = account(&mut gw, 0x79, 100_000 * QUOTE_SCALE);
     let owner = gw.accounts[&key].wallet.owner;
-    // Raise the history to the reserve, outside the per-account limits.
-    while admission::HistorySize::of(&gw.seq.state).history < PARTIAL_WITHDRAWAL_HISTORY_CEILING {
+    let alert = |gw: &Gw| {
+        gw.ops_alerts
+            .active()
+            .contains(&ops_alerts::AlertKind::WithdrawReserveNear)
+    };
+    // Raise the history to the reserve, outside the per-account limits. The
+    // operator is alerted from nine tenths of it on (the tick notes it).
+    loop {
+        gw.note_admission_cap();
+        let history = admission::HistorySize::of(&gw.seq.state).history;
+        assert_eq!(alert(&gw), history >= WITHDRAW_RESERVE_ALERT_HISTORY);
+        if history >= PARTIAL_WITHDRAWAL_HISTORY_CEILING {
+            break;
+        }
         gw.withdraw_limits = Default::default();
         gw.window_withdrawals.clear();
         withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, 1_000_000).unwrap();
@@ -193,6 +205,24 @@ fn audit_1116_ga2_the_history_reserve_stops_partials_but_not_full_exits() {
     let all = gw.market_free_of(&owner, 0);
     assert!(withdraw_at(&mut gw, &key, &sk, all, to, t).is_ok());
     assert_eq!(gw.registration_refusal(), None);
+    assert!(alert(&gw));
+}
+
+#[test]
+fn audit_1116_ga2_only_the_rate_limit_refusals_answer_429() {
+    assert!(admission::is_withdraw_rate_limit(
+        WITHDRAW_RATE_LIMIT_MINUTE
+    ));
+    assert!(admission::is_withdraw_rate_limit(
+        WITHDRAW_RATE_LIMIT_WINDOW
+    ));
+    // Compared whole: a shared prefix is not a rate limit.
+    assert!(!admission::is_withdraw_rate_limit("WITHDRAW_RATE_LIMIT"));
+    assert!(!admission::is_withdraw_rate_limit(&format!(
+        "{WITHDRAW_RATE_LIMIT_MINUTE} (wrapped)"
+    )));
+    assert!(!admission::is_withdraw_rate_limit(WITHDRAW_QUOTA_EXCEEDED));
+    assert!(!admission::is_withdraw_rate_limit(WITHDRAW_RESERVE_REACHED));
 }
 
 #[test]

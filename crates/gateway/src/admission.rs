@@ -12,6 +12,8 @@
 //!   everyone: a per-minute and a per-settlement-window rate limit per account, and
 //!   a lifetime quota of partial withdrawals per account. A full exit (a closed
 //!   position's whole balance) is exempt from the quota, so funds can always leave.
+//!   The shared demo user (`/api/withdraw`, demo builds only) has the rate limits
+//!   and the reserve but no quota, since every visitor shares it.
 //! * **Engine close-only.** Once a liquidation's bad debt trips the engine into
 //!   close-only, the engine refuses every deposit. The gateway then issues no
 //!   deposit permit and credits no deposit, and alerts the operator: governance
@@ -37,10 +39,12 @@
 //!     which removes the entry) that uses no room another exit or credit needs.
 //!
 //!   Each account also has a lifetime quota of history units (`ACCOUNT_HISTORY_QUOTA`):
-//!   every credited deposit and withdrawal is charged, a spent account gets no new
-//!   permit and no partial withdrawal, and past `PARTIAL_WITHDRAWAL_HISTORY_CEILING`
-//!   no account makes a partial withdrawal, so many accounts cannot fill the budget
-//!   registration and deposits need. A full exit is always accepted.
+//!   every credited deposit and withdrawal is charged, and its outstanding collateral
+//!   permits count against it too; a spent account gets no new permit and no partial
+//!   withdrawal. Past `PARTIAL_WITHDRAWAL_HISTORY_CEILING` of history in the state
+//!   itself (outstanding permits, which cost nothing, do not count) no account makes
+//!   a partial withdrawal, so many accounts cannot fill the budget registration and
+//!   deposits need. A full exit is always accepted.
 //!
 //!   So the deposit of every outstanding permit can be credited and stays within the
 //!   bounds, and funds can always leave: close the position, then withdraw its whole
@@ -67,19 +71,29 @@ pub(crate) const MAX_WITHDRAWALS_PER_WINDOW: usize = 10;
 
 /// History units one account may spend over its lifetime: 2 for every credited
 /// deposit and 2 for every withdrawal (a leaf and a nullifier each), under 1% of
-/// `MAX_PROVABLE_HISTORY`. Once spent, the account gets no new deposit permit and
-/// no partial withdrawal; a full exit is still accepted, and it is bounded by the
-/// entries the account already holds, since no new entry opens without a permit.
+/// `MAX_PROVABLE_HISTORY`. Its outstanding collateral permits count against it too
+/// (2 units each, what their credits will take). Once spent, the account gets no
+/// new deposit permit and no partial withdrawal; a full exit is still accepted, and
+/// it is bounded by the entries the account already holds, since no new entry opens
+/// without a permit.
 pub(crate) const ACCOUNT_HISTORY_QUOTA: u64 = 100;
 
 /// History units one credited deposit or one withdrawal takes.
 const HISTORY_UNITS_PER_OP: u64 = 2;
 
-/// Past this much history (state plus outstanding permits) no partial withdrawal is
-/// accepted, whatever the number of accounts: 60% of `MAX_PROVABLE_HISTORY`, well
-/// below the soft cap, so registration, deposit permits and full exits keep the room
-/// above it. A fixed reserve, not a fraction of the (test-lowered) live cap.
+/// Past this much history in the state itself no partial withdrawal is accepted,
+/// whatever the number of accounts: 60% of `MAX_PROVABLE_HISTORY`, well below the
+/// soft cap, so registration, deposit permits and full exits keep the room above it.
+/// A fixed reserve, not a fraction of the (test-lowered) live cap. Outstanding
+/// permits do not count: they add no history until their deposits are credited and
+/// cost nothing to take, they stop at the soft cap (`permit_cap_refusal`), and the
+/// room their deposits need is kept by `exit_cap_refusal`.
 pub(crate) const PARTIAL_WITHDRAWAL_HISTORY_CEILING: u64 = MAX_PROVABLE_HISTORY / 5 * 3;
+
+/// From this much history in the state the `withdraw_reserve_near` alert is raised:
+/// nine tenths of `PARTIAL_WITHDRAWAL_HISTORY_CEILING`. History never shrinks, so
+/// once the reserve is reached partial withdrawals stay closed for every account.
+pub(crate) const WITHDRAW_RESERVE_ALERT_HISTORY: u64 = PARTIAL_WITHDRAWAL_HISTORY_CEILING / 10 * 9;
 
 const MINUTE_MS: u64 = 60_000;
 
@@ -142,15 +156,22 @@ impl WithdrawLimits {
         }
     }
 
-    /// Count a withdrawal that was applied at `now_ms`.
+    /// Count a withdrawal that was applied at `now_ms`: the minute counter and the
+    /// ledger.
     pub(crate) fn record(&mut self, owner: &[u8; 32], now_ms: u64) {
+        self.record_rate(owner, now_ms);
+        self.charge(owner);
+    }
+
+    /// Count a withdrawal that was applied at `now_ms` on the minute counter only:
+    /// the shared demo user, which has no history quota.
+    pub(crate) fn record_rate(&mut self, owner: &[u8; 32], now_ms: u64) {
         let u = self.by_owner.entry(*owner).or_default();
         if u.minute_count == 0 || !minute_holds(u.minute_start_ms, now_ms) {
             u.minute_start_ms = now_ms;
             u.minute_count = 0;
         }
         u.minute_count = u.minute_count.saturating_add(1);
-        self.charge(owner);
     }
 
     /// Count a deposit credited to `owner`.
@@ -176,6 +197,13 @@ impl WithdrawLimits {
 /// stepped back (`now_ms < start_ms`) starts a new minute.
 fn minute_holds(start_ms: u64, now_ms: u64) -> bool {
     now_ms >= start_ms && now_ms - start_ms < MINUTE_MS
+}
+
+/// Whether `error` is a withdrawal rate-limit refusal, which the API answers with
+/// `429` (every other withdrawal refusal is a `400`). The refusals are compared
+/// whole, so another error that happens to share a prefix is never one.
+pub(crate) fn is_withdraw_rate_limit(error: &str) -> bool {
+    error == WITHDRAW_RATE_LIMIT_MINUTE || error == WITHDRAW_RATE_LIMIT_WINDOW
 }
 
 /// Bound on the provable history: note-tree leaves plus spent nullifiers.
@@ -465,8 +493,10 @@ impl Gw {
     }
 
     /// Whether the soft admission cap is reached, counting what the outstanding
-    /// permits will add, raising or clearing its alert.
+    /// permits will add, raising or clearing its alert. Also raises or clears the
+    /// alert of the partial-withdrawal reserve (`note_withdraw_reserve`).
     pub(crate) fn note_admission_cap(&self) -> bool {
+        self.note_withdraw_reserve();
         let reached = self.admission_cap.soft_reached(self.admission_size());
         if reached {
             self.ops_alerts
@@ -605,17 +635,61 @@ impl Gw {
             .is_some_and(|p| p.size == 0 && p.collateral == amount)
     }
 
-    /// Why a withdrawal of `amount` by `owner` at `now_ms` exceeds the account's
-    /// rate limits or history quota, or the exchange-wide history reserve, if it
-    /// does. The rate limits apply to every withdrawal; the quota and the reserve to
-    /// every one but a full exit, which must always be able to leave.
+    /// Why a withdrawal of `amount` from `owner`'s (account `key`) entry in `market`
+    /// at `now_ms` exceeds the account's rate limits or history quota, or the
+    /// exchange-wide history reserve, if it does. The rate limits apply to every
+    /// withdrawal; the quota and the reserve to every one but a full exit, which
+    /// must always be able to leave. The quota counts the account's outstanding
+    /// collateral permits, as the permit gate does: their credits are never refused
+    /// by it, so ignoring them here would let one account spend it twice.
     pub(crate) fn withdrawal_limit_refusal(
+        &self,
+        key: &[u8; 32],
+        owner: &PubKey,
+        market: u64,
+        amount: i128,
+        now_ms: u64,
+    ) -> Option<&'static str> {
+        if let Some(refusal) = self.withdrawal_rate_refusal(owner, now_ms) {
+            return Some(refusal);
+        }
+        if self.is_full_exit(owner, market, amount) {
+            return None;
+        }
+        if self
+            .committed_history_units(key)
+            .saturating_add(HISTORY_UNITS_PER_OP)
+            > ACCOUNT_HISTORY_QUOTA
+        {
+            return Some(WITHDRAW_QUOTA_EXCEEDED);
+        }
+        self.withdrawal_reserve_refusal()
+    }
+
+    /// Why a withdrawal of `amount` by the shared demo user `owner` at `now_ms`
+    /// exceeds the rate limits or the exchange-wide history reserve, if it does.
+    /// No lifetime quota: every visitor of the demo build shares that one user and
+    /// the demo deposit routes are not metered, so a quota would protect nothing
+    /// and only close `/api/withdraw` for everyone.
+    pub(crate) fn demo_withdrawal_limit_refusal(
         &self,
         owner: &PubKey,
         market: u64,
         amount: i128,
         now_ms: u64,
     ) -> Option<&'static str> {
+        if let Some(refusal) = self.withdrawal_rate_refusal(owner, now_ms) {
+            return Some(refusal);
+        }
+        if self.is_full_exit(owner, market, amount) {
+            return None;
+        }
+        self.withdrawal_reserve_refusal()
+    }
+
+    /// Why a withdrawal by `owner` at `now_ms` exceeds the per-minute or the
+    /// per-settlement-window rate limit, if it does.
+    fn withdrawal_rate_refusal(&self, owner: &PubKey, now_ms: u64) -> Option<&'static str> {
         let usage = self.withdraw_limits.usage(owner);
         if minute_holds(usage.minute_start_ms, now_ms)
             && usage.minute_count >= MAX_WITHDRAWALS_PER_MINUTE
@@ -627,29 +701,32 @@ impl Gw {
             .iter()
             .filter(|w| &w.owner == owner)
             .count();
-        if in_window >= MAX_WITHDRAWALS_PER_WINDOW {
-            return Some(WITHDRAW_RATE_LIMIT_WINDOW);
+        (in_window >= MAX_WITHDRAWALS_PER_WINDOW).then_some(WITHDRAW_RATE_LIMIT_WINDOW)
+    }
+
+    /// Why no partial withdrawal is accepted now, if none is: the state's own
+    /// history reached the reserve. Past it nothing but a full exit is accepted, so
+    /// the room above it stays for deposits, registration and exits (outside
+    /// close-only, where no permit is credited and nothing is left to reserve it
+    /// for).
+    fn withdrawal_reserve_refusal(&self) -> Option<&'static str> {
+        let reached = self.note_withdraw_reserve();
+        (reached && self.permits_creditable()).then_some(WITHDRAW_RESERVE_REACHED)
+    }
+
+    /// Whether the state's own history reached `PARTIAL_WITHDRAWAL_HISTORY_CEILING`,
+    /// raising the `withdraw_reserve_near` alert from `WITHDRAW_RESERVE_ALERT_HISTORY`
+    /// on (or clearing it below, after a voided window).
+    fn note_withdraw_reserve(&self) -> bool {
+        let history = HistorySize::of(&self.seq.state).history;
+        if history >= WITHDRAW_RESERVE_ALERT_HISTORY {
+            self.ops_alerts
+                .activate(ops_alerts::AlertKind::WithdrawReserveNear);
+        } else {
+            self.ops_alerts
+                .recover(ops_alerts::AlertKind::WithdrawReserveNear);
         }
-        if self.is_full_exit(owner, market, amount) {
-            return None;
-        }
-        if self
-            .withdraw_limits
-            .units(owner)
-            .saturating_add(HISTORY_UNITS_PER_OP)
-            > ACCOUNT_HISTORY_QUOTA
-        {
-            return Some(WITHDRAW_QUOTA_EXCEEDED);
-        }
-        // Past the reserve nothing but a full exit is accepted, so the room above
-        // it stays for deposits, registration and exits (outside close-only, where
-        // no permit is credited and nothing is left to reserve it for).
-        if self.permits_creditable()
-            && self.admission_size().history >= PARTIAL_WITHDRAWAL_HISTORY_CEILING
-        {
-            return Some(WITHDRAW_RESERVE_REACHED);
-        }
-        None
+        history >= PARTIAL_WITHDRAWAL_HISTORY_CEILING
     }
 
     /// History units `key`'s account has spent, plus those its outstanding
@@ -676,6 +753,17 @@ impl Gw {
         }
         if let Some(owner) = self.accounts.get(&route.key).map(|a| a.wallet.owner) {
             self.withdraw_limits.record_credit(&owner);
+        }
+    }
+
+    /// Take back what the credit under `route` was charged: a discarded window
+    /// removed it from the state.
+    pub(crate) fn refund_credited_deposit(&mut self, route: &deposit_ingestion::Route) {
+        if route.purpose != deposit_ingestion::Purpose::Collateral {
+            return;
+        }
+        if let Some(owner) = self.accounts.get(&route.key).map(|a| a.wallet.owner) {
+            self.withdraw_limits.refund_credit(&owner);
         }
     }
 

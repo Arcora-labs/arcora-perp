@@ -3432,7 +3432,7 @@ impl Gw {
         }
         let limit_now = context.price.now_ms;
         if let Some(refusal) =
-            self.withdrawal_limit_refusal(&wallet.owner, market, amount, limit_now)
+            self.withdrawal_limit_refusal(key, &wallet.owner, market, amount, limit_now)
         {
             return Err(refusal.into());
         }
@@ -5287,7 +5287,10 @@ impl Gw {
         if let Some(refusal) = self.exit_cap_refusal(&owner, &owner, self.selected, amount) {
             return Err(refusal.into());
         }
-        if let Some(refusal) = self.withdrawal_limit_refusal(&owner, self.selected, amount, now) {
+        // The shared demo user has the rate limits and the reserve, not the quota.
+        if let Some(refusal) =
+            self.demo_withdrawal_limit_refusal(&owner, self.selected, amount, now)
+        {
             return Err(refusal.into());
         }
         let oracle = oracle_of(
@@ -5324,7 +5327,7 @@ impl Gw {
                 nonce: 0,
             })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
-        self.withdraw_limits.record(&owner, now);
+        self.withdraw_limits.record_rate(&owner, now);
         Ok(())
     }
 
@@ -8697,7 +8700,7 @@ async fn post_v1_withdraw(
             "status": "recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof",
         }))
         .into_response(),
-        Err(e) if e.starts_with("WITHDRAW_RATE_LIMIT") => (
+        Err(e) if admission::is_withdraw_rate_limit(&e) => (
             StatusCode::TOO_MANY_REQUESTS,
             Json(serde_json::json!({ "error": e })),
         )
@@ -9152,7 +9155,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
-                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 10 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "400": { "description": "BELOW_MINIMUM; WITHDRAW_QUOTA_EXCEEDED (the account spent its 100-unit provable-history quota); WITHDRAW_RESERVE_REACHED (the exchange-wide partial-withdrawal reserve is used up); HISTORY_CAP; or another refusal. A full exit is exempt from the quota and the reserve" }, "429": { "description": "WITHDRAW_RATE_LIMIT_MINUTE (3 per minute) or WITHDRAW_RATE_LIMIT_WINDOW (10 in the open settlement window); retry later" } } } },
+                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 10 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "400": { "description": "BELOW_MINIMUM; WITHDRAW_QUOTA_EXCEEDED (the account spent its lifetime 100-unit provable-history quota, outstanding deposit permits included; it never resets); WITHDRAW_RESERVE_REACHED (the exchange-wide partial-withdrawal reserve is used up); HISTORY_CAP; or another refusal. A full exit is exempt from the quota and the reserve" }, "429": { "description": "WITHDRAW_RATE_LIMIT_MINUTE (3 per minute) or WITHDRAW_RATE_LIMIT_WINDOW (10 in the open settlement window); retry later" } } } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },
