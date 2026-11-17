@@ -884,6 +884,17 @@ pub struct Sequencer {
     /// sets it after every boot or restore ([`Sequencer::set_minimum_exempt_owner`]).
     #[serde(skip)]
     minimum_exempt_owner: Option<PubKey>,
+    /// The newest tick batch (Counter A) a proof has hardened in this process
+    /// ([`Sequencer::mark_settled`]). Every tick at or before it is settled and
+    /// can no longer roll back. Runtime-only: a restore starts with `None`, so
+    /// [`Sequencer::prune_settled_order_history`] waits for the first settle
+    /// after it. Not part of the snapshot wire format.
+    #[serde(skip)]
+    hardened_through: Option<u64>,
+    /// `hardened_through` as of the last history prune, so a tick that hardened
+    /// nothing new does not scan the records again. Runtime-only.
+    #[serde(skip)]
+    history_pruned_through: Option<u64>,
 }
 
 impl Sequencer {
@@ -913,6 +924,8 @@ impl Sequencer {
             funding_marks: BTreeMap::new(),
             minimum_exempt: BTreeSet::new(),
             minimum_exempt_owner: None,
+            hardened_through: None,
+            history_pruned_through: None,
         }
     }
 
@@ -2337,6 +2350,65 @@ impl Sequencer {
         // its per-batch order list is now immutable settled history that neither
         // rollback nor re-settlement needs — drop it too so the map stays bounded.
         self.batch_orders = self.batch_orders.split_off(&(batch_id + 1));
+        self.hardened_through = Some(self.hardened_through.map_or(batch_id, |h| h.max(batch_id)));
+    }
+
+    /// Drop the receipt (`inclusion`) and finality records of orders that nothing
+    /// can change any more (audit GF-1 + SM-4: they used to stay in the snapshot
+    /// for good, one set per accepted order). A record goes when its order:
+    ///
+    /// - was sequenced in a tick a proof has hardened ([`Self::mark_settled`]), or
+    ///   was resolved without a sequencing record (rejected, cancelled or voided);
+    /// - is not resting on a book (nor on a retained rollback snapshot's book);
+    /// - is not among a pending (unhardened) tick's fills; and
+    /// - is not MATCHED (a pending fill), nor received but never sequenced.
+    ///
+    /// The manifests (the open window's, a sealed window's witness) keep their own
+    /// copies of the hashes; a void or rollback of a window treats a hash with no
+    /// record as one already ended.
+    ///
+    /// Afterwards [`Self::finality_of`] answers `None` for it. The caller must
+    /// already have read every SETTLED it reports (the gateway prunes at the end of
+    /// its tick, after its order rows recorded their finality). The L1 inclusion
+    /// challenge is answered from the settled batches' manifests, never from these
+    /// records. Runs only after a settle hardened something new since the last
+    /// prune; returns the number of orders whose records went.
+    pub fn prune_settled_order_history(&mut self) -> usize {
+        let Some(hardened) = self.hardened_through else {
+            return 0;
+        };
+        if self.history_pruned_through == Some(hardened) {
+            return 0;
+        }
+        self.history_pruned_through = Some(hardened);
+        let mut done: BTreeSet<Digest> = self
+            .inclusion
+            .iter()
+            .filter(|(_, rec)| rec.seen_in_batch.is_some_and(|tick| tick <= hardened))
+            .map(|(hash, _)| *hash)
+            .collect();
+        done.extend(
+            self.finality
+                .keys()
+                .filter(|hash| !self.inclusion.contains_key(*hash)),
+        );
+        done.retain(|hash| self.finality.get(hash) != Some(&Finality::Matched));
+        for hash in self.batch_orders.values().flatten() {
+            done.remove(hash);
+        }
+        let mut resting = done.clone();
+        self.matcher.retain_resting(&mut resting);
+        for (_, matcher) in self.snapshots.values() {
+            let mut rests = done.clone();
+            matcher.retain_resting(&mut rests);
+            resting.extend(rests);
+        }
+        done.retain(|hash| !resting.contains(hash));
+        for hash in &done {
+            self.inclusion.remove(hash);
+            self.finality.remove(hash);
+        }
+        done.len()
     }
 
     /// Task 5: advance per-tick finality from an ON-CHAIN window settle (Counter B).
@@ -2963,6 +3035,69 @@ mod tests {
         assert!(voided.hashes.is_empty() && voided.ticks.len() == 1);
         assert!(seq.funding_marks.is_empty());
         assert!(seq.batch_orders.is_empty() && seq.snapshots.is_empty());
+    }
+
+    /// Audit GF-1 + SM-4: the receipt and finality records of every accepted order
+    /// stayed in the sequencer (and so in the gateway snapshot) forever. After a
+    /// settle hardens a tick, its finished orders' records go; a resting maker, a
+    /// pending fill and an order received but not yet sequenced keep theirs.
+    #[test]
+    fn audit_1116_sm4_settled_order_history_is_pruned_and_live_records_stay() {
+        let mut seq = test_sequencer();
+        // Nothing is hardened yet: nothing is pruned.
+        assert_eq!(seq.prune_settled_order_history(), 0);
+        let filled = sample_orders(1);
+        let maker = t_order_at(1, Side::Sell, 101_000, SIZE_SCALE / 100, 9);
+        let mut orders = filled.clone();
+        orders.push(maker);
+        let s0 = seq.seal_batch(&orders, now());
+        let filled: Vec<Digest> = filled.iter().map(|o| o.order_hash::<Keccak256>()).collect();
+        let maker_hash = maker.order_hash::<Keccak256>();
+        assert_eq!(s0.settled_order_hashes.len(), 2);
+        assert!(
+            seq.matcher.remaining(&maker_hash).is_some(),
+            "the maker rests"
+        );
+        let unsequenced = t_order(2, Side::Buy, 40);
+        let unsequenced_hash = unsequenced.order_hash::<Keccak256>();
+        let _ = seq.accept_order(&unsequenced, now());
+
+        seq.mark_settled(s0.batch_id);
+        let s1 = seq.seal_batch(&sample_orders(3), now());
+        for hash in &filled {
+            assert_eq!(seq.finality_of(hash), Some(Finality::Settled));
+        }
+
+        assert_eq!(seq.prune_settled_order_history(), filled.len());
+        for hash in &filled {
+            assert_eq!(seq.finality_of(hash), None);
+            assert!(!seq.inclusion.contains_key(hash));
+        }
+        assert_eq!(seq.finality_of(&maker_hash), Some(Finality::Accepted));
+        assert!(seq.inclusion.contains_key(&maker_hash));
+        for hash in &s1.settled_order_hashes {
+            assert_eq!(seq.finality_of(hash), Some(Finality::Matched));
+            assert!(seq.inclusion.contains_key(hash));
+        }
+        assert_eq!(
+            seq.cancellable_size(&unsequenced.owner, &unsequenced, false),
+            Some(unsequenced.size),
+            "an accepted, unsequenced order stays cancellable"
+        );
+        // Nothing new hardened: the next call does not scan again.
+        assert_eq!(seq.prune_settled_order_history(), 0);
+
+        // A cancelled maker leaves nothing behind after the next settle.
+        assert!(seq.cancel_order(&maker.owner, &maker, true).is_some());
+        seq.mark_settled(s1.batch_id);
+        assert_eq!(
+            seq.prune_settled_order_history(),
+            1 + s1.settled_order_hashes.len()
+        );
+        assert_eq!(seq.finality_of(&maker_hash), None);
+        assert_eq!(seq.finality_of(&unsequenced_hash), Some(Finality::Accepted));
+        assert_eq!(seq.inclusion_violations(u64::MAX).len(), 0);
+        assert_eq!(seq.inclusion_violations(0), vec![unsequenced_hash]);
     }
 
     #[test]
