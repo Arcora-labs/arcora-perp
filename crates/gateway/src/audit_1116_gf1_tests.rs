@@ -147,7 +147,7 @@ mod audit_1116_gf1 {
     /// The legacy settle simulation (no prover, no L1) never settles a window on
     /// L1, so nothing publishes or clears the manifest accumulators there, yet
     /// every matched or cancelled order's hash went into them, and so into the
-    /// snapshot, for good.
+    /// snapshot, for good. Only the last tick's hashes may stay.
     #[test]
     fn audit_1116_gf1_legacy_settle_mode_keeps_no_manifest_accumulators() {
         let mut gw = Gw::boot();
@@ -159,6 +159,8 @@ mod audit_1116_gf1 {
             gw.account_place_order(&key, &small_ioc(side)).unwrap();
             gw.tick();
         }
+        // This tick's taker and its house counter.
+        assert_eq!(gw.pending_ordered.len(), 2);
         let pending = OrderReq {
             limit_price: gw.px_of(0).to_string(),
             tif: "Gtc".into(),

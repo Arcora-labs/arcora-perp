@@ -455,7 +455,8 @@ appended yet and records where each side log's durable records end, so its size 
 longer grows with order volume. A snapshot written before this change (history
 inside) still loads; boot appends its history to the side logs. A snapshot that
 relies on side logs refuses to start without them, or with a side log rolled back
-to an older copy; a fresh genesis refuses to start beside leftover side logs. Back
+to an older copy or taken from another history (boot checks every record the
+snapshot relies on); a fresh genesis refuses to start beside leftover side logs. Back
 up and restore the side logs together with the snapshot (`gateway_backup.py` copies
 them; `docs/RECOVERY_RESTORE.md`). The sequencer also drops a finished order's
 receipt and finality records once a settle has hardened it; `GET /v1/orders` keeps

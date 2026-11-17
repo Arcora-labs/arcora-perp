@@ -5596,6 +5596,13 @@ impl Gw {
         }
         let sealed = self.seq.seal_batch(&seal, now);
         self.last_manifest = sealed.manifest_hash;
+        if !self.window_settle_mode {
+            // The legacy settle simulation never settles a window on L1, so nothing
+            // takes or clears these accumulators: keep only this tick's, not every
+            // order's hash inside the snapshot for good (audit GF-1 + SM-4).
+            self.pending_ordered.clear();
+            self.pending_rejected.clear();
+        }
         // audit DP-004: accumulate this batch's matched + validly-rejected order hashes; at the
         // next L1 settle they become this on-chain batch's ordered/rejected roots, so the
         // sequencer can answer an inclusion challenge for either instead of being wrongfully slashed.
@@ -5652,11 +5659,6 @@ impl Gw {
                 }
             }
             self.pending_settle = still;
-            // No window settles on L1 here, so `commit_window_settle` never takes or
-            // clears the manifest accumulators: keep them from growing with every
-            // order, inside the snapshot (audit GF-1 + SM-4).
-            self.pending_ordered.clear();
-            self.pending_rejected.clear();
         }
 
         // 4) emit finality-transition events for toasts

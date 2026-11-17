@@ -79,8 +79,9 @@ sonunu (kayıt sayısı, bayt konumu, özet) tutar; boyutu emir hacmiyle büyüm
 - Bu değişiklikten önce yazılmış (geçmişi içinde olan) snapshot yüklenir; açılışta
   geçmiş yan kayıtlara eklenir. Yan kayda dayanmayan snapshot eski düzenle bayt bayt
   aynıdır.
-- Yan kayda dayanan snapshot, yan kayıtlar eksikse veya daha eski bir kopyaya geri
-  alınmışsa açılışı reddeder. Yedekten dönüşte yan kayıtlar snapshot'ın yanına aynı
+- Yan kayda dayanan snapshot, yan kayıtlar eksikse, daha eski bir kopyaya geri
+  alınmışsa veya başka bir geçmişe aitse açılışı reddeder; açılış snapshot'ın
+  dayandığı her kaydı doğrular ve böyle bir dosyayı kesmez. Yedekten dönüşte yan kayıtlar snapshot'ın yanına aynı
   adlarla konmalıdır. `gateway_backup.py` bunları snapshot/journal çiftinden sonra
   kopyalar ve manifest'in `side_logs` alanına yazar; çift kopyalandıktan sonra
   alınan kopya, kopyalanan snapshot'ın dayandığı her kaydı içerir.
