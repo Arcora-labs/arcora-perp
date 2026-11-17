@@ -2135,6 +2135,42 @@ impl Sequencer {
         Some(self.seal_window())
     }
 
+    /// Check that the open window still replays: applying its op-log to the
+    /// window baseline under this build's engine rules reaches the live state.
+    /// `seal_window` relies on exactly that (`derive_roots(pre_state, ops,
+    /// manifest).new_state_root` is the live root), and the settle path proves the
+    /// replay, not the live state.
+    ///
+    /// The check matters across an upgrade that changes what an op means (audit
+    /// 2026-11-16 PC-1: `Liquidate` now closes the other side, `Unbind` keeps the
+    /// initial margin in collateral, `Withdraw` stops at `external_in`, a
+    /// one-sided book accrues no funding). A snapshot written by the earlier build
+    /// holds a live state that its own rules produced, and an open window whose
+    /// ops the new rules replay to another state or refuse; sealing it would prove
+    /// a root the live state does not have. The gateway refuses to start from such
+    /// a snapshot instead (settle the window with the earlier build first, see
+    /// `docs/FINAL_SETTLE_RUNBOOK.md`). Reads only; costs one replay of the window.
+    pub fn check_open_window_replays(&self) -> Result<(), String> {
+        let mut replay = self.window_start_state.clone();
+        for (i, op) in self.window_ops.iter().enumerate() {
+            replay.apply_op(op).map_err(|e| {
+                format!(
+                    "the open window does not replay under this build: op {i} of {} is \
+                     refused ({e:?})",
+                    self.window_ops.len()
+                )
+            })?;
+        }
+        if replay.state_root() != self.state.state_root() {
+            return Err(format!(
+                "the open window does not replay under this build: its {} ops reach \
+                 another state than the live one",
+                self.window_ops.len()
+            ));
+        }
+        Ok(())
+    }
+
     pub fn window_op_count(&self) -> usize {
         self.window_ops.len()
     }

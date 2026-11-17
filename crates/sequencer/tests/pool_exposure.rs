@@ -463,3 +463,35 @@ fn audit_1116_pc1_a_forced_close_is_reported_to_its_owner_only() {
     );
     assert!(sealed.adl_receipts.is_empty(), "nothing was clawed");
 }
+
+/// Round-1 review: an upgrade to this build changes what a `Liquidate` means.
+/// A snapshot written by the earlier build holds the state its rules produced
+/// (the short left open against the pool) and an open window whose `Liquidate`
+/// this build replays to another state (the short closed). The sequencer
+/// detects it, so the gateway can refuse to start instead of proving a root the
+/// live state does not have.
+#[test]
+fn audit_1116_pc1_an_open_window_from_the_earlier_rules_does_not_replay() {
+    let (mut seq, _, _) = take_profit_scenario();
+    assert_eq!(seq.check_open_window_replays(), Ok(()));
+
+    // The live state as the earlier build left it: the short still open at its
+    // entry, the $5,500 it realized here still in the clearing pool.
+    let short = owner_id(PAIR_SHORT);
+    let funding_entry = seq.state.funding[&0].cumulative_index;
+    seq.state.positions.insert(
+        (short, 0),
+        Position {
+            owner: short,
+            market_id: 0,
+            size: -SIZE_SCALE,
+            entry_price: 100_000 * PRICE_SCALE,
+            collateral: usd(10_100),
+            funding_entry,
+        },
+    );
+    seq.state.vault_pool += usd(5_500);
+    assert!(seq.state.conservation_holds());
+    let refused = seq.check_open_window_replays().unwrap_err();
+    assert!(refused.contains("does not replay"), "{refused}");
+}

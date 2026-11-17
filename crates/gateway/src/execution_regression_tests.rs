@@ -132,6 +132,28 @@ mod execution_regressions {
         assert_replay(&mut gw);
     }
 
+    /// Audit 2026-11-16 PC-1, round-1 review: a snapshot whose open window does
+    /// not replay under this build (one written by a build whose ops meant
+    /// something else) is refused at restore instead of wedging the next settle.
+    #[test]
+    fn audit_1116_pc1_a_snapshot_whose_open_window_does_not_replay_is_refused() {
+        let (mut gw, maker, taker, _) = paired();
+        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 40, 0, "Ioc");
+        tick(&mut gw);
+        assert!(gw.seq.window_op_count() > 0);
+        assert!(Gw::boot_restored(&gw.snapshot_plain()).is_ok());
+        // A live state the window's ops do not reach, conservation intact.
+        let owner = gw.accounts[&maker].wallet.owner;
+        gw.seq.state.positions.get_mut(&(owner, 0)).unwrap().collateral += 1;
+        gw.seq.state.vault_pool -= 1;
+        assert!(gw.seq.state.conservation_holds());
+        let Err(refused) = Gw::boot_restored(&gw.snapshot_plain()) else {
+            panic!("a window that does not replay must not restore");
+        };
+        assert!(refused.contains("does not replay"), "{refused}");
+        assert!(refused.contains("FINAL_SETTLE_RUNBOOK"), "{refused}");
+    }
+
     #[test]
     fn sealed_maker_cancel_removes_remainder_and_commits_manifest() {
         let (mut gw, maker, taker, _) = paired();

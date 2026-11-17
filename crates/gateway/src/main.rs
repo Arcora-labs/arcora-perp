@@ -2616,6 +2616,17 @@ impl Gw {
             return Err("wind-down snapshot latch requires CloseOnly".into());
         }
         gw.validate_deposit_state()?;
+        // The open window must replay under this build's engine rules, or its next
+        // seal would prove a root the live state does not have. A snapshot written
+        // by a build whose ops meant something else (audit 2026-11-16 PC-1) is
+        // refused here, not wedged at the next settle.
+        gw.seq.check_open_window_replays().map_err(|e| {
+            format!(
+                "{e}; settle the open window with the build that wrote this snapshot \
+                 before upgrading (docs/FINAL_SETTLE_RUNBOOK.md, upgrading across an \
+                 engine rule change)"
+            )
+        })?;
 
         let attestation = attest_from_env();
         let measurement = attestation
