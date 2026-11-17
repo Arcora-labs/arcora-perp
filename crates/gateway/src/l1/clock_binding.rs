@@ -482,12 +482,19 @@ pub(super) fn check_register_skew(last_ms: u64, skew_ms: u64, now_ms: u64) -> Re
 }
 
 /// What a `register` send says about the registration (audit G2-2). Nothing is
-/// swallowed: the outcome is always logged. A revert registered nothing, now or
-/// later, so its reason is returned at once instead of waiting for an anchor that
-/// cannot come; the caller's recovery decides the window. Any other error
-/// leaves the outcome unknown (the transaction may still be mined): it is logged
-/// and `Ok` is returned, so the caller waits for the finalized anchor.
+/// swallowed: the outcome is always logged. `sent` is cast's JSON receipt or its
+/// error. A revert registered nothing, now or later: a revert of the gas
+/// estimate (nothing was broadcast), or of the mined transaction (its receipt's
+/// `status` is 0, which cast reports as a success). Its reason is returned at
+/// once instead of waiting for an anchor that cannot come; the caller's recovery
+/// decides the window. Any other error leaves the outcome unknown (the
+/// transaction may still be mined): it is logged and `Ok` is returned, so the
+/// caller waits for the finalized anchor.
 pub(super) fn registration_sent(batch: u64, sent: Result<String, String>) -> Result<(), String> {
+    let sent = sent.and_then(|receipt| match mined_revert(&receipt) {
+        Some(reverted) => Err(reverted),
+        None => Ok(super::tx_hash(&receipt)),
+    });
     match sent {
         Ok(tx) => {
             println!("[clock] window {batch}: registration sent in {tx}");
@@ -510,11 +517,51 @@ pub(super) fn registration_sent(batch: u64, sent: Result<String, String>) -> Res
     }
 }
 
+/// The revert of a mined transaction, from cast's JSON receipt: `status` 0,
+/// with the reason cast decoded, if any.
+fn mined_revert(receipt: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(receipt).ok()?;
+    let failed = match v.get("status")? {
+        serde_json::Value::String(s) => s == "0x0" || s == "0",
+        serde_json::Value::Number(n) => n.as_u64() == Some(0),
+        _ => false,
+    };
+    failed.then(|| {
+        format!(
+            "transaction {} was mined and reverted: {}",
+            v.get("transactionHash")
+                .and_then(|h| h.as_str())
+                .unwrap_or("(no hash)"),
+            v.get("revertReason")
+                .and_then(|r| r.as_str())
+                .unwrap_or("no reason given")
+        )
+    })
+}
+
 /// A send error that reports a revert of the call itself (the estimate, or the
-/// mined transaction), not a transport failure.
+/// mined transaction), not a transport failure. cast's text cannot always tell
+/// them apart; a misread error only changes when the recovery takes the window,
+/// which it decides at finalized blocks either way.
 fn is_revert(error: &str) -> bool {
     let e = error.to_ascii_lowercase();
     e.contains("revert") && !e.contains("timed out")
+}
+
+/// How often a `register` is sent again after its gas estimate reverted with
+/// `BadContext`, and how long apart (audit G2-2).
+const REGISTER_RESENDS: u32 = 2;
+const REGISTER_RESEND_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Whether a `register` send that failed with `error` is sent again: only a
+/// revert of its gas estimate, so nothing was broadcast, that names `BadContext`.
+/// A load-balanced RPC whose backend has not seen the previous window's
+/// settlement yet answers that, and a moment later no longer does. Every other
+/// revert is final for the window as sealed.
+fn resend_registration(error: &str) -> bool {
+    is_revert(error)
+        && error.to_ascii_lowercase().contains("estimate gas")
+        && revert_reason(error) == "BadContext"
 }
 
 /// The `ClockBoundVerifier` error a revert names by its selector, or "reason not
@@ -1222,13 +1269,35 @@ impl L1 {
             // WAL intent. Do not submit changed data or roll back; observe finalized
             // state until this SAME registration resolves. A revert is not
             // ambiguous: it registered nothing (`registration_sent`).
-            if self.clock_stopping() {
-                return Err("clock registration cancelled before broadcast; retain journal".into());
+            let verifier = crate::hex0x(&cfg.verifier);
+            let mut resends = 0;
+            loop {
+                if self.clock_stopping() {
+                    return Err(
+                        "clock registration cancelled before broadcast; retain journal".into(),
+                    );
+                }
+                let sent = self.send_receipt(&verifier, REGISTER_SIG, &args);
+                // Audit G2-2: an estimate that reverted with BadContext broadcast
+                // nothing; it is sent again a few times while the window can still
+                // register, instead of leaving the window to the recovery.
+                if let Err(e) = &sent {
+                    let registrable = b.count == 0
+                        || check_register_skew(b.last_ms, self.clock_skew_ms()?, crate::now_ms())
+                            .is_ok();
+                    if resends < REGISTER_RESENDS && resend_registration(e) && registrable {
+                        resends += 1;
+                        eprintln!(
+                            "[clock] window {}: the registration's gas estimate reverted with \
+                             BadContext; sending it again ({resends}/{REGISTER_RESENDS}): {e}",
+                            w.batch_id
+                        );
+                        std::thread::sleep(REGISTER_RESEND_DELAY);
+                        continue;
+                    }
+                }
+                return registration_sent(w.batch_id, sent);
             }
-            registration_sent(
-                w.batch_id,
-                self.send(&crate::hex0x(&cfg.verifier), REGISTER_SIG, &args),
-            )
         };
         let reused = register_or_reuse(
             mode,
@@ -1408,6 +1477,57 @@ mod audit_1116_g2_tests {
         )
         .unwrap_err();
         assert!(refused.contains("InvalidTime"), "{refused}");
+    }
+
+    /// Real `cast send --json` output (Foundry 1.5.1 against anvil, a verifier
+    /// stub that reverts with the named error), as `run_cast` returns it: stderr
+    /// on a non-zero exit, stdout otherwise.
+    const ESTIMATE_REVERT_INVALID_TIME: &str = "Error: Failed to estimate gas: server returned \
+        an error response: error code 3: execution reverted: custom error 0x6f7eac26, data: \
+        \"0x6f7eac26\": InvalidTime";
+    const ESTIMATE_REVERT_BAD_CONTEXT: &str = "Error: Failed to estimate gas: server returned \
+        an error response: error code 3: execution reverted: custom error 0xc3a2fdfe, data: \
+        \"0xc3a2fdfe\": BadContext";
+    /// A mined transaction that reverted: cast exits 0 and prints the receipt.
+    const MINED_REVERT_INVALID_TIME: &str = r#"{"status":"0x0","cumulativeGasUsed":"0x5471","logs":[],"type":"0x2","transactionHash":"0x1720db2d2793c5d0d051e612f030cd0eb7178d75b36330bdb3a3d4cba141eec8","transactionIndex":"0x0","blockHash":"0x9c763227ed7f95dfa8ff573c7a308bc4d716fa84920987b3132fe6b2c098e9cc","blockNumber":"0x2","gasUsed":"0x5471","effectiveGasPrice":"0x34354a3b","blobGasPrice":"0x1","from":"0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266","to":"0x5fbdb2315678afecb367f032d93f642f64180aa3","contractAddress":null,"revertReason":"custom error 0x6f7eac26, data: \"0x6f7eac26\""}"#;
+    const MINED: &str = r#"{"status":"0x1","transactionHash":"0x1720db2d2793c5d0d051e612f030cd0eb7178d75b36330bdb3a3d4cba141eec8","blockNumber":"0x2","contractAddress":null}"#;
+    const CONNECTION_REFUSED: &str = "Error: error sending request for url \
+        (http://127.0.0.1:18546/)\n\nContext:\n- Error #0: client error (Connect)\n- Error #1: tcp \
+        connect error\n- Error #2: Connection refused (os error 111)";
+    const NONCE_TOO_LOW: &str =
+        "Error: server returned an error response: error code -32003: nonce too low";
+
+    /// G2-2 (round 2): `is_revert` reads cast's text, so it is pinned to real
+    /// cast output. A reverted estimate and a mined transaction that reverted
+    /// (which cast reports as a success: exit 0, `status` 0x0) are both
+    /// surfaced with the verifier's error; transport and nonce errors leave the
+    /// outcome unknown and wait for the anchor. Only a reverted estimate that
+    /// names BadContext, which broadcast nothing, is sent again.
+    #[test]
+    fn audit_1116_g2_2_registration_outcomes_are_pinned_to_real_cast_output() {
+        for (sent, reason) in [
+            (Err(ESTIMATE_REVERT_INVALID_TIME), "InvalidTime"),
+            (Err(ESTIMATE_REVERT_BAD_CONTEXT), "BadContext"),
+            (Ok(MINED_REVERT_INVALID_TIME), "InvalidTime"),
+        ] {
+            let error =
+                registration_sent(7, sent.map(str::to_string).map_err(str::to_string)).unwrap_err();
+            assert!(error.contains(REGISTRATION_REVERTED), "{error}");
+            assert!(error.contains(reason), "{error}");
+        }
+        for sent in [Ok(MINED), Err(CONNECTION_REFUSED), Err(NONCE_TOO_LOW)] {
+            registration_sent(7, sent.map(str::to_string).map_err(str::to_string)).unwrap();
+        }
+        assert!(resend_registration(ESTIMATE_REVERT_BAD_CONTEXT));
+        for error in [
+            ESTIMATE_REVERT_INVALID_TIME,
+            CONNECTION_REFUSED,
+            NONCE_TOO_LOW,
+            &mined_revert(MINED_REVERT_INVALID_TIME).unwrap(),
+        ] {
+            assert!(!resend_registration(error), "{error}");
+        }
+        assert_eq!(mined_revert(MINED), None);
     }
 
     /// G2-2: the timing policy's own checks: span, skew and derivation.
