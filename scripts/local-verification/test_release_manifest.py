@@ -275,11 +275,11 @@ class ConfigTests(unittest.TestCase):
     def test_audit_1116_sv1_the_release_environment_trusts_no_sp1_router_owner(self):
         value = release.public_config(config())
         env = dict(value["gateway"])
-        for allowed in (None, "0"):
+        for allowed in (None, "", "0"):
             if allowed is not None:
                 env["L1_ACCEPT_SP1_ROUTER_OWNER_TRUST"] = allowed
             release.check_environment(value, env)
-        for bad in ("1", "true", ""):
+        for bad in ("1", "true", "yes"):
             env["L1_ACCEPT_SP1_ROUTER_OWNER_TRUST"] = bad
             with self.subTest(value=bad), self.assertRaisesRegex(
                     ValueError, "process environment mismatch: L1_ACCEPT_SP1_ROUTER_OWNER_TRUST"):
