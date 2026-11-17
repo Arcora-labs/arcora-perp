@@ -466,15 +466,26 @@ new account while the state's own history or unspent notes are at it; the positi
 entries and outstanding permits never close registration. An account with no
 position holds permits for one market at a time, so it reserves at most one entry.
 Every position entry costs the same to prove whatever it holds, so dust entries count
-toward the bound like any other; instead, a permit that may open an entry (no entry in
-that market, or only a flat one below 100 USDC) needs 100 USDC and counts as opening
-one from its issuance, a withdrawal leaves at least 100 USDC in its entry unless it is
-a full exit (open position or not), and when the entries alone refuse a permit that
+toward the bound like any other; instead (audit G1-1), a permit that may open an entry
+(no entry in that market, or only a flat one below 100 USDC) needs 100 USDC and counts
+as opening one from its issuance. The position soft cap bounds the state's own
+entries: such a permit is issued only below it, and only while the state's entries and
+those every outstanding permit may open fit the 1,328 bound, so unfunded permits
+cannot hold the soft cap; past it a client (IPv4 address or IPv6 /64) holds at most 2
+of them. Below 100 USDC no order adds exposure (at intake, and in the sequencer when a
+fill settles), a withdrawal leaves at least 100 USDC in its entry unless it is a full
+exit (open position or not), and a full exit waits while a top-up permit below 100
+USDC for that market is outstanding. When the entries alone refuse a permit that
 opens an entry the gateway sweeps as many flat entries below 100 USDC as admit it (a
-forced full exit to the owner's bound deposit address, announced to the owner,
-whatever permits the owner holds). Entries with an open position are never swept, so
-an entry the sweep leaves alone holds at least 100 USDC unless trading lost it:
-holding the 1,063-entry soft cap that way locks about $106,300 (audit G1-1). A
+forced full exit to the owner's bound deposit address, announced to the owner once
+durable, whatever permits the owner holds). Entries with an open position are never
+swept, so an entry the sweep leaves alone holds at least 100 USDC, or a position it
+opened at 100 USDC or more and then lost on: one open at up to 10x and a partial
+close in the 2% fill band leave about 65 USDC at a steady index, and about 30 USDC if
+the index moved ~5% against the position first (any further move liquidates it into a
+flat, sweepable entry). Holding the 1,063-entry soft cap that way locks roughly
+$30,000 to $70,000 and passes 100 USDC through each entry, instead of $10,600; holding
+the room above it with unfunded permits takes about 133 client groups. A
 withdrawal that would need more room than the bound
 leaves is refused unless it is a full exit (the whole balance of a closed position),
 so the deposit of every permit already signed is credited within the bound and funds
