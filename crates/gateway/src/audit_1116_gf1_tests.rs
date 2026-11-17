@@ -180,6 +180,48 @@ mod audit_1116_gf1 {
         );
     }
 
+    /// An order that never fills (an IOC that meets no liquidity, a rejected or
+    /// cancelled order) never reaches SETTLED, and the per-account history cap
+    /// evicted only SETTLED rows: unfilled orders grew one account's API history,
+    /// and the snapshot, without bound. The newest finished rows are the ones kept.
+    #[test]
+    fn audit_1116_gf1_unfilled_orders_leave_the_capped_account_history() {
+        let mut gw = Gw::boot();
+        gw.window_settle_mode = true;
+        gw.seq.set_retain_tick_snapshots(false);
+        let key = funded_account(&mut gw);
+        // A buy below the mark meets no counter order and no resting liquidity.
+        let unfilled = OrderReq {
+            limit_price: (gw.px_of(0) * 99 / 100).to_string(),
+            ..small_ioc("Buy")
+        };
+        for i in 0..MAX_ACCOUNT_ORDER_HISTORY + 40 {
+            gw.accounts.get_mut(&key).unwrap().orders_this_sec = 0;
+            gw.account_place_order(&key, &unfilled).unwrap();
+            if i % 50 == 49 {
+                gw.tick();
+            }
+        }
+        // Rows are kept newest first.
+        let newest = gw.accounts[&key].orders[0].id.clone();
+        let oldest = gw.accounts[&key].orders.last().unwrap().id.clone();
+        gw.tick();
+        settle_open_window(&mut gw);
+        // One tick records the finality and lets the sequencer drop the finished
+        // records; the next one caps the history.
+        gw.tick();
+        gw.tick();
+        let rows = &gw.accounts[&key].orders;
+        assert!(
+            rows.iter()
+                .all(|o| o.filled == 0 && o.last_finality == "ACCEPTED"),
+            "none of them filled"
+        );
+        assert_eq!(rows.len(), MAX_ACCOUNT_ORDER_HISTORY);
+        assert_eq!(rows[0].id, newest, "the newest finished row is kept");
+        assert!(rows.iter().all(|o| o.id != oldest), "the oldest went");
+    }
+
     fn order_request(key: &[u8; 32], client: Option<SocketAddr>) -> Request<Body> {
         let mut request = Request::builder()
             .method("POST")
