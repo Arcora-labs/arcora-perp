@@ -56,7 +56,8 @@ contract ClockBoundRealProofTest is RealSP1TestBase {
         require(realVm.envBytes32("ARCORA_REAL_PUBLIC_COMMITMENT") == BOUND, "wrong clock digest");
         proof = realVm.envBytes("ARCORA_REAL_PROOF");
         require(proof.length == 356 && bytes4(proof) == SELECTOR, "real Groth16 proof required");
-        IZkVerifier inner = IZkVerifier(address(_adapter(realGateway, key)));
+        // The release shape: the adapter is bound directly to the stateless v6.1.0 verifier.
+        IZkVerifier inner = IZkVerifier(address(_directAdapter(key)));
         // The anchor timeout is not part of the receipt; the 12-word settlement config
         // keeps the previous ten words in order, then progress batches and slash cap.
         _constructAt(

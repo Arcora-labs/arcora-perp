@@ -56,6 +56,12 @@ abstract contract RealSP1TestBase is MiniTest {
         return new SP1ZkVerifier(ISP1Verifier(address(gateway_)), vkey);
     }
 
+    /// The release shape: the adapter is bound straight to the stateless verifier, so no
+    /// ownable router sits between settlement and proof verification.
+    function _directAdapter(bytes32 vkey) internal returns (SP1ZkVerifier) {
+        return new SP1ZkVerifier(ISP1Verifier(address(realVerifier)), vkey);
+    }
+
     function _deploy(bytes memory creationCode) private returns (address deployed) {
         require(creationCode.length != 0, "upstream creation bytecode is required");
         assembly ("memory-safe") {
