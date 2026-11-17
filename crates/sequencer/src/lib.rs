@@ -31,7 +31,7 @@ use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::note::PubKey;
 use perp_core::oracle::OracleTranscript;
-use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side};
+use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::{DefaultState, EngineError, FillLeg, Mode};
 
@@ -383,13 +383,293 @@ pub const FUNDING_IMPACT_NOTIONAL: i128 = 1_000 * QUOTE_SCALE;
 /// this span.
 pub const FUNDING_MARK_MIN_SPAN_MS: u64 = 7_000;
 
-/// The most resting orders one side's impact sweep visits, inside the fill band,
-/// before it reaches [`FUNDING_IMPACT_NOTIONAL`]. A side that needs more gives no
-/// impact price, and the mark falls back to the oracle index, as for a side
-/// without the depth. Honest depth reaches the notional in far fewer orders: a
-/// hundred orders at the order minimum hold it. The bound keeps the cost of a
-/// funding sample independent of how many orders rest on the book.
-pub const FUNDING_IMPACT_MAX_ORDERS: usize = 4_096;
+/// The smallest remaining notional, quote-scaled ($10, the order minimum), at
+/// which a resting order is depth for the funding mark. A smaller order (the
+/// remainder of a partial fill, or an order admitted below the minimum because it
+/// reduced) is dust: the impact sweep passes over it without pricing it.
+///
+/// This ties the sweep's work to the notional instead of to an order count (audit
+/// 2026-11-16 SM-3): it ends at the order that completes
+/// [`FUNDING_IMPACT_NOTIONAL`], so it counts at most a hundred orders as depth, and
+/// no order it passes over, dust or unfillable, can make a side lack an impact
+/// price. Before, a sweep that visited 4,096 orders without reaching the notional
+/// gave none, so 4,096 unfillable dust orders ahead of honest depth, or queued
+/// behind it at the same price, pinned the mark to the index.
+pub const FUNDING_IMPACT_MIN_QUOTE: i128 = MIN_ORDER_NOTIONAL;
+
+/// The most open orders one account may keep in one market (audit 2026-11-16
+/// GA-1): orders resting on the book, orders accepted and waiting for the next
+/// batch, and the earlier orders of the batch being sealed. Only orders that can
+/// rest count: a GTC with a limit price, or a post-only. An IOC, a FOK or a market
+/// GTC never rests, so it is neither counted nor refused for the cap (the
+/// collateral reserve still applies to it).
+///
+/// Sixty-four is a 32-level ladder on each side, more than an honest market maker
+/// needs (one order can hold the funding mark's whole impact notional); for small
+/// accounts the collateral reserve binds long before it ($10 of collateral margins
+/// ten $10 orders a side at 10x). The cap bounds the book, and every per-tick pass
+/// over it, by the number of funded accounts instead of by how fast one account can
+/// post: before it, 60 accounts with $10 each kept 22,081 orders resting. An order
+/// past it is refused at intake
+/// ([`Sequencer::check_open_order_limits`]) and at the seal, where the manifest
+/// records it as [`RejectReason::InvalidOrder`]. Orders a snapshot restores above
+/// it stay on the book; the account's new orders are refused until it is back under.
+pub const MAX_OPEN_ORDERS_PER_MARKET: usize = 64;
+
+/// The most open orders one account may keep across every market, counted as for
+/// [`MAX_OPEN_ORDERS_PER_MARKET`]: two full markets.
+pub const MAX_OPEN_ORDERS_PER_ACCOUNT: usize = 2 * MAX_OPEN_ORDERS_PER_MARKET;
+
+/// An open-order limit that refused an order (audit 2026-11-16 GA-1 + SM-1).
+/// [`Sequencer::check_open_order_limits`] returns it at intake; [`Sequencer::seal_batch`]
+/// records an order it refuses in the manifest under [`OpenOrderLimit::reject_reason`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpenOrderLimit {
+    /// The account already keeps [`MAX_OPEN_ORDERS_PER_MARKET`] open orders in the
+    /// order's market.
+    Market,
+    /// The account already keeps [`MAX_OPEN_ORDERS_PER_ACCOUNT`] open orders across
+    /// every market.
+    Account,
+    /// The account's collateral in the market does not cover the initial margin of
+    /// its pending orders on the order's side together with the order (the
+    /// collateral reserve, [`Sequencer::check_open_order_limits`]).
+    PendingMargin,
+}
+
+impl OpenOrderLimit {
+    /// The reason the batch manifest records for an order the limit refuses at the
+    /// seal. The caps have no reason code of their own (the codes are part of the
+    /// proven manifest encoding), so they record the catch-all.
+    pub fn reject_reason(self) -> RejectReason {
+        match self {
+            Self::Market | Self::Account => RejectReason::InvalidOrder,
+            Self::PendingMargin => RejectReason::InsufficientMargin,
+        }
+    }
+}
+
+impl core::fmt::Display for OpenOrderLimit {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Market => write!(
+                f,
+                "OPEN_ORDER_LIMIT: this account already has {MAX_OPEN_ORDERS_PER_MARKET} open \
+                 orders in this market; cancel one first"
+            ),
+            Self::Account => write!(
+                f,
+                "OPEN_ORDER_LIMIT: this account already has {MAX_OPEN_ORDERS_PER_ACCOUNT} open \
+                 orders across all markets; cancel one first"
+            ),
+            Self::PendingMargin => f.write_str(
+                "PENDING_MARGIN: the collateral in this market does not cover the initial \
+                 margin of this order together with the account's pending orders on the same \
+                 side",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for OpenOrderLimit {}
+
+/// Whether `order` can rest on the book, and so counts against the open-order
+/// caps: a GTC with a limit price, or a post-only.
+fn can_rest(order: &Order) -> bool {
+    match order.tif {
+        TimeInForce::Gtc => order.limit_price > 0,
+        TimeInForce::PostOnly => true,
+        TimeInForce::Ioc | TimeInForce::Fok => false,
+    }
+}
+
+/// One side of an account's pending orders in one market, size-scaled: the orders
+/// that can add exposure, and the orders settlement holds to reducing it
+/// (reduce-only, or admitted below the minimum because they reduced).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PendingSide {
+    adding: i128,
+    reducing: i128,
+}
+
+/// An account's pending orders in one market: how many can rest (what the caps
+/// count) and their size on each side (what the collateral reserve margins).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PendingOrders {
+    open: usize,
+    buy: PendingSide,
+    sell: PendingSide,
+}
+
+impl PendingOrders {
+    fn side_mut(&mut self, side: Side) -> &mut PendingSide {
+        match side {
+            Side::Buy => &mut self.buy,
+            Side::Sell => &mut self.sell,
+        }
+    }
+
+    /// Both tallies together.
+    fn plus(mut self, other: Self) -> Self {
+        self.open = self.open.saturating_add(other.open);
+        for side in [Side::Buy, Side::Sell] {
+            let o = match side {
+                Side::Buy => other.buy,
+                Side::Sell => other.sell,
+            };
+            let s = self.side_mut(side);
+            s.adding = s.adding.saturating_add(o.adding);
+            s.reducing = s.reducing.saturating_add(o.reducing);
+        }
+        self
+    }
+}
+
+/// One pending order as the tally counts it.
+#[derive(Clone, Copy, Debug)]
+struct PendingOrder {
+    owner: PubKey,
+    market_id: MarketId,
+    side: Side,
+    /// unfilled size, size-scaled
+    size: i128,
+    reducing: bool,
+    /// whether it counts against the caps
+    open: bool,
+}
+
+/// Every account's pending orders, per market and in total. Off-chain sequencer
+/// state, never persisted: it is rebuilt from the book.
+#[derive(Clone, Debug, Default)]
+struct PendingTally {
+    markets: BTreeMap<(PubKey, MarketId), PendingOrders>,
+    accounts: BTreeMap<PubKey, usize>,
+}
+
+impl PendingTally {
+    fn add(&mut self, o: &PendingOrder) {
+        let entry = self.markets.entry((o.owner, o.market_id)).or_default();
+        let side = entry.side_mut(o.side);
+        if o.reducing {
+            side.reducing = side.reducing.saturating_add(o.size);
+        } else {
+            side.adding = side.adding.saturating_add(o.size);
+        }
+        if o.open {
+            entry.open = entry.open.saturating_add(1);
+            let total = self.accounts.entry(o.owner).or_default();
+            *total = total.saturating_add(1);
+        }
+    }
+
+    /// Take back what [`Self::add`] added for `o`, dropping entries that hold
+    /// nothing any more.
+    fn remove(&mut self, o: &PendingOrder) {
+        let key = (o.owner, o.market_id);
+        if let Some(entry) = self.markets.get_mut(&key) {
+            let side = entry.side_mut(o.side);
+            if o.reducing {
+                side.reducing = side.reducing.saturating_sub(o.size).max(0);
+            } else {
+                side.adding = side.adding.saturating_sub(o.size).max(0);
+            }
+            if o.open {
+                entry.open = entry.open.saturating_sub(1);
+            }
+            if *entry == PendingOrders::default() {
+                self.markets.remove(&key);
+            }
+        }
+        if o.open {
+            if let Some(total) = self.accounts.get_mut(&o.owner) {
+                *total = total.saturating_sub(1);
+                if *total == 0 {
+                    self.accounts.remove(&o.owner);
+                }
+            }
+        }
+    }
+
+    fn market(&self, owner: &PubKey, market_id: MarketId) -> PendingOrders {
+        self.markets
+            .get(&(*owner, market_id))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn account(&self, owner: &PubKey) -> usize {
+        self.accounts.get(owner).copied().unwrap_or(0)
+    }
+}
+
+/// Whether `position` keeps initial margin at the validated `mark` if every
+/// pending order on `side` (`pending`) fills there in full: the collateral reserve
+/// for pending orders (audit 2026-11-16 SM-1). An order settlement holds to
+/// reducing counts only up to the size that closes the position, since it can
+/// never fill past that; every other order counts in full, so the orders on a side
+/// together cannot commit more margin than the collateral holds. Each side is
+/// checked on its own, as both cannot fill in full and leave the larger exposure.
+/// With nothing else pending, this is exactly the per-order check
+/// ([`Position::fits_initial_after`]).
+fn pending_side_fits(
+    position: &Position,
+    market: &Market,
+    side: Side,
+    pending: PendingSide,
+    mark: i128,
+    funding_index: i128,
+) -> bool {
+    let closable = match side {
+        Side::Buy => position.size.min(0).saturating_neg(),
+        Side::Sell => position.size.max(0),
+    };
+    let total = pending
+        .adding
+        .saturating_add(pending.reducing.min(closable));
+    let delta = match side {
+        Side::Buy => total,
+        Side::Sell => total.saturating_neg(),
+    };
+    position.fits_initial_after(market, delta, mark, funding_index)
+}
+
+/// The open-order limits for `order` (counted against the caps if it can rest,
+/// margined as `reducing` or not), from an account with `pending` orders in the
+/// order's market and `account_open` open orders across every market. `margin` is
+/// the order's market, its owner's committed position there, the validated oracle
+/// price and the funding index; without it (no validated price) the reserve is not
+/// checked, and the seal refuses the order as `OracleUnavailable`.
+fn open_order_limits(
+    order: &Order,
+    reducing: bool,
+    pending: PendingOrders,
+    account_open: usize,
+    margin: Option<(&Market, &Position, i128, i128)>,
+) -> Result<(), OpenOrderLimit> {
+    if can_rest(order) {
+        if pending.open >= MAX_OPEN_ORDERS_PER_MARKET {
+            return Err(OpenOrderLimit::Market);
+        }
+        if account_open >= MAX_OPEN_ORDERS_PER_ACCOUNT {
+            return Err(OpenOrderLimit::Account);
+        }
+    }
+    if let Some((market, position, mark, funding_index)) = margin {
+        let mut side = match order.side {
+            Side::Buy => pending.buy,
+            Side::Sell => pending.sell,
+        };
+        if reducing {
+            side.reducing = side.reducing.saturating_add(order.size);
+        } else {
+            side.adding = side.adding.saturating_add(order.size);
+        }
+        if !pending_side_fits(position, market, order.side, side, mark, funding_index) {
+            return Err(OpenOrderLimit::PendingMargin);
+        }
+    }
+    Ok(())
+}
 
 /// Whether the minimum order size ([`MIN_ORDER_NOTIONAL`]) refuses `order` against
 /// its owner's current `position` (an empty one when the owner holds none), at the
@@ -928,6 +1208,22 @@ pub struct Sequencer {
     /// sets it after every boot or restore ([`Sequencer::set_minimum_exempt_owner`]).
     #[serde(skip)]
     minimum_exempt_owner: Option<PubKey>,
+    /// The resting orders the open-order limits count at intake, per account
+    /// (audit 2026-11-16 GA-1 + SM-1), so a check costs no walk over the book.
+    /// Built from the book when an intake check first needs it, kept up to date by
+    /// [`Sequencer::cancel_order`], and dropped whenever the book changes otherwise
+    /// (a seal, a void, a legacy rollback). Not persisted: a restore rebuilds it.
+    #[serde(skip)]
+    open_orders: Option<PendingTally>,
+    /// Orders accepted ([`Sequencer::accept_order`]) and not yet sealed, by hash:
+    /// the intake's pending orders. An order leaves when a batch seals it or it is
+    /// cancelled. Not persisted: after a restore the seal still counts every order
+    /// against the book, so it only refuses what intake let through.
+    #[serde(skip)]
+    intake: BTreeMap<Digest, PendingOrder>,
+    /// [`Self::intake`] tallied per account.
+    #[serde(skip)]
+    intake_tally: PendingTally,
 }
 
 impl Sequencer {
@@ -957,6 +1253,9 @@ impl Sequencer {
             funding_marks: BTreeMap::new(),
             minimum_exempt: BTreeSet::new(),
             minimum_exempt_owner: None,
+            open_orders: None,
+            intake: BTreeMap::new(),
+            intake_tally: PendingTally::default(),
         }
     }
 
@@ -1054,6 +1353,13 @@ impl Sequencer {
     /// has the size of the taker it answers, and the taker is measured against the
     /// minimum itself, so without the exemption a small exempt close could find its
     /// counter refused. Boot configuration, not persisted.
+    ///
+    /// The same owner is exempt from the open-order limits
+    /// ([`MAX_OPEN_ORDERS_PER_MARKET`], [`MAX_OPEN_ORDERS_PER_ACCOUNT`] and the
+    /// collateral reserve), for the same reason: its counters answer takers that
+    /// are held to the limits themselves, and a counter left resting by a taker the
+    /// batch refused must not block the next one. Each of its orders still passes
+    /// the per-order margin check.
     pub fn set_minimum_exempt_owner(&mut self, owner: Option<PubKey>) {
         self.minimum_exempt_owner = owner;
     }
@@ -1260,9 +1566,155 @@ impl Sequencer {
     /// (censorship/withholding) detectable via [`Sequencer::inclusion_violations`].
     /// The receipt's `seq_no` is the authoritative sequencer seq and is preserved
     /// if the same order is later sealed.
+    ///
+    /// A first acceptance also counts the order as pending at intake, for
+    /// [`Sequencer::check_open_order_limits`], until a batch seals it or it is
+    /// cancelled. Accepting does not itself check the limits: the caller checks
+    /// first, and the seal applies them to every order either way.
     pub fn accept_order(&mut self, order: &Order, now_ms: u64) -> SignedReceipt {
         let order_hash = order.order_hash::<Keccak256>();
+        if order.size > 0
+            && self.state.markets.contains_key(&order.market_id)
+            && !self.finality.contains_key(&order_hash)
+            && !self.intake.contains_key(&order_hash)
+        {
+            let pending = PendingOrder {
+                owner: order.owner,
+                market_id: order.market_id,
+                side: order.side,
+                size: order.size,
+                reducing: self.intake_reducing(order),
+                open: can_rest(order),
+            };
+            self.intake_tally.add(&pending);
+            self.intake.insert(order_hash, pending);
+        }
         self.issue_receipt(order_hash, now_ms)
+    }
+
+    /// The open-order limits at intake (audit 2026-11-16 GA-1 + SM-1), for an order
+    /// about to be accepted: the caps ([`MAX_OPEN_ORDERS_PER_MARKET`],
+    /// [`MAX_OPEN_ORDERS_PER_ACCOUNT`], for an order that can rest) and the
+    /// collateral reserve. The reserve admits the order only if the owner's
+    /// committed position in the market keeps initial margin at the validated
+    /// oracle price when every pending order on the order's side fills there in
+    /// full, the order included; an order that can only reduce counts up to the
+    /// size that closes the position. Pending orders are the owner's orders
+    /// resting on the book and those accepted but not yet sealed. Reads the book
+    /// through a per-account tally, so a check costs no walk over the book (the
+    /// first after the book changed rebuilds the tally once).
+    ///
+    /// Each side is margined on its own, and a fill, a cancel, an expiry or a
+    /// rejection releases what the order held: the tally is the orders still
+    /// pending, never a running reservation. While the market has no validated
+    /// price the reserve is not checked here (the seal refuses the order as
+    /// `OracleUnavailable`). The house owner ([`Sequencer::set_minimum_exempt_owner`])
+    /// is exempt. [`Sequencer::seal_batch`] applies the same limits to every order it
+    /// seals, against the book and the batch's earlier orders, so no path around
+    /// this check gets past them; an order it refuses is recorded in the manifest
+    /// under [`OpenOrderLimit::reject_reason`].
+    pub fn check_open_order_limits(
+        &mut self,
+        order: &Order,
+        now_ms: u64,
+    ) -> Result<(), OpenOrderLimit> {
+        if self.minimum_exempt_owner == Some(order.owner) {
+            return Ok(());
+        }
+        if self.open_orders.is_none() {
+            self.open_orders = Some(self.book_tally(None));
+        }
+        let book = self.open_orders.as_ref().expect("built above");
+        let pending = book
+            .market(&order.owner, order.market_id)
+            .plus(self.intake_tally.market(&order.owner, order.market_id));
+        let account_open = book
+            .account(&order.owner)
+            .saturating_add(self.intake_tally.account(&order.owner));
+        let valuation = self.valuation(order, now_ms).ok();
+        open_order_limits(
+            order,
+            self.intake_reducing(order),
+            pending,
+            account_open,
+            valuation
+                .as_ref()
+                .map(|(market, position, mark, index)| (market, position, *mark, *index)),
+        )
+    }
+
+    /// Whether intake counts `order` as one settlement holds to reducing: a
+    /// reduce-only order, or one below [`MIN_ORDER_NOTIONAL`] (the seal admits
+    /// such an order only if it reduces). Measured at the market's current
+    /// transcript price; the seal classifies the order exactly.
+    fn intake_reducing(&self, order: &Order) -> bool {
+        order.reduce_only
+            || (self.minimum_exempt_owner != Some(order.owner)
+                && self
+                    .oracles
+                    .get(&order.market_id)
+                    .is_some_and(|t| under_minimum_notional(order, t.price)))
+    }
+
+    /// Drop `hash` from the intake's pending orders, if it is there.
+    fn forget_intake(&mut self, hash: &Digest) {
+        if let Some(pending) = self.intake.remove(hash) {
+            self.intake_tally.remove(&pending);
+        }
+    }
+
+    /// Every order resting on the book, tallied per account. With `live_at`, an
+    /// order expired at that time holds nothing (matching no longer trades it);
+    /// without, every resting order counts until it is reaped.
+    fn book_tally(&self, live_at: Option<u64>) -> PendingTally {
+        let mut tally = PendingTally::default();
+        for &market_id in self.state.markets.keys() {
+            let Some(book) = self.matcher.book(market_id) else {
+                continue;
+            };
+            for (side, quote, expiry_ms) in book.resting_orders() {
+                let expired = live_at.is_some_and(|now| expiry_ms != 0 && now >= expiry_ms);
+                if quote.remaining <= 0 || expired {
+                    continue;
+                }
+                tally.add(&PendingOrder {
+                    owner: quote.owner,
+                    market_id,
+                    side,
+                    size: quote.remaining,
+                    reducing: quote.reduce_only || self.minimum_exempt.contains(&quote.order_hash),
+                    open: true,
+                });
+            }
+        }
+        tally
+    }
+
+    /// What the margin checks measure `order` with at `now_ms`: its market, its
+    /// owner's committed position there (an empty one when it holds none), the
+    /// validated oracle price and the funding index the engine's fill reads.
+    fn valuation(
+        &self,
+        order: &Order,
+        now_ms: u64,
+    ) -> Result<(Market, Position, i128, i128), RejectReason> {
+        let Some(market) = self.state.markets.get(&order.market_id) else {
+            // audit Tier-3: an unknown market is not a reduce-only violation.
+            return Err(RejectReason::InvalidOrder);
+        };
+        let Some(oracle) = self.oracles.get(&order.market_id) else {
+            return Err(RejectReason::OracleUnavailable);
+        };
+        let mark = oracle
+            .validate(market, now_ms)
+            .map_err(|_| RejectReason::OracleUnavailable)?;
+        let funding_index = self.funding_index_at(order.market_id, mark, now_ms);
+        let base = self
+            .state
+            .position(&order.owner, order.market_id)
+            .copied()
+            .unwrap_or_else(|| Position::empty(order.owner, order.market_id));
+        Ok((*market, base, mark, funding_index))
     }
 
     /// Pre-trade risk (§12, Phase 3): would this order, filled in full at the
@@ -1284,9 +1736,10 @@ impl Sequencer {
     /// This is the check for an order on its own, against its owner's committed
     /// position. [`Sequencer::seal_batch`] applies the same check to each order of a
     /// batch, also against the position after the owner's earlier orders of the
-    /// batch.
+    /// batch, together with the open-order limits
+    /// ([`Sequencer::check_open_order_limits`]), which this check leaves out.
     pub fn pre_trade_check(&self, order: &Order, now_ms: u64) -> Result<(), RejectReason> {
-        self.admission(order, now_ms, 0).map(|_| ())
+        self.admission(order, now_ms, 0, None).map(|_| ())
     }
 
     /// [`Sequencer::pre_trade_check`] for an order whose owner already has orders
@@ -1295,28 +1748,20 @@ impl Sequencer {
     /// against that position after the earlier orders fill in full; the order adds
     /// exposure if it does so against either. Returns whether the order was admitted
     /// below the minimum because it reduces (settlement then holds it to that).
+    ///
+    /// With `limits`, the owner's pending orders in the market and its open orders
+    /// across every market, the order must also pass the open-order limits
+    /// (audit 2026-11-16 GA-1 + SM-1); a refusal is recorded under
+    /// [`OpenOrderLimit::reject_reason`]. The house owner is exempt.
     fn admission(
         &self,
         order: &Order,
         now_ms: u64,
         earlier: i128,
+        limits: Option<(PendingOrders, usize)>,
     ) -> Result<Admitted, RejectReason> {
-        let Some(market) = self.state.markets.get(&order.market_id) else {
-            // audit Tier-3: an unknown market is not a reduce-only violation.
-            return Err(RejectReason::InvalidOrder);
-        };
-        let Some(oracle) = self.oracles.get(&order.market_id) else {
-            return Err(RejectReason::OracleUnavailable);
-        };
-        let mark = oracle
-            .validate(market, now_ms)
-            .map_err(|_| RejectReason::OracleUnavailable)?;
-        let funding_index = self.funding_index_at(order.market_id, mark, now_ms);
-        let base = self
-            .state
-            .position(&order.owner, order.market_id)
-            .copied()
-            .unwrap_or_else(|| Position::empty(order.owner, order.market_id));
+        let (market, base, mark, funding_index) = self.valuation(order, now_ms)?;
+        let market = &market;
         let mut projected = base;
         projected.size = base.size.saturating_add(earlier);
         // audit DP-009 (adversarial-review follow-up): reject a reduce_only order that
@@ -1341,10 +1786,20 @@ impl Sequencer {
         if !base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
             return Err(RejectReason::InsufficientMargin);
         }
+        let below_minimum_exempt =
+            minimum_applies && !order.reduce_only && under_minimum_notional(order, mark);
+        if let Some((pending, account_open)) = limits.filter(|_| minimum_applies) {
+            open_order_limits(
+                order,
+                order.reduce_only || below_minimum_exempt,
+                pending,
+                account_open,
+                Some((market, &base, mark, funding_index)),
+            )
+            .map_err(OpenOrderLimit::reject_reason)?;
+        }
         Ok(Admitted {
-            below_minimum_exempt: minimum_applies
-                && !order.reduce_only
-                && under_minimum_notional(order, mark),
+            below_minimum_exempt,
         })
     }
 
@@ -1363,10 +1818,10 @@ impl Sequencer {
     /// The impact-notional book mid of `market_id` at `now_ms`: the midpoint of the
     /// average prices at which [`FUNDING_IMPACT_NOTIONAL`] would fill against the
     /// bids and against the asks. Only depth the engine could fill counts: a
-    /// resting order inside the market's fill band around the validated index
-    /// whose maker could settle the fill. `None` when either side holds less than
-    /// that within its first [`FUNDING_IMPACT_MAX_ORDERS`] in-band orders, or when
-    /// the market's oracle does not validate at `now_ms`.
+    /// resting order inside the market's fill band around the validated index, worth
+    /// at least [`FUNDING_IMPACT_MIN_QUOTE`], whose maker could settle the fill.
+    /// `None` when either side holds less than that in its fill band, or when the
+    /// market's oracle does not validate at `now_ms`.
     pub fn impact_mid(&self, market_id: MarketId, now_ms: u64) -> Option<i128> {
         let market = self.state.markets.get(&market_id)?;
         let index = self
@@ -1393,9 +1848,13 @@ impl Sequencer {
     /// trade against therefore cannot move the funding mark; in particular an
     /// order admitted below the minimum because it reduced counts only while it
     /// still reduces, so stacking such orders gives no depth beyond the maker's
-    /// position. The sweep walks only the levels inside the fill band and visits
-    /// at most [`FUNDING_IMPACT_MAX_ORDERS`] orders; a side that needs more has no
-    /// impact price.
+    /// position, and an order worth less than [`FUNDING_IMPACT_MIN_QUOTE`] is dust,
+    /// never depth. The sweep walks only the levels inside the fill band and ends at
+    /// the order that completes the impact notional (audit 2026-11-16 SM-3): what
+    /// it passes over, dust or unfillable, costs it no budget, so no number of such
+    /// orders, ahead of the depth or queued behind it at its price, can leave the
+    /// side without its impact price. Its work grows with the in-band orders ahead
+    /// of the depth, which the open-order caps bound per account.
     fn impact_price(&self, market: &Market, index: i128, side: Side, now_ms: u64) -> Option<i128> {
         let book = self.matcher.book(market.id)?;
         // the fill band as a price range: |price − index| · RATE_SCALE <= ratio · index
@@ -1403,7 +1862,7 @@ impl Sequencer {
         let window = ImpactWindow {
             lo: index.checked_sub(reach)?,
             hi: index.checked_add(reach)?,
-            max_orders: FUNDING_IMPACT_MAX_ORDERS,
+            min_quote: FUNDING_IMPACT_MIN_QUOTE,
         };
         let funding_index = self.funding_index_at(market.id, index, now_ms);
         let close_only = self.state.mode == Mode::CloseOnly;
@@ -1519,8 +1978,8 @@ impl Sequencer {
     /// **Funding mark.** Each tick samples, per market, the premium of the
     /// impact-notional book mid ([`Sequencer::impact_mid`]) over the validated
     /// oracle index, or 0 when either side lacks [`FUNDING_IMPACT_NOTIONAL`] of
-    /// depth the engine could fill (within [`FUNDING_IMPACT_MAX_ORDERS`] orders of
-    /// the fill band). [`Sequencer::seal_batch`] takes the sample from
+    /// depth the engine could fill inside the fill band (orders worth at least
+    /// [`FUNDING_IMPACT_MIN_QUOTE`]). [`Sequencer::seal_batch`] takes the sample from
     /// the book the tick's takers face, before it matches, and the sample prices
     /// the span since the previous tick. The `AccrueFunding` mark is the index plus
     /// the time-weighted average of those spans since the open window began (reset
@@ -1540,6 +1999,9 @@ impl Sequencer {
         // matching already refuses to trade against it. Within `seal_batch` the
         // sample at `now_ms` was taken before matching, so this one changes nothing.
         let removals = self.matcher.reap_expired_with_events(now_ms);
+        if !removals.is_empty() {
+            self.open_orders = None;
+        }
         self.sample_funding_premiums(now_ms);
         let mut liquidated = Vec::new();
         let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
@@ -1657,6 +2119,16 @@ impl Sequencer {
         // orders below the minimum admitted only because they reduce: the ones
         // resting from earlier batches plus this batch's
         let mut minimum_exempt = self.minimum_exempt.clone();
+        // The orders the open-order limits count (audit 2026-11-16 GA-1 + SM-1): the
+        // book this batch's takers face (an order expired at `now_ms` holds
+        // nothing), then each order of this batch as it is admitted, whatever it
+        // turns out to do when it matches. Built for the first order, so an idle
+        // tick walks no book. Every order of the batch leaves the intake's pending
+        // orders: the batch decides it now.
+        let mut pending: Option<PendingTally> = None;
+        for o in orders {
+            self.forget_intake(&o.order_hash::<Keccak256>());
+        }
         for o in orders {
             if o.reduce_only && owners_with_order.contains(&(o.owner, o.market_id)) {
                 pre_rejected.push((
@@ -1666,7 +2138,14 @@ impl Sequencer {
                 continue;
             }
             let key = (o.owner, o.market_id);
-            match self.admission(o, now_ms, earlier.get(&key).copied().unwrap_or(0)) {
+            let tally = pending.get_or_insert_with(|| self.book_tally(Some(now_ms)));
+            let limits = (tally.market(&o.owner, o.market_id), tally.account(&o.owner));
+            match self.admission(
+                o,
+                now_ms,
+                earlier.get(&key).copied().unwrap_or(0),
+                Some(limits),
+            ) {
                 Ok(admitted_order) => {
                     owners_with_order.insert(key);
                     let net = earlier.entry(key).or_default();
@@ -1674,6 +2153,14 @@ impl Sequencer {
                     if admitted_order.below_minimum_exempt {
                         minimum_exempt.insert(o.order_hash::<Keccak256>());
                     }
+                    tally.add(&PendingOrder {
+                        owner: o.owner,
+                        market_id: o.market_id,
+                        side: o.side,
+                        size: o.size,
+                        reducing: o.reduce_only || admitted_order.below_minimum_exempt,
+                        open: can_rest(o),
+                    });
                     admitted.push(*o);
                 }
                 Err(reason) => pre_rejected.push((o.order_hash::<Keccak256>(), reason)),
@@ -1852,6 +2339,8 @@ impl Sequencer {
         // been banned, expired or been cancelled with a liquidated owner.
         self.matcher.retain_resting(&mut minimum_exempt);
         self.minimum_exempt = minimum_exempt;
+        // The book changed: the intake's tally of it is rebuilt when next needed.
+        self.open_orders = None;
 
         removals.extend(
             stream
@@ -2389,6 +2878,7 @@ impl Sequencer {
             self.snapshots.remove(tick);
         }
         let hashes = dedup_in_order(hashes);
+        self.open_orders = None;
         for hash in &hashes {
             let _ = self.matcher.cancel_order(hash);
             for (_, matcher) in self.snapshots.values_mut() {
@@ -2498,6 +2988,7 @@ impl Sequencer {
         // revert live state + matcher to before the failed batch
         self.state = state;
         self.matcher = matcher;
+        self.open_orders = None;
         // drop this and all later pending batches; revert their finality
         let dropped: Vec<u64> = self.snapshots.range(batch_id..).map(|(k, _)| *k).collect();
         for b in &dropped {
@@ -4051,7 +4542,7 @@ mod tests {
     /// rests, is not refused for the cap.
     #[test]
     fn audit_1116_ga1_orders_restored_above_the_cap_stay_but_new_ones_are_refused() {
-        const PER_MARKET: u64 = 64;
+        const PER_MARKET: u64 = MAX_OPEN_ORDERS_PER_MARKET as u64;
         let mut s = test_sequencer();
         fund(&mut s, 3, 1_000_000, 0x33);
         let restored: Vec<Order> = (0..PER_MARKET + 36)

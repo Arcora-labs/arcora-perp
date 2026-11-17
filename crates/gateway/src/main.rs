@@ -4113,6 +4113,12 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
+        // The sequencer's open-order limits (audit 2026-11-16 GA-1 + SM-1), before the
+        // nonce is spent or anything is recorded: `OPEN_ORDER_LIMIT` (409) or
+        // `PENDING_MARGIN` (400). The seal applies them again to every order.
+        self.seq
+            .check_open_order_limits(&order, price_use.now_ms)
+            .map_err(|e| e.to_string())?;
         if let Some(expected) = signer {
             let sig_hex = match req.signature.as_deref() {
                 Some(s) => s,
@@ -5194,6 +5200,10 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
+        // The sequencer's open-order limits, as on the /v1 path.
+        self.seq
+            .check_open_order_limits(&order, now)
+            .map_err(|e| e.to_string())?;
         let signed = self.seq.accept_order(&order, now);
         let r = &signed.receipt;
         let receipt = WReceipt {
@@ -8875,6 +8885,13 @@ async fn post_v1_order(
             Json(serde_json::json!({ "error": e })),
         )
             .into_response(),
+        // audit 2026-11-16 GA-1: the account's open-order cap
+        // (`sequencer::OpenOrderLimit`); cancelling an open order clears it.
+        Err(e) if e.starts_with("OPEN_ORDER_LIMIT") => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
         Err(e) => err400(e).into_response(),
     }
 }
@@ -9140,7 +9157,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
-                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },
+                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt), and an order whose initial margin together with the account's pending orders on the same side exceeds its collateral in the market (`PENDING_MARGIN: ...`)" }, "409": { "description": "the account already has 64 open orders in the market or 128 across all markets (`OPEN_ORDER_LIMIT: ...`); cancel one first" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null)", "security": auth["security"], "responses": ok("orders") }
             },
             "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a pending order or live maker remainder. Prior fills are unchanged, including settled partial fills. Retains the original receipt and execution history; retries are idempotent. Production success requires a durable snapshot; cancellation is recorded in the open window manifest", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: unknown order or no cancellable remainder" }, "503": { "description": "persistence unavailable or durable cancellation outcome unknown" } } } },

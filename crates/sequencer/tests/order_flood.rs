@@ -26,12 +26,10 @@ use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Order, RejectReason, Side, TimeInForce};
 use perp_core::Note;
-use sequencer::{EnclaveIdentity, SealedBatch, Sequencer};
-
-/// The most orders one account may keep open in one market.
-const PER_MARKET: usize = 64;
-/// The most orders one account may keep open across every market.
-const PER_ACCOUNT: usize = 128;
+use sequencer::{
+    EnclaveIdentity, OpenOrderLimit, SealedBatch, Sequencer,
+    MAX_OPEN_ORDERS_PER_ACCOUNT as PER_ACCOUNT, MAX_OPEN_ORDERS_PER_MARKET as PER_MARKET,
+};
 
 /// 0.0001 BTC: $10 at the $100,000 index, the order minimum.
 const TEN_DOLLARS: i128 = SIZE_SCALE / 10_000;
@@ -432,9 +430,9 @@ fn audit_1116_sm1_a_fill_releases_the_reserve_into_the_position() {
         vec![hash(&full)],
         "the position and the pending bids use all of the collateral"
     );
-    // owner 3 closes the long against owner 4's bid
+    // owner 3 closes the long against owner 4's bid, above its own bids
     t += 700;
-    let bid = order(4, 0, Side::Buy, TEN_DOLLARS * 10, 99_900, 2);
+    let bid = order(4, 0, Side::Buy, TEN_DOLLARS * 10, 99_950, 2);
     let close = ioc(Order {
         reduce_only: true,
         ..order(3, 0, Side::Sell, TEN_DOLLARS * 10, 99_900, 101)
@@ -453,6 +451,64 @@ fn audit_1116_sm1_a_fill_releases_the_reserve_into_the_position() {
     let sealed = tick(&mut s, t, &again);
     assert!(sealed.manifest.rejected.is_empty(), "{:?}", sealed.manifest);
     assert_eq!(resting(&s, 3, 0), 20);
+}
+
+/// Intake (`check_open_order_limits`, then `accept_order`) counts the orders
+/// accepted and waiting for their batch together with the resting ones: an IOC
+/// waiting for its batch holds its margin until the batch has run, a cancel of an
+/// order not yet sealed releases it, and the cap counts resting and waiting orders
+/// alike, a cancel of a resting one freeing a slot.
+#[test]
+fn audit_1116_sm1_intake_counts_the_orders_waiting_for_their_batch() {
+    let t = 10_000u64;
+    let mut s = setup(&[0], t);
+    fund(&mut s, 3, 0, 10);
+    let sweep = ioc(order(3, 0, Side::Buy, TEN_DOLLARS * 10, 101_000, 1));
+    assert_eq!(s.check_open_order_limits(&sweep, t), Ok(()));
+    s.accept_order(&sweep, t);
+    let bid = order(3, 0, Side::Buy, TEN_DOLLARS, 99_000, 2);
+    assert_eq!(
+        s.check_open_order_limits(&bid, t),
+        Err(OpenOrderLimit::PendingMargin)
+    );
+    // the IOC's batch runs: it trades nothing and holds nothing
+    tick(&mut s, t, &[sweep]);
+    assert_eq!(s.check_open_order_limits(&bid, t), Ok(()));
+    let bids: Vec<Order> = (0..10u64)
+        .map(|n| order(3, 0, Side::Buy, TEN_DOLLARS, 99_000, 10 + n))
+        .collect();
+    for b in &bids {
+        assert_eq!(s.check_open_order_limits(b, t), Ok(()));
+        s.accept_order(b, t);
+    }
+    assert_eq!(
+        s.check_open_order_limits(&bid, t),
+        Err(OpenOrderLimit::PendingMargin)
+    );
+    assert!(s.cancel_order(&owner_id(3), &bids[0], false).is_some());
+    assert_eq!(s.check_open_order_limits(&bid, t), Ok(()));
+
+    // the cap: half resting, half waiting
+    fund(&mut s, 1, 0, 1_000_000);
+    let quotes: Vec<Order> = (0..PER_MARKET as u64)
+        .map(|n| order(1, 0, Side::Buy, THOUSAND_DOLLARS, 98_000, n))
+        .collect();
+    let (resting_half, waiting_half) = quotes.split_at(PER_MARKET / 2);
+    assert!(tick(&mut s, t, resting_half).manifest.rejected.is_empty());
+    for q in waiting_half {
+        assert_eq!(s.check_open_order_limits(q, t), Ok(()));
+        s.accept_order(q, t);
+    }
+    let extra = order(1, 0, Side::Buy, THOUSAND_DOLLARS, 98_000, 1_000);
+    assert_eq!(
+        s.check_open_order_limits(&extra, t),
+        Err(OpenOrderLimit::Market)
+    );
+    // an IOC is not refused for the cap
+    let take = ioc(order(1, 0, Side::Sell, THOUSAND_DOLLARS, 101_000, 1_001));
+    assert_eq!(s.check_open_order_limits(&take, t), Ok(()));
+    assert!(s.cancel_order(&owner_id(1), &quotes[0], true).is_some());
+    assert_eq!(s.check_open_order_limits(&extra, t), Ok(()));
 }
 
 // ---------------------------------------------------------------------------

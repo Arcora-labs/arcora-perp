@@ -6,8 +6,7 @@ use axum::body::Body;
 use axum::http::Request;
 use tower::ServiceExt as _;
 
-/// The most orders one account may keep open in one market.
-const PER_MARKET: usize = 64;
+use sequencer::MAX_OPEN_ORDERS_PER_MARKET as PER_MARKET;
 
 /// A plaintext GTC buy for market 0.
 fn bid(size: i128, limit: i128) -> OrderReq {

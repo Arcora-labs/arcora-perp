@@ -1097,10 +1097,10 @@ mod impact_price_tests {
     }
 
     /// A window walks only the levels inside its price range (never showing the
-    /// filter an order outside it) and gives no impact price once it would visit
-    /// more than its order budget before reaching the notional.
+    /// filter an order outside it), and passes over the orders worth less than its
+    /// minimum quote without showing them to the filter either.
     #[test]
-    fn a_window_bounds_the_levels_and_the_orders_a_sweep_visits() {
+    fn a_window_bounds_the_levels_and_passes_over_dust() {
         let mut book = OrderBook::<Keccak256>::new(0);
         // three asks of just under $50 at $90, $100 and $110, and a deep ask at $120
         for (n, price) in [(1, 90), (2, 100), (3, 110)] {
@@ -1119,10 +1119,10 @@ mod impact_price_tests {
             100 * SIZE_SCALE,
             120 * PRICE_SCALE,
         );
-        let window = |lo: i128, hi: i128, max_orders: usize| ImpactWindow {
+        let window = |lo: i128, hi: i128, min_quote_usd: i128| ImpactWindow {
             lo: lo * PRICE_SCALE,
             hi: hi * PRICE_SCALE,
-            max_orders,
+            min_quote: min_quote_usd * QUOTE_SCALE,
         };
         let mut seen = Vec::new();
         let mut record = |q: &RestingQuote| {
@@ -1136,7 +1136,7 @@ mod impact_price_tests {
                 Side::Sell,
                 140 * QUOTE_SCALE,
                 0,
-                window(95, 115, 10),
+                window(95, 115, 0),
                 &mut record
             ),
             None
@@ -1152,13 +1152,20 @@ mod impact_price_tests {
                 all
             )
             .is_some());
-        // a budget of two orders stops the walk before the third
+        // with a $51 minimum quote the three small asks (at most $50 each) are dust:
+        // the filter sees only the deep ask, which prices the whole $140
+        let mut seen = Vec::new();
         assert_eq!(
-            book.impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 200, 2), all),
-            None
+            book.impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 200, 51), |q| {
+                seen.push(q.price / PRICE_SCALE);
+                true
+            }),
+            Some(120 * PRICE_SCALE)
         );
+        assert_eq!(seen, [120]);
+        // just under their value, they count again
         assert!(book
-            .impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 200, 3), all)
+            .impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 115, 49), all)
             .is_some());
         // the bids side walks its window from the top down
         let mut bids = OrderBook::<Keccak256>::new(0);
@@ -1166,18 +1173,18 @@ mod impact_price_tests {
             rest(&mut bids, n, Side::Buy, SIZE_SCALE, price * PRICE_SCALE);
         }
         let mut seen = Vec::new();
-        let _ = bids.impact_price_within(Side::Buy, THOUSAND, 0, window(95, 105, 10), |q| {
+        let _ = bids.impact_price_within(Side::Buy, THOUSAND, 0, window(95, 105, 0), |q| {
             seen.push(q.price / PRICE_SCALE);
             true
         });
         assert_eq!(seen, [100]);
-        // an empty or inverted window has no depth
+        // an empty or inverted window has no depth, nor does a side all dust
         assert_eq!(
-            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(105, 95, 10), all),
+            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(105, 95, 0), all),
             None
         );
         assert_eq!(
-            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(0, 200, 0), all),
+            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(0, 200, 111), all),
             None
         );
     }
@@ -1221,17 +1228,33 @@ mod impact_price_tests {
     #[test]
     fn extreme_prices_fail_closed_without_panicking() {
         let mut book = OrderBook::<Keccak256>::new(0);
-        // the level notional overflows
+        // the order's notional overflows
         rest(&mut book, 1, Side::Sell, SIZE_SCALE, i128::MAX / 2);
-        // the level size overflows
+        assert_eq!(book.impact_price(Side::Sell, THOUSAND, 0, all), None);
+        // two bids whose sizes would overflow summed: the first alone holds the
+        // notional, so the walk ends there with a valid, finite average
         rest(&mut book, 2, Side::Buy, i128::MAX / 2 + 1, 1);
         rest(&mut book, 3, Side::Buy, i128::MAX / 2 + 1, 1);
-        assert_eq!(book.impact_price(Side::Sell, THOUSAND, 0, all), None);
-        assert_eq!(book.impact_price(Side::Buy, THOUSAND, 0, all), None);
+        assert_eq!(book.impact_price(Side::Buy, THOUSAND, 0, all), Some(1));
         // a tiny price with deep size is still a valid, finite average
         let mut deep = OrderBook::<Keccak256>::new(0);
         rest(&mut deep, 1, Side::Buy, i128::MAX / 4, 1);
         assert_eq!(deep.impact_price(Side::Buy, THOUSAND, 0, all), Some(1));
+        // an overflowing order the filter refuses does not end the walk
+        let mut asks = OrderBook::<Keccak256>::new(0);
+        rest(&mut asks, 1, Side::Sell, i128::MAX / 2 + 1, 2);
+        rest(
+            &mut asks,
+            2,
+            Side::Sell,
+            100 * SIZE_SCALE,
+            100 * PRICE_SCALE,
+        );
+        assert_eq!(asks.impact_price(Side::Sell, THOUSAND, 0, all), None);
+        assert_eq!(
+            asks.impact_price(Side::Sell, THOUSAND, 0, |q| q.price > 2),
+            Some(100 * PRICE_SCALE)
+        );
     }
 
     /// Audit 2026-11-16 SM-3: the sweep checks the notional after each order it
