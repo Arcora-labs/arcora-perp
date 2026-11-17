@@ -319,8 +319,14 @@ def public_config(value):
     return result
 
 
+# The gateway's opt-in to boot against an SP1 router whose owner can bypass or halt
+# proof verification (audit SV-1). A release environment leaves it unset or "0".
+SP1_ROUTER_TRUST_VAR = "L1_ACCEPT_SP1_ROUTER_OWNER_TRUST"
+
+
 def check_environment(config, env):
     # Never read, record, or diagnose key values from the service environment.
+    require(env.get(SP1_ROUTER_TRUST_VAR) in (None, "0"), "process environment mismatch: " + SP1_ROUTER_TRUST_VAR)
     for key, expected in config["gateway"].items():
         actual = env.get(key)
         if key in GATEWAY_ADDRESS_KEYS and isinstance(actual, str):

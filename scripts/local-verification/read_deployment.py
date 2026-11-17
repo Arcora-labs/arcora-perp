@@ -53,6 +53,10 @@ class ObservationError(ValueError):
     """A diagnostic constructed locally without untrusted error/URL text."""
 
 
+class ExecutionReverted(ObservationError):
+    """The node answered an eth_call with an execution revert, not a transport or node error."""
+
+
 def require(condition, message):
     if not condition:
         raise ObservationError(message)
@@ -148,6 +152,10 @@ def observe(config, witness_url=None, config_path=None):
                 code = error.get("code") if isinstance(error, dict) else None
                 code = code if type(code) is int else None
                 record["error"] = {"kind": "rpc", "code": code}
+                message = error.get("message") if isinstance(error, dict) else None
+                if method == "eth_call" and (code == 3 or isinstance(message, str)
+                                             and "revert" in message.lower()):
+                    raise ExecutionReverted(f"{endpoint}: eth_call reverted (code={code})")
                 raise ObservationError(f"{endpoint}: RPC error for {method} (code={code})")
             require("result" in value, f"{endpoint}: missing RPC result")
             observed = value["result"]
@@ -162,6 +170,8 @@ def observe(config, witness_url=None, config_path=None):
                 observed = "0x" + hex_data(observed, 32 if method == "eth_call" else None).hex()
             record["response"] = {"jsonrpc": "2.0", "id": request_id, "result": observed}
             return observed
+        except ExecutionReverted:
+            raise
         except Exception as exc:
             diagnostic = safe_error(exc)
             record.setdefault("error", {"kind": "observation", "diagnostic": diagnostic})
@@ -218,17 +228,26 @@ def observe(config, witness_url=None, config_path=None):
                         raise
         # The registered stack's adapter routes through an SP1 gateway: its owner can add an
         # accept-everything route or freeze the real one (docs/SECURITY.md, audit SV-1), so
-        # the observation records who that is. A failed read is recorded, never guessed.
+        # the observation records who that is. A failed read is recorded, never guessed. A
+        # stack bound directly to the stateless verifier has no owner(): there the call
+        # reverts, and only a revert (agreed by a configured witness) means "no owner".
         route = config["contracts"].get("SP1ZkVerifier", {}).get("sp1VerifierGateway")
         if route:
             owner_call = {"to": route, "data": selector("owner()")}
+
+            def owner_word(endpoint):
+                try:
+                    return hex_data(rpc(endpoint, "eth_call", [owner_call, pin]), 32)
+                except ExecutionReverted:
+                    return None
+
             try:
-                word = hex_data(rpc("primary", "eth_call", [owner_call, pin]), 32)
+                word = owner_word("primary")
                 if has_witness:
-                    require(hex_data(rpc("witness", "eth_call", [owner_call, pin]), 32) == word,
+                    require(owner_word("witness") == word,
                             "witness: getter disagreement at the SP1 gateway owner()")
-                result["sp1_gateway_owner"] = {"gateway": route, "owner": "0x" + word[12:].hex()
-                                               if word[:12] == bytes(12) else None}
+                owner = None if word is None or word[:12] != bytes(12) else "0x" + word[12:].hex()
+                result["sp1_gateway_owner"] = {"gateway": route, "owner": owner, "owner_exposed": word is not None}
             except Exception as exc:
                 if has_witness:
                     raise

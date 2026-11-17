@@ -74,7 +74,10 @@ WIND_DOWN_RECIPIENT and PROVER_EXPECTED_ELF_SHA256 come from the config and the
 reviewed guest) and the transaction record next to it as
 `<output>.deployment.json`, including `deploy_block` (the block of the first
 transaction) and `settlement_block` (the block the settlement was created in,
-where its liveness clock starts). If a transaction fails, nothing is written to
+where its liveness clock starts). Both records carry
+`sp1_router_owner_trust_accepted` and `sp1_trusted_router`: true and the router's
+address only when `--accept-sp1-router-owner-trust` let a reused target that is
+not the stateless verifier through. If a transaction fails, nothing is written to
 --output; `<output>.partial.json` records what was deployed before it.
 """
 import argparse
@@ -226,24 +229,29 @@ def check_reused_verifier(config, rpc, accept_router_owner_trust=False):
     whole runtime must equal the compiled stateless v6.1.0 SP1 verifier (the same
     match `observe-target` makes), and it must report the pinned VERIFIER_HASH().
     Behavior probes alone would pass any lookalike that merely lacks an `owner()`.
+
+    Returns the router the opt-in let through (recorded with the deployment), or
+    None when the adapter targets the pinned verifier.
     """
     if not config["reuse"]:
-        return
+        return None
     target = config["reuse"]["sp1_verifier"]
-    if accept_router_owner_trust:
-        print("[deploy] WARNING: --accept-sp1-router-owner-trust: the owner of " + target
-              + " can bypass or halt proof verification (docs/SECURITY.md)", file=sys.stderr)
-        return
     code = cast(["code", target], rpc)
     try:
         release.runtime_identity(pinned_verifier_artifact(), release.deployment_reader.hex_data(code), "sp1_verifier")
     except ValueError:
+        if accept_router_owner_trust:
+            print("[deploy] WARNING: --accept-sp1-router-owner-trust: " + target + " is not the stateless "
+                  "SP1 verifier; its owner can bypass or halt proof verification (docs/SECURITY.md)",
+                  file=sys.stderr)
+            return target
         raise DeployError("sp1_verifier's runtime is not the compiled stateless SP1 v6.1.0 verifier: a router "
                           "or any other contract is refused (--accept-sp1-router-owner-trust accepts "
                           "trusting a router owner)") from None
     pinned = "0x" + release.clock.target.VERIFIER_HASH
     if cast(["call", target, "VERIFIER_HASH()(bytes32)"], rpc).lower() != pinned:
         raise DeployError("sp1_verifier does not report the pinned SP1 v6.1.0 VERIFIER_HASH()")
+    return None
 
 
 def check_chain(config, rpc, allow_public, owned_test_chain=False):
@@ -391,11 +399,14 @@ def main(argv=None):
         public_config(config, {role: "0x" + format(i, "040x")
                                for i, role in enumerate(sorted(release.ADDRESS_ROLES), 1)})
         client, owned = check_chain(config, args.rpc, args.allow_public_chain, args.owned_test_chain)
-        check_reused_verifier(config, args.rpc, args.accept_sp1_router_owner_trust)
+        trusted_router = check_reused_verifier(config, args.rpc, args.accept_sp1_router_owner_trust)
     except (DeployError, ValueError, OSError) as error:
         print(f"[deploy] REFUSED: {error}", file=sys.stderr)
         return 2
     deployer = Deployer(args.rpc, signer)
+    # Evidence: whether the adapter targets a router whose owner the operator chose to trust.
+    sp1_trust = {"sp1_router_owner_trust_accepted": trusted_router is not None,
+                 "sp1_trusted_router": trusted_router}
     try:
         deploy_stack(config, deployer)
         public = public_config(config, deployer.addresses)
@@ -404,7 +415,7 @@ def main(argv=None):
         args.output.with_suffix(".partial.json").write_text(json.dumps({
             "chain_id": config["chain_id"], "rpc_client": client, "owned_test_chain": owned,
             "addresses": deployer.addresses, "transactions": deployer.transactions,
-            "deploy_block": first_block(deployer), "failed": failed, "error": str(error),
+            "deploy_block": first_block(deployer), "failed": failed, "error": str(error), **sp1_trust,
         }, indent=2) + "\n")
         print(f"[deploy] FAILED: {error}; partial record written", file=sys.stderr)
         return 1
@@ -415,6 +426,7 @@ def main(argv=None):
         "oracle_signer_address": config["oracle_signer_address"],
         "genesis_recomputed": args.gateway_bin is not None, "deploy_block": first_block(deployer),
         "settlement_block": deployer.block_of("settlement"), "transactions": deployer.transactions,
+        **sp1_trust,
     }, indent=2) + "\n")
     print(json.dumps({"status": "DEPLOYED", "addresses": public["addresses"]}, indent=2))
     return 0
