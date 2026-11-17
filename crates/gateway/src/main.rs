@@ -51,6 +51,8 @@ mod answer_lane;
 mod audit_1116_g11_tests;
 #[cfg(test)]
 mod audit_1116_ga2_tests;
+#[cfg(test)]
+mod audit_1116_or1_tests;
 mod bootstrap;
 #[cfg(test)]
 mod candidate_bridge;
