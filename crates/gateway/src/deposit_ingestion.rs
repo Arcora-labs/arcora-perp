@@ -706,6 +706,7 @@ impl Gw {
             self.deposits.routes.remove(&credit.event.commit);
             self.processed_deposit_txs.insert(hex0x(&credit.event.tx)); // legacy read compatibility, NOT the new dedup key
             self.deposits.uncredited.remove(&credit.event.id);
+            self.charge_credited_deposit(&credit.route);
             self.deposits.credits.insert(credit.event.id, credit);
         }
         // Before completion an insurance deposit records the window that carries it

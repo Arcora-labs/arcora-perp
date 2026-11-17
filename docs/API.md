@@ -270,6 +270,9 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    - An account that holds no position yet holds permits for one market at a time
      until its first deposit is credited (`409` `{ error }` otherwise), so it
      reserves at most one position entry.
+   - An account that spent its lifetime history quota (100 units over credited
+     deposits and withdrawals, § Withdrawals) gets no further deposit permit
+     (`403` `ACCOUNT_HISTORY_QUOTA`); its outstanding permits count against it.
    - A withdrawal that would need more room than the history bound leaves is
      refused with `400` and a `HISTORY_CAP` error, unless it is a full exit: the
      whole balance of a closed position in that market, which removes the entry and
@@ -499,14 +502,32 @@ directly:
    The minimum is **10 USDC** (10,000,000 base units, the order and deposit minimum),
    unless `amount` is the entire free balance in that market (`marketFree` in
    `GET /v1/accounts/me`, not the account-wide `settledBalance`); a smaller request
-   is a `400` `BELOW_MINIMUM`. Every withdrawal adds a leaf and a nullifier to the
-   provable history, which only grows, so each account is limited: at most **3
-   withdrawals per minute** and **10 in the open settlement window** (a `429`
-   `WITHDRAW_RATE_LIMIT_MINUTE` / `WITHDRAW_RATE_LIMIT_WINDOW`; retry later), and
-   at most **50 partial withdrawals over its lifetime** (a `400`
-   `WITHDRAW_QUOTA_EXCEEDED`). A full exit (the whole balance of a closed
-   position) is exempt from the quota and from the minimum, so funds can always
-   leave. The usage counters live in gateway memory and start empty on restart. Once the admission
+   is a `400` `BELOW_MINIMUM`. Every credited deposit and every withdrawal adds a
+   leaf and a nullifier (2 units) to the provable history, which only grows, so
+   each account is limited:
+   - at most **3 withdrawals per minute** and **10 in the open settlement window**
+     (a `429` `WITHDRAW_RATE_LIMIT_MINUTE` / `WITHDRAW_RATE_LIMIT_WINDOW`; retry
+     later). A withdrawal removed by a voided window is not counted again;
+   - a lifetime quota of **100 history units** (50 operations) for credited deposits
+     and withdrawals together. Once spent, a partial withdrawal is a `400`
+     `WITHDRAW_QUOTA_EXCEEDED` and a new deposit permit is a `403`
+     `ACCOUNT_HISTORY_QUOTA`. The quota is kept in the snapshot, so a restart does
+     not reset it;
+   - an exchange-wide reserve: once the history (with the outstanding permits)
+     reaches **7,968** units, every partial withdrawal is a `400`
+     `WITHDRAW_RESERVE_REACHED`, whatever the account's own usage, so registration,
+     deposit permits and exits keep the room above it.
+
+   A full exit (the whole balance of a closed position) is exempt from the quota and
+   the reserve, and a withdrawal of the whole free balance in the market from the
+   minimum, so funds can always leave. Full exits still count against the rate
+   limits and are charged to the ledger; they are bounded by the entries the account
+   holds, since no new entry opens without a deposit permit. The per-minute counter
+   lives in gateway memory and starts empty on restart. The non-production demo
+   build (`/api/withdraw`, `/api/lp/*`, `/api/deposit`, never mounted in
+   production) applies the minimum, the per-minute limit and the quota to
+   `/api/withdraw` only; it has no settlement window, and its LP and self-service
+   deposit routes are not limited. Once the admission
    cap leaves no room for it, a withdrawal other than a full exit (the whole balance
    of a closed position) is a `400` with a `HISTORY_CAP` error (§ Admission cap).
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals

@@ -23,7 +23,7 @@ pub(super) fn append(gw: &Gw, bytes: &mut Vec<u8>) {
 }
 /// Restore the recovery extension, which every snapshot carries: an absent one is
 /// refused (it would reset every account's recovery generation).
-pub(super) fn restore(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
+pub(super) fn restore<'a>(gw: &mut Gw, trailer: &'a [u8]) -> Result<&'a [u8], String> {
     if trailer.is_empty() {
         return Err("snapshot is missing the recovery extension".into());
     }
@@ -37,9 +37,6 @@ pub(super) fn restore(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
     }
     let (rows, rest): (Vec<(PubKey, u64)>, _) =
         postcard::take_from_bytes(payload).map_err(|e| format!("recovery snapshot decode: {e}"))?;
-    if !rest.is_empty() {
-        return Err("trailing recovery snapshot bytes".into());
-    }
     let n = rows.len();
     let map: std::collections::BTreeMap<_, _> = rows.into_iter().collect();
     if map.len() != n {
@@ -62,7 +59,7 @@ pub(super) fn restore(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
     for a in gw.accounts.values_mut() {
         a.recovery_nonce = map[&a.wallet.owner];
     }
-    Ok(())
+    Ok(rest)
 }
 
 impl Gw {

@@ -36,6 +36,12 @@
 //!     refused, unless it is a full exit (the whole balance of a closed position,
 //!     which removes the entry) that uses no room another exit or credit needs.
 //!
+//!   Each account also has a lifetime quota of history units (`ACCOUNT_HISTORY_QUOTA`):
+//!   every credited deposit and withdrawal is charged, a spent account gets no new
+//!   permit and no partial withdrawal, and past `PARTIAL_WITHDRAWAL_HISTORY_CEILING`
+//!   no account makes a partial withdrawal, so many accounts cannot fill the budget
+//!   registration and deposits need. A full exit is always accepted.
+//!
 //!   So the deposit of every outstanding permit can be credited and stays within the
 //!   bounds, and funds can always leave: close the position, then withdraw its whole
 //!   balance. Only a state already beyond a bound (one that was lowered under it)
@@ -59,9 +65,21 @@ pub(crate) const MAX_WITHDRAWALS_PER_MINUTE: u32 = 3;
 /// Most withdrawals one account may have in the open settlement window.
 pub(crate) const MAX_WITHDRAWALS_PER_WINDOW: usize = 10;
 
-/// Most partial withdrawals (anything but a full exit) one account may make over
-/// its lifetime: 50 of them take 100 units, under 1% of `MAX_PROVABLE_HISTORY`.
-pub(crate) const MAX_PARTIAL_WITHDRAWALS_PER_ACCOUNT: u32 = 50;
+/// History units one account may spend over its lifetime: 2 for every credited
+/// deposit and 2 for every withdrawal (a leaf and a nullifier each), under 1% of
+/// `MAX_PROVABLE_HISTORY`. Once spent, the account gets no new deposit permit and
+/// no partial withdrawal; a full exit is still accepted, and it is bounded by the
+/// entries the account already holds, since no new entry opens without a permit.
+pub(crate) const ACCOUNT_HISTORY_QUOTA: u64 = 100;
+
+/// History units one credited deposit or one withdrawal takes.
+const HISTORY_UNITS_PER_OP: u64 = 2;
+
+/// Past this much history (state plus outstanding permits) no partial withdrawal is
+/// accepted, whatever the number of accounts: 60% of `MAX_PROVABLE_HISTORY`, well
+/// below the soft cap, so registration, deposit permits and full exits keep the room
+/// above it. A fixed reserve, not a fraction of the (test-lowered) live cap.
+pub(crate) const PARTIAL_WITHDRAWAL_HISTORY_CEILING: u64 = MAX_PROVABLE_HISTORY / 5 * 3;
 
 const MINUTE_MS: u64 = 60_000;
 
@@ -74,24 +92,30 @@ pub(crate) const WITHDRAW_RATE_LIMIT_WINDOW: &str = "WITHDRAW_RATE_LIMIT_WINDOW:
      already has its maximum number of withdrawals in the open settlement window; retry \
      after the next settlement";
 
-/// Returned for a partial withdrawal over the account's lifetime quota.
+/// Returned for a partial withdrawal over the account's lifetime history quota.
 pub(crate) const WITHDRAW_QUOTA_EXCEEDED: &str = "WITHDRAW_QUOTA_EXCEEDED: this account used its \
-     quota of partial withdrawals. A full exit is still accepted: close the position, then \
+     quota of provable history. A full exit is still accepted: close the position, then \
      withdraw the whole balance of this market";
 
-/// Runtime-only withdrawal usage of one account (never in the snapshot: it
-/// restarts empty, which only loosens the limits until they fill again).
+/// Returned for a partial withdrawal once the exchange-wide history reserve is reached.
+pub(crate) const WITHDRAW_RESERVE_REACHED: &str = "WITHDRAW_RESERVE_REACHED: the provable history \
+     left for partial withdrawals is used up for every account. A full exit is still \
+     accepted: close the position, then withdraw the whole balance of this market";
+
+/// Runtime-only withdrawal rate of one account (the minute counter).
 #[derive(Clone, Copy, Debug, Default)]
 struct WithdrawUsage {
     minute_start_ms: u64,
     minute_count: u32,
-    partial: u32,
 }
 
-/// Withdrawal usage per account owner.
+/// Withdrawal usage per account owner: the runtime minute counters, and the
+/// persisted ledger of history units (`DPWLIM01` snapshot section; absent in
+/// snapshots written before it, which load with an empty ledger).
 #[derive(Clone, Debug, Default)]
 pub(crate) struct WithdrawLimits {
     by_owner: std::collections::BTreeMap<[u8; 32], WithdrawUsage>,
+    history_units: std::collections::BTreeMap<[u8; 32], u64>,
 }
 
 impl WithdrawLimits {
@@ -99,18 +123,59 @@ impl WithdrawLimits {
         self.by_owner.get(owner).copied().unwrap_or_default()
     }
 
+    /// History units `owner` has spent on credited deposits and withdrawals.
+    pub(crate) fn units(&self, owner: &[u8; 32]) -> u64 {
+        self.history_units.get(owner).copied().unwrap_or(0)
+    }
+
+    fn charge(&mut self, owner: &[u8; 32]) {
+        let u = self.history_units.entry(*owner).or_default();
+        *u = u.saturating_add(HISTORY_UNITS_PER_OP);
+    }
+
+    fn refund(&mut self, owner: &[u8; 32]) {
+        if let Some(u) = self.history_units.get_mut(owner) {
+            *u = u.saturating_sub(HISTORY_UNITS_PER_OP);
+            if *u == 0 {
+                self.history_units.remove(owner);
+            }
+        }
+    }
+
     /// Count a withdrawal that was applied at `now_ms`.
-    pub(crate) fn record(&mut self, owner: &[u8; 32], now_ms: u64, partial: bool) {
+    pub(crate) fn record(&mut self, owner: &[u8; 32], now_ms: u64) {
         let u = self.by_owner.entry(*owner).or_default();
-        if u.minute_count == 0 || now_ms.saturating_sub(u.minute_start_ms) >= MINUTE_MS {
+        if u.minute_count == 0 || !minute_holds(u.minute_start_ms, now_ms) {
             u.minute_start_ms = now_ms;
             u.minute_count = 0;
         }
         u.minute_count = u.minute_count.saturating_add(1);
-        if partial {
-            u.partial = u.partial.saturating_add(1);
-        }
+        self.charge(owner);
     }
+
+    /// Count a deposit credited to `owner`.
+    pub(crate) fn record_credit(&mut self, owner: &[u8; 32]) {
+        self.charge(owner);
+    }
+
+    /// Take back what a withdrawal that a voided window removed was charged.
+    pub(crate) fn refund_withdrawal(&mut self, owner: &[u8; 32]) {
+        if let Some(u) = self.by_owner.get_mut(owner) {
+            u.minute_count = u.minute_count.saturating_sub(1);
+        }
+        self.refund(owner);
+    }
+
+    /// Take back what a deposit credit that a voided window reverted was charged.
+    pub(crate) fn refund_credit(&mut self, owner: &[u8; 32]) {
+        self.refund(owner);
+    }
+}
+
+/// Whether `now_ms` is within the minute that began at `start_ms`. A clock that
+/// stepped back (`now_ms < start_ms`) starts a new minute.
+fn minute_holds(start_ms: u64, now_ms: u64) -> bool {
+    now_ms >= start_ms && now_ms - start_ms < MINUTE_MS
 }
 
 /// Bound on the provable history: note-tree leaves plus spent nullifiers.
@@ -156,6 +221,11 @@ pub(crate) const HISTORY_CAP_EXIT: &str = "HISTORY_CAP: the provable-history adm
 pub(crate) const HISTORY_CAP_EXIT_PERMIT: &str = "HISTORY_CAP: the provable-history admission \
      cap leaves no room for this exit while this account holds an outstanding deposit permit \
      for the market; retry once that deposit is credited or the permit expires";
+
+/// Snapshot section of the history-unit ledger, after the recovery section. It is
+/// written only when the ledger is not empty, so a gateway with no usage writes the
+/// bytes it always did, and a snapshot without it loads with an empty ledger.
+const LEDGER_EXT: &[u8; 8] = b"DPWLIM01";
 
 /// The proof-relevant size of an engine state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -254,6 +324,45 @@ impl AdmissionCap {
 }
 
 impl Gw {
+    /// Append the history-unit ledger section to a snapshot payload.
+    pub(crate) fn append_withdraw_ledger(&self, bytes: &mut Vec<u8>) {
+        if self.withdraw_limits.history_units.is_empty() {
+            return;
+        }
+        let rows: Vec<([u8; 32], u64)> = self
+            .withdraw_limits
+            .history_units
+            .iter()
+            .map(|(owner, units)| (*owner, *units))
+            .collect();
+        bytes.extend_from_slice(LEDGER_EXT);
+        bytes.extend_from_slice(&postcard::to_allocvec(&rows).expect("ledger snapshot encode"));
+    }
+
+    /// Restore the ledger section that follows the recovery section; an empty tail
+    /// (a snapshot written without usage) leaves the ledger empty.
+    pub(crate) fn restore_withdraw_ledger(&mut self, tail: &[u8]) -> Result<(), String> {
+        if tail.is_empty() {
+            return Ok(());
+        }
+        let payload = tail
+            .strip_prefix(LEDGER_EXT)
+            .ok_or("unknown snapshot section after the recovery extension")?;
+        let (rows, rest): (Vec<([u8; 32], u64)>, _) = postcard::take_from_bytes(payload)
+            .map_err(|e| format!("withdrawal ledger snapshot decode: {e}"))?;
+        if !rest.is_empty() {
+            return Err("trailing withdrawal ledger snapshot bytes".into());
+        }
+        let mut ledger = std::collections::BTreeMap::new();
+        for (owner, units) in rows {
+            if ledger.insert(owner, units).is_some() {
+                return Err("duplicate withdrawal ledger owner".into());
+            }
+        }
+        self.withdraw_limits.history_units = ledger;
+        Ok(())
+    }
+
     /// Whether the engine is in close-only while L1 is not known to be: raise (or,
     /// once L1 close-only is observed, clear) the operator alert. Returns whether
     /// the engine is in close-only at all.
@@ -393,6 +502,14 @@ impl Gw {
         purpose: deposit_ingestion::Purpose,
     ) -> Option<PermitGateRefusal> {
         self.note_admission_cap();
+        if purpose == deposit_ingestion::Purpose::Collateral
+            && self
+                .committed_history_units(key)
+                .saturating_add(HISTORY_UNITS_PER_OP)
+                > ACCOUNT_HISTORY_QUOTA
+        {
+            return Some(PermitGateRefusal::AccountQuota);
+        }
         let opens = self.permit_opens_entry(key, market, purpose);
         if opens && !self.holds_any_position(key) {
             let reserved_elsewhere = self.accounts.get(key).is_some_and(|account| {
@@ -489,8 +606,9 @@ impl Gw {
     }
 
     /// Why a withdrawal of `amount` by `owner` at `now_ms` exceeds the account's
-    /// rate limits or history quota, if it does. The rate limits apply to every
-    /// withdrawal, the quota to every one but a full exit.
+    /// rate limits or history quota, or the exchange-wide history reserve, if it
+    /// does. The rate limits apply to every withdrawal; the quota and the reserve to
+    /// every one but a full exit, which must always be able to leave.
     pub(crate) fn withdrawal_limit_refusal(
         &self,
         owner: &PubKey,
@@ -499,8 +617,9 @@ impl Gw {
         now_ms: u64,
     ) -> Option<&'static str> {
         let usage = self.withdraw_limits.usage(owner);
-        let in_minute = now_ms.saturating_sub(usage.minute_start_ms) < MINUTE_MS;
-        if in_minute && usage.minute_count >= MAX_WITHDRAWALS_PER_MINUTE {
+        if minute_holds(usage.minute_start_ms, now_ms)
+            && usage.minute_count >= MAX_WITHDRAWALS_PER_MINUTE
+        {
             return Some(WITHDRAW_RATE_LIMIT_MINUTE);
         }
         let in_window = self
@@ -511,12 +630,53 @@ impl Gw {
         if in_window >= MAX_WITHDRAWALS_PER_WINDOW {
             return Some(WITHDRAW_RATE_LIMIT_WINDOW);
         }
-        if usage.partial >= MAX_PARTIAL_WITHDRAWALS_PER_ACCOUNT
-            && !self.is_full_exit(owner, market, amount)
+        if self.is_full_exit(owner, market, amount) {
+            return None;
+        }
+        if self
+            .withdraw_limits
+            .units(owner)
+            .saturating_add(HISTORY_UNITS_PER_OP)
+            > ACCOUNT_HISTORY_QUOTA
         {
             return Some(WITHDRAW_QUOTA_EXCEEDED);
         }
+        // Past the reserve nothing but a full exit is accepted, so the room above
+        // it stays for deposits, registration and exits (outside close-only, where
+        // no permit is credited and nothing is left to reserve it for).
+        if self.permits_creditable()
+            && self.admission_size().history >= PARTIAL_WITHDRAWAL_HISTORY_CEILING
+        {
+            return Some(WITHDRAW_RESERVE_REACHED);
+        }
         None
+    }
+
+    /// History units `key`'s account has spent, plus those its outstanding
+    /// collateral permits will take once their deposits are credited.
+    fn committed_history_units(&self, key: &[u8; 32]) -> u64 {
+        let Some(account) = self.accounts.get(key) else {
+            return 0;
+        };
+        let permits = self
+            .deposits
+            .routes
+            .values()
+            .filter(|r| r.key == *key && r.purpose == deposit_ingestion::Purpose::Collateral)
+            .count() as u64;
+        self.withdraw_limits
+            .units(&account.wallet.owner)
+            .saturating_add(permits.saturating_mul(HISTORY_UNITS_PER_OP))
+    }
+
+    /// Charge the deposit that was just credited under `route` to its account.
+    pub(crate) fn charge_credited_deposit(&mut self, route: &deposit_ingestion::Route) {
+        if route.purpose != deposit_ingestion::Purpose::Collateral {
+            return;
+        }
+        if let Some(owner) = self.accounts.get(&route.key).map(|a| a.wallet.owner) {
+            self.withdraw_limits.record_credit(&owner);
+        }
     }
 
     /// Why a withdrawal of `amount` from `owner`'s (account `key`) entry in `market`

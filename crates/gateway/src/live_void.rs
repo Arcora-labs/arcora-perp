@@ -566,6 +566,10 @@ impl Gw {
             let lost =
                 || LiveVoidError::PostCheck(format!("deposit {} could not be restored", d.id));
             let credit = self.deposits.credits.remove(&d.id).ok_or_else(lost)?;
+            // The credit is reverted; ingestion charges it again when it credits it.
+            if credit.route.purpose == deposit_ingestion::Purpose::Collateral {
+                self.withdraw_limits.refund_credit(&d.owner);
+            }
             self.accounts
                 .get_mut(&credit.route.key)
                 .ok_or_else(lost)?
@@ -611,6 +615,10 @@ impl Gw {
 
         let mut withdrawals = j.ww.clone();
         withdrawals.append(&mut self.window_withdrawals);
+        // The voided withdrawals are removed and re-signed: their charges go too.
+        for w in &withdrawals {
+            self.withdraw_limits.refund_withdrawal(&w.owner);
+        }
         let leaves: BTreeSet<[u8; 32]> = withdrawals.iter().map(Withdrawal::leaf).collect();
         self.pending_withdrawals
             .retain(|w| !leaves.contains(&w.leaf()));

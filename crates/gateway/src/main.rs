@@ -1795,7 +1795,9 @@ struct Gw {
     /// only a canonical L1 read does that.
     #[serde(skip)]
     wind_down_started: bool,
-    /// Runtime-only per-account withdrawal rate / quota usage (audit GA-2).
+    /// Per-account withdrawal rate (runtime) and history-unit ledger (audit GA-2).
+    /// The ledger is persisted as its own snapshot section, outside the positional
+    /// Gw body.
     #[serde(skip)]
     withdraw_limits: admission::WithdrawLimits,
 
@@ -2578,6 +2580,7 @@ impl Gw {
         );
         execution::append_snapshot(self, &mut bytes);
         account_recovery::append(self, &mut bytes);
+        self.append_withdraw_ledger(&mut bytes);
         bytes
     }
 
@@ -2612,7 +2615,8 @@ impl Gw {
         ) = postcard::take_from_bytes(body).map_err(|e| format!("snapshot decode: {e}"))?;
         gw.deposits = deposits;
         let recovery = execution::restore_snapshot_prefix(&mut gw, rest)?;
-        account_recovery::restore(&mut gw, recovery)?;
+        let ledger = account_recovery::restore(&mut gw, recovery)?;
+        gw.restore_withdraw_ledger(ledger)?;
         // The flag is the terminal latch SettleAll sets; it never proves phase 1
         // settled, and a state that carries it must be in CloseOnly.
         gw.wind_down_started = wind_down_started;
@@ -3432,7 +3436,6 @@ impl Gw {
         {
             return Err(refusal.into());
         }
-        let partial = !self.is_full_exit(&wallet.owner, market, amount);
         let nonce = self.next_withdrawal_nonce()?;
         let mut blind = [0xD0u8; 32];
         blind[..8].copy_from_slice(&nonce.to_le_bytes());
@@ -3487,8 +3490,7 @@ impl Gw {
             }
         })?;
         self.next_withdraw_nonce = nonce.saturating_add(1);
-        self.withdraw_limits
-            .record(&wallet.owner, limit_now, partial);
+        self.withdraw_limits.record(&wallet.owner, limit_now);
         let w = Withdrawal {
             owner: wallet.owner,
             to,
@@ -4711,6 +4713,8 @@ impl Gw {
     /// (debit one, credit the other) — the engine has no native transfer, so this is
     /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
     /// net-zero externally. `from` must have `value` free in market 0.
+    /// Demo only (refused in production): it takes none of the per-account withdrawal
+    /// limits, which protect the production provable-history budget.
     fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
         self.refuse_candidate_synthetic_price()?;
         self.refuse_if_wind_down_started()?;
@@ -5286,7 +5290,6 @@ impl Gw {
         if let Some(refusal) = self.withdrawal_limit_refusal(&owner, self.selected, amount, now) {
             return Err(refusal.into());
         }
-        let partial = !self.is_full_exit(&owner, self.selected, amount);
         let oracle = oracle_of(
             self.px_of(self.selected),
             now,
@@ -5321,7 +5324,7 @@ impl Gw {
                 nonce: 0,
             })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
-        self.withdraw_limits.record(&owner, now, partial);
+        self.withdraw_limits.record(&owner, now);
         Ok(())
     }
 
@@ -8279,6 +8282,9 @@ pub(crate) enum PermitGateRefusal {
     /// another market: it holds permits for one market until its first deposit is
     /// credited.
     OneMarketUntilFirstDeposit,
+    /// The account spent its history quota (`admission::ACCOUNT_HISTORY_QUOTA`):
+    /// no further deposit permit; it can still exit in full.
+    AccountQuota,
     /// The amount is below `admission::MIN_DEPOSIT_PERMIT`.
     BelowMinimum,
     /// The settlement accepts no deposits (no paired vault).
@@ -8347,6 +8353,12 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
             StatusCode::CONFLICT,
             Json(serde_json::json!({
                 "error": "an account with no position yet holds deposit permits for one market at a time; complete the deposit for the market of its outstanding permit first, or let that permit expire"
+            })),
+        ),
+        PermitGateRefusal::AccountQuota => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": "ACCOUNT_HISTORY_QUOTA: this account used its quota of provable history and gets no further deposit permit. It can still withdraw its balance in full"
             })),
         ),
         PermitGateRefusal::BelowMinimum => (
@@ -9140,7 +9152,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
-                "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
+                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 10 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "400": { "description": "BELOW_MINIMUM; WITHDRAW_QUOTA_EXCEEDED (the account spent its 100-unit provable-history quota); WITHDRAW_RESERVE_REACHED (the exchange-wide partial-withdrawal reserve is used up); HISTORY_CAP; or another refusal. A full exit is exempt from the quota and the reserve" }, "429": { "description": "WITHDRAW_RATE_LIMIT_MINUTE (3 per minute) or WITHDRAW_RATE_LIMIT_WINDOW (10 in the open settlement window); retry later" } } } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },

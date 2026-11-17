@@ -2,8 +2,9 @@
 //! budget, so one account must not be able to spend it for everyone.
 use super::*;
 use crate::admission::{
-    MAX_PARTIAL_WITHDRAWALS_PER_ACCOUNT, MAX_WITHDRAWALS_PER_MINUTE, MAX_WITHDRAWALS_PER_WINDOW,
-    WITHDRAW_QUOTA_EXCEEDED, WITHDRAW_RATE_LIMIT_MINUTE, WITHDRAW_RATE_LIMIT_WINDOW,
+    ACCOUNT_HISTORY_QUOTA, MAX_WITHDRAWALS_PER_MINUTE, MAX_WITHDRAWALS_PER_WINDOW,
+    PARTIAL_WITHDRAWAL_HISTORY_CEILING, WITHDRAW_QUOTA_EXCEEDED, WITHDRAW_RATE_LIMIT_MINUTE,
+    WITHDRAW_RATE_LIMIT_WINDOW, WITHDRAW_RESERVE_REACHED,
 };
 
 const MIN_UNITS: i128 = 10 * QUOTE_SCALE;
@@ -114,28 +115,193 @@ fn audit_1116_ga2_the_window_limit_resets_when_the_window_is_taken() {
     }
     let err = withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t).unwrap_err();
     assert_eq!(err, WITHDRAW_RATE_LIMIT_WINDOW);
-    // The window settles: its withdrawals leave the open set.
-    gw.window_withdrawals.clear();
+    // The window is sealed for settlement: its withdrawals leave the open set.
+    let id = gw.seq.state.next_batch_id;
+    let (_, ww) = gw.begin_window_settle(id).unwrap().unwrap();
+    assert_eq!(ww.len(), MAX_WITHDRAWALS_PER_WINDOW);
     withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t).unwrap();
 }
 
 #[test]
-fn audit_1116_ga2_the_partial_quota_never_blocks_a_full_exit() {
+fn audit_1116_ga2_the_quota_holds_through_real_withdrawals_and_a_restart() {
     let mut gw = Gw::boot_with(GenesisMode::Production);
     let (key, sk, to) = account(&mut gw, 0x75, 1_000 * QUOTE_SCALE);
     let owner = gw.accounts[&key].wallet.owner;
     let mut t = 1_000_000u64;
-    for _ in 0..MAX_PARTIAL_WITHDRAWALS_PER_ACCOUNT {
-        gw.withdraw_limits.record(&owner, t, true);
+    for _ in 0..ACCOUNT_HISTORY_QUOTA / 2 {
+        // Each minute, and the window is settled now and then.
         t += 60_000;
+        gw.window_withdrawals.clear();
+        withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t).unwrap();
     }
+    assert_eq!(gw.withdraw_limits.units(&owner), ACCOUNT_HISTORY_QUOTA);
+    t += 60_000;
+    gw.window_withdrawals.clear();
     let before = gw.snapshot_plain();
     let err = withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t).unwrap_err();
     assert_eq!(err, WITHDRAW_QUOTA_EXCEEDED);
     assert_eq!(gw.snapshot_plain(), before);
-    // The whole balance of the (flat) position still leaves.
+    // A restart does not give the account a new quota.
+    let mut restored = Gw::boot_restored(&before).unwrap();
+    assert_eq!(
+        restored.withdraw_limits.units(&owner),
+        ACCOUNT_HISTORY_QUOTA
+    );
+    let err = withdraw_at(&mut restored, &key, &sk, MIN_UNITS, to, t).unwrap_err();
+    assert_eq!(err, WITHDRAW_QUOTA_EXCEEDED);
+    // The whole balance of the (flat) position still leaves, and is charged.
+    let all = restored.market_free_of(&owner, 0);
+    assert!(withdraw_at(&mut restored, &key, &sk, all, to, t).is_ok());
+    assert_eq!(
+        restored.withdraw_limits.units(&owner),
+        ACCOUNT_HISTORY_QUOTA + 2
+    );
+}
+
+#[test]
+fn audit_1116_ga2_a_snapshot_without_usage_has_no_ledger_section() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let plain = gw.snapshot_plain();
+    assert!(!plain.windows(8).any(|w| w == b"DPWLIM01"));
+    assert_eq!(Gw::boot_restored(&plain).unwrap().snapshot_plain(), plain);
+    let (key, sk, to) = account(&mut gw, 0x78, 100 * QUOTE_SCALE);
+    withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, 1_000_000).unwrap();
+    let plain = gw.snapshot_plain();
+    assert!(plain.windows(8).any(|w| w == b"DPWLIM01"));
+    assert_eq!(Gw::boot_restored(&plain).unwrap().snapshot_plain(), plain);
+    let mut bad = plain.clone();
+    bad.push(0);
+    assert!(Gw::boot_restored(&bad).is_err());
+}
+
+#[test]
+fn audit_1116_ga2_the_history_reserve_stops_partials_but_not_full_exits() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let (key, sk, to) = account(&mut gw, 0x79, 100_000 * QUOTE_SCALE);
+    let owner = gw.accounts[&key].wallet.owner;
+    // Raise the history to the reserve, outside the per-account limits.
+    while admission::HistorySize::of(&gw.seq.state).history < PARTIAL_WITHDRAWAL_HISTORY_CEILING {
+        gw.withdraw_limits = Default::default();
+        gw.window_withdrawals.clear();
+        withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, 1_000_000).unwrap();
+    }
+    gw.withdraw_limits = Default::default();
+    gw.window_withdrawals.clear();
+    let t = 1_000_000;
+    let err = withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t).unwrap_err();
+    assert_eq!(err, WITHDRAW_RESERVE_REACHED);
     let all = gw.market_free_of(&owner, 0);
     assert!(withdraw_at(&mut gw, &key, &sk, all, to, t).is_ok());
+    assert_eq!(gw.registration_refusal(), None);
+}
+
+#[test]
+fn audit_1116_ga2_a_clock_that_steps_back_does_not_extend_the_minute() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let (key, sk, to) = account(&mut gw, 0x7a, 1_000 * QUOTE_SCALE);
+    let t0 = 5_000_000u64;
+    for _ in 0..MAX_WITHDRAWALS_PER_MINUTE {
+        withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t0).unwrap();
+    }
+    assert_eq!(
+        withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t0 + 1).unwrap_err(),
+        WITHDRAW_RATE_LIMIT_MINUTE
+    );
+    withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, t0 - 1_000).unwrap();
+}
+
+#[test]
+fn audit_1116_ga2_a_voided_window_refunds_its_withdrawals_and_deposits() {
+    let f = crate::live_void::tests::voidable(false);
+    let mut gw = f.gw;
+    let owner = gw.accounts[&f.w.key].wallet.owner;
+    let maker = gw.accounts[&f.maker.key].wallet.owner;
+    // The settled deposit and the window's withdrawal.
+    assert_eq!(gw.withdraw_limits.units(&owner), 4);
+    assert_eq!(gw.withdraw_limits.units(&maker), 2);
+    match gw.live_void_window(
+        &f.journal,
+        crate::rollback_journal::DeadIntent::EmptyAfterFence,
+    ) {
+        Ok(crate::live_void::LiveVoidOutcome::Applied(_)) => {}
+        other => panic!("the void was not applied: {other:?}"),
+    }
+    // Only the settled deposit stays charged; the window's withdrawal can be
+    // signed again, and its deposits are charged when they are credited again.
+    assert_eq!(gw.withdraw_limits.units(&owner), 2);
+    assert_eq!(gw.withdraw_limits.units(&maker), 0);
+}
+
+#[test]
+fn audit_1116_ga2_the_demo_withdraw_is_limited_like_the_production_one() {
+    let mut gw = Gw::boot();
+    gw.deposit(1_000 * QUOTE_SCALE).unwrap();
+    let err = gw.withdraw(QUOTE_SCALE).unwrap_err();
+    assert!(err.contains("BELOW_MINIMUM"), "{err}");
+    for _ in 0..MAX_WITHDRAWALS_PER_MINUTE {
+        gw.withdraw(MIN_UNITS).unwrap();
+    }
+    assert_eq!(
+        gw.withdraw(MIN_UNITS).unwrap_err(),
+        WITHDRAW_RATE_LIMIT_MINUTE
+    );
+}
+
+#[tokio::test]
+async fn audit_1116_ga2_the_withdraw_route_answers_429_and_400_with_typed_errors() {
+    use axum::body::Body;
+    use tower::ServiceExt as _;
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let (key, sk, to) = account(&mut gw, 0x7b, 1_000 * QUOTE_SCALE);
+    let owner = gw.accounts[&key].wallet.owner;
+    let app = tests::test_app();
+    *app.gw.lock().await = gw;
+    let (chain_id, vault) = {
+        let g = app.gw.lock().await;
+        (g.chain_id, g.vault)
+    };
+    let call = |amount: i128, nonce: u64| {
+        let digest = withdraw_auth_digest(chain_id, &vault, &owner, 0, amount, &to, nonce);
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let mut wire = [0u8; 65];
+        wire[..64].copy_from_slice(&sig.to_bytes());
+        wire[64] = 27 + recid.to_byte();
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/accounts/withdraw")
+            .header("Content-Type", "application/json")
+            .header("X-Api-Key", hex0x(&key))
+            .body(Body::from(
+                serde_json::json!({"marketId":0,"amount":amount.to_string(),"to":hex0x(&to),"nonce":nonce,"signature":hex0x(&wire)})
+                    .to_string(),
+            ))
+            .unwrap()
+    };
+    let send = |req: axum::http::Request<Body>| async {
+        let res = build_router(app.clone(), true).oneshot(req).await.unwrap();
+        let status = res.status();
+        let body = axum::body::to_bytes(res.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        (status, String::from_utf8_lossy(&body).into_owned())
+    };
+    for nonce in 1..=u64::from(MAX_WITHDRAWALS_PER_MINUTE) {
+        assert_eq!(send(call(MIN_UNITS, nonce)).await.0, StatusCode::OK);
+    }
+    let (status, body) = send(call(MIN_UNITS, 4)).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(body.contains("WITHDRAW_RATE_LIMIT_MINUTE"), "{body}");
+    // Used up quota: a typed 400, not a rate limit.
+    {
+        let mut g = app.gw.lock().await;
+        g.withdraw_limits = Default::default();
+        for _ in 0..ACCOUNT_HISTORY_QUOTA / 2 {
+            g.withdraw_limits.record_credit(&owner);
+        }
+    }
+    let (status, body) = send(call(MIN_UNITS, 4)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("WITHDRAW_QUOTA_EXCEEDED"), "{body}");
 }
 
 #[test]
