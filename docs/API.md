@@ -215,6 +215,20 @@ the reason the batch manifest records for it (the manifest stores the numeric co
 | 12 | `FillWouldBankrupt` | the fill would have left a leg with negative collateral, or open below maintenance margin |
 | 13 | `BelowMinimumSize` | the order adds exposure but its notional is below the minimum order size |
 
+**Fills that fail to settle.** A batch settles its fills on a copy of the state
+before they stand. A fill that fails because of one of its orders (a resting order
+that drifted out of the price band, a reduce-only order that would now add exposure,
+an account whose collateral cannot carry the fill) rejects that order, and the batch
+matches again without it, so the other side trades against the next order instead.
+When that order is a resting maker whose account's collateral could not carry the
+fill (`InsufficientMargin`, `FillWouldBankrupt`), every other order of that account on
+the same side of that market, resting or in the same batch, is rejected with it under
+the same reason; its reduce-only orders stay. A batch matches at most 8 times
+(`MAX_MATCH_ROUNDS`, audit 2026-11-16 SM-2). The last pass stands: a fill that still
+fails there is dropped, the order to blame is rejected and leaves the book, and the
+other side gets no fill for the size matched against it in that batch (a taker's
+matched size neither fills nor rests; a resting maker's leaves the book).
+
 Rejection membership is proven; the truthfulness of a rejection reason is not
 (`docs/SECURITY.md`).
 

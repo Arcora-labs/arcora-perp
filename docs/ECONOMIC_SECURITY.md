@@ -599,6 +599,46 @@ tests in `crates/perp-core/tests/position_prune.rs`,
 `crates/sequencer/tests/admission_and_funding_mark.rs` and
 `crates/gateway/src/order_minimum_tests.rs`.
 
+**Mechanism — the tick and the rematch do work for what a batch touched, off-chain
+(audit 2026-11-16 GA-1 + SM-1, the tick; SM-2).** The open-order limits bound the
+book, but two passes still did work over all of it under the gateway's single lock.
+Every 700 ms tick updated the execution record of every order row the gateway keeps,
+and each update searched the whole book for its order: with 20,000 resting orders a
+tick took 0.50 s, with 40,000 3.75 s. Each book now indexes its resting orders by
+hash, so a lookup, a cancel or a ban finds its order without walking the book; the
+index is not persisted (the snapshot layout is unchanged) and a restore rebuilds it.
+A tick updates only the rows its batch touched: the orders it sealed, those with an
+applied fill, a rejection or a removal in it, and those whose fills still wait for
+their proof. Any other row's update changed nothing a response or an event shows, so
+both are what they were. (The tick still compares each row's finality with the
+sequencer's, a map lookup per row, as before.)
+
+When a fill failed to settle because of one of its orders, the batch copied the
+whole book to roll back to and matched again, once per failing order, so one $60 IOC
+against ~6,000 under-margined sells of 20 accounts stalled the API for 1.29 s. Now
+each pass records what it changed on the books and the rollback undoes just that; a
+batch that finds no offender copies nothing. A resting maker whose account's
+collateral could not carry its fill (`InsufficientMargin`, `FillWouldBankrupt`)
+takes every other order of that account on that side of the market with it, resting
+or in the batch, under the same reason; reduce-only orders, which add no exposure,
+stay. The batch then matches again once per such account, not once per order:
+3,000 such sells of three accounts take four passes. And a batch runs at most
+`MAX_MATCH_ROUNDS` (8) passes. The last one stands as it is: a fill that still fails
+there is dropped, as a fill failing for a reason no order is to blame for always
+was; its offending order is rejected and taken off the book, and the poisoned orders
+the batch did not reach wait for the next one. Its counterparty gets no fill for the
+size that pass matched against the offender: a taker's matched size neither fills nor
+rests, a resting maker's leaves the book.
+
+— `crates/matcher/src/book.rs` (`OrderBook::remaining`, `OrderBook::cancel`,
+`OrderBook::cancel_owner_side`, `OrderBook::undo`), `crates/matcher/src/lib.rs`
+(`MatchingEngine::process_stream_undoable`, `MatchingEngine::undo`),
+`crates/sequencer/src/lib.rs` (`MAX_MATCH_ROUNDS`, `Sequencer::seal_batch`),
+`crates/gateway/src/execution.rs` (`touched_by`, `needs_update`); tests in
+`crates/gateway/src/tick_scaling_tests.rs`, the `audit_1116_sm2_*` tests of
+`crates/sequencer/src/lib.rs` and `crates/sequencer/tests/fuzz.rs`, and the
+`audit_1116_*` tests of `crates/matcher/src/lib.rs`.
+
 **Mechanism — the provable-history admission cap, off-chain.** Every batch proof
 re-derives the whole note tree and nullifier log, so proving cost, the final
 wind-down's included, grows with the history the state has accumulated. The gateway
