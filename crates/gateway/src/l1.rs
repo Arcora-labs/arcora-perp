@@ -26,6 +26,7 @@ mod nonce_fence;
 mod observation;
 pub(crate) use clock_binding::AnchorAge;
 use clock_binding::ClockConfig;
+pub(crate) use clock_binding::SP1_ROUTER_TRUST_VAR;
 pub(crate) use nonce_fence::{fence_path, Ceiling, NonceFence};
 use observation::{abi_address, abi_bool, abi_u128, abi_u64, address_word, CanonicalRead};
 pub(crate) use observation::{OpenChallenge, OpenSetRead};

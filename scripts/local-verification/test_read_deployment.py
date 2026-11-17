@@ -103,6 +103,15 @@ class DeploymentObservationTests(unittest.TestCase):
         self.assertEqual(result["rpc_agreement"]["status"], "BLOCKED")
         self.assertIn(text, result["blocker"])
 
+    def test_audit_1116_sv1_the_registered_gateways_owner_is_observed(self):
+        result, calls, code = self.observe()
+        self.assertEqual(code, 0)
+        recorded = result["sp1_gateway_owner"]
+        self.assertRegex(recorded["gateway"], "^0x[0-9a-fA-F]{40}$")
+        self.assertRegex(recorded["owner"], "^0x[0-9a-f]{40}$")
+        self.assertTrue(any(c[1] == "eth_call" and c[2][0]["to"] == recorded["gateway"]
+                            and c[2][0]["data"] == "owner()" for c in calls))
+
     def test_hash_pins_every_contract_read_and_checks_token_binding(self):
         result, calls, code = self.observe()
         self.assertEqual(code, 0)
@@ -175,7 +184,7 @@ class DeploymentObservationTests(unittest.TestCase):
         for endpoint in ("primary", "witness"):
             reads = [(method, params) for ep, method, params in calls
                      if ep == endpoint and method in ("eth_call", "eth_getCode")]
-            self.assertEqual(len(reads), 19)
+            self.assertEqual(len(reads), 20)
             for _, params in reads:
                 self.assertEqual(params[-1], {"blockHash": HASH, "requireCanonical": True})
         self.assertEqual(calls[-2:], [("primary", "eth_getBlockByNumber", ["0x40", False]),

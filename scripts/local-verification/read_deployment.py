@@ -216,6 +216,23 @@ def observe(config, witness_url=None, config_path=None):
                     item["calls"][signature] = {"error": safe_error(exc)}
                     if has_witness:
                         raise
+        # The registered stack's adapter routes through an SP1 gateway: its owner can add an
+        # accept-everything route or freeze the real one (docs/SECURITY.md, audit SV-1), so
+        # the observation records who that is. A failed read is recorded, never guessed.
+        route = config["contracts"].get("SP1ZkVerifier", {}).get("sp1VerifierGateway")
+        if route:
+            owner_call = {"to": route, "data": selector("owner()")}
+            try:
+                word = hex_data(rpc("primary", "eth_call", [owner_call, pin]), 32)
+                if has_witness:
+                    require(hex_data(rpc("witness", "eth_call", [owner_call, pin]), 32) == word,
+                            "witness: getter disagreement at the SP1 gateway owner()")
+                result["sp1_gateway_owner"] = {"gateway": route, "owner": "0x" + word[12:].hex()
+                                               if word[:12] == bytes(12) else None}
+            except Exception as exc:
+                if has_witness:
+                    raise
+                result["sp1_gateway_owner"] = {"gateway": route, "owner": None, "error": safe_error(exc)}
         for endpoint in endpoints:
             after = header(rpc(endpoint, "eth_getBlockByNumber", [hex(number), False]), number)
             require(after == anchor, f"{endpoint}: finalized block changed during observation")

@@ -645,6 +645,16 @@ class TargetTests(unittest.TestCase):
         self.overrides["eth_call"] = revert
         self.assertEqual(self.observe()["blocker"], "RPC did not return a successful result")
 
+    def test_audit_1116_sv1_the_gateway_boot_gate_pins_the_compiled_verifier_runtime(self):
+        artifact = release.ROOT / "contracts" / release.CONTRACTS["sp1_verifier"][0]
+        if not artifact.is_file():
+            self.skipTest("contracts are not built")
+        runtime = release.read_json(artifact)["deployedBytecode"]["object"]
+        self.assertFalse(release.read_json(artifact)["deployedBytecode"].get("immutableReferences"))
+        pinned = re.search(r'SP1_VERIFIER_RUNTIME_KECCAK: &str =\s*"(0x[0-9a-f]{64})"',
+                           (release.ROOT / "crates/gateway/src/l1/clock_binding.rs").read_text()).group(1)
+        self.assertEqual(release.command(["cast", "keccak", runtime], release.ROOT), pinned)
+
     def test_audit_1116_sv1_a_wrong_verifier_hash_is_refused(self):
         self.values[("sp1_verifier", "VERIFIER_HASH()")] = "0x" + "11" * 32
         self.assertEqual(self.observe()["status"], "BLOCKED")

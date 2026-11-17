@@ -72,13 +72,13 @@
     <tr><td>CollateralVault</td><td class="addr"><a href="https://sepolia.basescan.org/address/0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05">0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05</a></td></tr>
     <tr><td>MockUSDC (open mint, 6 decimals)</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA">0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA</a></td></tr>
     <tr><td>SP1ZkVerifier</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x8012F3b35B9884f86a3F8f39B79e82eC410E1160">0x8012F3b35B9884f86a3F8f39B79e82eC410E1160</a></td></tr>
-    <tr><td>SP1VerifierGateway (canonical)</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x397A5f7f3dBd538f23DE225B51f532c34448dA9B">0x397A5f7f3dBd538f23DE225B51f532c34448dA9B</a></td></tr>
+    <tr><td>SP1VerifierGateway (Succinct shared; its owner is trusted)</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x397A5f7f3dBd538f23DE225B51f532c34448dA9B">0x397A5f7f3dBd538f23DE225B51f532c34448dA9B</a></td></tr>
     <tr><td>Sequencer / operator</td><td class="addr"><a href="https://sepolia.basescan.org/address/0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287">0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287</a></td></tr>
     <tr><td>Enclave signer (receipts recover to)</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x92173839C6B3b717179ba5505CCE31bD2131EbA0">0x92173839C6B3b717179ba5505CCE31bD2131EbA0</a></td></tr>
   </tbody>
 </table>
 </div>
-<p>SP1 program verification key (bound in SP1ZkVerifier; proofs verify through the canonical SP1VerifierGateway):</p>
+<p>SP1 program verification key (bound in SP1ZkVerifier; proofs verify through the SP1VerifierGateway below, whose owner can bypass or halt proof verification; this stack must be redeployed with the adapter bound directly to the stateless verifier, see SECURITY.md):</p>
 <pre><code>0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed</code></pre>
 
 <h2>Protocol parameters</h2>

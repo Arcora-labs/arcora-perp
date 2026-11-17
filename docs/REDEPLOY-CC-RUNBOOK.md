@@ -296,7 +296,10 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
    artifacts. Do **not** reuse Succinct's Base Sepolia gateway `0x397A…`: it is an
    ownable router whose owner can bypass or halt proof verification, so the deploy
    tool refuses it (only `--accept-sp1-router-owner-trust` overrides) and
-   `observe-target` reports BLOCKED. This includes the registered stack, which
+   `observe-target` reports BLOCKED. The production gateway likewise refuses to
+   boot unless the code at the adapter's `gateway()` is the pinned stateless
+   verifier (`L1_ACCEPT_SP1_ROUTER_OWNER_TRUST=1` is the explicit opt-in to trust
+   a router owner). This includes the registered stack, which
    must be redeployed this way. Then run
    `release_manifest.py observe-target` against the public chain; it must report
    `VERIFIED_AT_FINALIZED_BLOCK`, including `ABI_VERSION() == 3`.

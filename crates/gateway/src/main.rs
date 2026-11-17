@@ -11318,7 +11318,14 @@ async fn main() {
                     recipient,
                 )?;
                 let p = l1c.boot_posture()?;
-                l1::check_boot_posture(&p, &e).map(|()| p)
+                l1::check_boot_posture(&p, &e)?;
+                // Mock proofs verify nothing, so there is no verifier to pin.
+                if l1c.clock_enabled() && !allow_mock_proof {
+                    l1c.check_sp1_target(
+                        std::env::var(l1::SP1_ROUTER_TRUST_VAR).ok().as_deref() == Some("1"),
+                    )?;
+                }
+                Ok(p)
             })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))

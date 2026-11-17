@@ -183,7 +183,7 @@ chain ID are checked again after the observation. Redirects, malformed envelopes
 RPC errors and oversized responses fail closed. Provider error text and URL paths
 are not written to the evidence. Existing output files are never overwritten.
 
-For each of the six compiled contracts, it checks the full runtime, including
+For each of the five compiled contracts, it checks the full runtime, including
 metadata. Only the compiler's immutable reference words may differ from the
 template. Each repeated occurrence of one immutable must contain the same value;
 out-of-bounds, overlapping, non-word and nonzero-placeholder references are
@@ -203,7 +203,7 @@ and records `genesis_root_verified`; after the first batch the root is recorded
 as not observed. A wind-down recipient or oracle signer equal to an operator
 address the target reports fails, with or without `operator_policy`. Zero/unbound or old direct-adapter
 configurations fail. The token must have code; its implementation is not among
-the six compiled artifacts.
+the five compiled artifacts.
 
 A successful report says `VERIFIED_AT_FINALIZED_BLOCK`, with runtime and target
 observation fields set true. It still records `release_gate: HOLD`. RPC responses
@@ -218,10 +218,11 @@ always remains false, even when explicit zero values match. The token's runtime,
 proxy/admin/issuance policy, service config/identity, real proof generation,
 capacity, custody loss and state migration remain separate acceptance gates.
 
-The opt-in integration test owns a new disposable Anvil, deploys the real six
-compiled contracts and a mock token through their actual constructors, binds the
-stack, and obtains a successful hash-pinned observation. It then freezes the
-actual SP1 route and requires the next finalized observation to fail. No existing
+The opt-in integration test owns a new disposable Anvil, deploys the real five
+compiled contracts and a mock token through their actual constructors (the adapter
+bound directly to the stateless verifier), binds the stack, and obtains a
+successful hash-pinned observation. It then requires every wrong governance,
+bond, batch-count, payout-cap and genesis declaration to fail. No existing
 node, supplied RPC, credentials or public network can be selected by this test.
 
 ```sh

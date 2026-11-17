@@ -90,9 +90,11 @@ An attested prover ships that server binary in its measured image instead of
 fetching it. Measured times on one H100 are in `docs/audits/2026-10-21-gpu-day/`.
 
 ## 5. Deploy the on-chain verifier
-- Find the Base Sepolia **SP1VerifierGateway** address in
-  `github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments`.
-- Deploy `SP1ZkVerifier(gateway, vkey)` (from this repo's `contracts/src/SP1ZkVerifier.sol`).
+- Deploy the stateless **SP1 v6.1.0 verifier** (this repo's compiled `SP1Verifier`), then
+  `SP1ZkVerifier(verifier, vkey)` (from `contracts/src/SP1ZkVerifier.sol`) bound DIRECTLY to
+  it. Do not point the adapter at Succinct's shared `SP1VerifierGateway`: a gateway owner
+  can add an accept-everything route or freeze the route (docs/SECURITY.md, audit SV-1).
+  `deploy_clock_stack.py` does both steps.
 
 ## 6. Redeploy the settlement pointing at it
 `DarkPerpSettlement.verifier` is immutable, so swapping the verifier is a redeploy. The
@@ -100,7 +102,7 @@ settlement no longer accepts `SP1ZkVerifier` directly: its constructor refuses a
 verifier that is not a fresh, unbound clock verifier (`proofVersion() == 2`,
 `settlement() == 0`). The chain is:
 ```
-SP1ZkVerifier(gateway, vkey)
+SP1ZkVerifier(verifier, vkey)
   → ClockBoundVerifier(SP1ZkVerifier, maxWindowMs, clockSkewMs, anchorTimeoutMs)
   → DarkPerpSettlement(Config{ sequencer, enclaveSigner, verifier = clock, genesisRoot,
         livenessTimeoutBlocks, challengeGraceBlocks, challengeBond, inclusionDeadlineSecs,
@@ -124,7 +126,7 @@ settleBatch(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejec
 `publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot,
 rejectedRoot, depositsRoot)` is the base commitment. `ClockBoundVerifier` binds it to the
 receipt registered for the window, and that bound value must equal the 32-byte
-`public_values` from step 4; the SP1 gateway must accept `proof_bytes` under the pinned
+`public_values` from step 4; the SP1 verifier must accept `proof_bytes` under the pinned
 `vkey`. On success the derived commitment is now enforced on-chain by real ZK.
 
 ## Notes / gotchas

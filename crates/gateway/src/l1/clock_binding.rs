@@ -574,15 +574,12 @@ pub(super) fn read_register_state(
     Ok((count, phase))
 }
 
-/// The program vkey the clock route verifies: `innerVerifier()` is the SP1
+/// The SP1 adapter the clock route verifies through: `innerVerifier()` is the
 /// adapter, or an oracle wrapper whose own `innerVerifier()` is.
-pub(super) fn read_program_vkey(
-    r: &CanonicalRead<'_>,
-    verifier: &[u8; 20],
-) -> Result<Digest, String> {
+fn read_adapter(r: &CanonicalRead<'_>, verifier: &[u8; 20]) -> Result<String, String> {
     let inner = address(r.word(&crate::hex0x(verifier), "innerVerifier()", None)?)?;
     let inner_hex = crate::hex0x(&inner);
-    let adapter = match r.call_bytes(&inner_hex, "innerVerifier()", &[]) {
+    Ok(match r.call_bytes(&inner_hex, "innerVerifier()", &[]) {
         Ok(bytes) if bytes.len() == 32 => {
             let word: Digest = bytes[..]
                 .try_into()
@@ -590,9 +587,57 @@ pub(super) fn read_program_vkey(
             crate::hex0x(&address(word)?)
         }
         _ => inner_hex,
-    };
-    r.word(&adapter, "programVKey()", None)
+    })
 }
+
+/// The program vkey the clock route verifies.
+pub(super) fn read_program_vkey(
+    r: &CanonicalRead<'_>,
+    verifier: &[u8; 20],
+) -> Result<Digest, String> {
+    r.word(&read_adapter(r, verifier)?, "programVKey()", None)
+}
+
+/// keccak256 of the runtime code of the compiled stateless SP1 v6.1.0 Groth16
+/// verifier (`out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json`, no
+/// immutables). `scripts/local-verification/test_release_manifest.py` keeps it equal
+/// to the artifact the release manifest matches.
+pub(crate) const SP1_VERIFIER_RUNTIME_KECCAK: &str =
+    "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849";
+
+/// The adapter must verify through the pinned stateless SP1 verifier itself: a router
+/// (an SP1 verifier gateway) has an owner who can add an accept-everything route or
+/// freeze the real one, and so bypass or halt every proof (audit SV-1). The runtime
+/// code at `adapter.gateway()` is matched byte for byte (by hash) against the
+/// pinned verifier. `accept_router_owner_trust` is the operator's explicit opt-in to
+/// trust a router's owner instead; it skips the match.
+pub(super) fn check_sp1_target(
+    r: &CanonicalRead<'_>,
+    verifier: &[u8; 20],
+    accept_router_owner_trust: bool,
+    pinned: &str,
+) -> Result<[u8; 20], String> {
+    let adapter = read_adapter(r, verifier)?;
+    let target = address(r.word(&adapter, "gateway()", None)?)?;
+    if accept_router_owner_trust {
+        return Ok(target);
+    }
+    let code = r.code(&crate::hex0x(&target))?;
+    let pinned = crate::parse_hex32(pinned).ok_or("invalid pinned SP1 verifier hash")?;
+    if <sha3::Keccak256 as sha3::Digest>::digest(&code)[..] != pinned[..] {
+        return Err(format!(
+            "the SP1 adapter's target {} is not the pinned stateless SP1 v6.1.0 verifier (a router \
+             or any other contract lets its owner bypass or halt proof verification); redeploy the \
+             adapter on the verifier, or set {SP1_ROUTER_TRUST_VAR}=1 to accept trusting that owner",
+            crate::hex0x(&target)
+        ));
+    }
+    Ok(target)
+}
+
+/// Operator opt-in (`1`) to boot against an SP1 router whose owner can bypass or halt
+/// proof verification (docs/SECURITY.md).
+pub(crate) const SP1_ROUTER_TRUST_VAR: &str = "L1_ACCEPT_SP1_ROUTER_OWNER_TRUST";
 
 fn address(word: Digest) -> Result<[u8; 20], String> {
     if word[..12] != [0; 12] {
@@ -902,6 +947,20 @@ impl L1 {
                 read_program_vkey(r, &cfg.verifier)
             })
         })
+    }
+    /// Boot check: the clock route's SP1 adapter targets the pinned stateless
+    /// verifier (see [`check_sp1_target`]).
+    pub(crate) fn check_sp1_target(&self, accept_router_owner_trust: bool) -> Result<(), String> {
+        let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
+        self.observe(|r| {
+            check_sp1_target(
+                r,
+                &cfg.verifier,
+                accept_router_owner_trust,
+                SP1_VERIFIER_RUNTIME_KECCAK,
+            )
+        })
+        .map(|_| ())
     }
     /// Cancel a dead anchor after `anchorTimeoutMs`, as its registrant role (the
     /// sequencer for phase 0, governance for phases 1 and 2). Every precondition

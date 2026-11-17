@@ -202,7 +202,7 @@ jobs:
       - name: Gateway-free refund and challenge tools against owned Anvil (contracts built above)
         run: |
           ARCORA_RUN_CLAIM_ANVIL=1 ARCORA_CLAIM_ANVIL_EVIDENCE=/tmp/arcora-local-drills/claim-tools-anvil.json python3 -m unittest discover -s scripts/claim -p test_claim_tools_anvil.py -v
-      - name: Release manifest against owned six-contract Anvil stack and the built gateway's genesis
+      - name: Release manifest against owned five-contract Anvil stack and the built gateway's genesis
         run: |
           forge build --root contracts/vendor/sp1-contracts
           ARCORA_RUN_MANIFEST_ANVIL=1 ARCORA_MANIFEST_ANVIL_EVIDENCE=/tmp/arcora-local-drills/manifest-anvil.json ARCORA_GATEWAY_BIN="$PWD/target/debug/gateway" python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py -v

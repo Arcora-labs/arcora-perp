@@ -17,6 +17,8 @@ const HEAD: u64 = 20;
 const ORACLE: [u8; 20] = [0x77; 20];
 const ADAPTER: [u8; 20] = [0x88; 20];
 const VKEY: Digest = [0x99; 32];
+const TARGET: [u8; 20] = [0x55; 20];
+const STATELESS_CODE: &[u8] = b"stateless sp1 verifier runtime";
 const SKEW_MS: u64 = 30_000;
 /// The header-bound time of the finalized block `HEAD`, in milliseconds.
 fn head_ms() -> u64 {
@@ -47,6 +49,8 @@ struct Chain {
     wrapped: bool,
     /// The SP1 adapter answers `programVKey()`.
     adapter_has_vkey: bool,
+    /// The runtime at the adapter's `gateway()` target.
+    target_code: Vec<u8>,
 }
 impl Default for Chain {
     fn default() -> Self {
@@ -65,6 +69,7 @@ impl Default for Chain {
             unhashed_header: false,
             wrapped: false,
             adapter_has_vkey: true,
+            target_code: STATELESS_CODE.to_vec(),
         }
     }
 }
@@ -106,6 +111,14 @@ impl Rpc for Chain {
                 };
                 Ok(json!(format!("0x{n:x}")))
             }
+            "eth_getCode" => {
+                assert_eq!(
+                    params[0],
+                    json!(crate::hex0x(&TARGET)),
+                    "only the target's code is read"
+                );
+                Ok(json!(crate::hex0x(&self.target_code)))
+            }
             "eth_call" => {
                 let to = params[0]["to"].as_str().unwrap().to_string();
                 let data = params[0]["data"].as_str().unwrap();
@@ -121,6 +134,8 @@ impl Rpc for Chain {
                 } else if to == crate::hex0x(&ADAPTER) {
                     if sig == selector("programVKey()") && self.adapter_has_vkey {
                         vec![VKEY]
+                    } else if sig == selector("gateway()") {
+                        vec![a(&TARGET)]
                     } else {
                         return Err("execution reverted".into());
                     }
@@ -556,4 +571,54 @@ fn program_vkey_walks_through_an_optional_oracle_wrapper() {
         ..Chain::default()
     })
     .is_err());
+}
+
+fn pinned(code: &[u8]) -> String {
+    use sha3::{Digest as _, Keccak256};
+    crate::hex32(&Keccak256::digest(code).into())
+}
+
+#[test]
+fn audit_1116_sv1_the_adapter_must_target_the_pinned_stateless_verifier() {
+    let check = |chain: &Chain, accept: bool| {
+        let r = CanonicalRead::with_policy(chain, None, None, AnchorPolicy::Latest).unwrap();
+        super::check_sp1_target(&r, &VERIFIER, accept, &pinned(STATELESS_CODE))
+    };
+    assert_eq!(check(&Chain::default(), false).unwrap(), TARGET);
+    // Through an oracle wrapper too.
+    check(
+        &Chain {
+            wrapped: true,
+            ..Chain::default()
+        },
+        false,
+    )
+    .unwrap();
+    // A router (or any other code) in its place is refused, with the opt-in named.
+    let router = Chain {
+        target_code: b"sp1 verifier gateway with an owner".to_vec(),
+        ..Chain::default()
+    };
+    let error = check(&router, false).unwrap_err();
+    assert!(
+        error.contains("not the pinned stateless SP1 v6.1.0 verifier"),
+        "{error}"
+    );
+    assert!(error.contains(super::SP1_ROUTER_TRUST_VAR), "{error}");
+    // An empty account is not the verifier either.
+    assert!(check(
+        &Chain {
+            target_code: vec![],
+            ..Chain::default()
+        },
+        false
+    )
+    .is_err());
+    // The explicit opt-in accepts a router owner's trust.
+    assert_eq!(check(&router, true).unwrap(), TARGET);
+}
+
+#[test]
+fn audit_1116_sv1_the_pinned_runtime_hash_is_well_formed() {
+    assert!(crate::parse_hex32(super::SP1_VERIFIER_RUNTIME_KECCAK).is_some());
 }

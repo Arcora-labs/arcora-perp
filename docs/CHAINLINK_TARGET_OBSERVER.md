@@ -38,7 +38,7 @@ The separate policy JSON has exactly four top-level keys:
 | `settlement` | `sequencer`, `enclave_signer`, `governance`, `liveness_timeout_blocks`, `challenge_grace_blocks`, `challenge_bond_wei`, `inclusion_deadline_seconds`, `final_settle_grace_blocks`, `progress_batches`, `slash_payout_cap_usdc` |
 | `vault` | `gateway_signer` |
 | `clock_verifier` | `configurator` |
-| `sp1_gateway` | `owner` |
+| `sp1_gateway` | `owner` (must be the zero address: see below) |
 
 Address fields use 20-byte hexadecimal values. The seven settlement numeric
 fields are integers in `0..2^256-1`; booleans do not count as integers.
@@ -76,7 +76,13 @@ current implementation, subscription rights, feed semantics or future upgrades.
 The observer performs no implementation or live-feed discovery.
 
 The required candidate stack is settlement → clock verifier → oracle wrapper →
-SP1 adapter → SP1 gateway → the configured, unfrozen SP1 verifier route. The
+SP1 adapter → SP1 gateway → the configured, unfrozen SP1 verifier route. A
+gateway with a live owner can add an accept-everything route or freeze the real
+one, so that owner is a key that can bypass or halt proof verification (audit
+SV-1). The candidate policy therefore only accepts `sp1_gateway.owner` equal to the
+zero address (ownership renounced after the route was added), and the observer
+compares it with the gateway's `owner()`; an owned gateway is never reported
+`VERIFIED_AT_FINALIZED_BLOCK`. The
 vault/settlement and vault/token links, wrapper/clock link, DON proxy address and
 uptime feed address must also match. The wrapper's deployment chain ID, policy
 hash and grace must match declarations; the clock's maximum window, skew and
