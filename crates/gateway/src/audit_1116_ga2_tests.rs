@@ -9,7 +9,15 @@ use crate::admission::{
 const MIN_UNITS: i128 = 10 * QUOTE_SCALE;
 
 fn account(gw: &mut Gw, seed: u8, deposit: i128) -> ([u8; 32], k256::ecdsa::SigningKey, [u8; 20]) {
-    let sk = k256::ecdsa::SigningKey::from_slice(&[seed; 32]).unwrap();
+    account_from(gw, [seed; 32], deposit)
+}
+
+fn account_from(
+    gw: &mut Gw,
+    seed: [u8; 32],
+    deposit: i128,
+) -> ([u8; 32], k256::ecdsa::SigningKey, [u8; 20]) {
+    let sk = k256::ecdsa::SigningKey::from_slice(&seed).unwrap();
     let address = eth_address(&sk);
     let (key, _) = gw.register_account(Some(address));
     gw.account_deposit(&key, 0, deposit).unwrap();
@@ -154,4 +162,113 @@ fn audit_1116_ga2_a_full_balance_below_the_minimum_may_leave() {
         .account_withdraw(&key, 1, amount, to, auth_nonce, &wire)
         .unwrap();
     assert_eq!(w.amount, amount as u128);
+}
+
+/// The one-deposit page that credits the held permit `commit` (a distinct
+/// transaction per deposit).
+fn credit_page(gw: &Gw, commit: [u8; 32]) -> deposit_rpc::Page {
+    let start = gw.deposit_cursor();
+    let route = gw.deposits.routes[&commit].clone();
+    let tip = perp_core::merkle::deposit_chain_fold(
+        &start.tip,
+        &perp_core::merkle::deposit_leaf(&route.from, &commit, route.amount, start.count),
+    );
+    let block = deposit_rpc::Block {
+        number: start.anchor.as_ref().map_or(1, |b| b.number + 1),
+        hash: [7; 32],
+        timestamp: None,
+    };
+    let mut tx = [9u8; 32];
+    tx[..8].copy_from_slice(&start.count.to_le_bytes());
+    deposit_rpc::Page {
+        start: start.clone(),
+        end: block.clone(),
+        events: vec![deposit_rpc::Event {
+            id: start.count,
+            from: route.from,
+            commit,
+            amount: route.amount,
+            tip,
+            tx,
+            tx_index: 0,
+            log_index: 0,
+            block,
+        }],
+    }
+}
+
+/// A production gateway account that signs its own withdrawals and is bound to
+/// its own address, so it can hold deposit permits too.
+fn permit_account(gw: &mut Gw, seed: u8) -> ([u8; 32], k256::ecdsa::SigningKey, [u8; 20]) {
+    let sk = k256::ecdsa::SigningKey::from_slice(&[seed; 32]).unwrap();
+    let address = eth_address(&sk);
+    let (key, _) = gw.register_account(Some(address));
+    gw.accounts.get_mut(&key).unwrap().deposit_address = Some(address);
+    (key, sk, address)
+}
+
+/// Issue a minimum collateral permit for market 0 and credit its deposit through
+/// the real ingestion path.
+fn deposit_through_permit(gw: &mut Gw, key: &[u8; 32], from: [u8; 20]) -> Result<(), String> {
+    if let Some(refusal) = gw.permit_cap_refusal(key, 0, deposit_ingestion::Purpose::Collateral) {
+        return Err(format!("{refusal:?}"));
+    }
+    let commit = gw.authorize_routed_deposit(
+        key,
+        from,
+        admission::MIN_DEPOSIT_PERMIT,
+        0,
+        deposit_ingestion::Purpose::Collateral,
+        u64::MAX,
+    )?;
+    let page = credit_page(gw, commit);
+    gw.apply_deposit_page(page)?;
+    gw.deposits.dirty = false;
+    Ok(())
+}
+
+#[test]
+fn audit_1116_ga2_a_deposit_and_full_exit_loop_stops_at_the_account_quota() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let (key, sk, address) = permit_account(&mut gw, 0x77);
+    let owner = gw.accounts[&key].wallet.owner;
+    let history_before = admission::HistorySize::of(&gw.seq.state).history;
+    let mut now = 1_000_000u64;
+    let mut cycles = 0u32;
+    for _ in 0..200 {
+        // The per-minute and per-window limits are not what stops the loop.
+        now += 60_000;
+        gw.window_withdrawals.clear();
+        if deposit_through_permit(&mut gw, &key, address).is_err() {
+            break;
+        }
+        let all = gw.market_free_of(&owner, 0);
+        withdraw_at(&mut gw, &key, &sk, all, address, now).unwrap();
+        cycles += 1;
+    }
+    let used = admission::HistorySize::of(&gw.seq.state).history - history_before;
+    assert!(cycles < 200, "the loop never stopped: {cycles} cycles");
+    assert!(used <= 100, "one account used {used} history units");
+}
+
+#[test]
+fn audit_1116_ga2_many_accounts_under_the_quota_cannot_close_registration() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let mut now = 1_000_000u64;
+    for n in 0..130u8 {
+        let mut seed = [0x5au8; 32];
+        seed[0] = n;
+        let (key, sk, to) = account_from(&mut gw, seed, 600 * QUOTE_SCALE);
+        for _ in 0..50 {
+            now += 60_000;
+            gw.window_withdrawals.clear();
+            if withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, now).is_err() {
+                break;
+            }
+        }
+    }
+    // Sustained abuse by many accounts leaves registration and permits open.
+    assert_eq!(gw.registration_refusal(), None);
+    let (late, _, late_address) = permit_account(&mut gw, 0x7f);
+    assert!(deposit_through_permit(&mut gw, &late, late_address).is_ok());
 }
