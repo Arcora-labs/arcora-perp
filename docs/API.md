@@ -50,12 +50,12 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose, reuseOwnerCommit? }` → `{ ownerCommit, sig, validUntil, marketId, purpose }` — durable permit with explicit routing and a deadline |
 | POST | `/v1/accounts/deposit/route` | ✓ | `{ ownerCommit, from, amount, marketId, purpose }` — explicitly adopt a legacy pending permit |
 | POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — optional finalized ingestion accelerator / durable receipt |
-| POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
+| POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization); `503` `CLOCK_WINDOW_CLOSING` with `Retry-After: 2` while the open settlement window is closing (§ When the settlement window is closing) |
 | GET  | `/v1/accounts/withdrawals` | ✓ | `{ vault, withdrawals[], voided[] }` with claim proofs |
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
-| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges), sent once a durable state snapshot holds the order; `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written, and `503` with `durability: "unknown"` (no receipt) when the write the order waits for fails (§ When the state cannot be written) |
+| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges), sent once a durable state snapshot holds the order; `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written, and `503` with `durability: "unknown"` (no receipt) when the write the order waits for fails (§ When the state cannot be written); `503` `CLOCK_WINDOW_CLOSING` with `Retry-After: 2` while the open settlement window is closing (§ When the settlement window is closing) |
 | GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`; `receipt` is `null` until a durable state snapshot holds the order), newest first; finished orders beyond the account's share of the row budget are dropped (see **Order rows kept per account**) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
@@ -120,6 +120,25 @@ timeout returns 503 with `durability: "unknown"`; the in-memory quote remains
 removed, but restart durability is unconfirmed. Do not infer safe replacement
 from an empty order list after this error. Obtain confirmed durable state
 before replacing the quote. Snapshot acknowledgement is not L1 settlement.
+
+### When the settlement window is closing
+
+In clock mode each settlement window registers the times of its operations with
+the clock verifier, which refuses a window whose timed operations (fills, funding,
+liquidations, withdrawals) span more than its `maxWindowMs` (30 s at launch); such
+a window could never settle and would be voided with every trade in it (§ Voided
+settlement windows). The gateway seals a window every seal period: a quarter of
+the shorter of `maxWindowMs` and `clockSkewMs`, 7.5 s at launch. When a seal is
+late (a slow L1 RPC or disk, a challenge read that is behind), the open
+window stops admitting timed operations once its first one is `maxWindowMs` less
+one seal period old (22.5 s at launch): `POST /v1/orders` and
+`POST /v1/accounts/withdraw` answer `503` with `Retry-After: 2` and
+`{ "error": "CLOCK_WINDOW_CLOSING: ..." }` and change nothing, and the matching
+tick (fills, funding, liquidations) waits. Orders already accepted wait in the
+book or the queue. Everything resumes in the next window, as soon as this one is
+sealed. Cancellation, deposits and reads are not affected. A window that holds
+nothing but idle funding steps is not held: it is dropped, as at a seal. Demo and
+legacy modes (no clock verifier) refuse nothing.
 
 **Order body** (`POST /v1/orders`):
 
@@ -644,9 +663,11 @@ deposit chain and the settlement state, and prints the `triggerCloseOnly` and
 
 In clock mode a sealed window must register its operation times with the clock
 verifier before its proof can settle. A window whose registration can never land
-(its anchor was cancelled, or none exists and none can be created any more) is
-voided by the gateway without a restart (`docs/PROVING-RUNBOOK.md`, § Dead clock
-window). Nothing of it settled on L1, so only off-chain state is undone:
+(its anchor was cancelled, or none exists and none can be created any more, for
+example because its timed operations span more than `maxWindowMs` or it was sealed
+too long after its last one) is voided by the gateway without a restart
+(`docs/PROVING-RUNBOOK.md`, § Dead clock window). Nothing of it settled on L1, so
+only off-chain state is undone:
 
 - **Orders and fills.** The engine returns to the state before the window, and
   every fill of the window is undone. Each order the window sequenced, rejected or
@@ -1077,6 +1098,7 @@ Each is raised once when it becomes active and once when it recovers:
 | `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the state is beyond an admission bound (only after a bound is lowered under an existing state, or after a voided window when crediting its deposits again would exceed one); it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
 | `window_voided` | a sealed window whose clock registration can never land was voided, and the window after it has not settled yet (§ Voided settlement windows). Not persisted: a restart clears it |
 | `clock_recovery_blocked` | the settle loop's recovery of a clock window needs the operator or is running out of time; `clockRecovery.operatorAction` says what to do (§ Clock recovery status). Cleared when the recovery resolves |
+| `clock_registration_refused` | a clock window cannot register: its timed operations span more than `maxWindowMs`, its last one is past `clockSkewMs`, or the clock verifier reverted its registration (the gateway log names the revert). Nothing is registered and the recovery decides the window; a timed one is voided (§ Voided settlement windows). Cleared when a window settles |
 
 ### Clock recovery status
 

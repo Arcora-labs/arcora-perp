@@ -241,8 +241,36 @@ stake-refund sweep, the batch count, the clock binding, the settlement's batch
 count and phase, the prover's identity and, in production, the adapter's
 `programVKey()` (read once; the route is immutable). Between the seal and the
 register only local work remains: the body-size check against the limit read
-before the pause, and the sealed window's batch and phase against the settlement's.
-The register's own read and send are the only L1 round trips left in that budget.
+before the pause, the sealed window's batch and phase against the settlement's,
+and its operation times against the verifier's `maxWindowMs` and `clockSkewMs`
+(read once at boot). The register's own read and send are the only L1 round trips
+left in that budget.
+
+**Keeping the window registrable.** A window registers only while its timed
+operations span at most `maxWindowMs` and its last one is within `clockSkewMs` of
+the block time. A slow or rate-limited L1 RPC must not break either bound:
+
+- The deposit scan reads L1 without the admission permit, so the pause never
+  waits for an RPC call; it takes the permit only to apply what it read, and drops
+  the read if admission closed meanwhile. It finds the next deposit block with
+  the vault's `depositBlock(id)`, one read instead of a search over blocks.
+- The open window stops admitting timed operations (ticks, orders, withdrawals)
+  once its first one is `maxWindowMs` less one seal period old, so a window whose
+  seals are skipped (a failed batch-count read, a stale challenge read, a failed
+  snapshot) stays inside `maxWindowMs`. Clients get `503 CLOCK_WINDOW_CLOSING`
+  meanwhile (`docs/API.md`); everything resumes in the next window.
+- After the pause, a window that can no longer register is logged
+  (`[clock] window N can no longer register when sealed`) and raises
+  `clock_registration_refused`. The post-seal preflight refuses such a window
+  as unregistrable: it is not rolled back (it would seal the same times again)
+  but journaled and handed to the recovery with nothing sent (§ Dead clock
+  window).
+- A `register` the verifier reverts is never waited out. Its reason is logged
+  with the verifier's error decoded (`InvalidTime`, `BadContext`,
+  `ReplacementForbidden`, `Unauthorized`, ...), `clock_registration_refused` is
+  raised, and the recovery takes the window at once instead of after the
+  twenty-minute finality budget. A send whose outcome is unknown (a timeout, a
+  lost receipt) is logged and still waits for its finalized anchor.
 
 ## Stale clock anchor: cancel
 
@@ -312,7 +340,11 @@ block time at one finalized block, then:
 
 **When a window can never settle.** Our anchor is not in the slot (it was
 cancelled, or none exists), and no transaction of ours can still put it there.
-One of these shows it:
+Besides a cancelled anchor and gateway clock drift, the usual cause is a window
+that could not register in time: its timed operations span more than
+`maxWindowMs`, it was sealed or sent more than `clockSkewMs` after its last one (a
+slow RPC or disk), or the verifier reverted its registration; the log and
+`clock_registration_refused` say which. One of these shows it:
 
 | Basis | Applies to | Rule at the finalized block |
 |---|---|---|
