@@ -295,8 +295,8 @@ impl Gw {
                 if k < tail.len() {
                     if entry != tail[k] {
                         return Err(format!(
-                            "order log record {index} differs from the snapshot's; the side log \
-                         belongs to another history"
+                            "order log record {index} differs from the snapshot's; the side \
+                             log belongs to another history"
                         ));
                     }
                     matched += 1;

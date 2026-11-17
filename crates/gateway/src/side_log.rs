@@ -20,8 +20,8 @@
 //!
 //! [`append`] first cuts the file back to the last acknowledged [`Position`]
 //! (dropping whatever an earlier failed append left), writes the frames, then
-//! `fsync`s the file, and the parent directory when it created the file — the
-//! same discipline as [`snapshot::write_atomic`]. Only an `Ok` advances the
+//! `fsync`s the file, and the parent directory on the first acknowledged append
+//! — the same discipline as [`snapshot::write_atomic`]. Only an `Ok` advances the
 //! position a later snapshot may reference. A crash during an append leaves a
 //! torn frame after the last acknowledged position, which [`read`] reports so the
 //! caller can cut it off.
@@ -137,7 +137,9 @@ pub fn append(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let created = !path.try_exists()?;
+    // The first acknowledged append also makes the directory entry durable, even
+    // when an earlier, failed attempt already created the (empty) file.
+    let first = at.bytes == 0 || !path.try_exists()?;
     let mut opts = std::fs::OpenOptions::new();
     opts.read(true).write(true).create(true);
     #[cfg(unix)]
@@ -157,7 +159,7 @@ pub fn append(
         file.seek(SeekFrom::Start(at.bytes))?;
         file.write_all(&frames)?;
         file.sync_all()?;
-        if created {
+        if first {
             std::fs::File::open(parent)?.sync_all()?;
         }
         Ok(end)
