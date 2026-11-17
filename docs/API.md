@@ -55,7 +55,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
-| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges) |
+| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges); `409` past the open-order cap (§ Open-order limits) |
 | GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
@@ -116,15 +116,46 @@ fill only against genuine external resting liquidity and are otherwise killed. T
 (§ Trading is gated until launch discusses the same gap.)
 
 Opening orders
-are margin-checked against the account's free balance; close-only mode blocks
-openers (§6). Acceptance is not a fill guarantee: that margin check runs against the
+are margin-checked against the account's free balance, and together with the
+account's other pending orders (§ Open-order limits); close-only mode blocks
+openers (§6). Acceptance is not a fill guarantee: those checks run against the
 **pre-batch** state, so an order can also be **rejected at settlement**, not just at
-submission — the ordinary cause is two of your own orders that individually fit your
-margin but together do not (each passes alone; the second fails initial margin when
-the batch settles). A settlement-rejected order never rests or fills and receives no
-further receipt — it stays `ACCEPTED` in `GET /v1/orders` and is resolved in the
-batch manifest's **rejected** set. **Rate limit:** at most 10 orders/sec per account
-— over that returns `429` `{ "error": "RATE_LIMIT: ..." }`.
+submission — when the oracle price moves before the batch, or when the account's
+earlier orders of the same batch change the position the order meets. A
+settlement-rejected order never rests or fills and receives no further receipt — it
+stays `ACCEPTED` in `GET /v1/orders` and is resolved in the batch manifest's
+**rejected** set. **Rate limit:** at most 10 orders/sec per account — over that
+returns `429` `{ "error": "RATE_LIMIT: ..." }`.
+
+**Open-order limits.** An account keeps at most **64 open orders in one market** and
+**128 across all markets**. Open orders are the orders that can rest on the book —
+`Gtc` with a limit price, and `PostOnly` — counting the ones resting, the ones
+accepted and waiting for the next batch, and the earlier orders of the same batch.
+`Ioc`, `Fok` and market orders never rest, so they are neither counted nor refused
+for the cap. An order past a cap is refused at submission with `409`
+`{ "error": "OPEN_ORDER_LIMIT: ..." }`; cancel an open order (or let one fill or
+expire) to place another.
+
+Every order is also held to a **collateral reserve**: the account's collateral in the
+market must cover the initial margin of the position after **every pending order on
+the new order's side** fills in full at the validated oracle price, the new order
+included. A reduce-only order counts only up to the size that closes the position;
+each side is margined on its own. Nothing is held back in advance: a fill moves an
+order's margin into the position, and a cancel, an expiry or a rejection releases
+it. An `Ioc` holds nothing once its batch has run, whether it traded or not. With
+$10 of collateral an account can keep ten $10 orders on a side. An order the reserve
+refuses is refused at submission with `400`
+`{ "error": "PENDING_MARGIN: ..." }`. While the market has no validated oracle price,
+submission does not check the reserve; the batch then rejects the order as
+`OracleUnavailable`.
+
+A refused order gets no receipt and is never recorded. The sequencer applies both
+limits again to every order when it seals the batch, whatever path the order came by,
+against the book the batch faces; an order it refuses there is in the batch
+manifest's **rejected** set as `InvalidOrder` (a cap) or `InsufficientMargin` (the
+reserve). Orders restored above a cap after an upgrade stay on the book, but the
+account's new orders are refused until it is back under. In the demo build the house
+market maker is exempt.
 
 **Minimum order size.** An order that opens, grows or flips a position needs at least
 **$10 of notional** (10,000,000 quote units). Reduce-only orders, and orders that
@@ -165,12 +196,12 @@ the reason the batch manifest records for it (the manifest stores the numeric co
 | 2 | `SelfTradePrevented` | it would have traded against the same account |
 | 3 | `PostOnlyWouldTake` | a post-only order would have taken liquidity |
 | 4 | `ReduceOnlyViolation` | a reduce-only order would have opened or grown a position |
-| 5 | `InsufficientMargin` | not enough free margin for the initial-margin requirement |
+| 5 | `InsufficientMargin` | not enough free margin for the initial-margin requirement, of the order alone or together with the account's pending orders on its side (§ Open-order limits) |
 | 6 | `MarketCloseOnly` | the system is close-only and the order would open, grow or flip a position (reductions still trade), or the order was in a window dropped by the wind-down |
 | 7 | `OracleUnavailable` | no fresh validated price |
 | 8 | `FillOrKillUnfillable` | a fill-or-kill order could not fill in full |
 | 9 | `Cancelled` | the order expired before or at its matching instant |
-| 10 | `InvalidOrder` | malformed, or could not be applied for a reason with no more specific code |
+| 10 | `InvalidOrder` | malformed, could not be applied for a reason with no more specific code, or past an open-order cap (§ Open-order limits) |
 | 11 | `FillPriceOutOfBand` | the fill price lay outside the market's band around the oracle price |
 | 12 | `FillWouldBankrupt` | the fill would have left a leg with negative collateral, or open below maintenance margin |
 | 13 | `BelowMinimumSize` | the order adds exposure but its notional is below the minimum order size |

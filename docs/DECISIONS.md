@@ -95,6 +95,14 @@ admitted order is always marginable, so a matched fill never fails to settle —
 empty in normal operation. The check uses the conservative oracle mark and the
 worst case (full size), matching standard venue pre-trade risk.
 
+**Amended (audit 2026-11-16 GA-1 + SM-1).** Checked one order at a time, the margin
+of an account's resting orders was never summed, and nothing bounded how many it
+kept: 60 accounts with $10 each kept 22,081 bids resting. The sequencer now admits
+an order only if the account's collateral in the market covers the initial margin
+of every pending order on the order's side together with it, and caps open orders
+at 64 per market and 128 per account, at intake and at the seal
+(`Sequencer::check_open_order_limits`, `docs/ECONOMIC_SECURITY.md` Q9).
+
 ## ADR-0006 — Per-operation atomicity
 
 **Decision.** `Fill` and `Unbind` compute their result on copies and commit only
