@@ -608,10 +608,21 @@ tick took 0.50 s, with 40,000 3.75 s. Each book now indexes its resting orders b
 hash, so a lookup, a cancel or a ban finds its order without walking the book; the
 index is not persisted (the snapshot layout is unchanged) and a restore rebuilds it.
 A tick updates only the rows its batch touched: the orders it sealed, those with an
-applied fill, a rejection or a removal in it, and those whose fills still wait for
-their proof. Any other row's update changed nothing a response or an event shows, so
-both are what they were. (The tick still compares each row's finality with the
-sequencer's, a map lookup per row, as before.)
+applied fill, a rejection or a removal in it, and those holding a fill of a tick
+that settled or was discarded since the tick before. The batch is indexed by order
+hash once per tick, so an update costs that row's own entries. A row whose fills wait
+for their window to settle on L1 (about 13 minutes in window-settle mode, and such
+rows cost an attacker nothing to make with IOCs the house answers) is not updated
+again until then: the gateway watches the ticks with unsettled fills, a lookup per
+such tick, not per row. Any other row's update changed nothing a response or an event
+shows, so both are what they were; every change a batch makes to a resting order is
+named by one of its fills, rejections or removals (below). What a tick still does per
+row is cheap and was there before: it visits every row to find the unsealed ones and
+to compare each row's finality with the sequencer's (a flag check and a map lookup).
+An account over the history cap (500 rows) no longer walks every book for its resting
+orders on each tick; each row is looked up by its hash, and a row of an order that
+ended without filling, which never reaches SETTLED, leaves the history once the tick
+that last updated it is hard, so such an account does not stay over the cap.
 
 When a fill failed to settle because of one of its orders, the batch copied the
 whole book to roll back to and matched again, once per failing order, so one $60 IOC
@@ -621,20 +632,43 @@ batch that finds no offender copies nothing. A resting maker whose account's
 collateral could not carry its fill (`InsufficientMargin`, `FillWouldBankrupt`)
 takes every other order of that account on that side of the market with it, resting
 or in the batch, under the same reason; reduce-only orders, which add no exposure,
-stay. The batch then matches again once per such account, not once per order:
-3,000 such sells of three accounts take four passes. And a batch runs at most
-`MAX_MATCH_ROUNDS` (8) passes. The last one stands as it is: a fill that still fails
-there is dropped, as a fill failing for a reason no order is to blame for always
-was; its offending order is rejected and taken off the book, and the poisoned orders
-the batch did not reach wait for the next one. Its counterparty gets no fill for the
-size that pass matched against the offender: a taker's matched size neither fills nor
-rests, a resting maker's leaves the book.
+stay. So does a resting maker that would add exposure where only a reduction may
+trade (a reduce-only order, close-only mode, an order admitted below the minimum
+because it reduced) while its account's position at the start of the batch gives
+that side nothing to reduce: it takes the account's orders on that side that would
+fail the same way, each one the pre-trade checks would refuse now. The batch then
+matches again once per such account and side, not once per order: 3,000 such sells
+of three accounts take four passes, seven reduce-only leftovers of one account two.
+All of a pass's side bans are applied in one walk per side of a market.
+
+And a batch runs at most `MAX_MATCH_ROUNDS` (8) passes. The last one settles each
+fill as it matches it, before the book changes for it: a fill that would fail because
+of one of its orders drops that resting maker from the book, or stops that incoming
+order (its remainder neither trades nor rests), and the other side loses no size and
+trades on against the next order. The failing order is rejected under its own reason,
+or, if it already traded in that pass, keeps those fills and leaves the book with a
+removal under that reason; the failing orders the pass did not reach wait for the
+next batch. (Round 1 review: the first version kept the last pass as matched and only
+dropped its failed fills. The size those fills had taken off innocent orders was gone
+with no fill, rejection or removal, so the gateway never updated their rows, and one
+account's seven reduce-only leftovers were enough to reach that pass.) A fill-or-kill
+that has not traded yet when a maker it crossed fails is checked again against what
+is left; one that already traded can end short, the one case where the last pass
+gives up all-or-nothing, as a fill failing for a reason no order is to blame for
+always could.
+
+What is left (not done): each pass but the last still settles on a copy of the
+state, so a batch makes at most `MAX_MATCH_ROUNDS` state copies; an undo log in the
+engine would change the proven guest code. A side ban walks each side it touches,
+not just the banned accounts' orders: at most once per side per pass.
 
 — `crates/matcher/src/book.rs` (`OrderBook::remaining`, `OrderBook::cancel`,
-`OrderBook::cancel_owner_side`, `OrderBook::undo`), `crates/matcher/src/lib.rs`
-(`MatchingEngine::process_stream_undoable`, `MatchingEngine::undo`),
-`crates/sequencer/src/lib.rs` (`MAX_MATCH_ROUNDS`, `Sequencer::seal_batch`),
-`crates/gateway/src/execution.rs` (`touched_by`, `needs_update`); tests in
+`OrderBook::cancel_side_where`, `OrderBook::undo`, `TradeCheck`),
+`crates/matcher/src/lib.rs` (`MatchingEngine::process_stream_undoable`,
+`MatchingEngine::undo`, `MatchingEngine::process_stream_checked`),
+`crates/sequencer/src/lib.rs` (`MAX_MATCH_ROUNDS`, `Sequencer::seal_batch`,
+`settle_fill`), `crates/gateway/src/execution.rs` (`Touches`, `needs_update`),
+`crates/gateway/src/main.rs` (`Gw::settled_fill_ticks`, the history cap); tests in
 `crates/gateway/src/tick_scaling_tests.rs`, the `audit_1116_sm2_*` tests of
 `crates/sequencer/src/lib.rs` and `crates/sequencer/tests/fuzz.rs`, and the
 `audit_1116_*` tests of `crates/matcher/src/lib.rs`.

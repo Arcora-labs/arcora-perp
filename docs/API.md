@@ -223,11 +223,26 @@ matches again without it, so the other side trades against the next order instea
 When that order is a resting maker whose account's collateral could not carry the
 fill (`InsufficientMargin`, `FillWouldBankrupt`), every other order of that account on
 the same side of that market, resting or in the same batch, is rejected with it under
-the same reason; its reduce-only orders stay. A batch matches at most 8 times
-(`MAX_MATCH_ROUNDS`, audit 2026-11-16 SM-2). The last pass stands: a fill that still
-fails there is dropped, the order to blame is rejected and leaves the book, and the
-other side gets no fill for the size matched against it in that batch (a taker's
-matched size neither fills nor rests; a resting maker's leaves the book).
+the same reason; its reduce-only orders stay. When it is a resting maker that would
+add exposure where only a reduction may trade, and the account's position at the
+start of the batch gives that side nothing to reduce (no short for a bid, no long for
+an ask), the account's other orders on that side that would fail the same way go
+with it under the same reason: its reduce-only orders for `ReduceOnlyViolation`, its
+other orders but the reduce-only ones in close-only mode for `MarketCloseOnly`, its
+other orders admitted below the minimum for `BelowMinimumSize`. Each is an order the
+pre-trade checks would refuse against that position now.
+
+A batch matches at most 8 times (`MAX_MATCH_ROUNDS`, audit 2026-11-16 SM-2). The
+last pass settles each fill as it is matched, before the book changes for it: an
+order a fill would fail because of is rejected with its reason there and then (a
+resting order leaves the book; an incoming order stops, and its remainder neither
+trades nor rests), and the other side loses no size and goes on to the next order.
+An order that already traded in that pass keeps those fills and reads `CANCELLED`
+with the failure's reason (below). A fill-or-kill order that has not traded yet when
+a resting order it crossed fails is checked again against what is left, and rejected
+`FillOrKillUnfillable` if that cannot fill it; one that already traded can end with
+part of its size unfilled (`CANCELLED`, `UnfilledRemainder`). The failing orders the
+last pass did not reach wait for the next batch.
 
 Rejection membership is proven; the truthfulness of a rejection reason is not
 (`docs/SECURITY.md`).
@@ -246,6 +261,7 @@ either:
 | `Expired` | its good-till-time expiry passed while it rested |
 | `Liquidated` | your position was liquidated: all your resting orders, in every market, are cancelled |
 | `ForcedClose` | another account's liquidation closed some or all of your position in this market (a liquidation closes the other side of its market by the same size, pro rata; `docs/ECONOMIC_SECURITY.md`, Q3/Q7): your resting orders in this market are cancelled, because they were placed against the position that changed. Place them again against the new position if you still want them. |
+| a rejection reason (codes 4, 5, 6, 11, 12, 13) | in a batch's last matching pass (§ Fills that fail to settle) the order traded and then a further fill failed because of it, for that reason: it keeps the fills it made, and the rest of it leaves the book (an incoming order's remainder does not rest) |
 
 A forced close also sends a `forcedClose` event (§ WebSocket).
 
