@@ -21287,4 +21287,5 @@ mod tests {
     include!("permit_keepalive_tests.rs");
     include!("audit_1116_gf1_tests.rs");
     include!("audit_1116_gf2_tests.rs");
+    include!("audit_1116_g2_tests.rs");
 }
