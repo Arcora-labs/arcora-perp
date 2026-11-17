@@ -934,6 +934,17 @@ const SNAPSHOT_ACK_TIMEOUT_SECS: u64 = 30;
 /// have a live remainder: only sealed orders absent from the book may be evicted.
 /// Live orders take priority over the history cap so their cancellation stays reachable.
 const MAX_ACCOUNT_ORDER_HISTORY: usize = 500;
+/// Finished order rows kept across all accounts (audit GF-1 + SM-4). Each row
+/// costs a few hundred bytes of snapshot, so 500 per account let enough accounts
+/// fill the 64 MiB payload with order history alone. About 16 MB at this budget.
+const ORDER_HISTORY_BUDGET: usize = 50_000;
+
+/// The rows each of `holders` accounts keeps: an equal share of `budget`, at most
+/// [`MAX_ACCOUNT_ORDER_HISTORY`] and at least one. While `budget` is at least
+/// [`MAX_ACCOUNTS`], every holder's share together stays within it.
+fn account_order_history_cap(holders: usize, budget: usize) -> usize {
+    (budget / holders.max(1)).clamp(1, MAX_ACCOUNT_ORDER_HISTORY)
+}
 
 /// Evict up to `len - max` of the OLDEST terminal entries (front-first) so a Vec stays
 /// bounded, never dropping a non-terminal (live/in-flight) entry. Generic over the
@@ -5717,26 +5728,8 @@ impl Gw {
                     .to_string(),
                 );
             }
-            // A04: SETTLED is a finality axis, not proof of full execution. Never
-            // evict the only API row for a still-live partial maker. Gather its live
-            // hashes once (only when pruning is needed), not once per history row.
-            if acct.orders.len() > MAX_ACCOUNT_ORDER_HISTORY {
-                let live: std::collections::BTreeSet<Digest> = self
-                    .mkts
-                    .iter()
-                    .filter_map(|m| self.seq.book(m.id))
-                    .flat_map(|book| book.resting_hashes_for(&acct.wallet.owner))
-                    .collect();
-                cap_history(&mut acct.orders, MAX_ACCOUNT_ORDER_HISTORY, |o| {
-                    o.sealed
-                        && o.last_finality == "SETTLED"
-                        && !live.contains(&o.order_hash)
-                        && o.execution
-                            .as_ref()
-                            .is_some_and(execution::Execution::terminal)
-                });
-            }
         }
+        self.cap_account_order_history(ORDER_HISTORY_BUDGET);
         // Every row above has recorded the finality it reports, so the sequencer can
         // now drop the records of orders a settle finished (audit GF-1 + SM-4).
         self.seq.prune_settled_order_history();
@@ -5751,6 +5744,42 @@ impl Gw {
             });
         }
         Ok((events, acct_events))
+    }
+
+    /// Bound the API order rows kept per account, and so in the snapshot (audit
+    /// GF-1 + SM-4): each account holding rows keeps at most
+    /// [`account_order_history_cap`] rows, its share of `budget`. Only finished
+    /// rows are evicted, oldest first: sealed, off the book, a terminal execution,
+    /// and a finality that reached SETTLED or whose record the sequencer dropped (an
+    /// order that never filled is never SETTLED). A04: never evict the only API row
+    /// of a still-live partial maker; live rows count but stay.
+    fn cap_account_order_history(&mut self, budget: usize) {
+        let holders = self.accounts.values().filter(|a| !a.orders.is_empty());
+        let cap = account_order_history_cap(holders.count(), budget);
+        for acct in self.accounts.values_mut() {
+            if acct.orders.len() <= cap {
+                continue;
+            }
+            // Gather the live hashes once per account, not once per history row.
+            let live: std::collections::BTreeSet<Digest> = self
+                .mkts
+                .iter()
+                .filter_map(|m| self.seq.book(m.id))
+                .flat_map(|book| book.resting_hashes_for(&acct.wallet.owner))
+                .collect();
+            // Rows are kept newest first; `cap_history` evicts from the front.
+            acct.orders.reverse();
+            cap_history(&mut acct.orders, cap, |o| {
+                o.sealed
+                    && (o.last_finality == "SETTLED"
+                        || self.seq.finality_of(&o.order_hash).is_none())
+                    && !live.contains(&o.order_hash)
+                    && o.execution
+                        .as_ref()
+                        .is_some_and(execution::Execution::terminal)
+            });
+            acct.orders.reverse();
+        }
     }
 
     // ── snapshot ──────────────────────────────────────────────────────────────

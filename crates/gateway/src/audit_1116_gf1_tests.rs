@@ -99,9 +99,9 @@ mod audit_1116_gf1 {
     }
 
     /// Bytes the snapshot spends on the accounts and their order history rows (the
-    /// positional account map plus each row's execution record). That history is
-    /// capped per account by design (`MAX_ACCOUNT_ORDER_HISTORY`), so it is set
-    /// aside when measuring the per-order history this finding is about.
+    /// positional account map plus each row's execution record). Those rows are
+    /// capped per account and in total (`account_order_history_cap`, tested
+    /// below), so they are set aside when measuring the history beyond them.
     fn account_rows_bytes(gw: &Gw) -> u64 {
         let mut extension = Vec::new();
         execution::append_snapshot(gw, &mut extension);
@@ -220,6 +220,64 @@ mod audit_1116_gf1 {
         assert_eq!(rows.len(), MAX_ACCOUNT_ORDER_HISTORY);
         assert_eq!(rows[0].id, newest, "the newest finished row is kept");
         assert!(rows.iter().all(|o| o.id != oldest), "the oldest went");
+    }
+
+    /// With 500 finished rows per account, enough accounts could still fill the
+    /// snapshot with order history (a row costs a few hundred bytes). The rows
+    /// kept across all accounts stay within a budget: each account holding rows
+    /// keeps an equal share, newest first, and a live row is never evicted.
+    #[test]
+    fn audit_1116_gf1_finished_order_history_has_a_global_budget() {
+        const { assert!(ORDER_HISTORY_BUDGET >= MAX_ACCOUNTS) };
+        for holders in [0, 1, 2, 99, 100, 101, 1_000, 10_000, 49_999, MAX_ACCOUNTS] {
+            let cap = account_order_history_cap(holders, ORDER_HISTORY_BUDGET);
+            assert!((1..=MAX_ACCOUNT_ORDER_HISTORY).contains(&cap));
+            assert!(holders * cap <= ORDER_HISTORY_BUDGET, "{holders} x {cap}");
+        }
+        assert_eq!(
+            account_order_history_cap(100, ORDER_HISTORY_BUDGET),
+            MAX_ACCOUNT_ORDER_HISTORY
+        );
+
+        let mut gw = Gw::boot();
+        gw.window_settle_mode = true;
+        gw.seq.set_retain_tick_snapshots(false);
+        let keys: Vec<[u8; 32]> = (0..4).map(|_| funded_account(&mut gw)).collect();
+        let unfilled = OrderReq {
+            limit_price: (gw.px_of(0) * 99 / 100).to_string(),
+            ..small_ioc("Buy")
+        };
+        for key in &keys {
+            for _ in 0..8 {
+                gw.accounts.get_mut(key).unwrap().orders_this_sec = 0;
+                gw.account_place_order(key, &unfilled).unwrap();
+            }
+        }
+        gw.tick();
+        settle_open_window(&mut gw);
+        gw.tick();
+        let newest: Vec<String> = keys
+            .iter()
+            .map(|k| gw.accounts[k].orders[0].id.clone())
+            .collect();
+        // A live order of the first account: never evicted, not counted as finished.
+        let pending = OrderReq {
+            limit_price: gw.px_of(0).to_string(),
+            tif: "Gtc".into(),
+            ..small_ioc("Sell")
+        };
+        gw.accounts.get_mut(&keys[0]).unwrap().orders_this_sec = 0;
+        gw.account_place_order(&keys[0], &pending).unwrap();
+
+        // Four holders share a budget of 20: five rows each. Only finished rows
+        // are evicted, oldest first; the live one counts but stays.
+        gw.cap_account_order_history(20);
+        for (i, key) in keys.iter().enumerate() {
+            let rows = &gw.accounts[key].orders;
+            assert_eq!(rows.len(), 5, "account {i}");
+            assert!(rows.iter().any(|o| o.id == newest[i]));
+        }
+        assert!(!gw.accounts[&keys[0]].orders[0].sealed, "the live row stays");
     }
 
     fn order_request(key: &[u8; 32], client: Option<SocketAddr>) -> Request<Body> {

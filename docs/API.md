@@ -56,7 +56,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
 | POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges); `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written (§ When the state cannot be written) |
-| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`) |
+| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`), newest first; finished orders beyond the account's share of the row budget are dropped (see **Order rows kept per account**) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
 | GET  | `/v1/markets` | – | `{ markets[] }` |
@@ -460,6 +460,14 @@ up and restore the side logs together with the snapshot (`gateway_backup.py` cop
 them; `docs/RECOVERY_RESTORE.md`). The sequencer also drops a finished order's
 receipt and finality records once a settle has hardened it; `GET /v1/orders` keeps
 reporting the finality its row last recorded.
+
+**Order rows kept per account.** `GET /v1/orders` rows live in the snapshot, so they
+are bounded too. An account keeps at most 500 rows, and fewer once many accounts hold
+rows: each gets an equal share of 50,000 (100 accounts keep 500 each, 1,000 keep 50,
+at least one each). Only finished rows are dropped, oldest first: sealed, off the
+book, with a terminal execution and nothing left to settle, including orders that
+never filled. Pending and resting orders are never dropped and still count. A dropped
+row's signed receipt stays valid; keep it from the `POST /v1/orders` response.
 
 ## Trading is gated until launch (SEC-025-D)
 
