@@ -1097,10 +1097,12 @@ mod impact_price_tests {
     }
 
     /// A window walks only the levels inside its price range (never showing the
-    /// filter an order outside it), and passes over the orders worth less than its
-    /// minimum quote without showing them to the filter either.
+    /// filter an order outside it). Inside it every live order is shown to the
+    /// filter, however small, and the orders the filter refuses cost the walk
+    /// nothing: no number of them ahead of the depth leaves a side without its
+    /// impact price.
     #[test]
-    fn a_window_bounds_the_levels_and_passes_over_dust() {
+    fn a_window_bounds_the_levels_and_has_no_order_budget() {
         let mut book = OrderBook::<Keccak256>::new(0);
         // three asks of just under $50 at $90, $100 and $110, and a deep ask at $120
         for (n, price) in [(1, 90), (2, 100), (3, 110)] {
@@ -1119,10 +1121,9 @@ mod impact_price_tests {
             100 * SIZE_SCALE,
             120 * PRICE_SCALE,
         );
-        let window = |lo: i128, hi: i128, min_quote_usd: i128| ImpactWindow {
+        let window = |lo: i128, hi: i128| ImpactWindow {
             lo: lo * PRICE_SCALE,
             hi: hi * PRICE_SCALE,
-            min_quote: min_quote_usd * QUOTE_SCALE,
         };
         let mut seen = Vec::new();
         let mut record = |q: &RestingQuote| {
@@ -1136,7 +1137,7 @@ mod impact_price_tests {
                 Side::Sell,
                 140 * QUOTE_SCALE,
                 0,
-                window(95, 115, 0),
+                window(95, 115),
                 &mut record
             ),
             None
@@ -1152,39 +1153,43 @@ mod impact_price_tests {
                 all
             )
             .is_some());
-        // with a $51 minimum quote the three small asks (at most $50 each) are dust:
-        // the filter sees only the deep ask, which prices the whole $140
-        let mut seen = Vec::new();
+        // 10,000 one-unit asks at $95 that the filter refuses, ahead of the $100
+        // ask: the walk passes all of them and prices $90 of depth at $100 and $110
+        for n in 0..10_000 {
+            rest(&mut book, 100 + n, Side::Sell, 1, 95 * PRICE_SCALE);
+        }
+        let mut shown = 0usize;
         assert_eq!(
-            book.impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 200, 51), |q| {
-                seen.push(q.price / PRICE_SCALE);
-                true
+            book.impact_price_within(Side::Sell, 90 * QUOTE_SCALE, 0, window(95, 115), |q| {
+                shown += 1;
+                q.remaining > 1
             }),
-            Some(120 * PRICE_SCALE)
+            book.impact_price_within(Side::Sell, 90 * QUOTE_SCALE, 0, window(96, 115), all)
         );
-        assert_eq!(seen, [120]);
-        // just under their value, they count again
+        assert_eq!(shown, 10_002);
+        // and, counted, each one-unit ask is depth like any other
+        let mut tiny = 0usize;
         assert!(book
-            .impact_price_within(Side::Sell, 140 * QUOTE_SCALE, 0, window(0, 115, 49), all)
+            .impact_price_within(Side::Sell, 90 * QUOTE_SCALE, 0, window(95, 115), |q| {
+                tiny += usize::from(q.remaining == 1);
+                true
+            })
             .is_some());
+        assert_eq!(tiny, 10_000);
         // the bids side walks its window from the top down
         let mut bids = OrderBook::<Keccak256>::new(0);
         for (n, price) in [(5, 90), (6, 100), (7, 110)] {
             rest(&mut bids, n, Side::Buy, SIZE_SCALE, price * PRICE_SCALE);
         }
         let mut seen = Vec::new();
-        let _ = bids.impact_price_within(Side::Buy, THOUSAND, 0, window(95, 105, 0), |q| {
+        let _ = bids.impact_price_within(Side::Buy, THOUSAND, 0, window(95, 105), |q| {
             seen.push(q.price / PRICE_SCALE);
             true
         });
         assert_eq!(seen, [100]);
-        // an empty or inverted window has no depth, nor does a side all dust
+        // an empty or inverted window has no depth
         assert_eq!(
-            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(105, 95, 0), all),
-            None
-        );
-        assert_eq!(
-            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(0, 200, 111), all),
+            bids.impact_price_within(Side::Buy, 50 * QUOTE_SCALE, 0, window(105, 95), all),
             None
         );
     }

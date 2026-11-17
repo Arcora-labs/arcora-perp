@@ -32,6 +32,7 @@ use sequencer::{
     EnclaveIdentity, OpenOrderLimit, SealedBatch, Sequencer,
     MAX_OPEN_ORDERS_PER_ACCOUNT as PER_ACCOUNT, MAX_OPEN_ORDERS_PER_MARKET as PER_MARKET,
 };
+use std::collections::BTreeSet;
 
 /// 0.0001 BTC: $10 at the $100,000 index, the order minimum.
 const TEN_DOLLARS: i128 = SIZE_SCALE / 10_000;
@@ -495,6 +496,121 @@ fn audit_1116_sm1_intake_counts_the_orders_waiting_for_their_batch() {
     assert_eq!(s.check_open_order_limits(&take, t), Ok(()));
     assert!(s.cancel_order(&owner_id(1), &quotes[0], true).is_some());
     assert_eq!(s.check_open_order_limits(&extra, t), Ok(()));
+}
+
+/// Round 2 of the review: the reserve holds an order's margin until it fills, is
+/// cancelled, expires or is rejected, so collateral cannot leave the market first
+/// (`unbind_keeps_reserve`, which the gateway asks before a withdrawal or a
+/// transfer). With $12 behind nine $10 bids, $9 is held and $3 is free; an ask
+/// waiting for its batch holds $10 on its own side.
+#[test]
+fn audit_1116_sm1_an_unbind_cannot_take_the_reserve_of_pending_orders() {
+    let t = 10_000u64;
+    let mut s = setup(&[0], t);
+    fund(&mut s, 3, 0, 12);
+    let o3 = owner_id(3);
+    assert!(
+        s.unbind_keeps_reserve(&o3, 0, 12 * QUOTE_SCALE, t),
+        "nothing pending"
+    );
+    let bids: Vec<Order> = (0..9u64)
+        .map(|n| order(3, 0, Side::Buy, TEN_DOLLARS, 99_000, n))
+        .collect();
+    assert!(tick(&mut s, t, &bids).manifest.rejected.is_empty());
+    assert!(s.unbind_keeps_reserve(&o3, 0, 3 * QUOTE_SCALE, t));
+    assert!(!s.unbind_keeps_reserve(&o3, 0, 3 * QUOTE_SCALE + 1, t));
+
+    // an ask accepted and waiting for its batch holds $10 on the sell side
+    let ask = order(3, 0, Side::Sell, TEN_DOLLARS * 10, 101_000, 100);
+    assert_eq!(s.check_open_order_limits(&ask, t), Ok(()));
+    s.accept_order(&ask, t);
+    assert!(!s.unbind_keeps_reserve(&o3, 0, 3 * QUOTE_SCALE, t));
+    assert!(s.unbind_keeps_reserve(&o3, 0, 2 * QUOTE_SCALE, t));
+    assert!(s.cancel_order(&o3, &ask, false).is_some());
+    assert!(s.unbind_keeps_reserve(&o3, 0, 3 * QUOTE_SCALE, t));
+
+    // without a validated oracle price the reserve cannot be measured: refused
+    // while an order that could add exposure is pending, as for owner 3; an owner
+    // with nothing pending is unaffected
+    let stale = t + 60_000;
+    assert!(!s.unbind_keeps_reserve(&o3, 0, QUOTE_SCALE, stale));
+    fund(&mut s, 4, 0, 10);
+    assert!(s.unbind_keeps_reserve(&owner_id(4), 0, 10 * QUOTE_SCALE, stale));
+
+    // the house owner is exempt, as from the other limits
+    s.set_minimum_exempt_owner(Some(o3));
+    assert!(s.unbind_keeps_reserve(&o3, 0, 12 * QUOTE_SCALE, t));
+    s.set_minimum_exempt_owner(None);
+
+    // cancelled, the bids hold nothing
+    for b in &bids {
+        assert!(s.cancel_order(&o3, b, true).is_some());
+    }
+    assert!(s.unbind_keeps_reserve(&o3, 0, 12 * QUOTE_SCALE, t));
+
+    // close-only: no pending order can add exposure, so none holds anything
+    let again: Vec<Order> = (0..9u64)
+        .map(|n| order(3, 0, Side::Buy, TEN_DOLLARS, 99_000, 200 + n))
+        .collect();
+    assert!(tick(&mut s, t, &again).manifest.rejected.is_empty());
+    assert!(!s.unbind_keeps_reserve(&o3, 0, 12 * QUOTE_SCALE, t));
+    s.apply(&BatchOp::EnterCloseOnly).unwrap();
+    assert!(s.unbind_keeps_reserve(&o3, 0, 12 * QUOTE_SCALE, t));
+}
+
+/// `seal_admits` gives, without changing anything, the verdicts the seal's
+/// pre-trade gate then gives the same batch: here the reserve refusing owner 3's
+/// bids past its $10, a reduce-only order refused for following its owner's other
+/// order, and a cap. Another owner's orders change no verdict of owner 3's.
+#[test]
+fn audit_1116_sm1_seal_admits_gives_the_seals_own_verdicts() {
+    let t = 10_000u64;
+    let mut s = setup(&[0], t);
+    fund(&mut s, 3, 0, 10);
+    fund(&mut s, 1, 0, 1_000_000);
+    // owner 1 holds a long to reduce
+    fund(&mut s, 2, 0, 1_000_000);
+    tick(
+        &mut s,
+        t,
+        &[
+            order(2, 0, Side::Sell, THOUSAND_DOLLARS, INDEX_USD, 1),
+            ioc(order(1, 0, Side::Buy, THOUSAND_DOLLARS, INDEX_USD, 1)),
+        ],
+    );
+    assert_eq!(
+        s.state.position(&owner_id(1), 0).unwrap().size,
+        THOUSAND_DOLLARS
+    );
+    let mut batch: Vec<Order> = (0..12u64)
+        .map(|n| order(3, 0, Side::Buy, TEN_DOLLARS, 99_000, 10 + n))
+        .collect();
+    batch.push(order(1, 0, Side::Buy, THOUSAND_DOLLARS, 98_000, 2));
+    batch.push(ioc(Order {
+        reduce_only: true,
+        ..order(1, 0, Side::Sell, THOUSAND_DOLLARS, 99_000, 3)
+    }));
+    batch.extend(
+        (0..PER_MARKET as u64).map(|n| order(1, 0, Side::Sell, THOUSAND_DOLLARS, 101_000, 100 + n)),
+    );
+    let root = s.state.state_root();
+    let verdicts = s.seal_admits(&batch, t);
+    assert_eq!(s.seal_admits(&batch, t), verdicts);
+    assert_eq!(s.state.state_root(), root);
+    assert_eq!(
+        s.seal_admits(&batch[..12], t),
+        verdicts[..12],
+        "owner 1's orders change none of owner 3's verdicts"
+    );
+    let sealed = tick(&mut s, t, &batch);
+    let refused: BTreeSet<Digest> = sealed.manifest.rejected.iter().map(|(h, _)| *h).collect();
+    let seal_verdicts: Vec<bool> = batch.iter().map(|o| !refused.contains(&hash(o))).collect();
+    assert_eq!(verdicts, seal_verdicts);
+    assert_eq!(
+        verdicts.iter().filter(|v| !**v).count(),
+        2 + 1 + 1,
+        "{verdicts:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------

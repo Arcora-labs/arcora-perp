@@ -82,23 +82,18 @@ pub struct RestingQuote {
 }
 
 /// The part of one side of a book that [`OrderBook::impact_price_within`] walks:
-/// the price levels inside `lo..=hi`, and of their orders only those whose
-/// remaining notional at their price, quote-scaled, is at least `min_quote`. A
-/// smaller order is dust: the walk passes over it without showing it to the
-/// filter, and it is never depth.
+/// the price levels inside `lo..=hi`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ImpactWindow {
     pub lo: i128,
     pub hi: i128,
-    pub min_quote: i128,
 }
 
 impl ImpactWindow {
-    /// Every level and every order of the side.
+    /// Every level of the side.
     pub const UNBOUNDED: Self = Self {
         lo: i128::MIN,
         hi: i128::MAX,
-        min_quote: 0,
     };
 }
 
@@ -209,16 +204,14 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
 
     /// [`Self::impact_price`] over the part of the side inside `window`: only the
     /// price levels in `window.lo..=window.hi` are walked (best price first, as a
-    /// sweeping taker meets them; the levels outside are never visited), and an
-    /// order worth less than `window.min_quote` at its price is dust, passed over
-    /// without being shown to `counts`.
+    /// sweeping taker meets them; the levels outside are never visited).
     ///
     /// The walk ends at the order that completes `notional`, inside its level
     /// (audit 2026-11-16 SM-3): orders queued behind it, at its price or worse,
-    /// are never visited. With a positive `min_quote` it therefore counts at most
-    /// `notional / min_quote` (rounded up) orders as depth, however many orders it
-    /// passes over. What it does not count costs it no budget: dust and orders
-    /// `counts` refuses never make a side without an impact price.
+    /// are never visited. It has no order budget: the orders `counts` refuses
+    /// cost it nothing but the visit, so however many of them rest ahead of the
+    /// depth, they never make a side without an impact price. Its work is the
+    /// orders in the window ahead of that order.
     pub fn impact_price_within(
         &self,
         side: Side,
@@ -231,36 +224,25 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             return None;
         }
         let prices = window.lo..=window.hi;
-        let min_quote = window.min_quote;
         match side {
-            Side::Buy => Self::sweep_average(
-                self.bids.range(prices).rev(),
-                notional,
-                now_ms,
-                min_quote,
-                counts,
-            ),
-            Side::Sell => {
-                Self::sweep_average(self.asks.range(prices), notional, now_ms, min_quote, counts)
+            Side::Buy => {
+                Self::sweep_average(self.bids.range(prices).rev(), notional, now_ms, counts)
             }
+            Side::Sell => Self::sweep_average(self.asks.range(prices), notional, now_ms, counts),
         }
     }
 
-    /// [`Self::impact_price`] over `levels`, given best price first, passing over
-    /// orders worth less than `min_quote`.
+    /// [`Self::impact_price`] over `levels`, given best price first.
     fn sweep_average<'a>(
         levels: impl Iterator<Item = (&'a i128, &'a VecDeque<Resting>)>,
         notional: i128,
         now_ms: u64,
-        min_quote: i128,
         mut counts: impl FnMut(&RestingQuote) -> bool,
     ) -> Option<i128> {
         // `size · price` carries this much scale beyond QUOTE_SCALE (see
         // `perp_core::fixed::notional_quote`).
         const NOTIONAL_DIVISOR: i128 = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
         let target = notional.checked_mul(NOTIONAL_DIVISOR)?;
-        // an order worth less than this, in the same `size · price` units, is dust
-        let dust = min_quote.max(0).checked_mul(NOTIONAL_DIVISOR)?;
         let mut left = target;
         // base taken from the orders already counted, size-scaled
         let mut base: i128 = 0;
@@ -270,12 +252,6 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             }
             for r in queue {
                 if resting_expired(r, now_ms) || r.remaining <= 0 {
-                    continue;
-                }
-                // an order whose value overflows is far from dust; if it is
-                // counted, the walk fails closed below
-                let value = r.remaining.checked_mul(price);
-                if value.is_some_and(|v| v < dust) {
                     continue;
                 }
                 let quote = RestingQuote {
@@ -288,7 +264,9 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 if !counts(&quote) {
                     continue;
                 }
-                let value = value?;
+                // an order the filter refuses fails nothing, even if its value
+                // would overflow; a counted one fails the walk closed
+                let value = r.remaining.checked_mul(price)?;
                 if value >= left {
                     // This order gives `left / price` more base, so the average is
                     // target / (base + left / price) = target · price / (base · price + left).

@@ -158,12 +158,13 @@ fn pin_price(gw: &mut Gw, px: i128) {
 }
 
 /// A gateway-custody account bound to the address of `sk`, with `collateral` in
-/// market 0, and as many bids at the order minimum as its reserve admits, resting
-/// on the book. Returns the account's key and its bids.
+/// market 0, and `max` bids at the order minimum, or as many as its reserve
+/// admits, resting on the book. Returns the account's key and its bids.
 fn bound_account_with_bids(
     gw: &mut Gw,
     sk: &k256::ecdsa::SigningKey,
     collateral: i128,
+    max: usize,
 ) -> ([u8; 32], Vec<WReceipt>) {
     let (key, _) = gw.register_account(None);
     gw.accounts.get_mut(&key).unwrap().deposit_address = Some(eth_address(sk));
@@ -171,7 +172,7 @@ fn bound_account_with_bids(
     let mark = gw.px_of(0);
     let limit = mark * 99 / 100;
     let mut bids = Vec::new();
-    loop {
+    while bids.len() < max {
         unthrottle(gw, &key);
         match gw.account_place_order(&key, &bid(minimum_size(mark), limit)) {
             Ok(receipt) => bids.push(receipt),
@@ -221,36 +222,50 @@ fn collateral_of(gw: &Gw, key: &[u8; 32]) -> i128 {
 
 /// Audit 2026-11-16 SM-1, round 2 of the review: the reserve holds the collateral
 /// behind pending orders until they fill, are cancelled, expire or are rejected,
-/// not only when they are admitted. With $10 an account rests the ten-odd bids its
-/// reserve admits; a signed withdrawal of the $10, or of any part the bids need, is
-/// refused while they rest, so the capital cannot move on to back another
-/// account's orders. What the bids do not need can leave, and once they are
-/// cancelled, all of it.
+/// not only when they are admitted. The review's case: with $10 an account rests
+/// the bids its reserve admits, then withdraws the $10 to move it on to the next
+/// account. The signed withdrawal is now refused, and nothing changes.
 #[test]
 fn audit_1116_sm1_a_withdrawal_cannot_take_the_margin_of_pending_orders() {
     let mut gw = Gw::boot();
     let px = gw.validated_oracle_price(0, now_ms()).unwrap();
     pin_price(&mut gw, px);
     let sk = k256::ecdsa::SigningKey::from_slice(&[0x5B; 32]).unwrap();
-    let collateral = 10 * QUOTE_SCALE + QUOTE_SCALE / 2;
-    let (key, bids) = bound_account_with_bids(&mut gw, &sk, collateral);
+    let collateral = 10 * QUOTE_SCALE;
+    let (key, bids) = bound_account_with_bids(&mut gw, &sk, collateral, usize::MAX);
     assert!(bids.len() >= 9, "fixture: {}", bids.len());
-    let held = required_margin(minimum_size(px) * bids.len() as i128, px);
-    assert!(held <= collateral && held > collateral - QUOTE_SCALE);
-
     let refused = withdraw(&mut gw, &key, &sk, collateral).unwrap_err();
-    assert!(refused.starts_with("PENDING_MARGIN"), "{refused}");
-    let refused = withdraw(&mut gw, &key, &sk, collateral - held + 1).unwrap_err();
     assert!(refused.starts_with("PENDING_MARGIN"), "{refused}");
     assert_eq!(collateral_of(&gw, &key), collateral, "nothing left");
     assert_eq!(gw.accounts[&key].last_withdraw_nonce, 0);
+    let owner = gw.accounts[&key].wallet.owner;
+    assert_eq!(
+        gw.seq.book(0).unwrap().resting_hashes_for(&owner).len(),
+        bids.len()
+    );
+}
 
-    // what the bids do not need is free (here: at most a dollar, so the
-    // withdrawal takes all of it, the minimum's exception)
+/// What the pending orders do not need can leave; what they need cannot, until
+/// they are cancelled. $12 behind nine $10 bids: about $3 is free.
+#[test]
+fn audit_1116_sm1_a_withdrawal_takes_only_what_pending_orders_do_not_need() {
+    let mut gw = Gw::boot();
+    let px = gw.validated_oracle_price(0, now_ms()).unwrap();
+    pin_price(&mut gw, px);
+    let sk = k256::ecdsa::SigningKey::from_slice(&[0x5D; 32]).unwrap();
+    let collateral = 12 * QUOTE_SCALE;
+    let (key, bids) = bound_account_with_bids(&mut gw, &sk, collateral, 9);
+    assert_eq!(bids.len(), 9);
+    let held = required_margin(minimum_size(px) * 9, px);
     let spare = collateral - held;
-    if spare > 0 {
-        withdraw(&mut gw, &key, &sk, spare).expect("the spare collateral is free");
-    }
+    assert!(spare > QUOTE_SCALE, "fixture: {spare}");
+
+    let refused = withdraw(&mut gw, &key, &sk, spare + QUOTE_SCALE / 100).unwrap_err();
+    assert!(refused.starts_with("PENDING_MARGIN"), "{refused}");
+    withdraw(&mut gw, &key, &sk, spare).expect("the spare collateral is free");
+    assert_eq!(collateral_of(&gw, &key), held);
+    let refused = withdraw(&mut gw, &key, &sk, QUOTE_SCALE).unwrap_err();
+    assert!(refused.starts_with("PENDING_MARGIN"), "{refused}");
 
     // cancelled, the bids hold nothing
     let ids: Vec<String> = gw.accounts[&key]
@@ -275,7 +290,7 @@ fn audit_1116_sm1_an_lp_deposit_cannot_take_the_margin_of_pending_orders() {
     pin_price(&mut gw, px);
     let sk = k256::ecdsa::SigningKey::from_slice(&[0x5C; 32]).unwrap();
     let collateral = 10 * QUOTE_SCALE;
-    let (key, _) = bound_account_with_bids(&mut gw, &sk, collateral);
+    let (key, _) = bound_account_with_bids(&mut gw, &sk, collateral, usize::MAX);
     let wallet = gw.accounts[&key].wallet;
     let refused = gw.lp_deposit(key, &wallet, collateral).unwrap_err();
     assert!(refused.starts_with("PENDING_MARGIN"), "{refused}");

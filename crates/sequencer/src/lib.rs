@@ -383,20 +383,6 @@ pub const FUNDING_IMPACT_NOTIONAL: i128 = 1_000 * QUOTE_SCALE;
 /// this span.
 pub const FUNDING_MARK_MIN_SPAN_MS: u64 = 7_000;
 
-/// The smallest remaining notional, quote-scaled ($10, the order minimum), at
-/// which a resting order is depth for the funding mark. A smaller order (the
-/// remainder of a partial fill, or an order admitted below the minimum because it
-/// reduced) is dust: the impact sweep passes over it without pricing it.
-///
-/// This ties the sweep's work to the notional instead of to an order count (audit
-/// 2026-11-16 SM-3): it ends at the order that completes
-/// [`FUNDING_IMPACT_NOTIONAL`], so it counts at most a hundred orders as depth, and
-/// no order it passes over, dust or unfillable, can make a side lack an impact
-/// price. Before, a sweep that visited 4,096 orders without reaching the notional
-/// gave none, so 4,096 unfillable dust orders ahead of honest depth, or queued
-/// behind it at the same price, pinned the mark to the index.
-pub const FUNDING_IMPACT_MIN_QUOTE: i128 = MIN_ORDER_NOTIONAL;
-
 /// The most open orders one account may keep in one market (audit 2026-11-16
 /// GA-1): orders resting on the book, orders accepted and waiting for the next
 /// batch, and the earlier orders of the batch being sealed. Only orders that can
@@ -1098,6 +1084,20 @@ const TICK_WINDOW_GRACE_WINDOWS: u64 = 8;
 /// window, so it has no window-settle prune event) — evict the oldest entries beyond this cap.
 const TICK_WINDOW_MAX: usize = 16_384;
 
+/// What the pre-trade gate of [`Sequencer::seal_batch`] decided for a batch
+/// ([`Sequencer::admit_batch`]).
+struct BatchAdmission {
+    /// the orders admitted, in order
+    admitted: Vec<Order>,
+    /// the orders refused, with their reasons, in order
+    pre_rejected: Vec<(Digest, RejectReason)>,
+    /// the resting orders admitted below the minimum because they reduce, and this
+    /// batch's
+    minimum_exempt: BTreeSet<Digest>,
+    /// whether each order was admitted, one per order of the batch
+    verdicts: Vec<bool>,
+}
+
 /// The pre-trade gate's verdict on an order it admits.
 struct Admitted {
     /// The order is below [`MIN_ORDER_NOTIONAL`] and was admitted only because it
@@ -1357,9 +1357,11 @@ impl Sequencer {
     /// The same owner is exempt from the open-order limits
     /// ([`MAX_OPEN_ORDERS_PER_MARKET`], [`MAX_OPEN_ORDERS_PER_ACCOUNT`] and the
     /// collateral reserve), for the same reason: its counters answer takers that
-    /// are held to the limits themselves, and a counter left resting by a taker the
-    /// batch refused must not block the next one. Each of its orders still passes
-    /// the per-order margin check.
+    /// are held to the limits themselves, and a counter left resting (its taker
+    /// filled against other depth first) must not block the next one. Each of its
+    /// orders still passes the per-order margin check. The gateway gives a counter
+    /// only to a taker the seal admits ([`Sequencer::seal_admits`]), so no counter
+    /// answers a taker the batch refuses.
     pub fn set_minimum_exempt_owner(&mut self, owner: Option<PubKey>) {
         self.minimum_exempt_owner = owner;
     }
@@ -1606,7 +1608,9 @@ impl Sequencer {
     ///
     /// Each side is margined on its own, and a fill, a cancel, an expiry or a
     /// rejection releases what the order held: the tally is the orders still
-    /// pending, never a running reservation. While the market has no validated
+    /// pending, never a running reservation. Until then the collateral stays
+    /// held: an unbind (a withdrawal, a transfer) that would take it is refused
+    /// ([`Sequencer::unbind_keeps_reserve`]). While the market has no validated
     /// price the reserve is not checked here (the seal refuses the order as
     /// `OracleUnavailable`). The house owner ([`Sequencer::set_minimum_exempt_owner`])
     /// is exempt. [`Sequencer::seal_batch`] applies the same limits to every order it
@@ -1621,16 +1625,7 @@ impl Sequencer {
         if self.minimum_exempt_owner == Some(order.owner) {
             return Ok(());
         }
-        if self.open_orders.is_none() {
-            self.open_orders = Some(self.book_tally(None));
-        }
-        let book = self.open_orders.as_ref().expect("built above");
-        let pending = book
-            .market(&order.owner, order.market_id)
-            .plus(self.intake_tally.market(&order.owner, order.market_id));
-        let account_open = book
-            .account(&order.owner)
-            .saturating_add(self.intake_tally.account(&order.owner));
+        let (pending, account_open) = self.pending_of(&order.owner, order.market_id);
         let valuation = self.valuation(order, now_ms).ok();
         open_order_limits(
             order,
@@ -1641,6 +1636,85 @@ impl Sequencer {
                 .as_ref()
                 .map(|(market, position, mark, index)| (market, position, *mark, *index)),
         )
+    }
+
+    /// Whether unbinding `amount` of `owner`'s collateral in `market_id` at `now_ms`
+    /// (a withdrawal, a transfer out of the market) keeps the collateral reserve of
+    /// its pending orders (audit 2026-11-16 SM-1). The reserve holds an order's
+    /// margin from its admission until it fills, is cancelled, expires or is
+    /// rejected; without this check the collateral could leave right after the
+    /// orders were admitted, and they would rest with nothing behind them while it
+    /// backed another account's orders. So after the unbind, the owner's committed
+    /// position must still keep initial margin at the validated oracle price when
+    /// every pending order on either side fills there in full, as
+    /// [`Sequencer::check_open_order_limits`] margins them: the orders resting on
+    /// the book and those accepted but not yet sealed, an order that can only reduce
+    /// counting up to the size that closes the position.
+    ///
+    /// Always true for the house owner ([`Sequencer::set_minimum_exempt_owner`]), for
+    /// an owner with nothing pending in the market, and while the engine is
+    /// close-only (no pending order can then add exposure). While the market's
+    /// oracle price does not validate, an owner with a pending order that could add
+    /// exposure is refused: its reserve cannot be measured. The position's own
+    /// margin is the caller's check, as before.
+    pub fn unbind_keeps_reserve(
+        &mut self,
+        owner: &PubKey,
+        market_id: MarketId,
+        amount: i128,
+        now_ms: u64,
+    ) -> bool {
+        if self.minimum_exempt_owner == Some(*owner) || self.state.mode == Mode::CloseOnly {
+            return true;
+        }
+        let (pending, _) = self.pending_of(owner, market_id);
+        let sides = [(Side::Buy, pending.buy), (Side::Sell, pending.sell)];
+        if sides
+            .iter()
+            .all(|(_, side)| *side == PendingSide::default())
+        {
+            return true;
+        }
+        let Some(market) = self.state.markets.get(&market_id) else {
+            return true;
+        };
+        let mark = self
+            .oracles
+            .get(&market_id)
+            .and_then(|oracle| oracle.validate(market, now_ms).ok());
+        let Some(mark) = mark else {
+            return sides.iter().all(|(_, side)| side.adding == 0);
+        };
+        let mut after = self
+            .state
+            .position(owner, market_id)
+            .copied()
+            .unwrap_or_else(|| Position::empty(*owner, market_id));
+        let Some(collateral) = after.collateral.checked_sub(amount) else {
+            return false;
+        };
+        after.collateral = collateral;
+        let funding_index = self.funding_index_at(market_id, mark, now_ms);
+        sides.iter().all(|(side, pending)| {
+            *pending == PendingSide::default()
+                || pending_side_fits(&after, market, *side, *pending, mark, funding_index)
+        })
+    }
+
+    /// `owner`'s pending orders in `market_id`, resting on the book or accepted and
+    /// waiting for their batch, and its open orders across every market.
+    fn pending_of(&mut self, owner: &PubKey, market_id: MarketId) -> (PendingOrders, usize) {
+        if self.open_orders.is_none() {
+            self.open_orders = Some(self.book_tally(None));
+        }
+        let book = self.open_orders.as_ref().expect("built above");
+        let pending = book
+            .market(owner, market_id)
+            .plus(self.intake_tally.market(owner, market_id));
+        let account_open = book
+            .account(owner)
+            .saturating_add(self.intake_tally.account(owner));
+        (pending, account_open)
     }
 
     /// Whether intake counts `order` as one settlement holds to reducing: a
@@ -1818,10 +1892,10 @@ impl Sequencer {
     /// The impact-notional book mid of `market_id` at `now_ms`: the midpoint of the
     /// average prices at which [`FUNDING_IMPACT_NOTIONAL`] would fill against the
     /// bids and against the asks. Only depth the engine could fill counts: a
-    /// resting order inside the market's fill band around the validated index, worth
-    /// at least [`FUNDING_IMPACT_MIN_QUOTE`], whose maker could settle the fill.
-    /// `None` when either side holds less than that in its fill band, or when the
-    /// market's oracle does not validate at `now_ms`.
+    /// resting order inside the market's fill band around the validated index
+    /// whose maker could settle the fill. `None` when either side holds less than
+    /// that in its fill band, or when the market's oracle does not validate at
+    /// `now_ms`.
     pub fn impact_mid(&self, market_id: MarketId, now_ms: u64) -> Option<i128> {
         let market = self.state.markets.get(&market_id)?;
         let index = self
@@ -1848,13 +1922,22 @@ impl Sequencer {
     /// trade against therefore cannot move the funding mark; in particular an
     /// order admitted below the minimum because it reduced counts only while it
     /// still reduces, so stacking such orders gives no depth beyond the maker's
-    /// position, and an order worth less than [`FUNDING_IMPACT_MIN_QUOTE`] is dust,
-    /// never depth. The sweep walks only the levels inside the fill band and ends at
-    /// the order that completes the impact notional (audit 2026-11-16 SM-3): what
-    /// it passes over, dust or unfillable, costs it no budget, so no number of such
-    /// orders, ahead of the depth or queued behind it at its price, can leave the
-    /// side without its impact price. Its work grows with the in-band orders ahead
-    /// of the depth, which the open-order caps bound per account.
+    /// position. Every other order counts whatever its size: an order at the
+    /// minimum resting below the index, or a partial fill's remainder, is worth
+    /// less than [`MIN_ORDER_NOTIONAL`] at its own price and is still depth a taker
+    /// can fill.
+    ///
+    /// The sweep walks only the levels inside the fill band and ends at the order
+    /// that completes the impact notional, inside its level (audit 2026-11-16
+    /// SM-3). It has no order budget: an order it cannot count costs it only the
+    /// visit, so no number of such orders, ahead of the depth or queued behind it at
+    /// its price, can leave the side without its impact price (before, a sweep
+    /// that visited 4,096 orders without reaching the notional gave none, so
+    /// 4,096 unfillable dust orders pinned the mark to the index). Its work is the
+    /// in-band orders ahead of the depth: at most [`MAX_OPEN_ORDERS_PER_MARKET`]
+    /// per account, each margined with the account's other pending orders on its
+    /// side when it was admitted, its collateral held until it fills, is cancelled
+    /// or expires ([`Sequencer::unbind_keeps_reserve`]).
     fn impact_price(&self, market: &Market, index: i128, side: Side, now_ms: u64) -> Option<i128> {
         let book = self.matcher.book(market.id)?;
         // the fill band as a price range: |price − index| · RATE_SCALE <= ratio · index
@@ -1862,7 +1945,6 @@ impl Sequencer {
         let window = ImpactWindow {
             lo: index.checked_sub(reach)?,
             hi: index.checked_add(reach)?,
-            min_quote: FUNDING_IMPACT_MIN_QUOTE,
         };
         let funding_index = self.funding_index_at(market.id, index, now_ms);
         let close_only = self.state.mode == Mode::CloseOnly;
@@ -1978,18 +2060,18 @@ impl Sequencer {
     /// **Funding mark.** Each tick samples, per market, the premium of the
     /// impact-notional book mid ([`Sequencer::impact_mid`]) over the validated
     /// oracle index, or 0 when either side lacks [`FUNDING_IMPACT_NOTIONAL`] of
-    /// depth the engine could fill inside the fill band (orders worth at least
-    /// [`FUNDING_IMPACT_MIN_QUOTE`]). [`Sequencer::seal_batch`] takes the sample from
-    /// the book the tick's takers face, before it matches, and the sample prices
-    /// the span since the previous tick. The `AccrueFunding` mark is the index plus
-    /// the time-weighted average of those spans since the open window began (reset
-    /// by [`Sequencer::seal_window`]), with each sample and the average capped at the
-    /// premium that saturates the rate, and the average taken over at least
-    /// [`FUNDING_MARK_MIN_SPAN_MS`]. So moving the mark takes fillable depth that
-    /// takers can trade against, held over time: a quote withdrawn before the next
-    /// tick never counts, a quote placed in a tick does not move that tick's mark,
-    /// and one sample moves the mark by at most its share of the window. The engine
-    /// still bounds the mark to the market's mark band and the rate to its clamp.
+    /// depth the engine could fill inside the fill band. [`Sequencer::seal_batch`]
+    /// takes the sample from the book the tick's takers face, before it matches,
+    /// and the sample prices the span since the previous tick. The `AccrueFunding`
+    /// mark is the index plus the time-weighted average of those spans since the
+    /// open window began (reset by [`Sequencer::seal_window`]), with each sample and
+    /// the average capped at the premium that saturates the rate, and the average
+    /// taken over at least [`FUNDING_MARK_MIN_SPAN_MS`]. So moving the mark takes
+    /// fillable depth that takers can trade against, held over time: a quote
+    /// withdrawn before the next tick never counts, a quote placed in a tick does
+    /// not move that tick's mark, and one sample moves the mark by at most its share
+    /// of the window. The engine still bounds the mark to the market's mark band and
+    /// the rate to its clamp.
     ///
     /// Called on its own (outside `seal_batch`), it samples the book as it rests at
     /// `now_ms`.
@@ -2085,27 +2167,29 @@ impl Sequencer {
         }
     }
 
-    /// Run one batch: match `orders`, issue receipts, settle fills, run the
-    /// funding+liquidation maintenance pass, publish a manifest, advance finality,
-    /// and update inclusion tracking.
-    pub fn seal_batch(&mut self, orders: &[Order], now_ms: u64) -> SealedBatch {
-        let prev_state_root = self.state.state_root();
-        let batch_id = self.next_batch_id;
+    /// Which of `orders`, sealed together at `now_ms`, [`Sequencer::seal_batch`]
+    /// would admit past its pre-trade gate: the per-order checks of
+    /// [`Sequencer::pre_trade_check`], each against the position after the owner's
+    /// earlier orders of the batch too, the reduce-only rule for an owner's later
+    /// orders, and the open-order limits against the book and the batch's earlier
+    /// orders. One verdict per order, in order. Nothing changes: no order is
+    /// matched, and an admitted order can still be refused when its fill does not
+    /// settle. An owner's verdicts depend only on its own orders of the batch, so
+    /// leaving another owner's orders out (or adding them) changes none of them.
+    ///
+    /// The gateway's house market maker asks it before it gives a taker a counter
+    /// (round 2 of the audit 2026-11-16 GA-1 + SM-1 review): a counter answering a
+    /// taker the seal refuses would rest with nothing to answer, and the house is
+    /// exempt from the open-order caps.
+    pub fn seal_admits(&self, orders: &[Order], now_ms: u64) -> Vec<bool> {
+        self.admit_batch(orders, now_ms).verdicts
+    }
 
-        // snapshot the pre-batch (state, matcher) so this batch can be rolled back
-        // if it later fails to prove (§3 failure matrix). Skipped in window-settle
-        // mode: nothing on the window path consumes per-tick snapshots, and without
-        // the legacy tick-loop prune each one is a full state clone retained until
-        // the window's ~13-min proof lands (Task 5 fix round 1).
-        if self.retain_tick_snapshots {
-            self.snapshots
-                .insert(batch_id, (self.state.clone(), self.matcher.clone()));
-        }
-
-        // 0. pre-trade risk gate: drop unmarginable orders before matching, so a
-        //    matched fill can never fail to settle on margin (§12, Phase 3).
+    /// The pre-trade gate of [`Sequencer::seal_batch`] over `orders` at `now_ms`.
+    fn admit_batch(&self, orders: &[Order], now_ms: u64) -> BatchAdmission {
         let mut pre_rejected: Vec<(Digest, RejectReason)> = Vec::new();
         let mut admitted: Vec<Order> = Vec::new();
+        let mut verdicts: Vec<bool> = Vec::with_capacity(orders.len());
         // owners with an already-admitted order for a market this batch. A reduce_only order
         // whose owner is here could have its position shift intra-batch (via that earlier
         // order's fill) and then OPEN at settlement — where the drop would consume an innocent
@@ -2123,18 +2207,15 @@ impl Sequencer {
         // book this batch's takers face (an order expired at `now_ms` holds
         // nothing), then each order of this batch as it is admitted, whatever it
         // turns out to do when it matches. Built for the first order, so an idle
-        // tick walks no book. Every order of the batch leaves the intake's pending
-        // orders: the batch decides it now.
+        // tick walks no book.
         let mut pending: Option<PendingTally> = None;
-        for o in orders {
-            self.forget_intake(&o.order_hash::<Keccak256>());
-        }
         for o in orders {
             if o.reduce_only && owners_with_order.contains(&(o.owner, o.market_id)) {
                 pre_rejected.push((
                     o.order_hash::<Keccak256>(),
                     RejectReason::ReduceOnlyViolation,
                 ));
+                verdicts.push(false);
                 continue;
             }
             let key = (o.owner, o.market_id);
@@ -2162,10 +2243,52 @@ impl Sequencer {
                         open: can_rest(o),
                     });
                     admitted.push(*o);
+                    verdicts.push(true);
                 }
-                Err(reason) => pre_rejected.push((o.order_hash::<Keccak256>(), reason)),
+                Err(reason) => {
+                    pre_rejected.push((o.order_hash::<Keccak256>(), reason));
+                    verdicts.push(false);
+                }
             }
         }
+        BatchAdmission {
+            admitted,
+            pre_rejected,
+            minimum_exempt,
+            verdicts,
+        }
+    }
+
+    /// Run one batch: match `orders`, issue receipts, settle fills, run the
+    /// funding+liquidation maintenance pass, publish a manifest, advance finality,
+    /// and update inclusion tracking.
+    pub fn seal_batch(&mut self, orders: &[Order], now_ms: u64) -> SealedBatch {
+        let prev_state_root = self.state.state_root();
+        let batch_id = self.next_batch_id;
+
+        // snapshot the pre-batch (state, matcher) so this batch can be rolled back
+        // if it later fails to prove (§3 failure matrix). Skipped in window-settle
+        // mode: nothing on the window path consumes per-tick snapshots, and without
+        // the legacy tick-loop prune each one is a full state clone retained until
+        // the window's ~13-min proof lands (Task 5 fix round 1).
+        if self.retain_tick_snapshots {
+            self.snapshots
+                .insert(batch_id, (self.state.clone(), self.matcher.clone()));
+        }
+
+        // 0. pre-trade risk gate: drop unmarginable orders before matching, so a
+        //    matched fill can never fail to settle on margin (§12, Phase 3). Every
+        //    order of the batch leaves the intake's pending orders: the batch
+        //    decides it now.
+        for o in orders {
+            self.forget_intake(&o.order_hash::<Keccak256>());
+        }
+        let BatchAdmission {
+            admitted,
+            pre_rejected,
+            mut minimum_exempt,
+            ..
+        } = self.admit_batch(orders, now_ms);
 
         // The funding-mark sample for the span that ends at this tick is the book
         // this tick's takers face: taken before matching, so only a quote still on

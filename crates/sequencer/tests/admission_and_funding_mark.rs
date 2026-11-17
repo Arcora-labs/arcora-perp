@@ -25,9 +25,8 @@ use perp_core::order::{Order, RejectReason, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::{EngineError, FillLeg, Note, RiskError};
 use sequencer::{
-    below_minimum_order_notional, EnclaveIdentity, SealedBatch, Sequencer,
-    FUNDING_IMPACT_MIN_QUOTE, FUNDING_IMPACT_NOTIONAL, FUNDING_MARK_MIN_SPAN_MS,
-    MAX_OPEN_ORDERS_PER_MARKET, MIN_ORDER_NOTIONAL,
+    below_minimum_order_notional, EnclaveIdentity, SealedBatch, Sequencer, FUNDING_IMPACT_NOTIONAL,
+    FUNDING_MARK_MIN_SPAN_MS, MAX_OPEN_ORDERS_PER_MARKET, MIN_ORDER_NOTIONAL,
 };
 
 fn enclave() -> EnclaveIdentity {
@@ -1076,11 +1075,10 @@ fn exempt_ask_book(stacked: usize, ticks: usize) -> (Sequencer, u64, Vec<Order>)
 
 /// Orders admitted below the minimum because they reduce can be stacked, one per
 /// batch, beyond the position they reduce, up to the open-order cap; settlement
-/// fills them only while they still reduce. They give the funding mark no depth
-/// either: each is worth less than `FUNDING_IMPACT_MIN_QUOTE` (and, priced, would
-/// count only while it still reduces). With 64 stacked $9 asks against a $10 long,
-/// $576 in all, the impact ask is the one a single such ask gives, and a $1,000 buy
-/// at their price fills $9 of them.
+/// fills them only while they still reduce. They give no depth beyond that
+/// position either: with 64 stacked $9 asks against a $10 long, $576 in all, the
+/// impact ask is the one a single such ask gives, and a $1,000 buy at their price
+/// fills $9 of them.
 #[test]
 fn stacked_exempt_orders_give_no_depth_beyond_the_committed_position() {
     let ticks = MAX_OPEN_ORDERS_PER_MARKET;
@@ -1088,8 +1086,9 @@ fn stacked_exempt_orders_give_no_depth_beyond_the_committed_position() {
     let (single, t_single, _) = exempt_ask_book(1, ticks);
     assert_eq!(t, t_single);
     assert!(
-        notional_at(TEN_DOLLARS * 9 / 10, 100_050) < FUNDING_IMPACT_MIN_QUOTE,
-        "fixture: each stacked ask is dust"
+        i128::try_from(asks.len()).unwrap() * notional_at(TEN_DOLLARS * 9 / 10, 100_050)
+            > FUNDING_IMPACT_NOTIONAL / 2,
+        "fixture: counted, the stacked asks would hold half the impact notional"
     );
     for ask in &asks {
         assert!(stacked

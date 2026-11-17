@@ -1333,6 +1333,12 @@ fn below_order_minimum(
     );
     sequencer::below_minimum_order_notional(position, &probe, mark)
 }
+/// The refusal of a withdrawal or transfer that would take the collateral the
+/// account's pending orders hold (audit 2026-11-16 SM-1,
+/// `Sequencer::unbind_keeps_reserve`).
+const PENDING_MARGIN_UNBIND: &str = "PENDING_MARGIN: the account's pending orders in this \
+     market need this collateral as initial margin until they fill, are cancelled or \
+     expire; cancel some of them first, or move less";
 fn below_order_minimum_error() -> String {
     format!(
         "Order is below the minimum size: an order that opens, grows or flips a position \
@@ -3432,6 +3438,15 @@ impl Gw {
                 MIN_WITHDRAWAL / QUOTE_SCALE
             ));
         }
+        // audit 2026-11-16 SM-1: the collateral reserve holds the margin of the
+        // account's pending orders until they fill, are cancelled or expire, so a
+        // withdrawal cannot take it first and leave them resting unbacked.
+        if !self
+            .seq
+            .unbind_keeps_reserve(&wallet.owner, market, amount, context.price.now_ms)
+        {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
         if let Some(refusal) = self.exit_cap_refusal(key, &wallet.owner, market, amount) {
             return Err(refusal.into());
         }
@@ -4731,6 +4746,11 @@ impl Gw {
             return Err("Insufficient market-0 free balance.".into());
         }
         let now = now_ms();
+        // The debit leg is an unbind like a withdrawal's: it cannot take the margin
+        // of `from`'s pending orders either (audit 2026-11-16 SM-1).
+        if !self.seq.unbind_keeps_reserve(&from.owner, 0, value, now) {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
         let oracle = oracle_of(self.px_of(0), now, 0, &self.oracle_signer);
         let c = self.lp_counter;
         self.lp_counter += 1;
@@ -5184,7 +5204,6 @@ impl Gw {
         }
 
         let nonce = self.user_nonce;
-        self.user_nonce += 1;
         // user is the taker (Ioc) — crosses the resting market-maker maker each seal.
         // Pass the RAW limit (0 = market) so the seal loop can tell a market order (fill
         // at the mark) from a caller-chosen limit and apply the off-market check to the
@@ -5200,10 +5219,12 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
-        // The sequencer's open-order limits, as on the /v1 path.
+        // The sequencer's open-order limits, as on the /v1 path: before the nonce
+        // is spent, so a refused order leaves it for the next one.
         self.seq
             .check_open_order_limits(&order, now)
             .map_err(|e| e.to_string())?;
+        self.user_nonce += 1;
         let signed = self.seq.accept_order(&order, now);
         let r = &signed.receipt;
         let receipt = WReceipt {
@@ -5282,6 +5303,12 @@ impl Gw {
             );
         }
         let now = now_ms();
+        if !self
+            .seq
+            .unbind_keeps_reserve(&self.user.owner, self.selected, amount, now)
+        {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
         let oracle = oracle_of(
             self.px_of(self.selected),
             now,
@@ -5464,9 +5491,42 @@ impl Gw {
             .filter(|(_, o)| !o.sealed)
             .map(|(i, _)| i)
             .collect();
+        // registered /v1 accounts' pending orders, sealed after the demo user's
+        let mut account_refs: Vec<([u8; 32], usize)> = Vec::new();
+        for (k, acct) in &self.accounts {
+            for (i, o) in acct.orders.iter().enumerate() {
+                if !o.sealed {
+                    account_refs.push((*k, i));
+                }
+            }
+        }
+        // Whether the seal's pre-trade gate admits each of these orders, in seal
+        // order: the per-order checks, the owner's earlier orders of the batch, the
+        // reduce-only rule and the open-order limits (audit 2026-11-16 GA-1 + SM-1).
+        // The house counters pushed between them change no other owner's verdict.
+        // Only asked when some order is a taker the house could answer.
+        let takers: Vec<Order> = pending
+            .iter()
+            .map(|&i| self.orders[i].order)
+            .chain(
+                account_refs
+                    .iter()
+                    .map(|(k, i)| self.accounts[k].orders[*i].order),
+            )
+            .collect();
+        let admits = if self.trading_gate == trading_gate::TradingGate::Open
+            && takers
+                .iter()
+                .any(|o| matches!(o.tif, TimeInForce::Ioc | TimeInForce::Fok))
+        {
+            self.seq.seal_admits(&takers, now)
+        } else {
+            vec![false; takers.len()]
+        };
+        let (demo_takers, account_takers) = takers.split_at(pending.len());
+        let (demo_admits, account_admits) = admits.split_at(pending.len());
         let mut seal: Vec<Order> = Vec::new();
-        for &i in &pending {
-            let uo = self.orders[i].order;
+        for (&uo, &admitted) in demo_takers.iter().zip(demo_admits) {
             let mark = self.px_of(uo.market_id);
             // Same off-market protection as the /v1 path: the house MM quotes at the mark,
             // and only counters a market order (limit 0 → matcher crosses at any price) or
@@ -5483,11 +5543,11 @@ impl Gw {
             // vector without touching `accept_order` and carries no `prod` gate of its
             // own — a gate placed only in the order handlers would leave it live, stopped
             // merely because no taker got through. A taker the seal would refuse gets
-            // no counter, which would otherwise rest with nothing to answer.
-            if crosses
-                && self.trading_gate == trading_gate::TradingGate::Open
-                && self.seq.pre_trade_check(&uo, now).is_ok()
-            {
+            // no counter, which would otherwise rest with nothing to answer: the
+            // verdict is the seal's own (`Sequencer::seal_admits`), not the per-order
+            // check alone, which leaves out the batch's earlier orders and the
+            // open-order limits.
+            if crosses && self.trading_gate == trading_gate::TradingGate::Open && admitted {
                 let opp = match uo.side {
                     Side::Buy => Side::Sell,
                     Side::Sell => Side::Buy,
@@ -5508,68 +5568,52 @@ impl Gw {
             seal.push(uo);
         }
         // registered /v1 accounts
-        let account_keys: Vec<[u8; 32]> = self.accounts.keys().copied().collect();
-        let mut account_refs: Vec<([u8; 32], usize)> = Vec::new();
-        for k in &account_keys {
-            let pend: Vec<usize> = self.accounts[k]
-                .orders
-                .iter()
-                .enumerate()
-                .filter(|(_, o)| !o.sealed)
-                .map(|(i, _)| i)
-                .collect();
-            for i in pend {
-                let uo = self.accounts[k].orders[i].order; // Order: Copy
-                let mark = self.px_of(uo.market_id);
-                // A market order carries limit_price == 0 (kept through admission); the
-                // matcher treats it as crossing any price, so it fills at the MM's mark.
-                // A limit order keeps the caller's own price for its crossing check. Either
-                // way the taker order is pushed UNCHANGED so its seal-time order hash still
-                // matches the one accept_order recorded at admission.
-                let is_market = uo.limit_price == 0;
-                if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
-                    // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
-                    // never at the taker's own limit, and only provides the counter-fill
-                    // when a limit order's price actually crosses the mark (a market order
-                    // always crosses). Otherwise a taker could name an off-market price (buy
-                    // far below / sell far above the mark), mint an off-market entry against
-                    // the fabricated MM, and drain the vault.
-                    let crosses = is_market
-                        || match uo.side {
-                            Side::Buy => uo.limit_price >= mark,
-                            Side::Sell => uo.limit_price <= mark,
-                        };
-                    // SEC-025-D: the /v1-account injector, gated on the SAME terms as the
-                    // demo arm above. There are TWO injectors and the first pass gated only
-                    // one — not exploitable today, since the one-way latch means no order
-                    // can be staged while Closed, but that is exactly the positional
-                    // reliance this branch refuses one screen earlier for `simulate_adl`.
-                    // As above, a taker the seal would refuse gets no counter.
-                    if crosses
-                        && self.trading_gate == trading_gate::TradingGate::Open
-                        && self.seq.pre_trade_check(&uo, now).is_ok()
-                    {
-                        let opp = match uo.side {
-                            Side::Buy => Side::Sell,
-                            Side::Sell => Side::Buy,
-                        };
-                        let mmn = self.mm_nonce;
-                        self.mm_nonce += 1;
-                        seal.push(mk_order(
-                            self.mm.owner,
-                            uo.market_id,
-                            opp,
-                            uo.size,
-                            mark,
-                            mmn,
-                            TimeInForce::Gtc,
-                            false,
-                        ));
-                    }
+        for (&uo, &admitted) in account_takers.iter().zip(account_admits) {
+            let mark = self.px_of(uo.market_id);
+            // A market order carries limit_price == 0 (kept through admission); the
+            // matcher treats it as crossing any price, so it fills at the MM's mark.
+            // A limit order keeps the caller's own price for its crossing check. Either
+            // way the taker order is pushed UNCHANGED so its seal-time order hash still
+            // matches the one accept_order recorded at admission.
+            let is_market = uo.limit_price == 0;
+            if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
+                // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
+                // never at the taker's own limit, and only provides the counter-fill
+                // when a limit order's price actually crosses the mark (a market order
+                // always crosses). Otherwise a taker could name an off-market price (buy
+                // far below / sell far above the mark), mint an off-market entry against
+                // the fabricated MM, and drain the vault.
+                let crosses = is_market
+                    || match uo.side {
+                        Side::Buy => uo.limit_price >= mark,
+                        Side::Sell => uo.limit_price <= mark,
+                    };
+                // SEC-025-D: the /v1-account injector, gated on the SAME terms as the
+                // demo arm above. There are TWO injectors and the first pass gated only
+                // one — not exploitable today, since the one-way latch means no order
+                // can be staged while Closed, but that is exactly the positional
+                // reliance this branch refuses one screen earlier for `simulate_adl`.
+                // As above, a taker the seal would refuse gets no counter.
+                if crosses && self.trading_gate == trading_gate::TradingGate::Open && admitted {
+                    let opp = match uo.side {
+                        Side::Buy => Side::Sell,
+                        Side::Sell => Side::Buy,
+                    };
+                    let mmn = self.mm_nonce;
+                    self.mm_nonce += 1;
+                    seal.push(mk_order(
+                        self.mm.owner,
+                        uo.market_id,
+                        opp,
+                        uo.size,
+                        mark,
+                        mmn,
+                        TimeInForce::Gtc,
+                        false,
+                    ));
                 }
-                seal.push(uo);
-                account_refs.push((*k, i));
             }
+            seal.push(uo);
         }
         let sealed = self.seq.seal_batch(&seal, now);
         self.last_manifest = sealed.manifest_hash;
@@ -9154,7 +9198,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
-                "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
+                "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted; a withdrawal that would take collateral the account's pending orders in that market hold as initial margin is a 400 `PENDING_MARGIN: ...` until they fill, are cancelled or expire)") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt), and an order whose initial margin together with the account's pending orders on the same side exceeds its collateral in the market (`PENDING_MARGIN: ...`)" }, "409": { "description": "the account already has 64 open orders in the market or 128 across all markets (`OPEN_ORDER_LIMIT: ...`); cancel one first" }, "429": { "description": "rate limit (10/s)" } } },
