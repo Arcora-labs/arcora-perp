@@ -21153,4 +21153,5 @@ mod tests {
     include!("audit_cancellation_tests.rs");
     include!("permit_keepalive_tests.rs");
     include!("audit_1116_gf1_tests.rs");
+    include!("audit_1116_gf2_tests.rs");
 }
