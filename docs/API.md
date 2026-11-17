@@ -183,6 +183,18 @@ An order of a voided settlement window (§ Voided settlement windows) reads
 manifest records: the replacement window's manifest rejects its hash as `Cancelled`
 (code 9).
 
+**Removed by the sequencer.** A resting order the sequencer takes off the book reads
+`execution.status` `CANCELLED` with one of these reasons, which no manifest records
+either:
+
+| Reason | Meaning |
+|---|---|
+| `Expired` | its good-till-time expiry passed while it rested |
+| `Liquidated` | your position was liquidated: all your resting orders, in every market, are cancelled |
+| `ForcedClose` | another account's liquidation closed some or all of your position in this market (a liquidation closes the other side of its market by the same size, pro rata; `docs/ECONOMIC_SECURITY.md`, Q3/Q7): your resting orders in this market are cancelled, because they were placed against the position that changed. Place them again against the new position if you still want them. |
+
+A forced close also sends a `forcedClose` event (§ WebSocket).
+
 ## Faucet — get test USDC
 
 The collateral asset is an **open-mint** MockUSDC (6 decimals) on Base Sepolia —
@@ -887,6 +899,13 @@ To also receive **your own** events, send `{ "type": "auth", "apiKey": "0x<64 he
 - `{ "type": "order", "orderId": "o1", "finality": "MATCHED", "marketId": 0 }`
 - `{ "type": "fill", "orderId": "o1", "marketId": 0, "side": "Buy", "size": "...", "price": "..." }`
 - `{ "type": "adl", "clawed": "..." }` (your position was auto-deleveraged, audit Q2)
+- `{ "type": "forcedClose", "marketId": 0, "size": "...", "price": "...", "realizedPnl": "...", "penalty": "..." }`
+  (another account's liquidation closed `size` of your position at the oracle
+  `price`, audit 2026-11-16 PC-1; `size` is the signed change, opposite in sign to
+  your position, in size units, `price` in price units, `realizedPnl` and `penalty`
+  in quote units. The penalty is non-zero only when your position was itself
+  liquidatable. Your resting orders in that market were cancelled with reason
+  `ForcedClose`)
 - `{ "type": "execution", "orderId": "o1", "execution": { "status": "CANCELLED", "reason": "WindowVoided", ... } }`
   (your order's cumulative execution changed; the object is the order's `execution`
   in `GET /v1/orders`)

@@ -368,6 +368,10 @@ snapshots and rollback journals) are refused by their format magic, not migrated
   Whatever is still uncovered stays parked on the closed positions, inside the
   conservation identity, and trips the system to close-only. The guest also refuses
   any withdrawal that would take cumulative withdrawals above cumulative deposits.
+  A counterparty that was itself liquidatable pays the liquidation penalty on the
+  size the close takes. Off the proof, the sequencer cancels each reduced account's
+  resting orders in that market (removal reason `ForcedClose`) and publishes a
+  forced-close receipt only that account can recognize, as for an ADL haircut.
   From then on the guest refuses new deposits, so they cannot absorb the earlier
   shortfall (`docs/ECONOMIC_SECURITY.md`, Q3/Q7). What reaches users through ADL or
   the wind-down haircut is attributable, never silent.

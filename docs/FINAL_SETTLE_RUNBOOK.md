@@ -309,6 +309,38 @@ phase word. Rust and Solidity pin phase 1 with the KAT:
 
 for seven roots `[0x01.., 0x02.., ... 0x07..]` and phase `1`.
 
+## Upgrading across an engine rule change
+
+The audit 2026-11-16 PC-1 and PC-2 fixes change what four ops mean in the proven
+transition, without changing their encoding or the snapshot and journal layouts:
+
+- `Liquidate` also closes the other side of its market by the liquidated size, and a
+  counterparty that was itself liquidatable pays the penalty on what that close took;
+- `Unbind` from a position that stays open keeps the initial margin in collateral;
+- `Withdraw`, `WindDownWithdraw` and the `SettleAll` payout stop at `external_in`;
+- `AccrueFunding` stores a zero rate while the receiving side holds more open interest
+  than the paying side.
+
+A snapshot or rollback journal written by the earlier build therefore still decodes,
+but an op in it that is not settled yet would be proven under the new meaning against
+a live state the earlier rules produced: the window's derived root would not be the
+gateway's, or the replay would be refused. Before switching builds:
+
+1. Stop intake (orders, deposits, withdrawal requests) and let the earlier build seal,
+   prove and settle the open window, until no rollback journal
+   (`<DARKPERP_STATE>.rollback`) is left and `currentStateRoot()` equals the gateway's
+   root. The earlier guest's proofs verify only under its own program key, so no
+   window may be left in flight across the switch either.
+2. Stop the earlier build once it has persisted that state, then start this build
+   from the snapshot.
+
+This build checks the open window itself: at restore it replays the window's ops from
+its baseline under its own rules, and refuses to start when the replay is refused or
+reaches another state than the restored one (`check_open_window_replays`; the error
+names this section). It cannot judge a journaled window that the chain has not
+settled, which step 1 resolves first. The new guest program key and verifier pin are
+the release steps of § Operational checks.
+
 ## Operational checks
 
 Before triggering phase 1, read from one intended deployment, at one block:

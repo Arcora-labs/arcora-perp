@@ -158,7 +158,23 @@ results and funding between positions, and nets to zero, up to rounding, when ev
 position is closed. The engine recomputes that sum after each liquidation and
 refuses one that would leave the pool holding a position (`ClearingPoolExposure`),
 so the proof covers it. A counterparty is reduced like any other trade, without its
-consent, as in any auto-deleverage; its new size shows in its position.
+consent, as in any auto-deleverage. Three things follow from that:
+
+- **Its orders in that market are cancelled.** They were placed against the position
+  the close just changed: a take-profit buy of a short that the close flattened
+  would otherwise fill later and open a long its owner never asked for. The
+  sequencer cancels every resting order of each reduced account in that market, as
+  it cancels a liquidated account's orders everywhere; `GET /v1/orders` shows them
+  `CANCELLED` with reason `ForcedClose` (`docs/API.md`).
+- **It is told.** Each reduced position gets a forced-close receipt in the sealed
+  batch: the size the close took, the price, the PnL it realized and any penalty,
+  under a tag keyed on the account's secret like an ADL receipt, so only that
+  account can recognize it. The gateway sends it as a `forcedClose` event.
+- **A counterparty that was itself liquidatable pays the penalty.** It gives up the
+  liquidation penalty on the size the close takes, out of its positive collateral,
+  into the insurance fund, as a liquidation of that size would have charged it.
+  Without this, an account under maintenance would leave penalty-free whenever an
+  opposite liquidation hit first. A healthy counterparty pays no penalty.
 
 Before this rule (audit 2026-11-16, PC-1), the liquidated position closed against
 the pool alone and its counterparty stayed open. When the price kept moving the same
@@ -175,7 +191,8 @@ left flat was itself under water), the engine runs a fixed cascade, all inside t
 one `Liquidate` op:
 
 1. take the liquidation penalty out of the position's remaining collateral, into the
-   insurance fund;
+   insurance fund (and out of every counterparty that was itself liquidatable, on
+   the size the close took from it);
 2. draw `min(shortfall, insurance_fund)` from the **insurance fund**;
 3. draw `min(remaining shortfall, treasury)` from the **treasury**, the operator's
    accrued fee revenue (Q4);
@@ -244,8 +261,14 @@ that keeps exposure near its maintenance margin gives little or nothing, and a
 counterparty that entered close to the liquidation price has little gain to give.
 Drawing the treasury before ADL offsets that. At wind-down, a deficit the reserves
 cannot cover is haircut across the positive collateral and notes of all markets, not
-first within the market that caused it. The size a counterparty gives up is
-published only as its new position, not as a separate receipt.
+first within the market that caused it.
+
+**Cost.** A liquidation reads every position once to find the other side and the
+market's net size, and once more only when its shortfall reaches auto-deleverage.
+A funding tick needs the net size too: within one proven batch each market's net
+size is measured once and then kept (a liquidation updates it), so the per-tick
+cost in the guest does not grow with the number of positions beyond what the
+batch's per-op conservation check already reads.
 
 **What feeds the fund.** Two real inflows, not a hand-wave: an explicit
 capitalization op (`BatchOp::FundInsurance` / `op_fund_insurance`, SEC-024), which
@@ -283,6 +306,15 @@ the identity alone would also hold with the pool driven far below zero; so the
 engine also refuses any withdrawal (and the wind-down payout) that would take the
 cumulative `external_out` above `external_in` (`WithdrawalExceedsDeposits`): the
 protocol never pays out more than came in.
+
+That cap is only a backstop. It is one lifetime total over the whole deployment:
+`external_in` counts every account's deposits, so it does not stop one account
+from withdrawing value that belongs to others, first come, first served, while the
+total stays below what came in. What keeps a loss from reaching other accounts'
+deposits is that a liquidation closes the other side with it, so no loss builds up
+in the clearing pool, together with the capital stack above; the cap only catches
+an accounting that has already gone wrong before it pays out more than the
+deployment ever held.
 
 ## Q4 — Why would a market-maker provide liquidity here?
 

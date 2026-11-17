@@ -129,6 +129,12 @@ receipt registered for the window, and that bound value must equal the 32-byte
 
 ## Notes / gotchas
 - Proving latency + resources set the L1 settle cadence.
+- **Engine rule changes.** A build that changes what an op means (the audit 2026-11-16
+  PC-1/PC-2 fixes do) also changes the program key, and a window the earlier build
+  has not settled would be proven under the new meaning. Settle every window with the
+  earlier build before switching (`docs/FINAL_SETTLE_RUNBOOK.md`, § Upgrading across
+  an engine rule change); the gateway refuses to restore a snapshot whose open window
+  does not replay under its own rules.
 - **Slice 2 (not done):** the gateway still publishes the CUMULATIVE `withdrawalsRoot`
   over `pending_withdrawals` and aggregates multiple engine batches per L1 settle, while
   the circuit derives a PER-ENGINE-BATCH incremental root. For the on-chain

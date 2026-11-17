@@ -12,6 +12,29 @@ fixture, the case witnesses and the negatives (`REVIEWED_FIXTURE`). It holds no
 proof. The real Groth16 proof of this fixture under this guest is in
 `../clock-pkg3-verified/` (`PROOF_FIXTURE`), so `proof_status()` reads `PROVEN`.
 
+## Stale until the guest is rebuilt
+
+The audit 2026-11-16 PC-1 and PC-2 fixes change `crates/perp-core` (a liquidation
+closes the other side of its market, funding, withdrawal and unbind limits, the
+`ForcedClose` hash domain), which the guest compiles. So the program key changes,
+and until a reviewed rebuild these files describe the previous guest, not the
+checkout:
+
+- `guest.elf`, `program-vkey.bin` and `execution.json` (every commitment and
+  cycle count in it), and the identity quoted below;
+- the case witnesses `cases/bad-debt-treasury-adl.witness.bin`,
+  `cases/debt-top-up-prune.witness.bin` and
+  `cases/debt-top-up-next-batch.witness.bin`, and the negative
+  `negatives/deposit-in-close-only.witness.bin`, whose `sp1-host` cases
+  (`crates/sp1-host/src/cases.rs`) changed with the liquidation rule;
+- `../clock-pkg3-verified/`, the proof of the previous guest.
+
+`check_reviewed_guest_execution.py` refuses the checkout's guest sources until
+`REVIEWED_GUEST` is re-pinned. Regenerate everything as described in
+§ Provenance: the reviewed rebuild, `vkey`, then `clock-proof --no-prove`, and
+re-pin `REVIEWED_GUEST` and `REVIEWED_FIXTURE` in
+`scripts/local-verification/verify_clock_proof.py`.
+
 | File | Content |
 | --- | --- |
 | `guest.elf` | The reviewed guest ELF, 535904 bytes, SHA-256 `a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df` |

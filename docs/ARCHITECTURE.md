@@ -203,7 +203,12 @@ fiyattan marketin karşı tarafındaki pozisyonları da aynı büyüklükte, bü
 orantılı olarak kapatır. Böylece bir marketteki pozisyon büyüklüklerinin toplamı
 sıfır kalır ve clearing pool (`vault_pool`) hiçbir zaman açık pozisyonun karşı
 tarafı olmaz (audit 2026-11-16, PC-1); engine bu toplamı her likidasyondan sonra
-yeniden hesaplar, yani proof bunu da kapsar.
+yeniden hesaplar, yani proof bunu da kapsar. Kapanıştan önce zaten likide
+edilebilir olan bir karşı taraf, kapatılan büyüklük üzerinden likidasyon cezasını
+öder. Sequencer, küçülen her hesabın o marketteki bekleyen emirlerini iptal eder
+(sebep `ForcedClose`; eski pozisyona göre verilmiş bir take-profit yeni bir pozisyon
+açmasın diye) ve yalnızca o hesabın tanıyabileceği gizli etiketli bir forced-close
+makbuzu yayınlar.
 
 **Canlı bad-debt waterfall'ı:** kapanışların bıraktığı açık (likide edilen
 pozisyonda ya da tamamen kapatılan ve zaten zararda olan bir karşı tarafta) sırasıyla
