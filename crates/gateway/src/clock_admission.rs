@@ -45,13 +45,6 @@ impl ClockAdmission {
         }
         Ok(Some(permit))
     }
-    /// `enter` for a handler the HTTP gate admits without a permit
-    /// (`admitted_without_permit`): a refusal is answered as the gate answers it.
-    pub(crate) fn enter_http(
-        &self,
-    ) -> Result<Option<OwnedRwLockReadGuard<()>>, axum::response::Response> {
-        self.enter().map_err(closed_response)
-    }
     pub(crate) async fn pause(
         self: &Arc<Self>,
         stop: &crate::service_shutdown::Shutdown,

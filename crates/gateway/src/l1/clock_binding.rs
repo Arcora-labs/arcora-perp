@@ -1283,8 +1283,9 @@ impl L1 {
                 // register, instead of leaving the window to the recovery.
                 if let Err(e) = &sent {
                     let registrable = b.count == 0
-                        || check_register_skew(b.last_ms, self.clock_skew_ms()?, crate::now_ms())
-                            .is_ok();
+                        || self.clock_skew_ms().is_ok_and(|skew| {
+                            check_register_skew(b.last_ms, skew, crate::now_ms()).is_ok()
+                        });
                     if resends < REGISTER_RESENDS && resend_registration(e) && registrable {
                         resends += 1;
                         eprintln!(

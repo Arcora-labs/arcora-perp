@@ -8211,9 +8211,9 @@ async fn post_v1_admin_wind_down(
     // Audit G2-1: the clock admission permit is taken after the L1 reads, for
     // the rebase, the queued SettleAll and their durability barrier. Everything
     // read is checked again below against the state it is applied to.
-    let _admission = match app.clock_admission.enter_http() {
+    let _admission = match app.clock_admission.enter() {
         Ok(permit) => permit,
-        Err(closed) => return closed,
+        Err(error) => return clock_admission::closed_response(error),
     };
     let (sink, chain_id, vault) = {
         let mut gw = app.gw.lock().await;
@@ -8857,9 +8857,9 @@ async fn post_v1_deposit_authorize(
     // Audit G2-1: the clock admission permit is taken after the L1 read, for the
     // permit store and its durability barrier only. The terms are a latest-block
     // reading either way; the vault enforces its own terms when the deposit lands.
-    let admission = match app.clock_admission.enter_http() {
+    let admission = match app.clock_admission.enter() {
         Ok(permit) => permit,
-        Err(closed) => return closed,
+        Err(error) => return clock_admission::closed_response(error),
     };
     // Release the account lock before requesting durability. No signature may be
     // constructed or returned until the writer acknowledges the stored blind.
@@ -9038,9 +9038,9 @@ async fn post_v1_withdraw(
     };
     // Audit G2-1: the clock admission permit is taken after the close-only L1
     // read, for the withdrawal itself.
-    let _admission = match app.clock_admission.enter_http() {
+    let _admission = match app.clock_admission.enter() {
         Ok(permit) => permit,
-        Err(closed) => return closed,
+        Err(error) => return clock_admission::closed_response(error),
     };
     let r = {
         let mut gw = app.gw.lock().await;

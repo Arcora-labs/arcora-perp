@@ -107,7 +107,8 @@ pub struct DepositState {
     #[serde(skip)]
     pub uncredited_scan_done: bool,
     /// Deposit reads in a row that finished after clock admission closed and were
-    /// dropped (audit G2-1). Reset by a read applied under the permit.
+    /// dropped (audit G2-1). Reset by a page read and then taken up under the
+    /// permit.
     #[serde(skip)]
     pub dropped_reads: u32,
 }
@@ -936,9 +937,12 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         if gw.deposit_cursor() != cursor {
             return Err("the deposit cursor moved during the L1 read; retrying".into());
         }
-        gw.deposits.dropped_reads = 0;
-        gw.ops_alerts
-            .recover(crate::ops_alerts::AlertKind::DepositReadsDropped);
+        // A page read and kept: the reads are not outlasting admission.
+        if fetched.is_ok() {
+            gw.deposits.dropped_reads = 0;
+            gw.ops_alerts
+                .recover(crate::ops_alerts::AlertKind::DepositReadsDropped);
+        }
     }
     let page = match fetched {
         Ok(p) => p,
@@ -1209,9 +1213,9 @@ pub async fn route_legacy(
     // The scan holds this lock across its L1 reads, so the clock admission permit
     // is taken only once it is held, for the adoption and its barrier (audit G2-1).
     let _serial = app.deposit_serial.lock().await;
-    let _admission = match app.clock_admission.enter_http() {
+    let _admission = match app.clock_admission.enter() {
         Ok(permit) => permit,
-        Err(closed) => return closed,
+        Err(error) => return crate::clock_admission::closed_response(error),
     };
     // A newly adopted route gets the deadline a fresh permit would; an already
     // recorded one keeps its own. Identity never includes the deadline.
