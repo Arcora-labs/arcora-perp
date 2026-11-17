@@ -288,6 +288,7 @@ impl Gw {
             discarded.iter().map(Withdrawal::leaf).collect();
         self.pending_withdrawals
             .retain(|w| !voided_withdrawals.contains(&w.leaf()));
+        self.dust_sweeps.forget(&voided_withdrawals);
         self.bootstrap =
             match core::mem::replace(&mut self.bootstrap, bootstrap::Bootstrap::NotStarted) {
                 bootstrap::Bootstrap::InsuranceApplied { window_id } if window_id >= window => {

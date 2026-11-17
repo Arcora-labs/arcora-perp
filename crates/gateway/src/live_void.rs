@@ -622,6 +622,8 @@ impl Gw {
         let leaves: BTreeSet<[u8; 32]> = withdrawals.iter().map(Withdrawal::leaf).collect();
         self.pending_withdrawals
             .retain(|w| !leaves.contains(&w.leaf()));
+        // A voided dust sweep leaves its entry in place: it is no forced exit now.
+        self.dust_sweeps.forget(&leaves);
 
         let fills_reverted = j
             .witness

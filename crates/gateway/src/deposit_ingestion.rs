@@ -281,7 +281,7 @@ impl Gw {
         Ok(())
     }
     /// Issuance-time check: the route terms plus the account's bound payer.
-    fn validate_route(&self, route: &Route) -> Result<(), String> {
+    pub(super) fn validate_route(&self, route: &Route) -> Result<(), String> {
         self.validate_route_terms(route)?;
         if self.accounts[&route.key].deposit_address != Some(route.from) {
             return Err("route payer differs from bound address".into());

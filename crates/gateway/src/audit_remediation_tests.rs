@@ -35,7 +35,7 @@ mod audit_remediation {
             .header("content-type", "application/json")
             .header("x-api-key", hex0x(key))
             .body(Body::from(
-                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "10000000", "marketId": 0, "purpose": "collateral"}).to_string(),
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "100000000", "marketId": 0, "purpose": "collateral"}).to_string(),
             ))
             .unwrap()
     }
@@ -82,7 +82,7 @@ mod audit_remediation {
                 &app.gateway_signer.digest(
                     &[0x42; 20],
                     &commit,
-                    10_000_000,
+                    100_000_000,
                     body["validUntil"].as_u64().unwrap()
                 ),
                 &sig
@@ -99,13 +99,13 @@ mod audit_remediation {
                     &key,
                     [0x42; 20],
                     commit,
-                    10_000_000,
+                    100_000_000,
                     id,
                     "test-restored",
                     0
                 )
                 .unwrap(),
-            10_000_000
+            100_000_000
         );
         assert!(restored.seq.state.conservation_holds());
     }
@@ -514,7 +514,7 @@ mod audit_remediation {
             .header("content-type", "application/json")
             .header("x-api-key", hex0x(key))
             .body(Body::from(
-                serde_json::json!({"from": hex0x(&from), "amount": "10000000", "marketId": 0, "purpose": "collateral"}).to_string(),
+                serde_json::json!({"from": hex0x(&from), "amount": "100000000", "marketId": 0, "purpose": "collateral"}).to_string(),
             ))
             .unwrap()
     }
@@ -591,7 +591,7 @@ mod audit_remediation {
 
         let again = router
             .clone()
-            .oneshot(reuse_request(&key, "10000000", &commit))
+            .oneshot(reuse_request(&key, "100000000", &commit))
             .await
             .unwrap();
         assert_eq!(again.status(), StatusCode::OK);
@@ -606,7 +606,7 @@ mod audit_remediation {
         }
 
         // A different amount, or a commit the gateway does not hold, is a new permit.
-        for (amount, reuse) in [("12000000", commit.clone()), ("10000000", hex0x(&[0x77; 32]))] {
+        for (amount, reuse) in [("120000000", commit.clone()), ("100000000", hex0x(&[0x77; 32]))] {
             let response = json_body(
                 router
                     .clone()
@@ -618,7 +618,7 @@ mod audit_remediation {
             assert_ne!(response["ownerCommit"].as_str().unwrap(), reuse);
         }
         assert_eq!(app.gw.lock().await.accounts[&key].deposit_authorizations.len(), 3);
-        let bad = router.oneshot(reuse_request(&key, "10000000", "0x12")).await.unwrap();
+        let bad = router.oneshot(reuse_request(&key, "100000000", "0x12")).await.unwrap();
         assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
         writer.abort();
     }

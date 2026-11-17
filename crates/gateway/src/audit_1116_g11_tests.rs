@@ -223,6 +223,7 @@ async fn audit_1116_g11_dust_entries_do_not_block_an_honest_new_entry() {
     let (honest, honest_from) = bound_account(&mut gw, &signer(1, 0x42));
     refresh_oracles(&mut gw);
     let soft = positions_soft_cap(&gw);
+    let before: Vec<(PubKey, u64)> = gw.seq.state.positions.keys().copied().collect();
     let (app, writer) = app_with(gw).await;
     let mut events = app.events_tx.subscribe();
 
@@ -236,13 +237,16 @@ async fn audit_1116_g11_dust_entries_do_not_block_an_honest_new_entry() {
 
     let mut gw = app.gw.lock().await;
     // Exactly one dust entry left, in full, to its owner's bound address.
-    let swept: Vec<_> = dust
+    let swept: Vec<_> = before
         .iter()
-        .flat_map(|key| (0..3u64).map(move |market| (*key, market)))
-        .filter(|(key, market)| entry(&gw, key, *market).is_none())
+        .filter(|entry| !gw.seq.state.positions.contains_key(entry))
         .collect();
     assert_eq!(swept.len(), 1, "{swept:?}");
-    let (key, market) = swept[0];
+    let (owner, market) = *swept[0];
+    let key = *dust
+        .iter()
+        .find(|key| gw.accounts[*key].wallet.owner == owner)
+        .unwrap();
     let view = gw.v1_withdrawals_json(&key).unwrap();
     let rows = view["withdrawals"].as_array().unwrap();
     assert_eq!(rows.len(), 1, "{view}");
@@ -253,7 +257,7 @@ async fn audit_1116_g11_dust_entries_do_not_block_an_honest_new_entry() {
     );
     assert_eq!(rows[0]["forcedExit"], true);
     // ...and its owner is told on its own event stream.
-    let owner = hex0x(&gw.accounts[&key].wallet.owner);
+    let owner = hex0x(&owner);
     let mut told = false;
     while let Ok(event) = events.try_recv() {
         let event: serde_json::Value = serde_json::from_str(&event).unwrap();
@@ -427,6 +431,199 @@ async fn audit_1116_g11_only_flat_dust_of_other_bound_accounts_is_swept() {
     ] {
         assert!(entry(&gw, key, market).is_some(), "swept {market}");
     }
+    drop(gw);
+    writer.abort();
+}
+
+/// A gateway whose position entries have a soft cap of 4, filled by four 10 USDC
+/// entries credited through permits (as before the entry minimum), with an asker
+/// bound to its own address and no entry yet. Returns the dust accounts too.
+fn small_cap_with_dust() -> (Gw, [u8; 32], Vec<[u8; 32]>) {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    gw.admission_cap = admission::AdmissionCap {
+        max_positions: 5,
+        ..admission::measured_cap()
+    };
+    let mut dust = Vec::new();
+    for n in 0..4 {
+        let (key, from) = bound_account(&mut gw, &signer(n, 0x46));
+        let commit = gw
+            .authorize_routed_deposit(
+                &key,
+                from,
+                DUST as u128,
+                0,
+                deposit_ingestion::Purpose::Collateral,
+                u64::MAX,
+            )
+            .unwrap();
+        credit(&mut gw, commit);
+        dust.push(key);
+    }
+    let (asker, _) = bound_account(&mut gw, &signer(9, 0x46));
+    assert_eq!(gw.admission_size().positions, positions_soft_cap(&gw));
+    (gw, asker, dust)
+}
+
+fn sweep(gw: &mut Gw, asker: &[u8; 32]) -> Vec<(u64, Withdrawal)> {
+    let request = deposit_ingestion::Route {
+        key: *asker,
+        from: gw.accounts[asker].deposit_address.unwrap(),
+        amount: ENTRY_MINIMUM as u128,
+        market: 0,
+        purpose: deposit_ingestion::Purpose::Collateral,
+        valid_until: 0,
+    };
+    gw.sweep_dust_for_permit(
+        &request,
+        now_ms() / 1000,
+        PriceUse {
+            archive: None,
+            now_ms: now_ms(),
+        },
+    )
+}
+
+/// The sweep never signs a stale price again: without a usable oracle report for
+/// the market the dust waits. With one, exactly one entry leaves, charged to its
+/// account's ledger like a full exit, and its authorization nonce is untouched.
+#[test]
+fn audit_1116_g11_a_sweep_needs_a_fresh_oracle_and_leaves_the_account_nonce() {
+    let (mut gw, asker, dust) = small_cap_with_dust();
+    let now = now_ms();
+    let stale = oracle_of(gw.px_of(0), now - 3_600_000, 0, &gw.oracle_signer);
+    gw.seq.set_oracle(0, stale);
+    assert!(sweep(&mut gw, &asker).is_empty());
+    assert_eq!(gw.admission_size().positions, positions_soft_cap(&gw));
+    assert!(gw.pending_withdrawals.is_empty());
+
+    refresh_oracles(&mut gw);
+    let swept = sweep(&mut gw, &asker);
+    assert_eq!(swept.len(), 1);
+    let (market, w) = &swept[0];
+    assert_eq!(*market, 0);
+    assert_eq!(w.amount, DUST as u128);
+    let key = *dust
+        .iter()
+        .find(|k| gw.accounts[*k].wallet.owner == w.owner)
+        .unwrap();
+    assert!(entry(&gw, &key, 0).is_none());
+    assert_eq!(gw.accounts[&key].last_withdraw_nonce, 0);
+    // The credited deposit and the forced exit.
+    assert_eq!(gw.withdraw_limits.units(&w.owner), 4);
+    assert_eq!(
+        gw.window_withdrawals.last().map(Withdrawal::leaf),
+        Some(w.leaf())
+    );
+    // One sweep was enough: the permit is admitted now, and nothing more leaves.
+    assert_eq!(
+        gw.permit_cap_refusal(&asker, 0, deposit_ingestion::Purpose::Collateral),
+        None
+    );
+    assert!(sweep(&mut gw, &asker).is_empty());
+}
+
+/// A sweep is kept across a restart: the snapshot carries its section, written
+/// only once there was a sweep, so a gateway that never swept writes the bytes it
+/// always did (and the snapshots written before this section load unchanged).
+#[test]
+fn audit_1116_g11_a_sweep_survives_a_restart() {
+    let (mut gw, asker, _) = small_cap_with_dust();
+    let plain = gw.snapshot_plain();
+    assert!(!plain.windows(8).any(|w| w == b"DPSWEEP1"));
+    assert_eq!(Gw::boot_restored(&plain).unwrap().snapshot_plain(), plain);
+
+    refresh_oracles(&mut gw);
+    let swept = sweep(&mut gw, &asker);
+    let w = swept[0].1.clone();
+    let key = *gw
+        .accounts
+        .iter()
+        .find(|(_, a)| a.wallet.owner == w.owner)
+        .unwrap()
+        .0;
+    let plain = gw.snapshot_plain();
+    assert!(plain.windows(8).any(|w| w == b"DPSWEEP1"));
+    let restored = Gw::boot_restored(&plain).unwrap();
+    assert_eq!(restored.snapshot_plain(), plain);
+    let view = restored.v1_withdrawals_json(&key).unwrap();
+    assert_eq!(view["withdrawals"][0]["forcedExit"], true);
+    assert_eq!(view["withdrawals"][0]["leaf"], hex0x(&w.leaf()));
+    // An account's own withdrawal is no forced exit.
+    let (own, sk) = (0..4)
+        .map(|n| signer(n, 0x46))
+        .find_map(|sk| {
+            let address = eth_address(&sk);
+            let (key, a) = gw
+                .accounts
+                .iter()
+                .find(|(_, a)| a.signer == Some(address))?;
+            (a.wallet.owner != w.owner).then_some((*key, sk))
+        })
+        .unwrap();
+    withdraw(&mut gw, &own, &sk, 0, DUST).unwrap();
+    let view = gw.v1_withdrawals_json(&own).unwrap();
+    assert_eq!(view["withdrawals"][0]["forcedExit"], false);
+    let mut bad = plain.clone();
+    bad.push(0);
+    assert!(Gw::boot_restored(&bad).is_err());
+}
+
+/// The close-only rebase discards the open window's withdrawals: a sweep in it is
+/// undone with them, its entry is back, and it is no forced exit any more.
+#[test]
+fn audit_1116_g11_a_discarded_sweep_is_no_forced_exit() {
+    let (mut gw, asker, _) = small_cap_with_dust();
+    gw.seq.seal_genesis_baseline();
+    gw.last_settled_root = gw.seq.state.state_root();
+    let consumed = gw.seq.state.consumed_deposit_count;
+    let entries = gw.seq.state.positions.clone();
+    refresh_oracles(&mut gw);
+    let swept = sweep(&mut gw, &asker);
+    let leaf = swept[0].1.leaf();
+    assert!(gw.dust_sweeps.contains(&leaf));
+    let l1 = wind_down::SettledL1 {
+        block: 100,
+        close_only: true,
+        settled: false,
+        batch_count: gw.seq.current_window_id(),
+        root: gw.last_settled_root,
+        consumed_deposit_count: consumed,
+    };
+    gw.rebase_to_settled(&l1).unwrap();
+    assert!(!gw.dust_sweeps.contains(&leaf));
+    assert!(gw.pending_withdrawals.is_empty());
+    assert_eq!(gw.seq.state.positions, entries);
+}
+
+/// A permit request that is refused for anything but the position entries sweeps
+/// nothing: a payer other than the bound address, an amount below the entry
+/// minimum, or an account that spent its history quota.
+#[tokio::test]
+async fn audit_1116_g11_a_refused_permit_sweeps_nothing() {
+    let (mut gw, asker, _) = small_cap_with_dust();
+    refresh_oracles(&mut gw);
+    let from = gw.accounts[&asker].deposit_address.unwrap();
+    let owner = gw.accounts[&asker].wallet.owner;
+    let entries = gw.seq.state.positions.clone();
+    let (app, writer) = app_with(gw).await;
+
+    // Refused at the cap, which is checked before the payer.
+    let (status, body) = permit(&app, &asker, [0x99; 20], 0, ENTRY_MINIMUM).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    let (status, body) = permit(&app, &asker, from, 0, DUST).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    {
+        let mut gw = app.gw.lock().await;
+        for _ in 0..admission::ACCOUNT_HISTORY_QUOTA / 2 {
+            gw.withdraw_limits.record_credit(&owner);
+        }
+    }
+    let (status, body) = permit(&app, &asker, from, 0, ENTRY_MINIMUM).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let gw = app.gw.lock().await;
+    assert_eq!(gw.seq.state.positions, entries, "nothing was swept");
+    assert!(gw.pending_withdrawals.is_empty());
     drop(gw);
     writer.abort();
 }

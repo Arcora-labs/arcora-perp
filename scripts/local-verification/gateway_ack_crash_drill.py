@@ -210,7 +210,8 @@ def main():
                     bind = sign(wallet_key, 'bind', owner=account['owner'], chainId=account['chainId'],
                                 vault=account['vault'])['signature']
                     ok(port, 'POST', '/v1/accounts/deposit/address', {'address': address, 'signature': bind}, key)
-                    permit = {'from': address, 'amount': '10000000', 'marketId': 0, 'purpose': 'collateral'}
+                    # A fresh account's first permit opens a position entry: 100 USDC.
+                    permit = {'from': address, 'amount': '100000000', 'marketId': 0, 'purpose': 'collateral'}
                     if operation == 'cancel':
                         ok(port, 'POST', '/v1/accounts/deposit', {'marketId': 0, 'amount': '20000000000'}, key)
                         ok(port, 'POST', '/v1/orders', {
