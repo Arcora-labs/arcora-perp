@@ -930,6 +930,11 @@ const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
 /// and an `Err` that a caller can refuse on is strictly better than an unbounded hang
 /// that takes the whole gateway with it.
 const SNAPSHOT_ACK_TIMEOUT_SECS: u64 = 30;
+/// Durability requests the snapshot writer queues. Every accepted order waits for
+/// one (audit GF-2), and one write answers every request queued before its
+/// capture, so a burst of concurrent orders shares a write instead of waiting for
+/// one write per handful of orders.
+const SNAPSHOT_REQUEST_QUEUE: usize = 1024;
 /// Soft cap on retained per-account order history. A SETTLED partial fill can still
 /// have a live remainder: only sealed orders absent from the book may be evicted.
 /// Live orders take priority over the history cap so their cancellation stays reachable.
@@ -1678,6 +1683,10 @@ struct GwOrder {
     created_ms: u64,
     sealed: bool,
     last_finality: String,
+    /// The order's [`snapshot::DurableMarks`] mark (audit GF-2). Runtime-only: an
+    /// order restored from a snapshot is durable (mark 0).
+    #[serde(skip)]
+    durable_mark: u64,
 }
 
 /// A registered external API account (multi-tenant `/v1`). Each is an independent
@@ -1807,6 +1816,11 @@ struct Gw {
     /// a restart would forget are refused while it did (audit GF-1). Runtime-only.
     #[serde(skip)]
     snapshot_health: snapshot::WriteHealth,
+    /// Which accepted orders a durable snapshot holds: an order's receipt (and its
+    /// `l1Challenge`) is served only once one does (audit GF-2). Tracked only with
+    /// persistence configured. Runtime-only.
+    #[serde(skip)]
+    durable_marks: snapshot::DurableMarks,
     /// Where the side logs beside the snapshot end (`order_history`). Runtime-only:
     /// the snapshot's history extension carries the positions.
     #[serde(skip)]
@@ -2507,6 +2521,7 @@ impl Gw {
             candidate_archive_required: false,
             ops_alerts: Default::default(),
             snapshot_health: Default::default(),
+            durable_marks: Default::default(),
             history: Default::default(),
             wind_down_started: false,
             deposits: Default::default(),
@@ -4219,6 +4234,7 @@ impl Gw {
                 created_ms: now,
                 sealed: false,
                 last_finality: "ACCEPTED".into(),
+                durable_mark: self.durable_marks.issue(),
             },
         );
         Ok(receipt)
@@ -4454,7 +4470,14 @@ impl Gw {
                     // fields cannot fail serialization today, but a panic is never
                     // the right default on a serving path — the frontend already
                     // synthesizes a stub for an absent/null receipt.
-                    "receipt": self.receipt_json(&o.receipt, a.deposit_address),
+                    // Audit GF-2: null until a durable snapshot holds the order. A
+                    // restart could otherwise forget an order whose holder kept the
+                    // enclave's signature and `l1Challenge` for it.
+                    "receipt": if self.durable_marks.is_durable(o.durable_mark) {
+                        self.receipt_json(&o.receipt, a.deposit_address)
+                    } else {
+                        serde_json::Value::Null
+                    },
                 })
             })
             .collect();
@@ -5259,6 +5282,7 @@ impl Gw {
                 created_ms: now,
                 sealed: false,
                 last_finality: "ACCEPTED".into(),
+                durable_mark: self.durable_marks.issue(),
             },
         );
         let ev = vec![WEvent {
@@ -6625,6 +6649,7 @@ async fn write_snapshot_with_entry(
             entry.notify();
             let mut gw = app.gw.blocking_lock();
             let history = append_history_locked(&mut gw, &path, &seed);
+            let captured = gw.durable_marks.captured();
             let result = (|| {
                 let (plain, plan) = match archive_slot(app.archive.as_ref()) {
                     ArchiveSlot::Guard(binding) => {
@@ -6640,6 +6665,7 @@ async fn write_snapshot_with_entry(
             let result = result.and(history);
             gw.snapshot_health.record(result.is_ok());
             if result.is_ok() {
+                gw.durable_marks.written(captured);
                 gw.ops_alerts
                     .recover(ops_alerts::AlertKind::PersistenceFailed);
                 match archive_slot(app.archive.as_ref()) {
@@ -6700,7 +6726,7 @@ async fn write_snapshot_with_entry(
         Ok(None) => (guard, Ok(None)),
         Err(error) => (guard, Err(error)),
     };
-    let (plain, alerts, health, history) = {
+    let (plain, alerts, health, history, marks, captured) = {
         let mut gw = app.gw.lock().await;
         let history = match appended {
             Ok(Some(done)) => {
@@ -6717,6 +6743,8 @@ async fn write_snapshot_with_entry(
             gw.ops_alerts.clone(),
             gw.snapshot_health.clone(),
             history,
+            gw.durable_marks.clone(),
+            gw.durable_marks.captured(),
         )
     };
     let path = path.to_path_buf();
@@ -6737,6 +6765,8 @@ async fn write_snapshot_with_entry(
         // emitted by a later failed writer.
         writer_health.record(result.is_ok());
         if result.is_ok() {
+            // Every order this capture holds is durable now (audit GF-2).
+            marks.written(captured);
             writer_alerts.recover(ops_alerts::AlertKind::PersistenceFailed);
         } else {
             writer_alerts.activate(ops_alerts::AlertKind::PersistenceFailed);
@@ -9005,6 +9035,14 @@ async fn post_v1_order(
     };
     let r = {
         let mut gw = app.gw.lock().await;
+        // Audit GF-2: without persistence no receipt can be made durable, so
+        // production refuses before accepting anything, as cancellation does.
+        if gw.prod && app.snapshot_req.is_none() {
+            return mutation_error(format!(
+                "{PERSISTENCE_UNAVAILABLE}: state persistence is not configured; \
+                 orders are refused."
+            ));
+        }
         let result = match archive_slot(app.archive.as_ref()) {
             ArchiveSlot::Guard(binding) => gw.account_place_order_checked(
                 &key,
@@ -9024,13 +9062,35 @@ async fn post_v1_order(
             ),
             ArchiveSlot::Poisoned => Err("candidate price archive lock is poisoned".into()),
         };
+        // The receipt names the address bound at acceptance.
         let beneficiary = gw.accounts.get(&key).and_then(|a| a.deposit_address);
-        result.map(|receipt| gw.receipt_json(&receipt, beneficiary))
+        result.map(|receipt| (receipt, beneficiary))
     };
-    match r {
-        Ok(receipt) => Json(receipt).into_response(),
-        Err(e) => mutation_error(e),
+    let (receipt, beneficiary) = match r {
+        Ok(accepted) => accepted,
+        Err(e) => return mutation_error(e),
+    };
+    // Audit GF-2: the enclave-signed receipt and its `l1Challenge` let the holder
+    // challenge the order on L1 and slash the bond if no settled batch answers. A
+    // restart before a durable snapshot holds the order would forget it, so neither
+    // leaves until the writer acknowledges a write that holds it. The state lock is
+    // released while waiting; concurrent orders share one write. The order is not
+    // rolled back when the write fails: a tick may already have matched it, and the
+    // next durable snapshot holds it, after which GET /v1/orders serves its receipt.
+    if app.snapshot_req.is_some() {
+        if let Err(e) = snapshot_now(&app.snapshot_req).await {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": format!("Order durability unconfirmed: {e}. The order was accepted in memory and may still execute, but no receipt or l1Challenge is issued for it until a durable snapshot holds it; GET /v1/orders then serves its receipt."),
+                    "orderHash": receipt.order_hash,
+                    "durability": "unknown",
+                })),
+            )
+                .into_response();
+        }
     }
+    Json(app.gw.lock().await.receipt_json(&receipt, beneficiary)).into_response()
 }
 
 /// A refused mutation: `RATE_LIMIT` is 429, `PERSISTENCE_UNAVAILABLE` is 503 (retry
@@ -10748,6 +10808,10 @@ async fn main() {
         }
     }
     gw.prod = prod;
+    if state_path.is_some() {
+        // Receipts wait for the durable write that holds their order (audit GF-2).
+        gw.durable_marks = snapshot::DurableMarks::tracked();
+    }
     gw.candidate_archive_required = archive_binding.is_some();
     gw.configure_oracle_crosscheck(oracle_crosscheck_policy)
         .unwrap_or_else(|error| {
@@ -11443,7 +11507,8 @@ async fn main() {
     gw.repair_withdraw_nonce();
     gw.note_engine_close_only();
     gw.note_admission_cap();
-    let (snapshot_req_tx, mut snapshot_req_rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+    let (snapshot_req_tx, mut snapshot_req_rx) =
+        tokio::sync::mpsc::channel::<SnapshotAck>(SNAPSHOT_REQUEST_QUEUE);
     let snapshot_req = state_path.as_ref().map(|_| snapshot_req_tx);
     let deposit_source = l1.as_ref().map(|l| {
         gw.deposits.required = true;

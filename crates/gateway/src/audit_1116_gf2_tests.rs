@@ -131,6 +131,86 @@ mod audit_1116_gf2 {
         assert_eq!(receipt["l1Challenge"]["beneficiary"], hex0x(&BENEFICIARY));
     }
 
+    fn list(key: &[u8; 32]) -> Request<Body> {
+        Request::builder()
+            .uri("/v1/orders")
+            .header("x-api-key", hex0x(key))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    async fn listed_receipt(app: &Shared, key: &[u8; 32]) -> serde_json::Value {
+        let listed = json(
+            build_router(app.clone(), false)
+                .oneshot(list(key))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(listed["orders"].as_array().unwrap().len(), 1);
+        listed["orders"][0]["receipt"].clone()
+    }
+
+    /// GF-2: the order listing serves the stored receipt too, so it must not hand
+    /// out the authority while the accept response still waits, nor after that
+    /// write failed. Once a durable write holds the order, it does.
+    #[tokio::test]
+    async fn audit_1116_gf2_the_listing_serves_a_receipt_only_once_a_durable_write_holds_it() {
+        let (app, mut rx, key) = staged().await;
+        app.gw.lock().await.durable_marks = snapshot::DurableMarks::tracked();
+        let task = tokio::spawn(build_router(app.clone(), false).oneshot(place(&key)));
+        let ack = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(listed_receipt(&app, &key).await.is_null(), "listed while waiting");
+        ack.send(false).unwrap();
+        let response = task.await.unwrap().unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(listed_receipt(&app, &key).await.is_null(), "listed after a failed write");
+
+        let dir = TestDir::new();
+        // A write that fails confirms nothing.
+        let unwritable = dir.0.join("missing").join("state");
+        assert!(!write_snapshot(&app, &unwritable, SEED, Arc::new(Mutex::new(()))).await);
+        assert!(listed_receipt(&app, &key).await.is_null());
+        // The writer's next successful write holds the order.
+        let path = dir.0.join("state");
+        assert!(write_snapshot(&app, &path, SEED, Arc::new(Mutex::new(()))).await);
+        let receipt = listed_receipt(&app, &key).await;
+        assert_eq!(receipt["l1Challenge"]["beneficiary"], hex0x(&BENEFICIARY));
+        let hash = app.gw.lock().await.accounts[&key].orders[0].order_hash;
+        assert_eq!(receipt["orderHash"], hex0x(&hash));
+
+        // An order restored from a snapshot is durable.
+        let plain = snapshot::open(&std::fs::read(&path).unwrap(), &SEED).unwrap();
+        let mut restored = Gw::boot_restored(&plain).unwrap();
+        restored.durable_marks = snapshot::DurableMarks::tracked();
+        let row = &restored.v1_orders_json(&key).unwrap()["orders"][0];
+        assert_eq!(row["receipt"]["orderHash"], hex0x(&hash));
+    }
+
+    /// Marks: an order is durable once a write whose capture held its mark is.
+    #[test]
+    fn audit_1116_gf2_durable_marks_follow_the_captured_writes() {
+        let untracked = snapshot::DurableMarks::default();
+        assert_eq!(untracked.issue(), 0);
+        assert!(untracked.is_durable(0));
+        let marks = snapshot::DurableMarks::tracked();
+        assert!(marks.is_durable(0), "restored orders");
+        let first = marks.issue();
+        let captured = marks.captured();
+        let second = marks.issue();
+        assert!(!marks.is_durable(first) && !marks.is_durable(second));
+        marks.written(captured);
+        assert!(marks.is_durable(first));
+        assert!(!marks.is_durable(second), "accepted after the capture");
+        // A slower writer of an older capture does not move the mark back.
+        marks.clone().written(marks.captured());
+        marks.written(captured);
+        assert!(marks.is_durable(second));
+    }
+
     /// GF-2: production without persistence cannot make any receipt durable, so it
     /// refuses the order before accepting anything, as cancellation does.
     #[tokio::test]

@@ -106,6 +106,59 @@ impl WriteHealth {
     }
 }
 
+/// Which accepted orders a durable snapshot already holds (audit GF-2). While
+/// tracked, each accepted order takes the next mark; a writer notes the newest
+/// mark its capture holds and, once that write is durable, every order up to it
+/// is. Mark 0 is always durable: an order restored from a snapshot, and every
+/// order when nothing is tracked (no persistence configured, so no write could
+/// ever confirm one). Shared by clones; runtime-only.
+#[derive(Clone, Default)]
+pub struct DurableMarks(Option<std::sync::Arc<Marks>>);
+
+#[derive(Default)]
+struct Marks {
+    issued: std::sync::atomic::AtomicU64,
+    durable: std::sync::atomic::AtomicU64,
+}
+
+impl DurableMarks {
+    /// Marks for a gateway with persistence configured.
+    pub fn tracked() -> Self {
+        Self(Some(Default::default()))
+    }
+
+    /// The mark of an order accepted now. Call under the state lock.
+    pub fn issue(&self) -> u64 {
+        self.0.as_ref().map_or(0, |m| {
+            m.issued.fetch_add(1, std::sync::atomic::Ordering::AcqRel) + 1
+        })
+    }
+
+    /// The newest mark a capture taken now holds. Call under the state lock,
+    /// together with the capture.
+    pub fn captured(&self) -> u64 {
+        self.0
+            .as_ref()
+            .map_or(0, |m| m.issued.load(std::sync::atomic::Ordering::Acquire))
+    }
+
+    /// A capture that held every mark up to `captured` is durable.
+    pub fn written(&self, captured: u64) {
+        if let Some(m) = &self.0 {
+            m.durable
+                .fetch_max(captured, std::sync::atomic::Ordering::AcqRel);
+        }
+    }
+
+    pub fn is_durable(&self, mark: u64) -> bool {
+        mark == 0
+            || self
+                .0
+                .as_ref()
+                .is_none_or(|m| mark <= m.durable.load(std::sync::atomic::Ordering::Acquire))
+    }
+}
+
 /// Explicit recovery intent, separate from an initial deployment's fresh genesis.
 /// A supplied checkpoint always requires a snapshot, even when the flag is "0".
 /// The hash must come from a trusted recovery record; matching it is not proof of

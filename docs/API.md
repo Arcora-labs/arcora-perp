@@ -55,8 +55,8 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
-| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges); `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written (§ When the state cannot be written) |
-| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`), newest first; finished orders beyond the account's share of the row budget are dropped (see **Order rows kept per account**) |
+| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges), sent once a durable state snapshot holds the order; `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written, and `503` with `durability: "unknown"` (no receipt) when the write the order waits for fails (§ When the state cannot be written) |
+| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`; `receipt` is `null` until a durable state snapshot holds the order), newest first; finished orders beyond the account's share of the row budget are dropped (see **Order rows kept per account**) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
 | GET  | `/v1/markets` | – | `{ markets[] }` |
@@ -97,6 +97,22 @@ Cancellation and the routes that already wait for a durable snapshot keep their 
 `503` behaviour below. The `persistence_failed` alert is active meanwhile, and
 `snapshot_size_high` warns once a snapshot reaches three quarters of its 64 MiB cap
 (§ Operational alerts).
+
+**An order receipt waits for a durable snapshot.** The receipt and its
+`l1Challenge` are the enclave's promise that the order is sequenced, and the
+`l1Challenge` lets its holder fine the sequencer's bond if no settled batch answers a
+challenge. A restart before a snapshot holds the order would forget it, so
+`POST /v1/orders` answers only once the snapshot writer has durably written a snapshot
+that holds the order (concurrent orders share one write). When that write fails or
+times out, the answer is `503` with `durability: "unknown"`, the `orderHash`, and no
+receipt, signature or `l1Challenge`. The order is not taken back: it was accepted
+in memory and may still execute, so look it up by `orderHash` before placing it again.
+`GET /v1/orders` lists it with `receipt: null` until a later snapshot holds it, then
+serves its receipt and `l1Challenge`; a restart before that forgets the order, and no
+authorization for it was ever issued. Production
+without persistence refuses orders before accepting them (`503`
+`PERSISTENCE_UNAVAILABLE`). A demo build without persistence answers at once: it
+keeps nothing across a restart.
 
 Production without persistence refuses cancellation before mutation (503).
 With persistence, success waits for a durable snapshot ACK. Write failure or
@@ -658,7 +674,8 @@ gateway started; they are not persisted, and a restart clears them.
 
 Every receipt (the `POST /v1/orders` response and each stored `receipt` in
 `GET /v1/orders`) carries `l1Challenge`, an enclave-signed authorization to
-challenge that order on L1:
+challenge that order on L1. The gateway issues a receipt only once a durable state
+snapshot holds its order (§ When the state cannot be written):
 
 ```json
 "l1Challenge": {
