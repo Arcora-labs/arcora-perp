@@ -132,13 +132,25 @@ the shorter of `maxWindowMs` and `clockSkewMs`, 7.5 s at launch. When a seal is
 late (a slow L1 RPC or disk, a challenge read that is behind), the open
 window stops admitting timed operations once its first one is `maxWindowMs` less
 one seal period old (22.5 s at launch): `POST /v1/orders` and
-`POST /v1/accounts/withdraw` answer `503` with `Retry-After: 2` and
+`POST /v1/accounts/withdraw` (and, in the demo build, the LP and demo routes that
+trade or move funds) answer `503` with `Retry-After: 2` and
 `{ "error": "CLOCK_WINDOW_CLOSING: ..." }` and change nothing, and the matching
 tick (fills, funding, liquidations) waits. Orders already accepted wait in the
 book or the queue. Everything resumes in the next window, as soon as this one is
 sealed. Cancellation, deposits and reads are not affected. A window that holds
 nothing but idle funding steps is not held: it is dropped, as at a seal. Demo and
 legacy modes (no clock verifier) refuse nothing.
+
+`Retry-After` is a polling hint, not a promise. A window whose seal attempt was
+refused and rolled back keeps its first operation, so it stays closing until the
+settle loop seals it again after its backoff. Once a window is sealed, every
+mutating request is answered `503` with `Retry-After: 2` and
+`{ "error": "clock settlement in progress; retry after finality" }` until the
+window settles. Requests that read L1 before they change anything
+(`POST /v1/accounts/deposit/authorize`, `/deposit/route`, `/deposit/onchain`, a
+close-only `POST /v1/accounts/withdraw`, the admin wind-down) do not hold the
+exchange open while they read, so they can get that answer after their read:
+nothing was changed and no permit was issued; send the request again.
 
 **Order body** (`POST /v1/orders`):
 
@@ -1098,7 +1110,8 @@ Each is raised once when it becomes active and once when it recovers:
 | `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the state is beyond an admission bound (only after a bound is lowered under an existing state, or after a voided window when crediting its deposits again would exceed one); it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
 | `window_voided` | a sealed window whose clock registration can never land was voided, and the window after it has not settled yet (§ Voided settlement windows). Not persisted: a restart clears it |
 | `clock_recovery_blocked` | the settle loop's recovery of a clock window needs the operator or is running out of time; `clockRecovery.operatorAction` says what to do (§ Clock recovery status). Cleared when the recovery resolves |
-| `clock_registration_refused` | a clock window cannot register: its timed operations span more than `maxWindowMs`, its last one is past `clockSkewMs`, or the clock verifier reverted its registration (the gateway log names the revert). Nothing is registered and the recovery decides the window; a timed one is voided (§ Voided settlement windows). Cleared when a window settles |
+| `clock_registration_refused` | a clock window cannot register: its timed operations span more than `maxWindowMs`, its last one is past `clockSkewMs`, or the clock verifier reverted its registration, at its gas estimate or once mined (the gateway log names the revert). Nothing is registered and the recovery decides the window; a timed one is voided (§ Voided settlement windows). Cleared when a window settles |
+| `deposit_reads_dropped` | three deposit reads in a row finished after clock admission had closed and were dropped (each is read again once admission reopens): the L1 RPC is too slow for the time admission is open, nothing is credited meanwhile, and the oldest unconsumed deposit's `livenessTimeoutBlocks` keeps running. Cleared when a read is applied |
 
 ### Clock recovery status
 

@@ -12731,9 +12731,8 @@ async fn main() {
                         if let Some(why) = unregistrable {
                             // Journaled with its intent and nothing sent: the recovery
                             // registers nothing and decides the window at finalized
-                            // blocks. A timed window is voided once the chain clock is
-                            // past its registration skew, not after the registration
-                            // wait's twenty minutes.
+                            // blocks. A timed window is voided once a finalized block's
+                            // time is past its registration skew.
                             let (rec, delay) = start_unregistrable_recovery(
                                 &app,
                                 batch_id,

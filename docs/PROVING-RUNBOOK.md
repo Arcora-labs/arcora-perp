@@ -244,7 +244,12 @@ register only local work remains: the body-size check against the limit read
 before the pause, the sealed window's batch and phase against the settlement's,
 and its operation times against the verifier's `maxWindowMs` and `clockSkewMs`
 (read once at boot). The register's own read and send are the only L1 round trips
-left in that budget.
+left in that budget. This holds while the open window is inside its cutoff (below).
+Past it no timed operation is admitted, so its last one stays put and the work
+before the pause is spent from the budget too: within one seal period of the
+cutoff the bond top-up and the stake-refund sweep, which wait for their receipts,
+are left to a later tick (`[l1] the open clock window is near its cutoff`); the
+reads the seal needs still run.
 
 **Keeping the window registrable.** A window registers only while its timed
 operations span at most `maxWindowMs` and its last one is within `clockSkewMs` of
@@ -253,24 +258,47 @@ the block time. A slow or rate-limited L1 RPC must not break either bound:
 - The deposit scan reads L1 without the admission permit, so the pause never
   waits for an RPC call; it takes the permit only to apply what it read, and drops
   the read if admission closed meanwhile. It finds the next deposit block with
-  the vault's `depositBlock(id)`, one read instead of a search over blocks.
+  the vault's `depositBlock(id)`, one read instead of a search over blocks. A
+  dropped read is read again once admission reopens; three in a row with none
+  applied between them raise `deposit_reads_dropped`: the reads outlast the time
+  admission is open, nothing is credited meanwhile, and the oldest unconsumed
+  deposit's `livenessTimeoutBlocks` keeps running. Fix the RPC (a faster or
+  dedicated endpoint) before that budget runs low.
+- No HTTP request holds the permit across an L1 call, or across the deposit
+  scan's lock, either. The deposit permit, legacy route and confirmation
+  requests, the close-only withdrawal, the wind-down and the slash
+  acknowledgement do that work first and take the permit only to apply and
+  persist what they change; one whose L1 work finished after admission closed
+  answers `503` with `Retry-After` and changes nothing.
 - The open window stops admitting timed operations (ticks, orders, withdrawals)
   once its first one is `maxWindowMs` less one seal period old, so a window whose
   seals are skipped (a failed batch-count read, a stale challenge read, a failed
   snapshot) stays inside `maxWindowMs`. Clients get `503 CLOCK_WINDOW_CLOSING`
-  meanwhile (`docs/API.md`); everything resumes in the next window.
+  meanwhile (`docs/API.md`); everything resumes in the next window. A window
+  whose seal is still skipped about `clockSkewMs` after the cutoff is past its
+  registration skew instead and is voided; no gateway setting avoids that.
 - After the pause, a window that can no longer register is logged
   (`[clock] window N can no longer register when sealed`) and raises
   `clock_registration_refused`. The post-seal preflight refuses such a window
   as unregistrable: it is not rolled back (it would seal the same times again)
   but journaled and handed to the recovery with nothing sent (§ Dead clock
   window).
-- A `register` the verifier reverts is never waited out. Its reason is logged
-  with the verifier's error decoded (`InvalidTime`, `BadContext`,
-  `ReplacementForbidden`, `Unauthorized`, ...), `clock_registration_refused` is
-  raised, and the recovery takes the window at once instead of after the
-  twenty-minute finality budget. A send whose outcome is unknown (a timeout, a
-  lost receipt) is logged and still waits for its finalized anchor.
+- A `register` the verifier reverts is not waited for. Both a reverted gas
+  estimate (nothing was broadcast) and a mined transaction that reverted (cast
+  reports it as a success with `status` `0x0`; the gateway reads the receipt)
+  are logged with the verifier's error decoded (`InvalidTime`, `BadContext`,
+  `ReplacementForbidden`, `Unauthorized`, ...), raise
+  `clock_registration_refused`, and hand the window to the recovery at once.
+  An estimate that reverted with `BadContext`, which a load-balanced RPC whose
+  backend has not seen the previous settlement yet can answer, is first sent
+  again up to twice, 2 s apart, while the window can still register. The
+  recovery never sends a registration: it voids a timed window once a finalized
+  block's time is past the window's last operation plus `clockSkewMs`. On Base
+  the finalized head lags the latest block by many minutes, so admission stays
+  closed about that long; what the surfaced revert buys is the alert and its
+  reason at once, not a faster void. A send whose outcome is unknown (a timeout,
+  a lost receipt, a transport error) is logged and still waits for its finalized
+  anchor.
 
 ## Stale clock anchor: cancel
 

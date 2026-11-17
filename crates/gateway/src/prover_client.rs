@@ -180,7 +180,8 @@ pub trait ProverClient: Send + Sync {
 
 /// The registration preconditions that do not depend on the sealed window, read
 /// before admission pauses. A timed window must register within `clockSkewMs` of
-/// its last operation, and admission stays open until the pause, so these reads
+/// its last operation, and admission stays open until the pause, so while the
+/// open window is inside its cutoff (`clock_admission::WindowBound`) these reads
 /// (several L1 round trips, and the prover's identity) are not spent from that
 /// budget. Only the comparison with the sealed window runs after the seal.
 #[derive(Clone, Debug, PartialEq, Eq)]
