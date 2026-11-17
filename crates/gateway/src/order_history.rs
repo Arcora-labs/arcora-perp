@@ -17,11 +17,12 @@
 //! that relies on nothing outside it. One that does rely on side logs carries
 //! the extension, which an earlier binary refuses as trailing bytes.
 //!
-//! The order log's entries are never read back by the gateway: boot checks the
-//! side log from the snapshot's durable end on (the entries the snapshot still
-//! holds must match, later ones must continue the chain). The batch lists are
-//! all loaded, since the challenge watcher answers from them; their digest at the
-//! snapshot's durable end is checked.
+//! Boot reads both side logs from the start and checks each against the digest
+//! the snapshot recorded at its durable end, so a missing, rolled-back or
+//! foreign file is refused before anything is cut or appended. The order log's
+//! entries are not kept: after that end, the entries the snapshot still holds
+//! must match and later ones must continue the chain. The batch lists are all
+//! loaded, since the challenge watcher answers from them.
 
 use crate::order_log::{self, LogEntry};
 use crate::side_log::{self, Kind, Position};
@@ -276,7 +277,10 @@ impl Gw {
             return Ok(());
         }
 
-        // The order log: from the snapshot's durable end on.
+        // The order log: read from the start, so the digest at the snapshot's
+        // durable end proves the records it relies on are ours (a longer file of
+        // another history is refused, never cut as a torn tail). Only the records
+        // after that end are compared or adopted.
         let order_path = Kind::OrderLog.path(state);
         let order_from = self.history.order_log;
         let tail = self.order_log.tail();
@@ -285,10 +289,13 @@ impl Gw {
         let order_end = side_log::read(
             &order_path,
             Kind::OrderLog,
-            &order_from,
+            &Position::default(),
             &order_from,
             seed,
             |index, record| {
+                if index < order_from.records {
+                    return Ok(());
+                }
                 let entry: LogEntry = postcard::from_bytes(record)
                     .map_err(|e| format!("order log record {index}: {e}"))?;
                 let k = (index - order_from.records) as usize;

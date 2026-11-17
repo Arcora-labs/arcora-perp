@@ -184,7 +184,8 @@ pub struct ReadEnd {
 /// order, with its index. `expect` (at or after `from`) is the durable end a
 /// snapshot recorded: the file must reach it at a frame boundary with the same
 /// digest, or it is refused (the records the snapshot relies on are gone or
-/// differ). A missing file reads as empty when `expect` is its start. Reading
+/// differ) before the frame that reaches it delivers any record. A missing file
+/// reads as empty when `expect` is its start. Reading
 /// stops at the first frame that is incomplete, does not authenticate, or does
 /// not continue the index; everything from there on is reported as `torn`.
 pub fn read(
@@ -257,17 +258,21 @@ pub fn read(
         };
         let mut next = end;
         for record in &records {
-            each(next.records, record)?;
             next.digest = fold(kind, &next.digest, next.records, record);
             next.records += 1;
         }
         next.bytes = end.bytes + 4 + len;
+        // Check the frame that reaches the snapshot's end before delivering any of
+        // its records.
         if end.records < expect.records && next.records >= expect.records && next != *expect {
             return Err(format!(
                 "side log {} does not match the snapshot's record of it; preserve the state \
                  files for offline reconciliation",
                 path.display()
             ));
+        }
+        for (index, record) in (end.records..).zip(&records) {
+            each(index, record)?;
         }
         end = next;
     }
