@@ -2,8 +2,10 @@
 //! execution record of every order row the gateway keeps, and each update
 //! searched the whole book for the order, so a tick cost the square of the
 //! resting orders under the gateway's single lock. A tick now updates the rows
-//! its batch touched (a fill, a rejection, a removal, a newly sealed order, a
-//! fill still waiting for its proof) and finds each order by its hash.
+//! its batch touched (a fill, a rejection, a removal, a newly sealed order) and
+//! the rows holding a fill whose tick settled since (round 1 review: not every
+//! row whose fills wait for their proof, on every tick), indexes the batch by
+//! order hash once and finds each order by its hash.
 use super::*;
 use std::cell::Cell;
 
@@ -496,4 +498,43 @@ fn audit_1116_ga1_a_restored_book_finds_its_orders_by_hash() {
     restored.tick();
     let row = &restored.v1_orders_json(&maker).unwrap()["orders"][0];
     assert_eq!(row["execution"]["status"], "FILLED", "{row}");
+}
+
+/// Audit 2026-11-16 GA-1 + SM-1, round 1 review: an order that ended without
+/// filling never reaches SETTLED, so its row used to stay in the account's
+/// history forever, and an account over the history cap made every tick walk
+/// every book for its resting orders. Such a row now leaves once the tick that
+/// sealed it is hard; the account's resting order stays.
+#[test]
+fn audit_1116_ga1_rows_that_never_filled_leave_the_history_cap() {
+    let mut gw = Gw::boot();
+    let px = gw.px_of(0);
+    let key = account(&mut gw);
+    post(
+        &mut gw,
+        &key,
+        &order("Buy", SIZE_SCALE / 100, px * 9 / 10, "Gtc"),
+    );
+    gw.tick();
+    let resting = gw.accounts[&key].orders[0].order_hash;
+    let extra = MAX_ACCOUNT_ORDER_HISTORY + 20;
+    for chunk in 0..extra / 20 {
+        for _ in 0..20 {
+            post(
+                &mut gw,
+                &key,
+                &order("Sell", SIZE_SCALE / 100, px + px / 50, "Ioc"),
+            );
+        }
+        gw.tick();
+        assert!(chunk > 0 || gw.accounts[&key].orders.len() == 21);
+    }
+    for _ in 0..=SETTLE_TICKS {
+        gw.tick();
+    }
+    let rows = &gw.accounts[&key].orders;
+    assert_eq!(rows.len(), MAX_ACCOUNT_ORDER_HISTORY);
+    assert!(rows.iter().any(|o| o.order_hash == resting));
+    assert!(gw.seq.remaining_order_size(&resting).is_some());
+    assert_rows_match_book(&gw);
 }

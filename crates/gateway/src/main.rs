@@ -937,6 +937,15 @@ const SNAPSHOT_ACK_TIMEOUT_SECS: u64 = 30;
 /// Live orders take priority over the history cap so their cancellation stays reachable.
 const MAX_ACCOUNT_ORDER_HISTORY: usize = 500;
 
+/// Whether `owner`'s order of row `o` rests with a remainder in its market's
+/// book, found by its hash (audit 2026-11-16 GA-1 + SM-1): a lookup, not a walk
+/// of the book.
+fn order_rests(seq: &Sequencer, owner: &PubKey, o: &GwOrder) -> bool {
+    seq.book(o.order.market_id)
+        .and_then(|book| book.remaining_for(owner, &o.order_hash))
+        .is_some_and(|remaining| remaining > 0)
+}
+
 /// Evict up to `len - max` of the OLDEST terminal entries (front-first) so a Vec stays
 /// bounded, never dropping a non-terminal (live/in-flight) entry. Generic over the
 /// "is terminal" predicate so the eviction rule is unit-testable without heavy fixtures.
@@ -1831,6 +1840,13 @@ struct Gw {
     mm_nonce: u64,
     rng: u64,
     pending_settle: Vec<(u64, u64)>, // (batch_id, tick sealed)
+    /// The ticks whose fills an order row may hold unsettled (audit 2026-11-16
+    /// GA-1 + SM-1, round 1 review): a tick updates a row holding such a fill
+    /// only once its tick settles or is discarded (`Gw::settled_fill_ticks`),
+    /// not on every tick until then. Rebuilt from the rows when unset, after a
+    /// boot or a restore; never persisted.
+    #[serde(skip)]
+    unsettled_fill_ticks: Option<std::collections::BTreeSet<u64>>,
     /// Cumulative collateral the USER has had clawed by auto-deleverage (audit Q2),
     /// recognized from the sealed batches' ADL receipts via the user's secret key.
     user_adl_clawed: i128,
@@ -2509,6 +2525,7 @@ impl Gw {
             mm_nonce: 1_000_000,
             rng: 0x2545F4914F6CDD1D,
             pending_settle: Vec::new(),
+            unsettled_fill_ticks: None,
             user_adl_clawed: 0,
             accounts: std::collections::BTreeMap::new(),
             pending_withdrawals: Vec::new(),
@@ -4405,18 +4422,37 @@ impl Gw {
             view
         })
     }
-    /// One scan per market, not one full-book scan per historical order row.
-    fn live_order_hashes(&self, owner: &PubKey) -> std::collections::BTreeSet<Digest> {
-        self.mkts
+    /// The ticks whose fills an order row held unsettled and that settled or
+    /// were discarded since the last tick, no longer watched (audit 2026-11-16
+    /// GA-1 + SM-1, round 1 review). Watching costs a lookup per tick with an
+    /// unsettled fill, not one per row; the set is rebuilt from the rows after a
+    /// boot or a restore.
+    fn settled_fill_ticks(&mut self) -> std::collections::BTreeSet<u64> {
+        if self.unsettled_fill_ticks.is_none() {
+            let ticks = self
+                .orders
+                .iter()
+                .chain(self.accounts.values().flat_map(|a| &a.orders))
+                .filter_map(|o| o.execution.as_ref())
+                .flat_map(execution::Execution::unsettled_ticks)
+                .collect();
+            self.unsettled_fill_ticks = Some(ticks);
+        }
+        let watched = self
+            .unsettled_fill_ticks
+            .as_mut()
+            .expect("the watched ticks were just built");
+        let settled: std::collections::BTreeSet<u64> = watched
             .iter()
-            .filter_map(|m| self.seq.book(m.id))
-            .flat_map(|book| book.resting_hashes_for(owner))
-            .collect()
+            .copied()
+            .filter(|tick| !self.seq.fill_tick_pending(*tick))
+            .collect();
+        watched.retain(|tick| !settled.contains(tick));
+        settled
     }
 
     fn v1_orders_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let a = self.accounts.get(key)?;
-        let live = self.live_order_hashes(&a.wallet.owner);
         let orders: Vec<_> = a
             .orders
             .iter()
@@ -4431,7 +4467,7 @@ impl Gw {
                     "reduceOnly": o.input.reduce_only,
                     "orderHash": hex0x(&o.order_hash),
                     "finality": o.last_finality,
-                    "cancellable": live.contains(&o.order_hash) || (!o.sealed && self.seq.cancellable_size(&a.wallet.owner, &o.order, false).is_some()),
+                    "cancellable": order_rests(&self.seq, &a.wallet.owner, o) || (!o.sealed && self.seq.cancellable_size(&a.wallet.owner, &o.order, false).is_some()),
                     "filledSize": o.execution.as_ref().filter(|e| e.known).map(|e| e.filled.to_string()),
                     "avgFillPrice": o.execution.as_ref().filter(|e| e.known).map(|e| e.average().to_string()),
                     "execution": execution::wire(o, &self.seq),
@@ -5636,24 +5672,28 @@ impl Gw {
         // older ticks/windows (audit 2026-11-16 GA-1 + SM-1): the orders it sealed
         // (the rows still unsealed, every one of which was pushed into it above),
         // the orders with an applied fill, a rejection or a removal in it, and the
-        // rows whose fills still wait for their proof (`execution::needs_update`).
-        // Every other row is an order resting as recorded or ended; updating it
-        // changed nothing a response or an event shows, and cost a book lookup per
-        // row, every tick, under this lock. Rows are visited in the same order as
-        // before, so the events keep theirs. Applied-fill attribution is
-        // independent of the monotone finality axis.
-        let touched = execution::touched_by(&sealed);
+        // rows holding a fill of a tick that settled or was discarded since the
+        // last tick (`execution::needs_update`). Every other row is an order
+        // resting as recorded or ended, whose fills still wait for their proof;
+        // updating it changed nothing a response or an event shows, and cost a
+        // book lookup and a scan of the batch per row, every tick, under this
+        // lock. The batch is indexed by order hash once (`execution::Touches`).
+        // Rows are visited in the same order as before, so the events keep
+        // theirs. Applied-fill attribution is independent of the monotone
+        // finality axis.
+        let settled_ticks = self.settled_fill_ticks();
+        let touches = execution::Touches::of(&sealed, settled_ticks);
         let mut acct_events: Vec<String> = Vec::new();
         for o in self.orders.iter_mut() {
             let fresh = !o.sealed;
-            if !fresh && !execution::needs_update(o, &touched) {
+            if !fresh && !execution::needs_update(o, &touches) {
                 #[cfg(test)]
                 tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
                 continue;
             }
             #[cfg(test)]
             tick_scaling_tests::count_row_update();
-            let _ = execution::update(o, &self.seq, &sealed, fresh);
+            let _ = execution::update_with(o, &self.seq, &touches, fresh);
             if fresh {
                 o.sealed = true;
             }
@@ -5661,14 +5701,14 @@ impl Gw {
         for acct in self.accounts.values_mut() {
             for o in acct.orders.iter_mut() {
                 let fresh = !o.sealed;
-                if !fresh && !execution::needs_update(o, &touched) {
+                if !fresh && !execution::needs_update(o, &touches) {
                     #[cfg(test)]
                     tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
                     continue;
                 }
                 #[cfg(test)]
                 tick_scaling_tests::count_row_update();
-                for mut event in execution::update(o, &self.seq, &sealed, fresh) {
+                for mut event in execution::update_with(o, &self.seq, &touches, fresh) {
                     event["owner"] = serde_json::json!(hex0x(&acct.wallet.owner));
                     acct_events.push(event.to_string());
                 }
@@ -5676,6 +5716,12 @@ impl Gw {
                     o.sealed = true;
                 }
             }
+        }
+        // The rows that recorded a fill of this tick hold it unsettled.
+        if !sealed.applied_fills.is_empty() {
+            self.unsettled_fill_ticks
+                .get_or_insert_with(Default::default)
+                .insert(sealed.batch_id);
         }
         // Task 5: the SETTLE_TICKS queue is the LEGACY (demo/no-prover) finality
         // simulation. In window-settle mode SETTLED is earned by the real on-chain
@@ -5788,22 +5834,23 @@ impl Gw {
                 }
             }
             // A04: SETTLED is a finality axis, not proof of full execution. Never
-            // evict the only API row for a still-live partial maker. Gather its live
-            // hashes once (only when pruning is needed), not once per history row.
+            // evict the only API row for a still-live partial maker. Each row is
+            // looked up in its book by its hash, and only once it is otherwise
+            // evictable, not by a walk of every book (audit 2026-11-16 GA-1 +
+            // SM-1, round 1 review). A row that ended without filling never
+            // reaches SETTLED, so it is evictable once the tick that last updated
+            // it is hard: an account of such rows does not stay over the cap,
+            // looking at every row on every tick.
             if acct.orders.len() > MAX_ACCOUNT_ORDER_HISTORY {
-                let live: std::collections::BTreeSet<Digest> = self
-                    .mkts
-                    .iter()
-                    .filter_map(|m| self.seq.book(m.id))
-                    .flat_map(|book| book.resting_hashes_for(&acct.wallet.owner))
-                    .collect();
+                let owner = acct.wallet.owner;
                 cap_history(&mut acct.orders, MAX_ACCOUNT_ORDER_HISTORY, |o| {
+                    let Some(e) = o.execution.as_ref().filter(|e| e.terminal()) else {
+                        return false;
+                    };
                     o.sealed
-                        && o.last_finality == "SETTLED"
-                        && !live.contains(&o.order_hash)
-                        && o.execution
-                            .as_ref()
-                            .is_some_and(execution::Execution::terminal)
+                        && (o.last_finality == "SETTLED"
+                            || (e.filled == 0 && e.last_tick_hardened(&self.seq)))
+                        && !order_rests(&self.seq, &owner, o)
                 });
             }
         }
@@ -5898,7 +5945,6 @@ impl Gw {
                 }
             }
         }
-        let live = self.live_order_hashes(&self.user.owner);
         let orders: Vec<WTrackedOrder> = self
             .orders
             .iter()
@@ -5907,7 +5953,7 @@ impl Gw {
                 input: o.input.clone(),
                 receipt: self.receipt_json(&o.receipt, None),
                 finality: self.finality_str(&o.order_hash),
-                cancellable: live.contains(&o.order_hash)
+                cancellable: order_rests(&self.seq, &self.user.owner, o)
                     || (!o.sealed
                         && self
                             .seq
