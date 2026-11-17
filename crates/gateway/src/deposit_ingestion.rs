@@ -826,11 +826,19 @@ pub async fn refresh_readiness(app: &Shared) -> Result<(), String> {
 /// Serialize automatic polling and manual accelerators over RPC, application and
 /// the durable ACK. Do not hold Gw across RPC or disk I/O. Cancellation leaves the
 /// dirty barrier armed; the next caller retries persistence before doing more work.
+///
+/// The clock admission permit is never held across an L1 read (audit G2-1): the
+/// settle loop's pause closes admission and then waits for every permit, so a slow
+/// or rate-limited RPC would hold off the seal while the open window's
+/// registration budget runs out. The page and the close-only flag are read
+/// without it; the permit is taken again only to apply what was read and make it
+/// durable. A read finished after admission closed, or at a deposit cursor that
+/// moved meanwhile, is dropped without a trace and read again on the next pass.
 pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
-    // Held while a page can be applied; dropped before the read for uncredited
-    // deposits, which applies no operation.
-    let admission = app.clock_admission.enter().map_err(str::to_string)?;
     let _serial = app.deposit_serial.lock().await;
+    // Refused at once while admission is closed. Held for the durability barrier
+    // below (disk only), released before any L1 read.
+    let admission = app.clock_admission.enter().map_err(str::to_string)?;
     if app.snapshot_req.is_none() {
         return Err("state persistence is required for deposit intake".into());
     }
@@ -838,6 +846,7 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         snapshot_now(&app.snapshot_req).await?;
         app.gw.lock().await.deposits.dirty = false;
     }
+    drop(admission);
     // After L1 close-only nothing more is credited, and the consumed prefix was
     // verified by the fetch that found it. What is left is to finish reading the
     // deposits that landed and were never credited (no deposit can land any more);
@@ -848,7 +857,6 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
     };
     if let Some(done) = latched {
         if let (false, Some(source)) = (done, app.deposit_source.clone()) {
-            drop(admission);
             scan_uncredited(app, &source, None).await;
         }
         return Ok(0);
@@ -875,10 +883,31 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         gw.deposit_cursor()
     };
     let read = source.clone();
-    let fetched = match tokio::task::spawn_blocking(move || read.fetch(cursor)).await {
+    let at = cursor.clone();
+    let fetched = match tokio::task::spawn_blocking(move || read.fetch(at)).await {
         Ok(result) => result,
         Err(e) => Err(Error::Retry(format!("deposit reader task failed: {e}"))),
     };
+    // A page that would credit deposits is applied only while a finalized read
+    // shows the settlement accepting them. Once close-only is set, deposits that
+    // no settled batch consumed are the vault's to refund.
+    let latched = app.gw.lock().await.deposits.l1_close_only;
+    let close_only_read = match (&fetched, app.l1.clone()) {
+        (Ok(page), Some(l1)) if !page.events.is_empty() && !latched => Some(
+            match tokio::task::spawn_blocking(move || l1.close_only_finalized()).await {
+                Ok(Ok(close_only)) => Ok(close_only),
+                Ok(Err(e)) => Err(format!("cannot read the settlement's close-only flag: {e}")),
+                Err(e) => Err(format!("close-only read task failed: {e}")),
+            },
+        ),
+        _ => None,
+    };
+    // Every L1 read is done: what they found is applied under the permit, and only
+    // while the deposit cursor they were made at is still the engine's.
+    let admission = app.clock_admission.enter().map_err(str::to_string)?;
+    if app.gw.lock().await.deposit_cursor() != cursor {
+        return Err("the deposit cursor moved during the L1 read; retrying".into());
+    }
     let page = match fetched {
         Ok(p) => p,
         Err(error) => {
@@ -900,34 +929,17 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
             return Err(error.to_string());
         }
     };
-    // A page that would credit deposits is applied only while a finalized read
-    // shows the settlement accepting them. Once close-only is set, deposits that
-    // no settled batch consumed are the vault's to refund.
     let latched = app.gw.lock().await.deposits.l1_close_only;
-    let close_only = if latched {
-        true
-    } else if page.events.is_empty() {
-        false
-    } else if let Some(l1) = app.l1.clone() {
-        match tokio::task::spawn_blocking(move || l1.close_only_finalized()).await {
-            Ok(Ok(close_only)) => close_only,
-            Ok(Err(e)) => {
-                let mut gw = app.gw.lock().await;
-                gw.deposits.ready = false;
-                let error = format!("cannot read the settlement's close-only flag: {e}");
-                gw.deposits.last_error = Some(error.clone());
-                return Err(error);
-            }
-            Err(e) => {
-                let mut gw = app.gw.lock().await;
-                gw.deposits.ready = false;
-                let error = format!("close-only read task failed: {e}");
-                gw.deposits.last_error = Some(error.clone());
-                return Err(error);
-            }
+    let close_only = match close_only_read {
+        _ if latched => true,
+        Some(Ok(close_only)) => close_only,
+        Some(Err(error)) => {
+            let mut gw = app.gw.lock().await;
+            gw.deposits.ready = false;
+            gw.deposits.last_error = Some(error.clone());
+            return Err(error);
         }
-    } else {
-        false
+        None => false,
     };
     if close_only {
         let first = {
@@ -1004,6 +1016,7 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
         snapshot_now(&app.snapshot_req).await?;
         app.gw.lock().await.deposits.dirty = false;
     }
+    drop(admission);
     app.gw.lock().await.deposits.last_error = None;
     if applied > 0 {
         // A refresh hint carries no secret account identifiers or permit data.

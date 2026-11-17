@@ -106,10 +106,20 @@ pub(crate) async fn http_gate(
         request.uri().path(),
         "/v1/admin/settlement/resume" | "/v1/admin/settlement/cancel-anchor"
     );
+    // Deposit confirmations run the deposit scan, which reads L1 before it applies
+    // anything and takes the permit itself only to apply what it read
+    // (`deposit_ingestion::ingest_once`). Holding the permit here would hold it
+    // across those reads, and the settle loop's pause would wait for a slow RPC
+    // (audit G2-1). They are still refused while admission is closed.
+    let scan = matches!(
+        request.uri().path(),
+        "/v1/accounts/deposit/onchain" | "/v1/admin/insurance/bootstrap"
+    );
     let _permit = if readonly || recovery {
         None
     } else {
         match app.clock_admission.enter() {
+            Ok(_) if scan => None,
             Ok(p) => p,
             Err(error) => {
                 return (
