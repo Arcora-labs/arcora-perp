@@ -15,10 +15,12 @@ register reports, discover feeds, or submit transactions.
 
 ## Inputs and policy
 
-The public candidate configuration supplies ten addresses and ten expected
-runtime hashes: seven compiler roles (`settlement`, `vault`, `sp1_adapter`,
-`clock_verifier`, `sp1_gateway`, `sp1_verifier`, `oracle_wrapper`) and three
-declaration-only roles (`token`, `verifier_proxy`, `uptime_feed`). Its candidate
+The public candidate configuration supplies nine addresses and nine expected
+runtime hashes: six compiler roles (`settlement`, `vault`, `sp1_adapter`,
+`clock_verifier`, `sp1_verifier`, `oracle_wrapper`) and three
+declaration-only roles (`token`, `verifier_proxy`, `uptime_feed`). There is no
+`sp1_gateway` role (audit SV-1, see below); a configuration or policy that
+declares one is refused before any RPC read. Its candidate
 key, chain/network, clock bounds, oracle policy hash and uptime grace remain
 explicit caller declarations.
 
@@ -38,7 +40,6 @@ The separate policy JSON has exactly four top-level keys:
 | `settlement` | `sequencer`, `enclave_signer`, `governance`, `liveness_timeout_blocks`, `challenge_grace_blocks`, `challenge_bond_wei`, `inclusion_deadline_seconds`, `final_settle_grace_blocks`, `progress_batches`, `slash_payout_cap_usdc` |
 | `vault` | `gateway_signer` |
 | `clock_verifier` | `configurator` |
-| `sp1_gateway` | `owner` (must be the zero address: see below) |
 
 Address fields use 20-byte hexadecimal values. The seven settlement numeric
 fields are integers in `0..2^256-1`; booleans do not count as integers.
@@ -62,8 +63,8 @@ runtime bytes**, including actual immutable values. It does not mean SHA-256 of
 a compiler template. SHA-256 identities are recorded separately for the local
 artifacts and observed runtime bytes.
 
-All ten configured roles require nonempty runtime bytes and exact declared
-Keccak hashes. For the seven compiler roles, the observer additionally compares
+All nine configured roles require nonempty runtime bytes and exact declared
+Keccak hashes. For the six compiler roles, the observer additionally compares
 the full runtime to the manifest-bound compiler artifact. Only the declared
 immutable words may differ from template placeholders; their ranges and repeated
 occurrences must be consistent. Actual getter values must agree with the
@@ -76,13 +77,16 @@ current implementation, subscription rights, feed semantics or future upgrades.
 The observer performs no implementation or live-feed discovery.
 
 The required candidate stack is settlement → clock verifier → oracle wrapper →
-SP1 adapter → SP1 gateway → the configured, unfrozen SP1 verifier route. A
-gateway with a live owner can add an accept-everything route or freeze the real
-one, so that owner is a key that can bypass or halt proof verification (audit
-SV-1). The candidate policy therefore only accepts `sp1_gateway.owner` equal to the
-zero address (ownership renounced after the route was added), and the observer
-compares it with the gateway's `owner()`; an owned gateway is never reported
-`VERIFIED_AT_FINALIZED_BLOCK`. The
+SP1 adapter → the stateless SP1 v6.1.0 verifier, with the adapter's `gateway()`
+equal to the configured `sp1_verifier`. That verifier's whole runtime must match
+the compiled stateless template (it has no immutables, so nothing in it is
+constructor-set), and it must report the pinned `VERIFIER_HASH()`. An adapter that
+verifies through an SP1 verifier gateway (router) is never reported
+`VERIFIED_AT_FINALIZED_BLOCK`, whatever its owner or routes (audit SV-1). A
+gateway owner can add an accept-everything route or freeze the real one. Renouncing
+ownership does not help: every route added before the renounce, such as an
+accept-everything verifier under another selector, stays forever, and the gateway
+has no getter that lists its routes. The
 vault/settlement and vault/token links, wrapper/clock link, DON proxy address and
 uptime feed address must also match. The wrapper's deployment chain ID, policy
 hash and grace must match declarations; the clock's maximum window, skew and
@@ -165,8 +169,9 @@ The earlier 353-source CLI demonstration remains preserved historical evidence
 and becomes stale against the new inventory. Create a new manifest at a new
 pathname; do not overwrite or reinterpret that older demo as current validation.
 
-The 31 self-contained unit tests retain the original 28 cases and add three
-public-path CLI regressions. They use injected RPC responses and explicitly synthetic
+The 33 self-contained unit tests retain the original 28 cases (the gateway-route
+case now checks only the verifier hash), add three public-path CLI regressions and
+two audit SV-1 refusals. They use injected RPC responses and explicitly synthetic
 compiler/runtime fixtures; they do not contact a target:
 
 ```sh
@@ -175,7 +180,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
 ```
 
 The separately owned Anvil test is skipped by default. Explicit local execution
-requires `anvil`, `cast` and the seven existing real compiler artifacts:
+requires `anvil`, `cast` and the six existing real compiler artifacts plus the
+vendored `SP1VerifierGateway` artifact:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 python3 -m unittest discover \
@@ -183,8 +189,13 @@ PYTHONDONTWRITEBYTECODE=1 ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 python3 -m unittes
 ```
 
 `ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE` may name a fresh, no-clobber JSON output
-for that test. Its owned loopback Anvil process deploys seven real production
+for that test. Its owned loopback Anvil process deploys six real production
 contract artifacts and three mocks for token, streams verification and uptime.
+It also deploys real `SP1VerifierGateway` graphs only to require refusals: one
+whose owner added the real route and an accept-everything route and then renounced
+(the adapter there accepts the proof `0xdeadbeef`), the same router declared as
+`sp1_verifier`, and one whose real route is frozen. The directly bound graph is
+observed again afterwards and stays verified.
 It checks the observer software against local EVM behavior. It supplies no real
 DON signatures, live uptime acceptance, public target acceptance or fresh proof.
 An explicitly skipped test is not an executed integration result; actual command

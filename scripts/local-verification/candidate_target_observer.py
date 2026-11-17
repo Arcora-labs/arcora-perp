@@ -30,7 +30,10 @@ LINKS = (
     ("oracle_wrapper", "streamsVerifier()", "verifier_proxy"),
     ("oracle_wrapper", "clockVerifier()", "clock_verifier"),
     ("oracle_wrapper", "sequencerUptimeFeed()", "uptime_feed"),
-    ("sp1_adapter", "gateway()", "sp1_gateway"),
+    # Bound directly to the stateless verifier, never to an SP1 gateway (router): a router
+    # keeps every route added before its owner renounced, including an accept-everything
+    # verifier under another selector, and no getter can enumerate them (audit SV-1).
+    ("sp1_adapter", "gateway()", "sp1_verifier"),
 )
 
 
@@ -51,25 +54,6 @@ def selector(root, signature):
     return legacy.deployment_reader.selector(signature)
 
 
-def candidate_operator_policy(value):
-    """The release policy plus this candidate graph's SP1 gateway owner (its gateway is still used).
-
-    The gateway's route is only as trustworthy as its owner: an owner can add an accept-everything
-    route or freeze the real one (audit SV-1). A graph that still routes through a gateway is
-    therefore observable only once its owner is renounced (the zero address), which makes the
-    routes immutable.
-    """
-    if not isinstance(value, dict) or "sp1_gateway" not in value:
-        raise ObserverError("invalid explicit target policy")
-    rest = {role: fields for role, fields in value.items() if role != "sp1_gateway"}
-    result = legacy.operator_policy(rest)
-    identity.exact(value["sp1_gateway"], {"owner"}, "operator policy sp1_gateway")
-    owner = identity.hex_value(value["sp1_gateway"]["owner"], 20, "sp1_gateway.owner")
-    require(int(owner, 16) == 0, "SP1 gateway owner must be renounced")
-    result["sp1_gateway"] = {"owner": owner}
-    return result
-
-
 def expected_policy(value):
     try:
         identity.exact(value, {"schema", "runtime_hash_algorithm", "operator_policy",
@@ -77,7 +61,7 @@ def expected_policy(value):
         require(value["schema"] == POLICY_SCHEMA, "wrong candidate target policy schema")
         require(value["runtime_hash_algorithm"] == "keccak256-evm", "wrong runtime hash algorithm")
         return {"schema": POLICY_SCHEMA, "runtime_hash_algorithm": "keccak256-evm",
-                "operator_policy": candidate_operator_policy(value["operator_policy"]),
+                "operator_policy": legacy.operator_policy(value["operator_policy"]),
                 "oracle_configurator": identity.hex_value(value["oracle_configurator"], 20,
                                                           "oracle configurator")}
     except Exception:
@@ -181,7 +165,7 @@ def observe_target(root, manifest, config, policy, rpc):
               "contracts": {}, "bindings": [], "scope": scope,
               "limitations": [
                   "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
-                  "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+                  "Six compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
                   "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
                   "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."]}
     try:
@@ -289,14 +273,13 @@ def observe_target(root, manifest, config, policy, rpc):
         getter("oracle_wrapper", "configurator()", declared["oracle_configurator"])
         verifier_hash = "0x" + legacy.clock.target.VERIFIER_HASH
         getter("sp1_verifier", "VERIFIER_HASH()", verifier_hash, "bytes32")
-        route = call("sp1_gateway", "routes(bytes4)", verifier_hash[2:10] + "0" * 56, 64)
-        require(route[:12] == bytes(12) and route[32:] in (bytes(32), bytes(31) + b"\x01"),
-                "noncanonical SP1 route ABI")
-        require("0x" + route[12:32].hex() == addresses["sp1_verifier"] and route[32:] == bytes(32),
-                "SP1 route is wrong or frozen")
-        result["sp1_route"] = {"selector": verifier_hash[:10], "verifier": addresses["sp1_verifier"], "frozen": False}
+        # The verifier's whole runtime matched the compiled stateless v6.1.0 template above
+        # (it has no immutables), so it has no owner and no routes to change.
+        require(result["contracts"]["sp1_verifier"]["immutable_words_by_compiler_id"] == {},
+                "SP1 verifier runtime is not fully pinned")
+        result["sp1_verifier_stateless"] = {"verifier": addresses["sp1_verifier"], "selector": verifier_hash[:10]}
         operators = declared["operator_policy"]
-        for role, fields in identity.OPERATOR_ADDRESSES.items():
+        for role, fields in legacy.OPERATOR_ADDRESSES.items():
             for name, signature in fields.items():
                 getter(role, signature, operators[role][name])
         for name, signature in legacy.SETTLEMENT_POLICY.items():

@@ -46,7 +46,7 @@ class ManifestTests(unittest.TestCase):
             shutil.copyfile(identity.ROOT / name, target)
         self.artifacts = {}
         for role, (relative, name, compiler) in identity.CONTRACTS.items():
-            base = self.root / ("contracts/vendor/sp1-contracts" if role in {"sp1_gateway", "sp1_verifier"} else "contracts")
+            base = self.root / ("contracts/vendor/sp1-contracts" if role == "sp1_verifier" else "contracts")
             source = "src/" + name + ".sol"
             path = base / source
             path.parent.mkdir(parents=True, exist_ok=True)
