@@ -152,19 +152,15 @@ pub(super) fn append_snapshot(gw: &Gw, bytes: &mut Vec<u8>) {
 }
 
 /// Restore the history extension (the rest of the payload after the recovery
-/// extension): absent, every entry and batch is in the snapshot itself.
-pub(super) fn restore_snapshot(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
-    if trailer.is_empty() {
-        return gw.order_log.set_base(0, [0u8; 32]);
-    }
-    let payload = trailer
-        .strip_prefix(EXT)
-        .ok_or("unknown history snapshot extension")?;
+/// extension): absent, every entry and batch is in the snapshot itself. Returns
+/// the bytes after it: the challenge extension, when the snapshot has one.
+pub(super) fn restore_snapshot<'a>(gw: &mut Gw, trailer: &'a [u8]) -> Result<&'a [u8], String> {
+    let Some(payload) = trailer.strip_prefix(EXT) else {
+        gw.order_log.set_base(0, [0u8; 32])?;
+        return Ok(trailer);
+    };
     let (extension, rest): (Extension, _) =
         postcard::take_from_bytes(payload).map_err(|e| format!("history snapshot decode: {e}"))?;
-    if !rest.is_empty() {
-        return Err("trailing history snapshot bytes".into());
-    }
     if extension.order_log.records == 0 && extension.batches.records == 0 {
         return Err("history snapshot extension records nothing".into());
     }
@@ -175,7 +171,7 @@ pub(super) fn restore_snapshot(gw: &mut Gw, trailer: &[u8]) -> Result<(), String
         order_log: extension.order_log,
         batches: extension.batches,
     };
-    Ok(())
+    Ok(rest)
 }
 
 /// The records a snapshot writer appends before its capture.

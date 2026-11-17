@@ -726,7 +726,18 @@ Each order hash can be challenged once; it is refused in close-only.
 
 - **Answered.** Anyone proves the order is in a settled batch's ordered or rejected
   root. The stake returns to the submitter when that batch settled after the
-  challenge opened, otherwise it goes to the sequencer.
+  challenge opened, otherwise it goes to the sequencer. The gateway's challenge
+  watcher sends these answers itself. When an open challenge names an order hash
+  that no settled batch holds and the gateway has no record of (an order it lost),
+  the watcher declares the hash rejected (`Cancelled`) in the open window, once,
+  and answers the challenge from the batch that window settles as. It declares the
+  hash again only if that batch settles without it, and never for an order the
+  gateway still tracks: one that is pending, resting, sequenced but not settled, or
+  in the open window. It declares nothing while the settlement holds a settled
+  batch the gateway has not recorded yet (the hash may be in it), nor while a
+  settling window holds clock admission closed; the next round tries again.
+  Declarations are kept in the state snapshot until their challenge closes; a
+  gateway binary from before this rule refuses a snapshot that holds one.
 - **Slashed.** If no answer lands, `slashUnanswered(orderHash)` becomes available
   once `progressBatches` batches have settled since the challenge opened, plus
   `challengeGraceBlocks`. It credits the beneficiary with
@@ -1055,7 +1066,7 @@ Each is raised once when it becomes active and once when it recovers:
 | `deposit_halted` | deposit ingestion is stopped by a safety halt |
 | `archive_pressure` | the configured price-report archive is under storage pressure, or a checkpoint with it could not be written |
 | `bond_shortfall` | the bond is below its target and could not be topped up, or top-ups are paused after an unacknowledged slash |
-| `unanswerable_challenge` | an open inclusion challenge names an order no settled batch can prove |
+| `unanswerable_challenge` | an open inclusion challenge names an order no settled batch can prove; one for an order the gateway does not know is declared rejected in the open window and answered once that window settles (§ L1 inclusion challenges) |
 | `challenge_discovery_failed` | the open-challenge set could not be read for several ticks in a row |
 | `stale_anchor` | the current batch's clock anchor is older than `anchorTimeoutMs` |
 | `liveness_low` | half of the settlement's liveness window has passed without progress |

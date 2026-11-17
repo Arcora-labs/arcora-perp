@@ -247,15 +247,27 @@ mod audit_1116_gf2 {
     use crate::challenge_scan::{AnswerPlan, Watcher};
     use perp_core::order::RejectReason;
 
-    /// One watcher round over an open set read with `open` (no stored details).
-    fn round(gw: &mut Gw, watcher: &mut Watcher, open: &[Digest]) -> AnswerPlan {
-        watcher.observe(crate::l1::OpenSetRead {
+    /// The settlement's `batchCount` when every batch this gateway committed has
+    /// settled on L1 and nothing else has.
+    fn settled_count(gw: &Gw) -> u64 {
+        gw.batch_orders.keys().next_back().map_or(0, |b| b + 1)
+    }
+
+    fn open_set(open: &[Digest], batch_count: u64) -> crate::l1::OpenSetRead {
+        crate::l1::OpenSetRead {
             head: 20,
-            batch_count: gw.seq.state.next_batch_id,
+            batch_count,
             hashes: open.to_vec(),
             details: vec![],
-        });
-        gw.plan_challenge_round(watcher)
+        }
+    }
+
+    /// One watcher round, with a clock admission permit, over an open set read
+    /// with `open` (no stored details) at a block where the settlement holds
+    /// exactly the batches this gateway committed.
+    fn round(gw: &mut Gw, watcher: &mut Watcher, open: &[Digest]) -> AnswerPlan {
+        watcher.observe(open_set(open, settled_count(gw)));
+        gw.plan_challenge_round(watcher, true)
     }
 
     /// How often the open window's manifest rejects `hash`.
@@ -314,13 +326,13 @@ mod audit_1116_gf2 {
         let mut gw = settling_gw();
         let lost = [0x51; 32];
         let mut watcher = Watcher::default();
-        round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(round(&mut gw, &mut watcher, &[lost]).declared, vec![lost]);
         assert_eq!(rejections(&gw, &lost), 1, "the next batch rejects it");
         assert!(gw
             .seq
             .window_rejected()
             .contains(&(lost, RejectReason::Cancelled)));
-        round(&mut gw, &mut watcher, &[lost]);
+        assert!(round(&mut gw, &mut watcher, &[lost]).declared.is_empty());
         assert_eq!(rejections(&gw, &lost), 1, "declared once");
 
         // While its window settles, later rounds declare nothing new.
@@ -393,7 +405,7 @@ mod audit_1116_gf2 {
         let (key, _) = gw.register_account(None);
         gw.account_deposit(&key, 0, 50_000 * QUOTE_SCALE).unwrap();
         let px = gw.px_of(0);
-        let mut place = |gw: &mut Gw, side: &str, limit: i128| {
+        let place = |gw: &mut Gw, side: &str, limit: i128| {
             gw.accounts.get_mut(&key).unwrap().orders_this_sec = 0;
             gw.account_place_order(
                 &key,
@@ -465,6 +477,34 @@ mod audit_1116_gf2 {
         assert!(plain.windows(8).all(|w| w != b"DPCHRJ1\0"));
     }
 
+    /// GF-2 second line: the declaration extension is framed like the others: a
+    /// snapshot with trailing bytes, an empty record set or an unknown extension
+    /// after the earlier ones is refused rather than read as having no records.
+    #[test]
+    fn audit_1116_gf2_a_malformed_declaration_extension_is_refused() {
+        let mut gw = settling_gw();
+        round(&mut gw, &mut Watcher::default(), &[[0x57; 32]]);
+        let plain = gw.snapshot_plain();
+        assert!(Gw::boot_restored(&plain).is_ok());
+        let at = plain
+            .windows(8)
+            .rposition(|w| w == b"DPCHRJ1\0")
+            .expect("a snapshot holding a declaration carries the extension");
+        let mut trailing = plain.clone();
+        trailing.push(0);
+        assert!(Gw::boot_restored(&trailing).is_err(), "trailing bytes");
+        let mut empty = plain[..at].to_vec();
+        empty.extend_from_slice(b"DPCHRJ1\0");
+        empty.extend_from_slice(
+            &postcard::to_allocvec(&crate::challenge_rejections::Declarations::new()).unwrap(),
+        );
+        assert!(Gw::boot_restored(&empty).is_err(), "an empty record set");
+        let mut unknown = plain[..at].to_vec();
+        unknown.extend_from_slice(b"DPXXXX1\0");
+        assert!(Gw::boot_restored(&unknown).is_err(), "an unknown extension");
+        assert!(Gw::boot_restored(&plain[..at]).is_ok(), "no extension at all");
+    }
+
     /// GF-2 second line: if the batch a declaration was due in settles without the
     /// hash (its rejection was lost on the way), the next round declares it again.
     #[test]
@@ -483,5 +523,62 @@ mod audit_1116_gf2 {
         commit(&mut gw, witness, ww);
         round(&mut gw, &mut watcher, &[lost]);
         assert_eq!(rejections(&gw, &lost), 1, "declared again");
+    }
+
+    /// GF-2 second line: "in no batch" must hold against every batch the
+    /// settlement has settled. While the chain holds a settled batch whose lists
+    /// this gateway has not committed yet (its settle is still landing), the hash
+    /// may be in it, so nothing is declared until the gateway holds that batch.
+    #[test]
+    fn audit_1116_gf2_nothing_is_declared_while_the_chain_is_ahead_of_the_gateway() {
+        let mut gw = settling_gw();
+        let lost = [0x55; 32];
+        let mut watcher = Watcher::default();
+        let (witness, ww) = seal(&mut gw, true);
+        watcher.observe(open_set(&[lost], settled_count(&gw) + 1));
+        let plan = gw.plan_challenge_round(&mut watcher, true);
+        assert!(plan.declared.is_empty());
+        assert_eq!(plan.unlocated, vec![lost]);
+        assert_eq!(rejections(&gw, &lost), 0);
+        assert!(gw.challenge_rejections.is_empty());
+
+        // The gateway commits the batch the chain settled; it does not hold the hash.
+        commit(&mut gw, witness, ww);
+        watcher.observe(open_set(&[lost], settled_count(&gw)));
+        let plan = gw.plan_challenge_round(&mut watcher, true);
+        assert_eq!(plan.declared, vec![lost]);
+        assert_eq!(rejections(&gw, &lost), 1);
+    }
+
+    /// GF-2 second line: a declaration changes the open window, so it needs a
+    /// clock admission permit like every other change to it. While a sealed
+    /// window holds admission closed (proving, registration, a void), the open
+    /// window stays as the settle loop left it; the next round declares the hash.
+    #[tokio::test]
+    async fn audit_1116_gf2_a_window_holding_admission_defers_the_declaration() {
+        let mut app = test_app();
+        Arc::get_mut(&mut app).unwrap().clock_admission =
+            clock_admission::ClockAdmission::new(true);
+        let lost = [0x56; 32];
+        let mut watcher = Watcher::default();
+        watcher.observe(open_set(&[lost], settled_count(&*app.gw.lock().await)));
+        let stop = service_shutdown::Shutdown::default();
+        let mut paused = app.clock_admission.pause(&stop).await.unwrap().unwrap();
+        paused.arm();
+        let plan = challenge_round(&app, &mut watcher).await;
+        assert!(plan.declared.is_empty());
+        assert_eq!(plan.unlocated, vec![lost]);
+        {
+            let gw = app.gw.lock().await;
+            assert_eq!(rejections(&gw, &lost), 0);
+            assert!(gw.challenge_rejections.is_empty());
+        }
+
+        // The window resolved and admission reopened.
+        paused.resolved();
+        drop(paused);
+        let plan = challenge_round(&app, &mut watcher).await;
+        assert_eq!(plan.declared, vec![lost]);
+        assert_eq!(rejections(&*app.gw.lock().await, &lost), 1);
     }
 }

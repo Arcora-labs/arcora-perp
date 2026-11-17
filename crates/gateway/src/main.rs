@@ -98,6 +98,7 @@ mod candidate_recovery_tests;
 mod candidate_registration;
 mod candles;
 mod challenge_auth;
+mod challenge_rejections;
 mod challenge_scan;
 mod clock_admission;
 mod clock_client;
@@ -1928,6 +1929,11 @@ struct Gw {
     /// All in memory; with a state path the snapshot keeps only the batches not yet appended to
     /// the batches side log (audit GF-1 + SM-4, `order_history`), in the same positional layout.
     batch_orders: order_history::BatchOrders,
+    /// Open challenges for orders this gateway does not know, declared rejected in
+    /// a window so a settled batch answers them (audit GF-2): order hash → that
+    /// window. Kept in a snapshot extension (`challenge_rejections`), not here.
+    #[serde(skip)]
+    challenge_rejections: challenge_rejections::Declarations,
     /// Last on-chain settlement the L1 bridge published (None until it settles once).
     l1_status: Option<L1Status>,
     /// FIN-001 settle-loop health (bounded-retry → HELD circuit breaker). Runtime-only:
@@ -2562,6 +2568,7 @@ impl Gw {
             pending_ordered: Vec::new(),
             pending_rejected: Vec::new(),
             batch_orders: Default::default(),
+            challenge_rejections: Default::default(),
             l1_status: None,
             settle_health: default_settle_health(),
             settlement_held_since_ms: None,
@@ -2615,6 +2622,7 @@ impl Gw {
         execution::append_snapshot(self, &mut bytes);
         account_recovery::append(self, &mut bytes);
         order_history::append_snapshot(self, &mut bytes);
+        challenge_rejections::append_snapshot(self, &mut bytes);
         bytes
     }
 
@@ -2650,7 +2658,8 @@ impl Gw {
         gw.deposits = deposits;
         let recovery = execution::restore_snapshot_prefix(&mut gw, rest)?;
         let history = account_recovery::restore_prefix(&mut gw, recovery)?;
-        order_history::restore_snapshot(&mut gw, history)?;
+        let challenges = order_history::restore_snapshot(&mut gw, history)?;
+        challenge_rejections::restore_snapshot(&mut gw, challenges)?;
         // The flag is the terminal latch SettleAll sets; it never proves phase 1
         // settled, and a state that carries it must be in CloseOnly.
         gw.wind_down_started = wind_down_started;
@@ -4571,14 +4580,33 @@ impl Gw {
     }
 
     /// One challenge-watcher round after `watcher` observed an open-set read: plan
-    /// the answers from the retained settled batches, and raise the
-    /// `unanswerable_challenge` alert while an open hash was due in a batch that
-    /// settled without it.
+    /// the answers from the retained settled batches, declare rejected the open
+    /// hashes this gateway does not know when `declare` (the caller holds a clock
+    /// admission permit, audit GF-2), and raise the `unanswerable_challenge` alert
+    /// while an open hash was due in a batch that settled without it.
     fn plan_challenge_round(
-        &self,
+        &mut self,
         watcher: &mut challenge_scan::Watcher,
+        declare: bool,
     ) -> challenge_scan::AnswerPlan {
-        let plan = watcher.plan(&self.batch_orders);
+        let mut plan = watcher.plan(&self.batch_orders);
+        if declare {
+            plan.declared = self.reject_unknown_challenges(watcher, &plan.unlocated);
+        }
+        if !plan.declared.is_empty() {
+            eprintln!(
+                "[l1] {} open challenge(s) name orders this gateway does not know; declared \
+                 rejected in window {}: {}",
+                plan.declared.len(),
+                self.seq.current_window_id(),
+                plan.declared
+                    .iter()
+                    .take(8)
+                    .map(hex32)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
         if plan.unanswerable.is_empty() {
             self.ops_alerts
                 .recover(ops_alerts::AlertKind::UnanswerableChallenge);
@@ -6506,6 +6534,25 @@ fn commit_candidate_retention(
         }
         _ => Err("candidate retention archive lock unavailable".into()),
     }
+}
+
+/// One challenge-watcher round over `watcher`'s latest read
+/// ([`Gw::plan_challenge_round`]). A declared rejection changes the open window, so
+/// it needs a clock admission permit like every other change to it (audit GF-2):
+/// while a window holds admission closed, nothing is declared and the next round
+/// tries again. The permit is taken before the state lock, as the tick loop does.
+async fn challenge_round(
+    app: &Shared,
+    watcher: &mut challenge_scan::Watcher,
+) -> challenge_scan::AnswerPlan {
+    let admission = app.clock_admission.enter();
+    let plan = app
+        .gw
+        .lock()
+        .await
+        .plan_challenge_round(watcher, admission.is_ok());
+    drop(admission);
+    plan
 }
 
 /// Acknowledgement after a complete sealed snapshot write, rename, and directory sync.
@@ -12010,6 +12057,7 @@ async fn main() {
             let app = app.clone();
             let l1a = l1.clone();
             let stop = service_policy.shutdown.clone();
+            let snapshot_notify = snapshot_notify.clone();
             background.push(tokio::spawn(async move {
                 let mut watcher = challenge_scan::Watcher::default();
                 let mut sending: Option<tokio::task::JoinHandle<()>> = None;
@@ -12041,7 +12089,11 @@ async fn main() {
                     alerts.recover(ops_alerts::AlertKind::ChallengeDiscoveryFailed);
                     let open = read.hashes.len();
                     watcher.observe(read);
-                    let plan = app.gw.lock().await.plan_challenge_round(&mut watcher);
+                    let plan = challenge_round(&app, &mut watcher).await;
+                    if !plan.declared.is_empty() {
+                        // Persist the declarations promptly (audit GF-2).
+                        snapshot_notify.notify_one();
+                    }
                     if plan.sends.is_empty() {
                         if open > 0 {
                             println!("[l1] {open} open challenge(s); {} awaiting their batch", plan.awaiting);
