@@ -106,7 +106,17 @@ pub struct DepositState {
     /// deposit can land any more, so every landed deposit has been read.
     #[serde(skip)]
     pub uncredited_scan_done: bool,
+    /// Deposit reads in a row that finished after clock admission closed and were
+    /// dropped (audit G2-1). Reset by a read applied under the permit.
+    #[serde(skip)]
+    pub dropped_reads: u32,
 }
+
+/// Deposit reads dropped in a row before `DepositReadsDropped` is raised. Only a
+/// read in flight when the settle loop pauses is dropped, so a few in a row,
+/// with no read applied between them, mean the reads outlast the time
+/// admission is open.
+pub const DROPPED_READS_ALERT: u32 = 3;
 
 /// Finalized blocks (one hour of 2 s blocks) of headers that do not re-hash
 /// before `PermitGcStalled` is raised.
@@ -833,7 +843,8 @@ pub async fn refresh_readiness(app: &Shared) -> Result<(), String> {
 /// registration budget runs out. The page and the close-only flag are read
 /// without it; the permit is taken again only to apply what was read and make it
 /// durable. A read finished after admission closed, or at a deposit cursor that
-/// moved meanwhile, is dropped without a trace and read again on the next pass.
+/// moved meanwhile, is dropped and read again on the next pass; reads dropped
+/// for admission `DROPPED_READS_ALERT` times in a row raise `DepositReadsDropped`.
 pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
     let _serial = app.deposit_serial.lock().await;
     // Refused at once while admission is closed. Held for the durability barrier
@@ -904,9 +915,30 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
     };
     // Every L1 read is done: what they found is applied under the permit, and only
     // while the deposit cursor they were made at is still the engine's.
-    let admission = app.clock_admission.enter().map_err(str::to_string)?;
-    if app.gw.lock().await.deposit_cursor() != cursor {
-        return Err("the deposit cursor moved during the L1 read; retrying".into());
+    let admission = match app.clock_admission.enter() {
+        Ok(permit) => permit,
+        Err(error) => {
+            let mut gw = app.gw.lock().await;
+            gw.deposits.dropped_reads = gw.deposits.dropped_reads.saturating_add(1);
+            let dropped = gw.deposits.dropped_reads;
+            if dropped >= DROPPED_READS_ALERT {
+                gw.ops_alerts
+                    .activate(crate::ops_alerts::AlertKind::DepositReadsDropped);
+            }
+            return Err(format!(
+                "{error}; the deposit read that finished meanwhile was dropped ({dropped} in a row) \
+                 and is read again once admission reopens"
+            ));
+        }
+    };
+    {
+        let mut gw = app.gw.lock().await;
+        if gw.deposit_cursor() != cursor {
+            return Err("the deposit cursor moved during the L1 read; retrying".into());
+        }
+        gw.deposits.dropped_reads = 0;
+        gw.ops_alerts
+            .recover(crate::ops_alerts::AlertKind::DepositReadsDropped);
     }
     let page = match fetched {
         Ok(p) => p,
@@ -1226,7 +1258,7 @@ pub async fn confirm(
     }
     match ingest_once(app).await {
         // Refused at admission: nothing was applied; retried like the gate's refusal.
-        Err(e) if e == crate::clock_admission::BUSY => {
+        Err(e) if e.starts_with(crate::clock_admission::BUSY) => {
             return crate::clock_admission::closed_response(&e)
         }
         Err(e) => return unavailable(e),

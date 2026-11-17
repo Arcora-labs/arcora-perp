@@ -73,12 +73,18 @@ pub enum AlertKind {
     /// is registered: the recovery decides the window, and a timed window is
     /// voided. Recovered once a window settles.
     ClockRegistrationRefused,
+    /// Deposit reads keep finishing after clock admission closed, so they are
+    /// dropped and read again (`DROPPED_READS_ALERT` in a row): nothing is
+    /// credited meanwhile, while the oldest unconsumed deposit's
+    /// `livenessTimeoutBlocks` runs. The L1 RPC is probably slow or rate-limited.
+    /// Recovered once a read is applied.
+    DepositReadsDropped,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 18] = [
+    pub const ALL: [AlertKind; 19] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -97,6 +103,7 @@ impl AlertKind {
         AlertKind::ClockRecoveryBlocked,
         AlertKind::SnapshotSizeHigh,
         AlertKind::ClockRegistrationRefused,
+        AlertKind::DepositReadsDropped,
     ];
 }
 

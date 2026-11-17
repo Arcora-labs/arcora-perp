@@ -526,6 +526,7 @@ fn alert_kinds_have_stable_names_and_active_lists_open_episodes() {
             "clock_recovery_blocked",
             "snapshot_size_high",
             "clock_registration_refused",
+            "deposit_reads_dropped",
         ]
     );
     let alerts = OpsAlerts::default();

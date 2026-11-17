@@ -110,6 +110,8 @@ pub(crate) struct WindowBound {
     pub timing: crate::l1::ClockTiming,
     /// No timed operation is admitted once the window's first one is this old.
     pub cutoff_ms: u64,
+    /// The settle loop's seal period.
+    pub seal_period_ms: u64,
 }
 impl WindowBound {
     pub(crate) fn new(timing: crate::l1::ClockTiming, seal_period: std::time::Duration) -> Self {
@@ -117,12 +119,18 @@ impl WindowBound {
         Self {
             timing,
             cutoff_ms: timing.max_window_ms.saturating_sub(period),
+            seal_period_ms: period,
         }
     }
     /// Whether a window whose first timed operation is at `first_ms` stops
     /// admitting timed operations at `now_ms`.
     pub(crate) fn closing(&self, first_ms: u64, now_ms: u64) -> bool {
         now_ms.saturating_sub(first_ms) >= self.cutoff_ms
+    }
+    /// Whether that window is within one seal period of `closing`. A window is
+    /// sealed every seal period, so only one whose seals were skipped gets here.
+    pub(crate) fn near_closing(&self, first_ms: u64, now_ms: u64) -> bool {
+        now_ms.saturating_sub(first_ms) >= self.cutoff_ms.saturating_sub(self.seal_period_ms)
     }
 }
 

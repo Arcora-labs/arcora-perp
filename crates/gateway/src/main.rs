@@ -3983,6 +3983,20 @@ impl Gw {
         ))
     }
 
+    /// Audit G2-2: whether the open clock window holds work and is within one
+    /// seal period of its cutoff at `now_ms`. Past the cutoff no timed operation
+    /// is admitted, so its last one stays put and whatever the settle loop does
+    /// before the registration is spent from its `clockSkewMs` budget. Without a
+    /// bound (demo and legacy modes), or for an idle window, never.
+    fn clock_window_near_cutoff(&self, now_ms: u64) -> bool {
+        let (Some(bound), Some(first)) = (self.clock_window, self.seq.window_first_timed_ms())
+        else {
+            return false;
+        };
+        !(self.window_is_idle() && self.window_withdrawals.is_empty())
+            && bound.near_closing(first, now_ms)
+    }
+
     /// Place an order for an account. Ioc/Fok are takers; Gtc/PostOnly rest in the
     /// matcher book (so an MM bot can quote). Returns the signed receipt.
     /// SEC-025-D: refuse while the launch gate is closed.
@@ -12298,24 +12312,38 @@ async fn main() {
                     // (A) Everything that reads or sends on L1 without depending on the
                     // window runs BEFORE admission pauses (RPC, no lock). A timed window
                     // must register within clockSkewMs of its last operation, and
-                    // operations are admitted until the pause, so none of this is spent
-                    // from that budget: the bond top-up and the stake-refund sweep (both
-                    // sequencer-key sends, made while no window is sealed), the batch
-                    // count, and, when there may be a window to seal, the registration
-                    // checks that do not depend on it. Settlement never depends on the
-                    // bond, so a bond problem only raises an alert; only a failed batch
-                    // count read skips this tick.
+                    // operations are admitted until the pause, so while the window is
+                    // inside its cutoff none of this is spent from that budget: the bond
+                    // top-up and the stake-refund sweep (both sequencer-key sends, made
+                    // while no window is sealed), the batch count, and, when there may
+                    // be a window to seal, the registration checks that do not depend
+                    // on it. Settlement never depends on the bond, so a bond problem
+                    // only raises an alert; only a failed batch count read skips this
+                    // tick. Audit G2-2: past the cutoff no timed operation is admitted
+                    // and the budget runs, so within a seal period of it the two sends,
+                    // which wait for their receipts, are left to a later tick; the reads
+                    // the seal needs still run.
                     let clocked = client.clock_enabled();
                     let liveness_due = tokio::time::Instant::now() >= liveness_read_at;
-                    let read_pre = clocked
-                        && pending.is_none()
-                        && (liveness_due || !app.gw.lock().await.window_is_idle());
+                    let (read_pre, defer_sends) = {
+                        let gw = app.gw.lock().await;
+                        (
+                            clocked
+                                && pending.is_none()
+                                && (liveness_due || !gw.window_is_idle()),
+                            gw.clock_window_near_cutoff(now_ms()),
+                        )
+                    };
                     let l1c = l1.clone();
                     let pre_client = client.clone();
                     let (bond, swept, bc, pre) = match tokio::task::spawn_blocking(move || {
                         (
-                            l1c.ensure_bond(),
-                            l1c.sweep_requested_stake_refunds(),
+                            (!defer_sends).then(|| l1c.ensure_bond()),
+                            if defer_sends {
+                                Ok(None)
+                            } else {
+                                l1c.sweep_requested_stake_refunds()
+                            },
                             l1c.batch_count(),
                             read_pre.then(|| pre_client.register_preconditions()),
                         )
@@ -12333,7 +12361,10 @@ async fn main() {
                         Ok(None) => {}
                         Err(e) => eprintln!("[l1] stake refund sweep will retry: {e}"),
                     }
-                    {
+                    if defer_sends {
+                        println!("[l1] the open clock window is near its cutoff; bond top-up and stake-refund sweep wait for a later tick");
+                    }
+                    if let Some(bond) = bond {
                         let alerts = app.gw.lock().await.ops_alerts.clone();
                         match bond {
                             Ok(l1::BondOutcome::Covered { .. }) => {

@@ -166,6 +166,53 @@ mod audit_1116_g2 {
         writer.abort();
     }
 
+    /// G2-1 (round 2): a deposit read that finishes after admission closed is
+    /// dropped and read again. On a busy exchange with a slow RPC that can repeat
+    /// with nothing credited while the oldest unconsumed deposit's
+    /// livenessTimeoutBlocks runs, so repeated drops raise
+    /// `deposit_reads_dropped`; a read applied under the permit clears it.
+    #[tokio::test]
+    async fn audit_1116_g2_1_repeatedly_dropped_deposit_reads_raise_an_alert() {
+        let (app, _source, release, mut reading, writer) = slow_app();
+        let stop = service_shutdown::Shutdown::default();
+        let dropped = || async {
+            app.gw
+                .lock()
+                .await
+                .ops_alerts
+                .active()
+                .contains(&ops_alerts::AlertKind::DepositReadsDropped)
+        };
+        for round in 1..=deposit_ingestion::DROPPED_READS_ALERT {
+            assert!(!dropped().await, "round {round}");
+            let scan = tokio::spawn({
+                let app = app.clone();
+                async move { deposit_ingestion::ingest_once(&app).await }
+            });
+            reading = read_started(reading).await;
+            let mut paused = app.clock_admission.pause(&stop).await.unwrap().unwrap();
+            release.send(()).unwrap();
+            let refused = scan.await.unwrap().unwrap_err();
+            assert!(refused.starts_with(clock_admission::BUSY), "{refused}");
+            assert_eq!(app.gw.lock().await.deposits.dropped_reads, round);
+            paused.resolved();
+        }
+        assert!(dropped().await);
+        // A refusal before any read is not a dropped read.
+        let paused = app.clock_admission.pause(&stop).await.unwrap().unwrap();
+        deposit_ingestion::ingest_once(&app).await.unwrap_err();
+        drop(paused);
+        assert_eq!(
+            app.gw.lock().await.deposits.dropped_reads,
+            deposit_ingestion::DROPPED_READS_ALERT
+        );
+        release.send(()).unwrap();
+        assert_eq!(deposit_ingestion::ingest_once(&app).await.unwrap(), 1);
+        assert!(!dropped().await);
+        assert_eq!(app.gw.lock().await.deposits.dropped_reads, 0);
+        writer.abort();
+    }
+
     const TIMING: crate::l1::ClockTiming = crate::l1::ClockTiming {
         max_window_ms: 30_000,
         clock_skew_ms: 30_000,
@@ -343,6 +390,31 @@ mod audit_1116_g2 {
         let ops = demo.seq.window_op_count();
         demo.tick_checked(at(t0 + 60_000)).unwrap();
         assert!(demo.seq.window_op_count() > ops);
+    }
+
+    /// G2-2 (round 2): past the cutoff no timed operation is admitted, so the
+    /// window's last one stays put and everything the settle loop does before the
+    /// registration is spent from its clockSkewMs budget. Within one seal period
+    /// of the cutoff the settle loop leaves the sends that wait for a receipt (the
+    /// bond top-up, the stake-refund sweep) to a later tick. An idle window, and
+    /// demo and legacy modes, defer nothing.
+    #[test]
+    fn audit_1116_g2_2_sends_wait_while_the_open_window_nears_its_cutoff() {
+        let bound = bound();
+        let t0 = now_ms() - 60_000;
+        let (gw, _) = trading_window(t0, Some(bound));
+        assert!(!gw.clock_window_near_cutoff(t0 + 14_999));
+        assert!(gw.clock_window_near_cutoff(t0 + 15_000));
+        assert!(gw.clock_window_near_cutoff(t0 + 40_000));
+        let (demo, _) = trading_window(t0, None);
+        assert!(!demo.clock_window_near_cutoff(t0 + 40_000));
+        let mut idle = Gw::boot();
+        idle.window_settle_mode = true;
+        idle.seq.set_retain_tick_snapshots(false);
+        idle.clock_window = Some(bound);
+        idle.tick_checked(at(t0)).unwrap();
+        assert_eq!(idle.seq.window_first_timed_ms(), Some(t0));
+        assert!(!idle.clock_window_near_cutoff(t0 + 40_000));
     }
 
     /// A sealed window whose timed operations are at `t0` and `t0 + span`.
