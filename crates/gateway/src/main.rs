@@ -48,6 +48,8 @@ mod account_recovery;
 mod admission;
 mod answer_lane;
 #[cfg(test)]
+mod audit_1116_g11_tests;
+#[cfg(test)]
 mod audit_1116_ga2_tests;
 mod bootstrap;
 #[cfg(test)]
