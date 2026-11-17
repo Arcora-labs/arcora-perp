@@ -147,15 +147,24 @@ $10 of collateral an account can keep ten $10 orders on a side. An order the res
 refuses is refused at submission with `400`
 `{ "error": "PENDING_MARGIN: ..." }`. While the market has no validated oracle price,
 submission does not check the reserve; the batch then rejects the order as
-`OracleUnavailable`.
+`OracleUnavailable`. Until an order fills, is cancelled, expires or is rejected, the
+collateral its margin needs stays in the market: a withdrawal (§ Withdrawals), or in
+the demo build an LP deposit, that would leave the account's pending orders in that
+market short of it is refused with `400` `{ "error": "PENDING_MARGIN: ..." }`; cancel
+orders first, or move less. While the market has no validated oracle price, an
+account with a pending order that could add exposure cannot withdraw from that
+market. In close-only mode pending orders hold nothing (they can only reduce).
 
 A refused order gets no receipt and is never recorded. The sequencer applies both
 limits again to every order when it seals the batch, whatever path the order came by,
 against the book the batch faces; an order it refuses there is in the batch
 manifest's **rejected** set as `InvalidOrder` (a cap) or `InsufficientMargin` (the
 reserve). Orders restored above a cap after an upgrade stay on the book, but the
-account's new orders are refused until it is back under. In the demo build the house
-market maker is exempt.
+account's new orders are refused until it is back under. The gateway's house
+market-maker account (the counterparty it injects for `Ioc`/`Fok` takers) is exempt
+from both limits in every build; each of its orders still passes the per-order margin
+check, so where it holds no collateral its counters are refused. The gateway gives a
+counter only to a taker the batch admits.
 
 **Minimum order size.** An order that opens, grows or flips a position needs at least
 **$10 of notional** (10,000,000 quote units). Reduce-only orders, and orders that
@@ -552,7 +561,10 @@ directly:
    same rule. It also refuses a withdrawal that would take the deployment's
    cumulative withdrawals above its cumulative deposits; either refusal is a `400`
    `withdrawal refused: …` (`Risk { InsufficientMargin, .. }` or
-   `WithdrawalExceedsDeposits`).
+   `WithdrawalExceedsDeposits`). A withdrawal that would take collateral the
+   account's pending orders in that market hold as initial margin is a `400`
+   `PENDING_MARGIN: …` until they fill, are cancelled or expire (§ Open-order limits);
+   `marketFree` does not deduct what they hold.
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,

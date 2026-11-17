@@ -101,7 +101,9 @@ kept: 60 accounts with $10 each kept 22,081 bids resting. The sequencer now admi
 an order only if the account's collateral in the market covers the initial margin
 of every pending order on the order's side together with it, and caps open orders
 at 64 per market and 128 per account, at intake and at the seal
-(`Sequencer::check_open_order_limits`, `docs/ECONOMIC_SECURITY.md` Q9).
+(`Sequencer::check_open_order_limits`, `docs/ECONOMIC_SECURITY.md` Q9). The
+collateral stays held until the orders fill, are cancelled or expire: a withdrawal
+or transfer that would take it is refused (`Sequencer::unbind_keeps_reserve`).
 
 ## ADR-0006 — Per-operation atomicity
 

@@ -458,16 +458,22 @@ window. Three rules make it costly to move:
   settle the fill within its margin. An order admitted below the order minimum
   because it reduced the maker's position counts only while it still reduces, as
   settlement fills it, so stacking such orders gives no depth beyond that position.
-  A quote no taker could trade against does not move the mark. Nor does dust: an
-  order worth less than $10 at its price (`FUNDING_IMPACT_MIN_QUOTE`, the order
-  minimum) is never depth. The sample walks only the fill band and stops at the
-  order that completes the $1,000, inside its price level, so it counts at most a
-  hundred orders as depth. What it passes over, dust or unfillable, costs it no
-  budget: no number of such orders, ahead of honest depth or queued behind it at
-  the same price, can leave a side without its impact price and pin the mark to
-  the index (audit 2026-11-16 SM-3; before, a side the sample had to walk more than
-  4,096 orders of had none). The work of a sample grows with the orders in the fill
-  band ahead of the depth, which the open-order caps (Q9) bound per account.
+  A quote no taker could trade against does not move the mark. Every order a taker
+  could fill is depth, whatever its size: an order at the $10 minimum (measured at
+  the oracle price) resting below the index, or a partial fill's remainder, is
+  worth a little less at its own price and still counts. The sample walks only the
+  fill band and stops at the order that completes the $1,000, inside its price
+  level. It has no order budget: an order it cannot count costs it only the visit,
+  so no number of such orders, ahead of honest depth or queued behind it at the
+  same price, can leave a side without its impact price and pin the mark to the
+  index (audit 2026-11-16 SM-3; before, a side the sample had to walk more than
+  4,096 orders of had none). The work of a sample is the orders in the fill band
+  ahead of the depth: at most 64 per account (Q9), each margined with the
+  account's other pending orders on its side when it was admitted, with that
+  collateral kept from withdrawal until it fills, is cancelled or expires. Orders
+  can still become unfillable (the maker's losses, or 64 reduce-only orders that
+  each close the same position, of which only the first could fill); they are
+  visited and not counted.
 - **Sampled where takers trade.** The sequencer samples the book once per tick,
   before that tick's batch is matched, so each sample is the book the tick's takers
   face. Each sample prices the time since the previous tick. A quote withdrawn
@@ -488,8 +494,8 @@ sequencer.
 `crates/perp-core/tests/funding_attribution.rs` and the `funding.rs` unit tests. The
 sequencer's pre-trade check reads the index through `index_at`, so it agrees with
 the engine. The mark is built in `crates/sequencer/src/lib.rs`
-(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_IMPACT_MIN_QUOTE`,
-`FUNDING_MARK_MIN_SPAN_MS`) and `crates/matcher/src/book.rs`
+(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_MARK_MIN_SPAN_MS`)
+and `crates/matcher/src/book.rs`
 (`OrderBook::impact_price_within`);
 tests in `crates/sequencer/tests/admission_and_funding_mark.rs` and
 `crates/sequencer/tests/order_flood.rs`.
@@ -557,23 +563,31 @@ admitted below the minimum because it reduced) counts in the reserve only up to 
 size that closes the position, since it can never fill past that. Each side is
 margined on its own. Nothing is reserved ahead: the reserve is the orders still
 pending, so a fill moves an order's margin into the position, and a cancel, an
-expiry or a rejection releases it. With $10 an account can keep ten $10 orders on a
-side; a 32-level ladder on each side fits the per-market cap. Orders a snapshot
-restores above a cap stay on the book; the account's new orders are refused until
-it is back under.
+expiry or a rejection releases it. Until then the collateral stays held: a
+withdrawal, or a demo pool transfer, that would leave the account's pending orders
+in the market without that initial margin is refused (`PENDING_MARGIN`,
+`Sequencer::unbind_keeps_reserve`), so the collateral cannot move on to back
+another account's orders while the first account's still rest. With $10 an account
+can keep ten $10 orders on a side; a 32-level ladder on each side fits the
+per-market cap. Orders a snapshot restores above a cap stay on the book; the
+account's new orders are refused until it is back under.
 
 The sequencer enforces the limits at the seal for every order, whatever path it
 came by (the manifest records a refusal as `InvalidOrder` for a cap and
 `InsufficientMargin` for the reserve), and the gateway asks it at submission, which
 refuses the order before it gets a receipt (§ `docs/API.md`). The gateway's house
-market maker is exempt: its counters answer takers held to the limits themselves.
+market maker is exempt: its counters answer takers held to the limits themselves,
+and the gateway gives a counter only to a taker the seal admits
+(`Sequencer::seal_admits`), so none rests answering a taker the batch refused.
 The caps bound the book, and every per-tick pass over it, by the number of funded
 accounts rather than by how fast one account can post, and the reserve by their
 collateral: the audit's 60 accounts with $10 each, which kept 22,081 bids resting,
-now keep at most ten bids each in a market.
+now keep at most ten bids each on a side of a market, and cannot withdraw the $10
+to fund more accounts while those bids rest.
 
 — `crates/sequencer/src/lib.rs` (`MAX_OPEN_ORDERS_PER_MARKET`,
-`MAX_OPEN_ORDERS_PER_ACCOUNT`, `OpenOrderLimit`, `Sequencer::check_open_order_limits`);
+`MAX_OPEN_ORDERS_PER_ACCOUNT`, `OpenOrderLimit`, `Sequencer::check_open_order_limits`,
+`Sequencer::unbind_keeps_reserve`, `Sequencer::seal_admits`);
 tests in `crates/sequencer/tests/order_flood.rs` and
 `crates/gateway/src/open_order_limit_tests.rs`.
 
