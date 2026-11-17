@@ -22,6 +22,19 @@ import gateway_formats
 ROOT = Path(__file__).resolve().parents[2]
 ACCOUNT_FIELDS = ('owner', 'settledBalance', 'positions', 'nextNonce',
                   'nextWithdrawNonce', 'depositAddress', 'rebindCounter', 'recoveryNonce')
+# The order log and settled-batch side logs live beside the snapshot; a snapshot
+# that relies on them is restored together with them.
+SIDE_LOGS = ('.orderlog', '.batches')
+
+
+def side_logs(state):
+    return {suffix: Path(str(state) + suffix).read_bytes()
+            for suffix in SIDE_LOGS if Path(str(state) + suffix).exists()}
+
+
+def place_side_logs(state, logs):
+    for suffix, content in logs.items():
+        Path(str(state) + suffix).write_bytes(content)
 
 
 class DrillFailure(AssertionError):
@@ -201,6 +214,7 @@ def run(binary, out):
                 require(expected_order['execution']['status'] == 'CANCELLED', 'cancelled checkpoint baseline')
                 owned.stop(child)
                 latest = state.read_bytes()
+                latest_logs = side_logs(state)
                 require(latest.startswith(gateway_formats.snapshot_magic()) and older != latest,
                         'distinct authenticated checkpoint generations')
                 latest_hash = sha(latest)
@@ -209,6 +223,8 @@ def run(binary, out):
                 # Remove the original configured pathname. Later processes receive
                 # only another directory's snapshot path, never the original path.
                 state.rename(scratch / 'archived-original.snapshot')
+                for suffix in latest_logs:
+                    Path(str(state) + suffix).rename(scratch / ('archived-original.snapshot' + suffix))
                 require(not state.exists(), 'original configured path absent during restore')
                 for label, content, test_seed, options in (
                     ('wrong-seed', latest, secrets.token_hex(32), {'required': '1', 'checkpoint': latest_hash}),
@@ -240,13 +256,14 @@ def run(binary, out):
                     require((not sidecar.exists()) if content is None else sidecar.read_bytes() == content,
                             'refused journal is not created deleted or replaced')
                     result['cases'].append(outcome)
-                selected = latest
+                selected, selected_logs = latest, latest_logs
                 for number in (1, 2):
                     destination = scratch / ('restore-data-' + str(number))
                     destination.mkdir()
                     restored_state = destination / 'gateway.snapshot'
                     copy_started = time.monotonic()
                     restored_state.write_bytes(selected)
+                    place_side_logs(restored_state, selected_logs)
                     checkpoint_hash = sha(selected)
                     restored, restored_log = owned.launch('restored-process-' + str(number), restored_state,
                                                          seed, required='1', checkpoint=checkpoint_hash, journal='absent')
@@ -276,6 +293,7 @@ def run(binary, out):
                         'confirmed_observations_lost': 0, 'original_configured_path_absent': not state.exists()})
                     owned.stop(restored)
                     selected = restored_state.read_bytes()
+                    selected_logs = side_logs(restored_state)
                     # The periodic writer may reseal identical state with a new
                     # nonce. Pin the selected checkpoint for the next startup.
                 require(len(result['cases']) == 17 and len(result['restore_samples']) == 2, 'complete restore matrix')
