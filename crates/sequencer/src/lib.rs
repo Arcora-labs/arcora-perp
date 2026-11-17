@@ -1540,6 +1540,9 @@ impl Sequencer {
                 })
                 .map(|((o, _), _)| *o)
                 .collect();
+            // A liquidation also closes the other side of the market by its size
+            // (audit 2026-11-16 PC-1), so a later candidate may already be reduced
+            // or flat: the engine then refuses it and nothing is logged.
             for owner in candidates {
                 if let Ok(haircuts) = self.state.liquidate(&owner, mid, &oracle, now_ms) {
                     liquidated.push((owner, mid));

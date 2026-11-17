@@ -13,11 +13,13 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
-use perp_core::note::owner_from_spend_key;
+use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
+use perp_core::position::Position;
 use perp_core::state::Mode;
 use perp_core::{DefaultState, EngineError, Note};
+use std::collections::BTreeMap;
 
 struct Rng(u64);
 impl Rng {
@@ -462,18 +464,70 @@ impl Session {
                             counts.parked_debt += 1;
                         }
                         let (px, idx) = index.unwrap();
+                        let loser = positions[&(*owner, 0)];
+                        // audit PC-1: the clearing pool's position never grows, and
+                        // the opposite side gives up the liquidated size (less what
+                        // reduces a pool position the state already held)
+                        let net = |ps: &BTreeMap<(PubKey, u64), Position>| -> i128 {
+                            ps.values().map(|p| p.size).sum()
+                        };
+                        let (net_before, net_after) = (net(&positions), net(&self.s.positions));
+                        let to_pool = if net_before.signum() == loser.size.signum() {
+                            net_before.abs().min(loser.size.abs())
+                        } else {
+                            0
+                        };
+                        assert_eq!(
+                            net_after,
+                            net_before - loser.size.signum() * to_pool,
+                            "the pool's position never grows: {ctx}"
+                        );
+                        let mut closed = 0;
                         for (key, before) in &positions {
                             if key.0 == *owner || !before.is_open() {
                                 continue;
                             }
-                            let after = self.s.positions[key];
+                            let after = self.s.positions.get(key).copied();
+                            let after_size = after.map_or(0, |p| p.size);
+                            // the position as the liquidation's close left it,
+                            // before any haircut
+                            let mut reduced = *before;
+                            if before.size.signum() == loser.size.signum() {
+                                assert_eq!(after_size, before.size, "same side: {ctx}");
+                            } else {
+                                assert!(
+                                    after_size.signum() != -before.size.signum()
+                                        && after_size.abs() <= before.size.abs(),
+                                    "the other side is only reduced: {ctx}"
+                                );
+                                closed += before.size.abs() - after_size.abs();
+                                if after_size != before.size {
+                                    reduced
+                                        .apply_fill(after_size - before.size, px, idx)
+                                        .unwrap();
+                                }
+                            }
+                            let after = after.unwrap_or(Position {
+                                collateral: 0,
+                                ..reduced
+                            });
                             assert_eq!(
                                 (after.size, after.entry_price, after.funding_entry),
-                                (before.size, before.entry_price, before.funding_entry),
+                                (reduced.size, reduced.entry_price, reduced.funding_entry),
                                 "{ctx}"
                             );
-                            let clawed = before.collateral - after.collateral;
-                            let clawable = before.adl_clawable(&m, px, idx).unwrap_or(0);
+                            if !reduced.is_open() && reduced.collateral < 0 {
+                                // left flat under water: it shares the waterfall
+                                assert!(
+                                    (reduced.collateral..=0).contains(&after.collateral),
+                                    "{ctx}"
+                                );
+                                continue;
+                            }
+                            let clawed = reduced.collateral - after.collateral;
+                            let clawable = before
+                                .adl_clawable_after(&reduced, &m, px, idx)
+                                .unwrap_or(0);
                             assert!(
                                 (0..=clawable).contains(&clawed),
                                 "a haircut of {clawed} exceeds the clawable {clawable}: {ctx}"
@@ -481,13 +535,14 @@ impl Session {
                             if clawed > 0 {
                                 counts.adl_haircut += 1;
                             }
-                            if !before.is_liquidatable(&m, px, idx) {
+                            if reduced == *before && !before.is_liquidatable(&m, px, idx) {
                                 assert!(
                                     !after.is_liquidatable(&m, px, idx),
                                     "auto-deleverage made a position liquidatable: {ctx}"
                                 );
                             }
                         }
+                        assert_eq!(closed, loser.size.abs() - to_pool, "{ctx}");
                     }
                     BatchOp::Withdraw { .. } => counts.withdraw += 1,
                     _ => {}

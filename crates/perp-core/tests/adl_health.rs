@@ -1,22 +1,24 @@
 //! The live bad-debt waterfall and the auto-deleverage (ADL) bound.
 //!
-//! * A liquidation whose close leaves the position underwater is covered, in
-//!   order, by the insurance fund, the treasury, and ADL of the winners in its
-//!   market. Whatever is still uncovered stays parked on the closed position and
-//!   the system trips to close-only.
-//! * ADL takes from each winner at most `max(0, min(P − F, C⁺, E − MM))`
-//!   ([`Position::adl_clawable`]): its price gain net of signed funding, never
-//!   more than its non-negative collateral, and never more than its headroom
-//!   above maintenance margin. So a winner keeps `C ≥ 0` and `E ≥ MM`, no
-//!   position becomes liquidatable through ADL, and the haircuts sum to at most
-//!   the residual.
+//! * A liquidation closes the position and, at the same price, the opposite side
+//!   by the same size, pro rata by size (audit 2026-11-16 PC-1). A shortfall left
+//!   on the closed positions is covered, in order, by the insurance fund, the
+//!   treasury, and ADL of the winners in its market. Whatever is still uncovered
+//!   stays parked on the closed positions and the system trips to close-only.
+//! * ADL takes from each winner at most `max(0, min(P − F, C'⁺, E' − MM'))`
+//!   ([`Position::adl_clawable_after`]): its price gain net of signed funding,
+//!   measured before the liquidation's close (so a gain that close realized is
+//!   included), never more than its non-negative collateral after the close, and
+//!   never more than its headroom above maintenance margin after it. So a winner
+//!   keeps `C ≥ 0` and `E ≥ MM`, no position becomes liquidatable through ADL,
+//!   and the haircuts sum to at most the residual.
 //! * Any overflow while planning ADL leaves no haircut at all (fail closed).
 //! * One allocator ([`allocate_pro_rata`]) splits a shortfall exactly, for ADL
 //!   and for `SettleAll` alike.
 
 use k256::ecdsa::SigningKey;
 use perp_core::engine::{allocate_pro_rata, BatchOp};
-use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
+use perp_core::fixed::{apply_rate, PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::Keccak256;
 use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
@@ -119,6 +121,9 @@ const SHORTS_PAY: i128 = -20_500 * QUOTE_SCALE;
 /// L long 1 BTC from $100k with $10k, opened at the current index. W short 1 BTC
 /// from $100k with $10k, opened at index 0, so it owes $20,500 of funding. X is
 /// flat with $30,500, the funding it already collected out of the pool.
+///
+/// Liquidating L at $85k closes W with it: W settles its funding and its $15,000
+/// gain and keeps $4,500, which leaves the clearing pool at exactly zero.
 fn winner_owing_funding() -> (DefaultState, PubKey, PubKey) {
     let mut s = state();
     let (l, w, x) = (owner_of(1), owner_of(2), owner_of(3));
@@ -145,7 +150,7 @@ fn a_winner_whose_funding_debt_exceeds_its_price_gain_gives_nothing() {
     let haircuts = liquidate(&mut s, &l, 85_000);
 
     assert!(haircuts.is_empty(), "no winner has a net gain to give");
-    assert_eq!(s.position(&w, 0), Some(&w_before), "W is untouched");
+    assert_w_closed_unclawed(&s, &w);
     assert!(!w_before.is_liquidatable(&m, px, SHORTS_PAY));
     assert_eq!(
         s.position(&l, 0).unwrap().collateral,
@@ -159,7 +164,7 @@ fn a_winner_whose_funding_debt_exceeds_its_price_gain_gives_nothing() {
     );
     assert!(s.conservation_holds());
 
-    // W is still healthy at the same price, so it cannot be liquidated next.
+    // W is flat, so it cannot be liquidated next.
     let root = s.state_root();
     assert_eq!(
         s.liquidate(&w, 0, &oracle(85_000, T0), T0),
@@ -168,13 +173,33 @@ fn a_winner_whose_funding_debt_exceeds_its_price_gain_gives_nothing() {
     assert_eq!(s.state_root(), root);
 }
 
+/// W after the liquidation of L in [`winner_owing_funding`]: closed at $85k with
+/// its funding and gain settled ($10k − $20,500 + $15,000), nothing clawed, and
+/// the clearing pool back at zero.
+fn assert_w_closed_unclawed(s: &DefaultState, w: &PubKey) {
+    let w_after = *s.position(w, 0).unwrap();
+    assert_eq!(w_after.size, 0, "W is closed with L");
+    assert_eq!(w_after.collateral, usd(4_500), "W keeps what it had");
+    assert_eq!(s.vault_pool, 0);
+    assert_eq!(net_size(s), 0, "the pool holds no position");
+}
+
+/// The sum of every market-0 position's size: the clearing pool's implicit
+/// position is its negation.
+fn net_size(s: &DefaultState) -> i128 {
+    s.positions
+        .iter()
+        .filter(|((_, m), _)| *m == 0)
+        .map(|(_, p)| p.size)
+        .sum()
+}
+
 #[test]
 fn the_treasury_covers_the_shortfall_after_insurance_and_before_adl() {
     let (mut s, l, w) = winner_owing_funding();
     s.insurance_fund = usd(2_000);
     s.treasury = usd(8_000);
     balance(&mut s);
-    let w_before = *s.position(&w, 0).unwrap();
 
     let haircuts = liquidate(&mut s, &l, 85_000);
 
@@ -189,7 +214,7 @@ fn the_treasury_covers_the_shortfall_after_insurance_and_before_adl() {
         s.position(&l, 0).is_none(),
         "covered in full, so the closed entry is removed"
     );
-    assert_eq!(s.position(&w, 0), Some(&w_before));
+    assert_w_closed_unclawed(&s, &w);
     assert_eq!(
         s.mode,
         Mode::Normal,
@@ -204,7 +229,6 @@ fn reserves_are_used_up_in_order_before_close_only() {
     s.insurance_fund = usd(1_000);
     s.treasury = usd(1_000);
     balance(&mut s);
-    let w_before = *s.position(&w, 0).unwrap();
 
     let haircuts = liquidate(&mut s, &l, 85_000);
 
@@ -212,17 +236,16 @@ fn reserves_are_used_up_in_order_before_close_only() {
     assert_eq!(s.insurance_fund, 0);
     assert_eq!(s.treasury, 0);
     assert_eq!(s.position(&l, 0).unwrap().collateral, -usd(3_000));
-    assert_eq!(s.position(&w, 0), Some(&w_before));
+    assert_w_closed_unclawed(&s, &w);
     assert_eq!(s.mode, Mode::CloseOnly);
     assert!(s.conservation_holds());
 }
 
-/// After a liquidation the live waterfall could not cover, the wind-down closes
-/// the surviving winner at the liquidation's recorded price. W settles its
-/// $20,500 of funding and its $15,000 gain at $85k, which leaves the clearing
-/// pool at exactly zero; the debt parked on L is then shared by one haircut of
-/// W and X. The pool ends at zero, and with a recipient set every reserve
-/// does too.
+/// After a liquidation the live waterfall could not cover, the wind-down finds W
+/// already closed by that liquidation (its $20,500 of funding and its $15,000 gain
+/// settled at $85k) and the clearing pool at exactly zero; the debt parked on L
+/// is shared by one haircut of W and X. The pool ends at zero, and with a
+/// recipient set every reserve does too.
 #[test]
 fn settlement_after_an_uncovered_shortfall_leaves_every_reserve_at_zero() {
     for (insurance, treasury, parked) in [(0, 0, 5_000), (1_000, 1_000, 3_000)] {
@@ -255,13 +278,16 @@ fn settlement_after_an_uncovered_shortfall_leaves_every_reserve_at_zero() {
     }
 }
 
-/// L long 1 BTC from $100k with $10k. W short 1 BTC from $86k with $4k and no
-/// funding: at $85k, P = +$1,000, E = $5,000 and MM = $4,250.
+/// L long 1 BTC from $100k with $10k. W short 10 BTC from $86k with $33k and M
+/// long 9 BTC from $86k with $100k, no funding. At $85k W has P = +$10,000,
+/// E = $43,000 and MM = $42,500. Liquidating L closes 1 BTC of W with it, which
+/// realizes $1,000 and leaves 9 BTC: E' = $43,000 against MM' = $38,250.
 fn thin_winner() -> (DefaultState, PubKey, PubKey) {
     let mut s = state();
-    let (l, w) = (owner_of(1), owner_of(2));
+    let (l, w, m) = (owner_of(1), owner_of(2), owner_of(3));
     put(&mut s, l, SIZE_SCALE, 100_000, usd(10_000), 0);
-    put(&mut s, w, -SIZE_SCALE, 86_000, usd(4_000), 0);
+    put(&mut s, w, -10 * SIZE_SCALE, 86_000, usd(33_000), 0);
+    put(&mut s, m, 9 * SIZE_SCALE, 86_000, usd(100_000), 0);
     balance(&mut s);
     (s, l, w)
 }
@@ -273,23 +299,29 @@ fn adl_stops_at_the_maintenance_margin() {
     let px = 85_000 * PRICE_SCALE;
     assert_eq!(
         s.position(&w, 0).unwrap().adl_clawable(&m, px, 0),
-        Some(usd(750)),
-        "min(P 1,000, C 4,000, E − MM 750)"
+        Some(usd(500)),
+        "before the close: min(P 10,000, C 33,000, E − MM 500)"
     );
 
     let haircuts = liquidate(&mut s, &l, 85_000);
 
-    assert_eq!(haircuts, vec![(w, usd(750))]);
+    assert_eq!(
+        haircuts,
+        vec![(w, usd(4_750))],
+        "after the close: min(P 10,000, C' 34,000, E' − MM' 4,750)"
+    );
     let w_after = *s.position(&w, 0).unwrap();
-    assert_eq!(w_after.collateral, usd(3_250));
+    assert_eq!(w_after.size, -9 * SIZE_SCALE, "1 BTC closed with L");
+    assert_eq!(w_after.collateral, usd(34_000 - 4_750));
     assert_eq!(
         w_after.equity(px, 0),
         w_after.maintenance_required(&m, px),
         "W ends exactly at its maintenance margin"
     );
     assert!(!w_after.is_liquidatable(&m, px, 0));
-    assert_eq!(s.position(&l, 0).unwrap().collateral, -usd(4_250));
+    assert_eq!(s.position(&l, 0).unwrap().collateral, -usd(250));
     assert_eq!(s.mode, Mode::CloseOnly);
+    assert_eq!(net_size(&s), 0);
     assert!(s.conservation_holds());
     assert_eq!(
         s.liquidate(&w, 0, &oracle(85_000, T0), T0),
@@ -302,12 +334,13 @@ fn a_funded_treasury_spares_the_winners() {
     let (mut s, l, w) = thin_winner();
     s.treasury = usd(20_000);
     balance(&mut s);
-    let w_before = *s.position(&w, 0).unwrap();
 
     let haircuts = liquidate(&mut s, &l, 85_000);
 
     assert!(haircuts.is_empty(), "W is not clawed");
-    assert_eq!(s.position(&w, 0), Some(&w_before));
+    let w_after = *s.position(&w, 0).unwrap();
+    assert_eq!(w_after.size, -9 * SIZE_SCALE, "1 BTC closed with L");
+    assert_eq!(w_after.collateral, usd(34_000), "its $1,000 gain realized");
     assert_eq!(s.treasury, usd(15_000));
     assert!(s.position(&l, 0).is_none());
     assert_eq!(s.mode, Mode::Normal);
@@ -317,24 +350,40 @@ fn a_funded_treasury_spares_the_winners() {
 #[test]
 fn adl_draws_on_the_winners_with_a_net_gain_and_headroom() {
     // As in the funding case, plus Y: short 1 BTC from $100k with $10k, opened at
-    // the current index (no funding owed), so its clawable amount is $10,000.
+    // the current index (no funding owed), and Z: long 1 BTC from $100k with $20k,
+    // so the book stays balanced. Liquidating L closes 0.5 BTC each of W and Y.
+    // W settles all of its $20,500 of funding, so nothing is clawable from it;
+    // Y's $15,000 gain is, and it covers the whole $5,000.
     let (mut s, l, w) = winner_owing_funding();
-    let y = owner_of(4);
+    let (y, z) = (owner_of(4), owner_of(5));
     put(&mut s, y, -SIZE_SCALE, 100_000, usd(10_000), SHORTS_PAY);
+    put(&mut s, z, SIZE_SCALE, 100_000, usd(20_000), SHORTS_PAY);
     balance(&mut s);
     let m = market(&s);
     let px = 85_000 * PRICE_SCALE;
-    let w_before = *s.position(&w, 0).unwrap();
+    let z_before = *s.position(&z, 0).unwrap();
 
     let haircuts = liquidate(&mut s, &l, 85_000);
 
     assert_eq!(haircuts, vec![(y, usd(5_000))], "Y covers the whole $5,000");
-    assert_eq!(s.position(&w, 0), Some(&w_before), "W is untouched");
+    let w_after = *s.position(&w, 0).unwrap();
+    assert_eq!(w_after.size, -SIZE_SCALE / 2);
+    // $10k − $20,500 of funding + $7,500 realized; its equity stays $4,500
+    assert_eq!(w_after.collateral, -usd(3_000));
+    assert_eq!(w_after.equity(px, SHORTS_PAY), Some(usd(4_500)));
+    assert!(!w_after.is_liquidatable(&m, px, SHORTS_PAY));
     let y_after = *s.position(&y, 0).unwrap();
-    assert_eq!(y_after.collateral, usd(5_000));
+    assert_eq!(y_after.size, -SIZE_SCALE / 2);
+    assert_eq!(y_after.collateral, usd(10_000 + 7_500 - 5_000));
     assert_eq!(y_after.equity(px, SHORTS_PAY), Some(usd(20_000)));
     assert!(!y_after.is_liquidatable(&m, px, SHORTS_PAY));
+    assert_eq!(
+        s.position(&z, 0),
+        Some(&z_before),
+        "the other long is untouched"
+    );
     assert!(s.position(&l, 0).is_none());
+    assert_eq!(net_size(&s), 0);
     assert_eq!(s.mode, Mode::Normal);
     assert!(s.conservation_holds());
 }
@@ -343,6 +392,7 @@ fn adl_draws_on_the_winners_with_a_net_gain_and_headroom() {
 fn funding_receivable_counts_towards_the_clawable_gain() {
     // W short 1 BTC from $86k with $10k, opened at index 0; the index is now
     // +$3,000, so W is owed $3,000. At $85k: P = +1,000, F = −3,000, P − F = 4,000.
+    // W is closed with L, collecting the $3,000 and realizing the $1,000.
     let mut s = state();
     let (l, w) = (owner_of(1), owner_of(2));
     let index = usd(3_000);
@@ -357,7 +407,8 @@ fn funding_receivable_counts_towards_the_clawable_gain() {
 
     assert_eq!(haircuts, vec![(w, usd(4_000))]);
     let w_after = *s.position(&w, 0).unwrap();
-    assert_eq!(w_after.collateral, usd(6_000));
+    assert_eq!(w_after.size, 0);
+    assert_eq!(w_after.collateral, usd(10_000));
     assert_eq!(w_after.equity(px, index), Some(usd(10_000)));
     assert!(!w_after.is_liquidatable(&m, px, index));
     assert_eq!(s.position(&l, 0).unwrap().collateral, -usd(1_000));
@@ -367,16 +418,18 @@ fn funding_receivable_counts_towards_the_clawable_gain() {
 
 #[test]
 fn an_overflowing_winner_leaves_no_haircut_and_trips_close_only() {
-    // Y is an ordinary winner worth $10,000 of ADL. Z is open in the same market,
-    // but its funding owed overflows, so no ADL plan exists for this market.
+    // Y is an ordinary winner, short 1.1 BTC: the liquidation of L closes 1 BTC of
+    // it and its $15,000 gain is clawable. Z is open on L's side of the same
+    // market, but its funding owed overflows, so no ADL plan exists for this
+    // market.
     let mut s = state();
     let (l, y, z) = (owner_of(1), owner_of(2), owner_of(3));
     put(&mut s, l, SIZE_SCALE, 100_000, usd(10_000), 0);
-    put(&mut s, y, -SIZE_SCALE, 100_000, usd(10_000), 0);
+    put(&mut s, y, -11 * SIZE_SCALE / 10, 100_000, usd(10_000), 0);
     put(
         &mut s,
         z,
-        -SIZE_SCALE / 10,
+        SIZE_SCALE / 10,
         100_000,
         usd(1_000),
         i128::MIN / 2,
@@ -398,7 +451,13 @@ fn an_overflowing_winner_leaves_no_haircut_and_trips_close_only() {
         .expect("the liquidation itself still applies");
 
     assert!(out.withdrawals.is_empty());
-    assert_eq!(s.position(&y, 0), Some(&y_before), "no haircut is applied");
+    let y_after = *s.position(&y, 0).unwrap();
+    assert_eq!(y_after.size, y_before.size + SIZE_SCALE, "closed with L");
+    assert_eq!(
+        y_after.collateral,
+        y_before.collateral + usd(15_000),
+        "no haircut is applied"
+    );
     assert_eq!(s.position(&z, 0), Some(&z_before));
     assert_eq!(s.position(&l, 0).unwrap().collateral, -usd(5_000));
     assert_eq!(s.mode, Mode::CloseOnly);
@@ -482,14 +541,16 @@ impl Rng {
 }
 
 /// Liquidate one random loser among random winners, losers, flat entries and
-/// reserves, and check the waterfall and the ADL bound against values computed
-/// from the pre-state alone.
+/// reserves, and check the closes, the waterfall and the ADL bound against values
+/// computed from the pre-state alone. The books are random, so most of them hold
+/// a pool position (as a state written before audit PC-1 could); the pool takes
+/// only the part of the close that reduces it.
 #[test]
 fn liquidation_preserves_the_health_of_every_other_position() {
     let mut rng = Rng(0xAD1_0000_0000_0001);
     let mut oracles: BTreeMap<i128, OracleTranscript> = BTreeMap::new();
     let (mut liquidated, mut clawed_any, mut tripped, mut from_treasury) = (0, 0, 0, 0);
-    let (mut some_spared, mut zero_clawable) = (0, 0);
+    let (mut some_spared, mut zero_clawable, mut debtor_closed) = (0, 0, 0);
 
     for case in 0..1_500 {
         let mut s = state();
@@ -546,22 +607,8 @@ fn liquidation_preserves_the_health_of_every_other_position() {
             .entry(price_usd)
             .or_insert_with(|| oracle(price_usd, T0));
 
+        let pre = s.clone();
         let loser = *s.position(&l, 0).unwrap();
-        let others: Vec<(PubKey, Position, bool, i128, i128, i128)> = s
-            .positions
-            .iter()
-            .filter(|((o, _), _)| *o != l)
-            .map(|((o, _), p)| {
-                (
-                    *o,
-                    *p,
-                    p.is_liquidatable(&m, px, index),
-                    p.equity(px, index).unwrap(),
-                    p.maintenance_required(&m, px).unwrap(),
-                    p.adl_clawable(&m, px, index).unwrap(),
-                )
-            })
-            .collect();
         let (insurance0, treasury0) = (s.insurance_fund, s.treasury);
 
         let result = s.liquidate(&l, 0, &orc, T0);
@@ -573,46 +620,118 @@ fn liquidation_preserves_the_health_of_every_other_position() {
         let haircuts = result.unwrap_or_else(|e| panic!("case {case}: {e:?}"));
         assert!(s.conservation_holds(), "case {case}");
 
-        // The close realizes P − F, so the shortfall is the negative part of equity.
-        let bad = (-loser.equity(px, index).unwrap()).max(0);
-        let c1 = bad.min(insurance0.max(0));
+        // The closes, from the pre-state: the pool takes the part of L's size that
+        // reduces its own position, the opposite side the rest, pro rata by size.
+        let net_before = net_size(&pre);
+        let to_pool = if net_before.signum() == loser.size.signum() {
+            net_before.abs().min(loser.size.abs())
+        } else {
+            0
+        };
+        let opposite: Vec<(PubKey, Position)> = pre
+            .positions
+            .iter()
+            .filter(|(_, p)| p.size.signum() == -loser.size.signum())
+            .map(|((o, _), p)| (*o, *p))
+            .collect();
+        let weights: Vec<i128> = opposite.iter().map(|(_, p)| p.size.abs()).collect();
+        let takes = allocate_pro_rata(loser.size.abs() - to_pool, &weights).unwrap();
+        let mut reduced: BTreeMap<PubKey, Position> = pre
+            .positions
+            .iter()
+            .filter(|((o, _), _)| *o != l)
+            .map(|((o, _), p)| (*o, *p))
+            .collect();
+        for ((o, p), take) in opposite.iter().zip(&takes) {
+            if *take > 0 {
+                let mut q = *p;
+                q.apply_fill(loser.size.signum() * take, px, index).unwrap();
+                reduced.insert(*o, q);
+            }
+        }
+        let net_after = net_size(&s);
+        assert_eq!(
+            net_after,
+            net_before - loser.size.signum() * to_pool,
+            "case {case}"
+        );
+        assert!(net_after.abs() <= net_before.abs(), "case {case}");
+
+        // The loser's close and penalty, then the shortfall: the loser's debt and
+        // that of every counterparty the close left flat, loser first.
+        let mut closed = loser;
+        closed.apply_fill(-loser.size, px, index).unwrap();
+        let penalty = apply_rate(loser.notional(px).unwrap(), m.liquidation_fee_ratio).unwrap();
+        let take = penalty.min(closed.collateral.max(0));
+        closed.collateral -= take;
+        let mut debts: Vec<(PubKey, i128)> = Vec::new();
+        if closed.collateral < 0 {
+            debts.push((l, -closed.collateral));
+        }
+        for (o, q) in &reduced {
+            if !q.is_open() && q.collateral < 0 {
+                debts.push((*o, -q.collateral));
+                debtor_closed += 1;
+            }
+        }
+        let bad: i128 = debts.iter().map(|(_, d)| d).sum();
+        let insurance = insurance0 + take;
+        let c1 = bad.min(insurance.max(0));
         let c2 = (bad - c1).min(treasury0.max(0));
         let residual = bad - c1 - c2;
-        if bad > 0 {
-            assert_eq!(s.insurance_fund, insurance0 - c1, "case {case}");
-            assert_eq!(s.treasury, treasury0 - c2, "case {case}");
-            if c2 > 0 {
-                from_treasury += 1;
-                assert_eq!(c1, insurance0, "insurance is exhausted first ({case})");
-            }
-        } else {
-            assert_eq!(s.treasury, treasury0, "case {case}");
+        assert_eq!(s.insurance_fund, insurance - c1, "case {case}");
+        assert_eq!(s.treasury, treasury0 - c2, "case {case}");
+        if c2 > 0 {
+            from_treasury += 1;
+            assert_eq!(c1, insurance, "insurance is exhausted first ({case})");
+        }
+        if bad == 0 {
             assert!(haircuts.is_empty(), "case {case}");
         }
 
-        let total_clawable: i128 = others.iter().map(|o| o.5).sum();
+        // ADL: each winner open before the liquidation gives at most its gain,
+        // measured before the close, within its collateral and headroom after it.
+        let clawable: BTreeMap<PubKey, i128> = pre
+            .positions
+            .iter()
+            .filter(|((o, _), p)| *o != l && p.is_open())
+            .map(|((o, _), p)| {
+                (
+                    *o,
+                    p.adl_clawable_after(&reduced[o], &m, px, index).unwrap(),
+                )
+            })
+            .collect();
+        let total_clawable: i128 = clawable.values().sum();
         let clawed: i128 = haircuts.iter().map(|h| h.clawed).sum();
         assert_eq!(clawed, residual.min(total_clawable), "case {case}");
-        assert!(clawed <= residual);
         let parked = residual - clawed;
         if clawed > 0 {
             clawed_any += 1;
         }
-        if clawed > 0 && haircuts.len() < others.iter().filter(|o| o.1.is_open()).count() {
+        if clawed > 0 && haircuts.len() < clawable.len() {
             some_spared += 1;
-        }
-        match s.position(&l, 0) {
-            None => assert_eq!(parked, 0, "case {case}"),
-            Some(p) => {
-                assert_eq!(p.size, 0, "case {case}");
-                if bad > 0 {
-                    assert_eq!(p.collateral, -parked, "case {case}");
-                }
-            }
         }
         assert_eq!(s.mode == Mode::CloseOnly, parked > 0, "case {case}");
         if parked > 0 {
             tripped += 1;
+        }
+        // What was covered goes to the debtors in order, each up to its debt.
+        let mut cover = c1 + c2 + clawed;
+        for (o, debt) in &debts {
+            let paid = cover.min(*debt);
+            cover -= paid;
+            let after = s.position(o, 0).map_or(0, |p| p.collateral);
+            assert_eq!(after, paid - debt, "case {case}");
+            if let Some(p) = s.position(o, 0) {
+                assert_eq!(p.size, 0, "case {case}");
+            }
+        }
+        if !debts.iter().any(|(o, _)| *o == l) {
+            assert_eq!(
+                s.position(&l, 0).map_or(0, |p| p.collateral),
+                closed.collateral
+            );
         }
 
         let mut seen = Vec::new();
@@ -621,36 +740,49 @@ fn liquidation_preserves_the_health_of_every_other_position() {
             assert!(!seen.contains(&h.owner), "one haircut per winner ({case})");
             seen.push(h.owner);
         }
-        for (o, before, liq_before, eq_before, mm, clawable) in &others {
+        for (o, q) in &reduced {
+            if debts.iter().any(|(d, _)| d == o) {
+                continue;
+            }
+            let before = pre.position(o, 0).unwrap();
             let take = haircuts
                 .iter()
                 .find(|h| h.owner == *o)
                 .map_or(0, |h| h.clawed);
-            assert!(take <= *clawable, "case {case}");
-            if take == 0 && *clawable == 0 && before.is_open() {
+            assert!(take <= clawable.get(o).copied().unwrap_or(0), "case {case}");
+            if take == 0 && clawable.get(o) == Some(&0) {
                 zero_clawable += 1;
             }
-            let after = *s.position(o, 0).unwrap();
+            let after = s.position(o, 0).copied().unwrap_or(Position {
+                collateral: 0,
+                ..*q
+            });
             assert_eq!(
                 after,
                 Position {
-                    collateral: before.collateral - take,
-                    ..*before
+                    collateral: q.collateral - take,
+                    ..*q
                 },
-                "only collateral moves, by the haircut ({case})"
+                "only the close and the haircut move it ({case})"
             );
-            assert_eq!(
-                after.is_liquidatable(&m, px, index),
-                *liq_before,
-                "ADL never changes who is liquidatable ({case})"
-            );
-            if before.collateral >= 0 {
+            if q.collateral >= 0 {
                 assert!(after.collateral >= 0, "no new bad debt ({case})");
             }
-            if eq_before >= mm {
+            let (eq, mm) = (
+                q.equity(px, index).unwrap(),
+                q.maintenance_required(&m, px).unwrap(),
+            );
+            if eq >= mm {
                 assert!(
-                    after.equity(px, index).unwrap() >= *mm,
+                    after.equity(px, index).unwrap() >= mm,
                     "a healthy winner stays at or above maintenance ({case})"
+                );
+            }
+            if q == before {
+                assert_eq!(
+                    after.is_liquidatable(&m, px, index),
+                    before.is_liquidatable(&m, px, index),
+                    "ADL never changes who is liquidatable ({case})"
                 );
             }
         }
@@ -668,5 +800,11 @@ fn liquidation_preserves_the_health_of_every_other_position() {
     assert!(
         zero_clawable > 500,
         "open positions with nothing clawable {zero_clawable}"
+    );
+    // rare in random books; the deterministic case is
+    // `audit_1116_pc1_an_underwater_counterparty_joins_the_waterfall`
+    assert!(
+        debtor_closed > 4,
+        "counterparties closed under water {debtor_closed}"
     );
 }

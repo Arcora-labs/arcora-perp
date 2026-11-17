@@ -12,10 +12,13 @@
 //!   covers deficits before the insurance fund and the treasury do, and what the
 //!   three still hold leaves as one withdrawal to the wind-down recipient, with
 //!   the next withdrawal nonce.
-//! * A liquidation leaves its position's open interest with the clearing pool.
-//!   The pool's result on it reaches the recipient when the price moves in the
-//!   pool's favour, and is covered by the reserves and then the haircut when it
-//!   moves against it.
+//! * A liquidation closes the other side of the market with its position (audit
+//!   2026-11-16 PC-1), so it leaves no open interest with the clearing pool and a
+//!   later price move changes nothing for the pool. A pool position that a state
+//!   written before that rule may still hold is closed at the settlement price
+//!   like any other: its result reaches the recipient when the price moves in
+//!   the pool's favour, and is covered by the reserves and then the haircut when
+//!   it moves against it.
 //! * `SettleAll` creates no value (the value inside before it equals the value
 //!   inside after it plus the payout) and is atomic, and after it the phase-2
 //!   exits drain the vault exactly.
@@ -398,14 +401,14 @@ fn without_a_recipient_the_reserves_stay_and_no_leaf_is_emitted() {
     assert!(s.conservation_holds());
 }
 
-// --- exposure a liquidation leaves with the clearing pool -----------------------
+// --- a liquidation leaves no exposure with the clearing pool ------------------
 
 /// Long trader 1 with $10k against short trader 2 with $30k, 1 BTC from $100k,
-/// with no insurance and no treasury. Liquidating the long at $85k realizes its
-/// $15k loss into the clearing pool and leaves $5k of debt, which
-/// auto-deleverage takes from the short. The system stays open, and the pool is
-/// now the counterparty to the short's 1 BTC.
-fn short_left_against_the_pool() -> DefaultState {
+/// with no insurance and no treasury. Liquidating the long at $85k closes the
+/// short with it: the short realizes its $15k gain, out of which
+/// auto-deleverage covers the long's $5k shortfall. Both are flat, the clearing
+/// pool is back at zero, and the system stays open.
+fn liquidated_pair() -> DefaultState {
     let mut s = state_with(Market::conservative(0));
     s.set_wind_down_recipient(RECIPIENT);
     fund(&mut s, 1, usd(10_000));
@@ -419,9 +422,13 @@ fn short_left_against_the_pool() -> DefaultState {
     );
     assert_eq!(s.mode, Mode::Normal);
     assert!(s.position(&owner_of(1), 0).is_none(), "the long is gone");
-    assert_eq!(collateral(&s, 2), usd(25_000));
-    assert_eq!(s.position(&owner_of(2), 0).unwrap().size, -SIZE_SCALE);
-    assert_eq!(reserves(&s), (usd(15_000), 0, 0));
+    assert_eq!(
+        s.position(&owner_of(2), 0).unwrap().size,
+        0,
+        "the short is closed with it"
+    );
+    assert_eq!(collateral(&s, 2), usd(40_000));
+    assert_eq!(reserves(&s), (0, 0, 0));
     assert!(s.conservation_holds());
     s
 }
@@ -434,12 +441,54 @@ fn record_price(s: &mut DefaultState, price_usd: i128) {
     assert_eq!(s.funding[&0].last_price, price_usd * PRICE_SCALE);
 }
 
-/// The price returns to $100k. The short settles at no gain and keeps its $25k;
-/// the pool's $15k, made of the long's lost $10k and the $5k auto-deleverage
-/// took from the short, leaves as the recipient's one leaf.
+/// Whichever way the price moves after the liquidation, nothing is open and the
+/// pool holds nothing: the settlement pays no leaf to the recipient and the
+/// short keeps its $40k.
 #[test]
-fn a_move_back_in_the_pools_favour_reaches_the_recipient() {
-    let mut s = short_left_against_the_pool();
+fn a_move_after_a_liquidation_changes_nothing_at_settlement() {
+    for price in [100_000, 75_000] {
+        let mut s = liquidated_pair();
+        record_price(&mut s, price);
+        let inside = s.internal_value().unwrap();
+        assert_eq!(inside, usd(40_000));
+
+        let out = s.apply_batch(&[BatchOp::SettleAll]).unwrap();
+
+        assert!(out.withdrawals.is_empty(), "${price}");
+        assert_eq!(reserves(&s), (0, 0, 0));
+        assert_eq!(collateral(&s, 2), usd(40_000), "${price}");
+        assert!(s.conservation_holds());
+        let leaves = exit_all(&mut s, 2);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].amount, usd(40_000));
+        assert_drained(&s);
+    }
+}
+
+/// What a liquidation like the one in [`liquidated_pair`] left behind before
+/// audit PC-1: the short still open, 1 BTC from $100k with $25k (its $5k haircut
+/// taken), and the clearing pool, holding the long's lost $15k, as the
+/// counterparty to it. A state written then may still hold such a pool
+/// position.
+fn legacy_short_left_against_the_pool() -> DefaultState {
+    let mut s = state_with(Market::conservative(0));
+    s.set_wind_down_recipient(RECIPIENT);
+    put(&mut s, 2, -SIZE_SCALE, 100_000 * PRICE_SCALE, usd(25_000));
+    s.vault_pool = usd(15_000);
+    s.external_in = usd(40_000);
+    s.funding
+        .get_mut(&0)
+        .unwrap()
+        .record_price(85_000 * PRICE_SCALE, T0 + 1_000);
+    assert!(s.conservation_holds());
+    s
+}
+
+/// The price returns to $100k. The short settles at no gain and keeps its $25k;
+/// the pool's $15k leaves as the recipient's one leaf.
+#[test]
+fn a_legacy_pool_position_s_gain_reaches_the_recipient() {
+    let mut s = legacy_short_left_against_the_pool();
     record_price(&mut s, 100_000);
     let inside = s.internal_value().unwrap();
     assert_eq!(inside, usd(40_000));
@@ -465,11 +514,11 @@ fn a_move_back_in_the_pools_favour_reaches_the_recipient() {
 }
 
 /// The price falls on to $75k, $10k past what the pool holds. A $4k insurance
-/// fund added after the liquidation covers the first $4k, the haircut takes the
-/// other $6k from the short's $50k, and no reserve is left to pay out.
+/// fund covers the first $4k, the haircut takes the other $6k from the short's
+/// $50k, and no reserve is left to pay out.
 #[test]
-fn a_move_against_the_pool_is_covered_by_the_reserves_then_the_haircut() {
-    let mut s = short_left_against_the_pool();
+fn a_legacy_pool_position_s_loss_is_covered_by_the_reserves_then_the_haircut() {
+    let mut s = legacy_short_left_against_the_pool();
     let cm = deposit(&mut s, 3, usd(4_000));
     s.apply_batch(&[BatchOp::FundInsurance {
         note_commitment: cm,
@@ -690,42 +739,55 @@ fn after_a_trip_ticks_keep_the_settlement_price_current() {
     assert_eq!((f.last_price, f.last_price_ms), (74_000 * PRICE_SCALE, t));
 
     s.apply_batch(&[BatchOp::SettleAll]).unwrap();
-
-    // At $74k the short gains $26k and the pool keeps $4k, which covers part of
-    // the $10k parked on the loser; the other $6k is a 20% haircut of the
-    // short's $26k and the $4k note.
-    assert_eq!(collateral(&s, winner), usd(20_800));
-    assert_eq!(note_value(&s, 3), usd(3_200));
     assert_eq!(claims(&s), s.external_in);
     assert!(s.conservation_holds());
 
-    // settled at the trip's $70k instead, the pool would keep nothing and the
-    // note would carry more of the debt
+    // At $74k trader 5's long from $71k gains $3k and the short loses it, before
+    // the $18k parked on the loser is haircut from every claim. Settled at the
+    // trip's $70k instead, the long would have lost $1k and keeps less. The pool
+    // holds no position, so the claims add up to the same either way and the
+    // note carries the same share of the debt.
     let mut at_trip = tripped;
     at_trip.apply_batch(&[BatchOp::SettleAll]).unwrap();
-    assert!(note_value(&at_trip, 3) < usd(3_200));
+    assert!(collateral(&s, 5) > collateral(&at_trip, 5));
+    assert!(collateral(&s, winner) < collateral(&at_trip, winner));
+    assert_eq!(note_value(&s, 3), note_value(&at_trip, 3));
+    assert!(note_value(&s, 3) < usd(4_000), "the note shares the debt");
 }
 
 // --- no deposit is credited in close-only ------------------------------------
 
-/// Trader 1 long and trader 2 short 1 BTC from $100k with $10k each, no
-/// insurance, and trader 3 holding an unbound note of `note` (none when 0).
-/// Liquidating the long at $70k leaves $20k of debt; auto-deleverage claws the
-/// short's $10k of collateral, the other $10k stays parked on the closed long,
-/// and the system trips to close-only. Returns the short's key.
+/// Trader 1 long 1 BTC from $100k with $10k against trader 4, who closes its
+/// short at $71k by buying from trader 2; trader 2 also sells 1 BTC there to
+/// trader 5, so trader 2 is short 2 BTC from $71k against the two longs. No
+/// insurance, and trader 3 holds an unbound note of `note` (none when 0).
+/// Liquidating the long at $70k leaves $20k of debt. Trader 2 gives up 1 BTC
+/// with it, and auto-deleverage takes the $2k it gained since $71k; the other
+/// $18k stays parked on the closed long and the system trips to close-only,
+/// with trader 2 short and trader 5 long 1 BTC from $71k still open. Returns
+/// trader 2's key.
 fn tripped_with_note(note: i128) -> (DefaultState, u8) {
     let mut s = state_with(Market::conservative(0));
     fund(&mut s, 1, usd(10_000));
-    fund(&mut s, 2, usd(10_000));
+    fund(&mut s, 2, usd(20_000));
+    fund(&mut s, 4, usd(20_000));
+    fund(&mut s, 5, usd(20_000));
     if note > 0 {
         deposit(&mut s, 3, note);
     }
-    s.apply_op(&fill(1, 2, Side::Buy, SIZE_SCALE, 100_000, T0))
+    s.apply_op(&fill(1, 4, Side::Buy, SIZE_SCALE, 100_000, T0))
+        .unwrap();
+    s.apply_op(&fill(4, 2, Side::Buy, SIZE_SCALE, 71_000, T0 + 500))
+        .unwrap();
+    s.apply_op(&fill(5, 2, Side::Buy, SIZE_SCALE, 71_000, T0 + 600))
         .unwrap();
     s.apply_op(&liquidate(1, 70_000, T0 + 1_000)).unwrap();
     assert_eq!(s.mode, Mode::CloseOnly);
-    assert_eq!(collateral(&s, 1), -usd(10_000));
-    assert_eq!(collateral(&s, 2), 0);
+    assert_eq!(collateral(&s, 1), -usd(18_000));
+    assert_eq!(s.position(&owner_of(2), 0).unwrap().size, -SIZE_SCALE);
+    assert_eq!(collateral(&s, 2), usd(20_000 + 1_000 - 2_000));
+    assert_eq!(s.position(&owner_of(5), 0).unwrap().size, SIZE_SCALE);
+    assert_eq!(s.vault_pool, 0);
     (s, 2)
 }
 
@@ -755,14 +817,14 @@ fn no_deposit_is_credited_while_close_only() {
     assert_deposit_refused(&mut s);
     let external_in = s.external_in;
     s.apply_batch(&[BatchOp::SettleAll]).unwrap();
-    // the short realizes $30k at $70k and alone absorbs the parked $10k
-    assert_eq!(collateral(&s, winner), usd(20_000));
+    // the parked $18k is haircut from the claims of traders 2, 4 and 5
+    assert!(collateral(&s, winner) > 0 && collateral(&s, winner) < usd(20_000));
     assert_eq!(claims(&s), external_in);
 
     // and after the settlement
     assert_deposit_refused(&mut s);
-    let leaves = exit_all(&mut s, 2);
-    assert_eq!(leaves.len(), 1);
+    let leaves = exit_all(&mut s, 5);
+    assert_eq!(leaves.len(), 3, "traders 2, 4 and 5 exit");
     assert_drained(&s);
 }
 

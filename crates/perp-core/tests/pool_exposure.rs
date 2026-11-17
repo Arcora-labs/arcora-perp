@@ -25,7 +25,7 @@ use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::position::Position;
 use perp_core::state::Mode;
-use perp_core::{DefaultState, Market, Note};
+use perp_core::{DefaultState, EngineError, Market, Note, RiskError};
 
 const TREE_DEPTH: u8 = 20;
 const T0: u64 = 1_700_000_000_000;
@@ -298,7 +298,14 @@ fn audit_1116_pc1_no_liquidation_leaves_the_pool_with_a_position() {
         let mut s = state();
         let n = rng.range(2, 7) as u8;
         let mut sizes: Vec<i128> = (0..n)
-            .map(|_| rng.range(1, 30) * SIZE_SCALE / 10 * if rng.next() % 2 == 0 { 1 } else { -1 })
+            .map(|_| {
+                let size = rng.range(1, 30) * SIZE_SCALE / 10;
+                if rng.next().is_multiple_of(2) {
+                    size
+                } else {
+                    -size
+                }
+            })
             .collect();
         // the last position balances the book
         let rest: i128 = sizes[..sizes.len() - 1].iter().sum();
@@ -464,7 +471,10 @@ fn audit_1116_pc1_a_withdrawal_beyond_external_in_is_refused() {
     assert_eq!(s.external_in, usd(40));
     for (to, nonce) in [(Some([0xAB; 20]), 1), (None, 0)] {
         let root = s.state_root();
-        assert!(s.apply_batch(&[withdraw(cms[0], to, nonce)]).is_err());
+        assert_eq!(
+            s.apply_batch(&[withdraw(cms[0], to, nonce)]),
+            Err(EngineError::WithdrawalExceedsDeposits)
+        );
         assert_eq!(s.state_root(), root, "nothing changed");
         assert!(s.notes.contains_key(&cms[0]));
     }
@@ -476,13 +486,19 @@ fn audit_1116_pc1_a_withdrawal_beyond_external_in_is_refused() {
         .expect("external_out reaches external_in");
     assert_eq!(s.external_out, s.external_in);
     let root = s.state_root();
-    assert!(s
-        .apply_batch(&[withdraw(cms[1], Some([0xAB; 20]), 2)])
-        .is_err());
+    assert_eq!(
+        s.apply_batch(&[withdraw(cms[1], Some([0xAB; 20]), 2)]),
+        Err(EngineError::WithdrawalExceedsDeposits)
+    );
     assert_eq!(s.state_root(), root);
 }
 
 // --- PC-2: initial margin stays in collateral --------------------------------------
+
+const MARGIN: EngineError = EngineError::Risk {
+    source: RiskError::InsufficientMargin,
+    leg: None,
+};
 
 fn unbind(owner: PubKey, amount: i128, price_usd: i128) -> BatchOp {
     BatchOp::Unbind {
@@ -508,7 +524,7 @@ fn audit_1116_pc2_a_profitable_position_cannot_unbind_its_collateral_to_zero() {
     let px = 125_000 * PRICE_SCALE;
     let root = s.state_root();
 
-    assert!(s.apply_op(&unbind(l, usd(10_000), 125_000)).is_err());
+    assert_eq!(s.apply_op(&unbind(l, usd(10_000), 125_000)), Err(MARGIN));
     assert_eq!(s.state_root(), root, "nothing changed");
     assert_eq!(collateral_of(&s, &l), usd(10_000));
     assert!(s.position(&l, 0).unwrap().adl_clawable(&m, px, 0).unwrap() > 0);
@@ -518,7 +534,7 @@ fn audit_1116_pc2_a_profitable_position_cannot_unbind_its_collateral_to_zero() {
     s.positions.get_mut(&(l, 0)).unwrap().collateral = usd(20_000);
     balance(&mut s);
     let root = s.state_root();
-    assert!(s.apply_op(&unbind(l, usd(7_500) + 1, 125_000)).is_err());
+    assert_eq!(s.apply_op(&unbind(l, usd(7_500) + 1, 125_000)), Err(MARGIN));
     assert_eq!(s.state_root(), root);
     s.apply_op(&unbind(l, usd(7_500), 125_000))
         .expect("down to the initial margin");

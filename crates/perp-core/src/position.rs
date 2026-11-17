@@ -184,15 +184,34 @@ impl Position {
         mark: i128,
         funding_index_now: i128,
     ) -> Option<i128> {
+        self.adl_clawable_after(self, market, mark, funding_index_now)
+    }
+
+    /// [`Self::adl_clawable`] for a position that a liquidation has just reduced
+    /// to `after`, at `mark` and funding index `funding_index_now`:
+    ///
+    /// `max(0, min(P − F, C'⁺, E' − MM'))`
+    ///
+    /// The gain `P − F` is still measured on `self`, before the reduction, so what
+    /// the reduction realized into collateral stays within reach; the collateral
+    /// and headroom bounds are those of `after`, so `after` keeps `C' ≥ 0` and
+    /// `E' ≥ MM'`. With `after == *self` this is exactly [`Self::adl_clawable`].
+    ///
+    /// `None` on overflow; callers treat it as fail-closed.
+    pub fn adl_clawable_after(
+        &self,
+        after: &Position,
+        market: &Market,
+        mark: i128,
+        funding_index_now: i128,
+    ) -> Option<i128> {
         let pnl = self.unrealized_pnl(mark)?;
         let funding = self.funding_owed(funding_index_now)?;
         let net_gain = pnl.checked_sub(funding)?;
-        let headroom = self
-            .collateral
-            .checked_add(pnl)?
-            .checked_sub(funding)?
-            .checked_sub(self.maintenance_required(market, mark)?)?;
-        Some(net_gain.min(self.collateral.max(0)).min(headroom).max(0))
+        let headroom = after
+            .equity(mark, funding_index_now)?
+            .checked_sub(after.maintenance_required(market, mark)?)?;
+        Some(net_gain.min(after.collateral.max(0)).min(headroom).max(0))
     }
 
     /// Does applying `delta_size` open new directional exposure — i.e. anything

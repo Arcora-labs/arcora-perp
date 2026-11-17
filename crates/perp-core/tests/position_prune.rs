@@ -466,14 +466,21 @@ fn a_full_wind_down_exit_removes_the_entry() {
 /// entry with negative collateral. Funding exactly that amount into it leaves zero
 /// size and zero collateral: the entry is removed, and the following batches, an
 /// ordinary one and `SettleAll`, both derive their roots.
+///
+/// The short the liquidation closes with the long opened at $71k (the long's
+/// first counterparty closed against it there), so its gain covers only $1k of
+/// the long's $20k shortfall.
 #[test]
 fn repaying_a_flat_debt_removes_the_entry_and_later_batches_derive() {
     let mut s = state_with(Market::conservative(0));
     let a = owner_of(1);
     fund(&mut s, 1, usd(10_000));
     fund(&mut s, 2, usd(10_000)); // exactly the initial margin of 1 BTC at $100k
+    fund(&mut s, 3, usd(10_000));
     s.apply_op(&fill(1, 2, Side::Buy, SIZE_SCALE, 100_000, T0))
         .expect("open 1 BTC");
+    s.apply_op(&fill(2, 3, Side::Buy, SIZE_SCALE, 71_000, T0 + 500))
+        .expect("the first short closes against a new one");
     let liq = liquidate(1, 70_000, T0 + 1_000);
     // the debt the liquidation leaves, from a dry run on a copy
     let debt = {

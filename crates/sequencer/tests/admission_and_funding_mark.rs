@@ -1305,15 +1305,19 @@ fn a_traded_market_gives_one_non_idle_window_per_price_epoch() {
 #[test]
 fn an_adl_winner_healthy_at_one_seal_is_not_liquidated_at_the_next() {
     let mut s = setup(1_000);
+    fund(&mut s, 3, 100_000, 0x33);
     s.seal_batch(
         &[
-            order(1, Side::Sell, SIZE_SCALE, 100_000, 1),
+            order(1, Side::Sell, 2 * SIZE_SCALE, 100_000, 1),
             order(2, Side::Buy, SIZE_SCALE, 100_000, 2),
+            order(3, Side::Buy, SIZE_SCALE, 100_000, 3),
         ],
         1_000,
     );
-    // a gap to $75k: the long's $25k loss exceeds its $20k collateral, and with no
-    // insurance or treasury the shortfall is clawed from the short
+    // a gap to $75k: the long's $25k loss exceeds its $20k collateral; the
+    // liquidation closes 1 BTC of the short with it, and with no insurance or
+    // treasury the shortfall is clawed from the short, which stays open against
+    // the healthy second long
     let crash = oracle(75_000, 5_000);
     s.set_oracle(0, crash);
     let n = s.seal_batch(&[], 5_000);
