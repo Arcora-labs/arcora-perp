@@ -658,15 +658,33 @@ class TargetTests(unittest.TestCase):
         self.overrides["eth_call"] = revert
         self.assertEqual(self.observe()["blocker"], "RPC did not return a successful result")
 
-    def test_audit_1116_sv1_the_gateway_boot_gate_pins_the_compiled_verifier_runtime(self):
-        artifact = release.ROOT / "contracts" / release.CONTRACTS["sp1_verifier"][0]
-        if not artifact.is_file():
-            self.skipTest("contracts are not built")
-        runtime = release.read_json(artifact)["deployedBytecode"]["object"]
-        self.assertFalse(release.read_json(artifact)["deployedBytecode"].get("immutableReferences"))
-        pinned = re.search(r'SP1_VERIFIER_RUNTIME_KECCAK: &str =\s*"(0x[0-9a-f]{64})"',
-                           (release.ROOT / "crates/gateway/src/l1/clock_binding.rs").read_text()).group(1)
-        self.assertEqual(release.command(["cast", "keccak", runtime], release.ROOT), pinned)
+    def test_audit_1116_sv1_the_gateway_boot_gate_pins_the_compiled_route_runtimes(self):
+        # Every RuntimeTemplate in the gateway's boot gate must equal its compiler artifact:
+        # the template's keccak (immutables are zero placeholders), length and immutable offsets.
+        source = (release.ROOT / "crates/gateway/src/l1/clock_binding.rs").read_text()
+        pins = re.findall(r'RuntimeTemplate \{\s*artifact: "([^"]+)",\s*keccak: "(0x[0-9a-f]{64})",'
+                          r'\s*len: (\d+),\s*immutables: &\[(.*?)\],\s*\}', source, re.S)
+        self.assertEqual({artifact for artifact, *_ in pins}, {
+            release.CONTRACTS[role][0] for role in ("clock_verifier", "sp1_adapter", "sp1_verifier")}
+            | {"out/ChainlinkOracleVerifier.sol/ChainlinkOracleVerifier.json"})
+        self.assertEqual(release.CONTRACTS["sp1_verifier"][0],
+                         "out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json")
+        for artifact, keccak, length, immutables in pins:
+            path = release.ROOT / "contracts" / artifact
+            if not path.is_file():
+                self.skipTest("contracts are not built")
+            with self.subTest(artifact=artifact):
+                deployed = release.read_json(path)["deployedBytecode"]
+                runtime = deployed["object"] if deployed["object"].startswith("0x") else "0x" + deployed["object"]
+                self.assertEqual(release.command(["cast", "keccak", runtime], release.ROOT), keccak)
+                self.assertEqual(len(bytes.fromhex(runtime[2:])), int(length))
+                expected = sorted(sorted(at["start"] for at in occurrences)
+                                  for occurrences in (deployed.get("immutableReferences") or {}).values())
+                pinned = sorted(sorted(int(at) for at in re.findall(r"\d+", group))
+                                for group in re.findall(r"&\[([\d,\s]*)\]", immutables))
+                self.assertEqual(pinned, expected)
+                self.assertTrue(all(at["length"] == 32 for occurrences in
+                                    (deployed.get("immutableReferences") or {}).values() for at in occurrences))
 
     def test_audit_1116_sv1_a_wrong_verifier_hash_is_refused(self):
         self.values[("sp1_verifier", "VERIFIER_HASH()")] = "0x" + "11" * 32
