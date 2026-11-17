@@ -5632,11 +5632,25 @@ impl Gw {
             self.user_adl_clawed += adl_clawed;
         }
         let any_sealed = !pending.is_empty() || !account_refs.is_empty();
-        // Update all orders, including makers submitted in older ticks/windows.
-        // Applied-fill attribution is independent of the monotone finality axis.
+        // Update the order rows this batch touched, including makers submitted in
+        // older ticks/windows (audit 2026-11-16 GA-1 + SM-1): the orders it sealed
+        // (the rows still unsealed, every one of which was pushed into it above),
+        // the orders with an applied fill, a rejection or a removal in it, and the
+        // rows whose fills still wait for their proof (`execution::needs_update`).
+        // Every other row is an order resting as recorded or ended; updating it
+        // changed nothing a response or an event shows, and cost a book lookup per
+        // row, every tick, under this lock. Rows are visited in the same order as
+        // before, so the events keep theirs. Applied-fill attribution is
+        // independent of the monotone finality axis.
+        let touched = execution::touched_by(&sealed);
         let mut acct_events: Vec<String> = Vec::new();
-        for (i, o) in self.orders.iter_mut().enumerate() {
-            let fresh = pending.contains(&i);
+        for o in self.orders.iter_mut() {
+            let fresh = !o.sealed;
+            if !fresh && !execution::needs_update(o, &touched) {
+                #[cfg(test)]
+                tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
+                continue;
+            }
             #[cfg(test)]
             tick_scaling_tests::count_row_update();
             let _ = execution::update(o, &self.seq, &sealed, fresh);
@@ -5644,9 +5658,14 @@ impl Gw {
                 o.sealed = true;
             }
         }
-        for (key, acct) in &mut self.accounts {
-            for (i, o) in acct.orders.iter_mut().enumerate() {
-                let fresh = account_refs.contains(&(*key, i));
+        for acct in self.accounts.values_mut() {
+            for o in acct.orders.iter_mut() {
+                let fresh = !o.sealed;
+                if !fresh && !execution::needs_update(o, &touched) {
+                    #[cfg(test)]
+                    tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
+                    continue;
+                }
                 #[cfg(test)]
                 tick_scaling_tests::count_row_update();
                 for mut event in execution::update(o, &self.seq, &sealed, fresh) {
@@ -5709,8 +5728,9 @@ impl Gw {
         for acct in self.accounts.values_mut() {
             let owner_hex = hex0x(&acct.wallet.owner);
             for o in acct.orders.iter_mut() {
-                // Execution was updated above for every row. This separate
-                // receipt axis may retain an earlier SETTLED fact indefinitely.
+                // Execution was updated above for every row the batch touched.
+                // This separate receipt axis may retain an earlier SETTLED fact
+                // indefinitely.
                 if o.last_finality == "SETTLED" {
                     continue;
                 }

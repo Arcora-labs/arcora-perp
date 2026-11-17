@@ -204,8 +204,42 @@ fn ensure_record(o: &mut GwOrder, seq: &Sequencer) {
     }
 }
 
-/// Call exactly once for each sealed tick; fills are emitted only here, never on
-/// a finality transition. A maker can keep filling after earlier fills settle.
+/// The order hashes `batch` touched: the two of each applied fill, every
+/// rejection and every removal (audit 2026-11-16 GA-1 + SM-1).
+pub(super) fn touched_by(batch: &SealedBatch) -> BTreeSet<Digest> {
+    batch
+        .applied_fills
+        .iter()
+        .flat_map(|m| [m.taker_order_hash, m.maker_order_hash])
+        .chain(batch.manifest.rejected.iter().map(|(h, _)| *h))
+        .chain(batch.removals.iter().map(|r| r.order_hash))
+        .collect()
+}
+
+/// Whether a tick must [`update`] the row `o` of an order it did not seal
+/// (audit 2026-11-16 GA-1 + SM-1): its batch touched the order (`touched`, see
+/// [`touched_by`]), the row has no record yet, or it holds fills still waiting
+/// for their proof, which a later tick reports settled. For any other row an
+/// update changes nothing a response or an event shows: its order is resting
+/// as recorded or has ended, so the tick leaves it alone rather than look it up
+/// in the book.
+pub(super) fn needs_update(o: &GwOrder, touched: &BTreeSet<Digest>) -> bool {
+    touched.contains(&o.order_hash) || o.execution.as_ref().is_none_or(|e| !e.pending.is_empty())
+}
+
+/// The row's record without the last tick it was updated in, which no response
+/// or event shows (tests only).
+#[cfg(test)]
+pub(super) fn record_without_tick(o: &GwOrder) -> Option<Execution> {
+    o.execution.clone().map(|mut e| {
+        e.last_tick = None;
+        e
+    })
+}
+
+/// Call once for each sealed tick that sealed the order or for which
+/// [`needs_update`] holds; fills are emitted only here, never on a finality
+/// transition. A maker can keep filling after earlier fills settle.
 pub(super) fn update(
     o: &mut GwOrder,
     seq: &Sequencer,
