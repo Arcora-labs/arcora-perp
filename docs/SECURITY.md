@@ -420,6 +420,24 @@ snapshots and rollback journals) are refused by their format magic, not migrated
     `MerkleLeaf`-domain tagged: second-preimage safety here comes from hashing the
     claimed fields, the same way `inclusionLeaf` does — so the off-chain side likewise
     does NOT domain-tag it.)
+- **The provable-history budget is global and lifetime, so partial withdrawals can
+  close for everyone (audit GA-2).** Every credited deposit and every withdrawal adds
+  a leaf and a nullifier that every later proof re-derives, and nothing removes them
+  (`MAX_PROVABLE_HISTORY` = 13,280 units). The gateway limits withdrawals per account
+  (3 per minute, 10 per settlement window, a 10 USDC minimum unless the whole free
+  balance of the market leaves), charges each account a lifetime quota of 100 units
+  (its outstanding deposit permits included), and refuses every partial withdrawal
+  once the state's own history reaches 7,968 units, so registration, deposit permits
+  and full exits keep the room above it. That reserve can still be reached on
+  purpose: about 80 accounts, each making one deposit and partial withdrawals up to
+  its quota, push the state past it, and the capital comes back to them (MockUSDC is
+  free on testnet). From then on, for the life of the deployment, only full exits
+  leave; deposits, registration and trading keep working. The `withdraw_reserve_near`
+  alert fires from 7,164 units on. Not addressed: a per-account partial-withdrawal
+  allowance that survives the reserve (each account it admits would take room from
+  registration and deposits instead), an operator-tunable reserve, and an operator
+  allowlist for honest heavy users who outgrow the lifetime quota (they register a
+  new account).
 
 ## Public-testnet posture (Base Sepolia, 2026-07) — what the ZK caveat means
 

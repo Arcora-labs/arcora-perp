@@ -432,6 +432,18 @@ with a new genesis root. Its gateway refuses every snapshot and rollback-journal
 written before that change, by format magic, rather than migrating it. The v5–v7 notes
 above describe how those older formats behaved.
 
+**Withdrawal ledger section (audit GA-2).** After the recovery section a snapshot
+carries a `DPWLIM01` section: the history units each account has spent (§ Withdrawals).
+It is written only once some usage is recorded, and a snapshot without it loads with
+an empty ledger. So a live gateway that upgrades to this source starts every account at
+0 units, including accounts that already made many deposits and withdrawals: their
+earlier usage is not counted against the per-account quota (the exchange-wide reserve
+reads the whole state, so it still counts). Binaries from before the section refuse a
+snapshot that carries it (`trailing recovery snapshot bytes`): once any usage is
+recorded, rolling the binary back fails at boot unless a snapshot written before the
+upgrade is restored with it, which discards everything since. Treat the upgrade as
+one-way.
+
 ## Trading is gated until launch (SEC-025-D)
 
 On a fresh production deployment, **order submission is refused** until the deployment has
@@ -508,15 +520,26 @@ directly:
    - at most **3 withdrawals per minute** and **10 in the open settlement window**
      (a `429` `WITHDRAW_RATE_LIMIT_MINUTE` / `WITHDRAW_RATE_LIMIT_WINDOW`; retry
      later). A withdrawal removed by a voided window is not counted again;
-   - a lifetime quota of **100 history units** (50 operations) for credited deposits
-     and withdrawals together. Once spent, a partial withdrawal is a `400`
-     `WITHDRAW_QUOTA_EXCEEDED` and a new deposit permit is a `403`
-     `ACCOUNT_HISTORY_QUOTA`. The quota is kept in the snapshot, so a restart does
-     not reset it;
-   - an exchange-wide reserve: once the history (with the outstanding permits)
-     reaches **7,968** units, every partial withdrawal is a `400`
-     `WITHDRAW_RESERVE_REACHED`, whatever the account's own usage, so registration,
-     deposit permits and exits keep the room above it.
+   - a **lifetime** quota of **100 history units** (50 operations) for credited
+     deposits and withdrawals together, full exits included. The account's
+     outstanding deposit permits count against it too (2 units each, what their
+     credits will take), for withdrawals as for new permits. Once spent, a partial
+     withdrawal is a `400` `WITHDRAW_QUOTA_EXCEEDED` and a new deposit permit is a
+     `403` `ACCOUNT_HISTORY_QUOTA`. The quota never resets: it is kept in the
+     snapshot, so a restart does not reset it, and no window or time period does.
+     An account that spent it can still exit in full (below); to deposit or make
+     partial withdrawals again, register a new account. Active traders and market
+     makers that move funds often should plan for this;
+   - an exchange-wide reserve: once the state's own provable history reaches
+     **7,968** units, every partial withdrawal is a `400` `WITHDRAW_RESERVE_REACHED`,
+     whatever the account's own usage, so registration, deposit permits and exits
+     keep the room above it. Outstanding deposit permits do not count toward it:
+     they add no history until their deposits are credited. The history never
+     shrinks, so once the reserve is reached partial withdrawals stay closed for
+     every account for the life of the deployment (only full exits leave); enough
+     accounts making real deposits and withdrawals within their quotas (about 80)
+     can bring that about. Operators get the `withdraw_reserve_near` alert from
+     7,164 units on (§ Operational alerts).
 
    A full exit (the whole balance of a closed position) is exempt from the quota and
    the reserve, and a withdrawal of the whole free balance in the market from the
@@ -525,9 +548,10 @@ directly:
    holds, since no new entry opens without a deposit permit. The per-minute counter
    lives in gateway memory and starts empty on restart. The non-production demo
    build (`/api/withdraw`, `/api/lp/*`, `/api/deposit`, never mounted in
-   production) applies the minimum, the per-minute limit and the quota to
-   `/api/withdraw` only; it has no settlement window, and its LP and self-service
-   deposit routes are not limited. Once the admission
+   production) applies the minimum, the per-minute limit and the reserve to
+   `/api/withdraw` only, and no lifetime quota: every visitor shares its one demo
+   user, and its LP and self-service deposit routes are not limited. It has no
+   settlement window. Once the admission
    cap leaves no room for it, a withdrawal other than a full exit (the whole balance
    of a closed position) is a `400` with a `HISTORY_CAP` error (§ Admission cap).
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
@@ -1032,6 +1056,7 @@ Each is raised once when it becomes active and once when it recovers:
 | `permit_gc_stalled` | finalized block headers have not re-hashed for a long stretch, so expired permits are not removed |
 | `engine_close_only` | the engine is in close-only while the settlement is not; governance should call `enterCloseOnly()` (§ Deposits after an engine trip) |
 | `admission_cap_reached` | the soft admission cap is reached; new permits that add to the bound at it are refused, and registrations while the state itself is at it (§ Admission cap) |
+| `withdraw_reserve_near` | the state's provable history is at 7,164 units or more, nine tenths of the 7,968-unit partial-withdrawal reserve; past the reserve every partial withdrawal is refused (`WITHDRAW_RESERVE_REACHED`) and only full exits leave. History never shrinks, so it stays active (§ Withdrawals) |
 | `withdraw_nonce_repaired` | at boot the withdrawal-leaf counter was at or behind the engine's last withdrawal nonce and was moved forward; find out which snapshot was restored |
 | `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the state is beyond an admission bound (only after a bound is lowered under an existing state, or after a voided window when crediting its deposits again would exceed one); it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
 | `window_voided` | a sealed window whose clock registration can never land was voided, and the window after it has not settled yet (§ Voided settlement windows). Not persisted: a restart clears it |
