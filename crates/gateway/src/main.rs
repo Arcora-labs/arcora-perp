@@ -4570,6 +4570,35 @@ impl Gw {
         hex32(&self.seq.state.state_root())
     }
 
+    /// One challenge-watcher round after `watcher` observed an open-set read: plan
+    /// the answers from the retained settled batches, and raise the
+    /// `unanswerable_challenge` alert while an open hash was due in a batch that
+    /// settled without it.
+    fn plan_challenge_round(
+        &self,
+        watcher: &mut challenge_scan::Watcher,
+    ) -> challenge_scan::AnswerPlan {
+        let plan = watcher.plan(&self.batch_orders);
+        if plan.unanswerable.is_empty() {
+            self.ops_alerts
+                .recover(ops_alerts::AlertKind::UnanswerableChallenge);
+        } else {
+            self.ops_alerts
+                .activate(ops_alerts::AlertKind::UnanswerableChallenge);
+            eprintln!(
+                "[l1] {} open challenge(s) name orders no settled batch holds: {}",
+                plan.unanswerable.len(),
+                plan.unanswerable
+                    .iter()
+                    .take(8)
+                    .map(hex32)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        plan
+    }
+
     /// Build the answer to an inclusion challenge for `order_hash` (audit DP-004): find the
     /// settled on-chain batch that committed it and build the Merkle proof against that batch's
     /// ordered root (matched) or rejected root (validly rejected). Returns
@@ -12012,20 +12041,7 @@ async fn main() {
                     alerts.recover(ops_alerts::AlertKind::ChallengeDiscoveryFailed);
                     let open = read.hashes.len();
                     watcher.observe(read);
-                    let plan = {
-                        let gw = app.gw.lock().await;
-                        watcher.plan(&gw.batch_orders)
-                    };
-                    if plan.unanswerable.is_empty() {
-                        alerts.recover(ops_alerts::AlertKind::UnanswerableChallenge);
-                    } else {
-                        alerts.activate(ops_alerts::AlertKind::UnanswerableChallenge);
-                        eprintln!(
-                            "[l1] {} open challenge(s) name orders no settled batch holds: {}",
-                            plan.unanswerable.len(),
-                            plan.unanswerable.iter().take(8).map(hex32).collect::<Vec<_>>().join(", ")
-                        );
-                    }
+                    let plan = app.gw.lock().await.plan_challenge_round(&mut watcher);
                     if plan.sends.is_empty() {
                         if open > 0 {
                             println!("[l1] {open} open challenge(s); {} awaiting their batch", plan.awaiting);
