@@ -51,6 +51,17 @@ def selector(root, signature):
     return legacy.deployment_reader.selector(signature)
 
 
+def candidate_operator_policy(value):
+    """The release policy plus this candidate graph's SP1 gateway owner (its gateway is still used)."""
+    if not isinstance(value, dict) or "sp1_gateway" not in value:
+        raise ObserverError("invalid explicit target policy")
+    rest = {role: fields for role, fields in value.items() if role != "sp1_gateway"}
+    result = legacy.operator_policy(rest)
+    identity.exact(value["sp1_gateway"], {"owner"}, "operator policy sp1_gateway")
+    result["sp1_gateway"] = {"owner": identity.hex_value(value["sp1_gateway"]["owner"], 20, "sp1_gateway.owner")}
+    return result
+
+
 def expected_policy(value):
     try:
         identity.exact(value, {"schema", "runtime_hash_algorithm", "operator_policy",
@@ -58,7 +69,7 @@ def expected_policy(value):
         require(value["schema"] == POLICY_SCHEMA, "wrong candidate target policy schema")
         require(value["runtime_hash_algorithm"] == "keccak256-evm", "wrong runtime hash algorithm")
         return {"schema": POLICY_SCHEMA, "runtime_hash_algorithm": "keccak256-evm",
-                "operator_policy": legacy.operator_policy(value["operator_policy"]),
+                "operator_policy": candidate_operator_policy(value["operator_policy"]),
                 "oracle_configurator": identity.hex_value(value["oracle_configurator"], 20,
                                                           "oracle configurator")}
     except Exception:
@@ -277,7 +288,7 @@ def observe_target(root, manifest, config, policy, rpc):
                 "SP1 route is wrong or frozen")
         result["sp1_route"] = {"selector": verifier_hash[:10], "verifier": addresses["sp1_verifier"], "frozen": False}
         operators = declared["operator_policy"]
-        for role, fields in legacy.OPERATOR_ADDRESSES.items():
+        for role, fields in identity.OPERATOR_ADDRESSES.items():
             for name, signature in fields.items():
                 getter(role, signature, operators[role][name])
         for name, signature in legacy.SETTLEMENT_POLICY.items():

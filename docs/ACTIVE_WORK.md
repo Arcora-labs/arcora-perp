@@ -89,7 +89,7 @@ yüzdesi veya süre tahmini değildir.
 
 - **Hedef:** 11 Temmuz stack'i main ile uyumsuz. Öneri, kendi SP1 verifier ve
   gateway'imizle yeni bir Base Sepolia dağıtımı
-  ([runbook](REDEPLOY-CC-RUNBOOK.md)). Succinct gateway'ini kullanmak,
+  ([runbook](REDEPLOY-CC-RUNBOOK.md)). Succinct gateway'ini kullanmak (sahibi kanıtı atlatabilir veya durdurabilir; SV-1),
   manifest'e onların bytecode'unu ekleyen ayrı bir karar gerektirir.
 - **Makineler:** Gateway ve prover host'ları; CC/TEE donanımı.
 - **Chainlink stream erişimi:** 10 Ekim'de kullanıcı kararıyla ertelendi; G2 bunu

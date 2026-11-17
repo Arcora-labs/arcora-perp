@@ -480,6 +480,7 @@ class TargetTests(unittest.TestCase):
         self.head = {"number": "0x42", "hash": "0x" + "ab" * 32}
         self.calls = []
         self.overrides = {}
+        self.routers = set()
         self.values = {
             ("settlement", "verifier()"): self.addresses["clock_verifier"],
             ("settlement", "vault()"): self.addresses["vault"],
@@ -487,7 +488,7 @@ class TargetTests(unittest.TestCase):
             ("vault", "token()"): self.addresses["token"],
             ("clock_verifier", "settlement()"): self.addresses["settlement"],
             ("clock_verifier", "innerVerifier()"): self.addresses["sp1_adapter"],
-            ("sp1_adapter", "gateway()"): self.addresses["sp1_gateway"],
+            ("sp1_adapter", "gateway()"): self.addresses["sp1_verifier"],
             ("sp1_adapter", "programVKey()"): release.clock.REVIEWED_GUEST["vkey"],
             ("clock_verifier", "maxWindowMs()"): 30000,
             ("clock_verifier", "clockSkewMs()"): 10000,
@@ -524,9 +525,11 @@ class TargetTests(unittest.TestCase):
         if method == "eth_call":
             role = self.by_address[params[0]["to"]]
             signature = params[0]["data"]
-            if signature.startswith("routes(bytes4)"):
-                self.assertEqual(signature, "routes(bytes4)" + release.clock.target.VERIFIER_HASH[:8] + "0" * 56)
-                return self.word(self.addresses["sp1_verifier"]) + "0" * 64
+            if signature.startswith(("routes(bytes4)", "owner()")):
+                if role in self.routers:
+                    return self.word(self.addresses["sp1_verifier"]) + "0" * 64
+                # The stateless verifier has neither getter: the call reverts.
+                raise release.RPCExecutionError("RPC did not return a successful result")
             if (role, signature) in self.state:
                 return self.word(self.state[(role, signature)])
             return self.word(self.values.get((role, signature), 1))
@@ -535,7 +538,7 @@ class TargetTests(unittest.TestCase):
     def observe(self):
         return release.observe_target(self.root, self.manifest, self.public, self.rpc)
 
-    def test_all_six_runtimes_bindings_route_and_one_finalized_hash_are_checked(self):
+    def test_all_five_runtimes_bindings_and_one_finalized_hash_are_checked(self):
         result = self.observe()
         self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
         self.assertEqual(set(result["contracts"]), set(release.CONTRACTS))
@@ -610,19 +613,26 @@ class TargetTests(unittest.TestCase):
         self.assertIn("finalized block changed", self.observe()["blocker"])
         self.assertFalse(any(params[0] == "latest" for method, params in self.calls if method == "eth_getBlockByNumber"))
 
-    def test_route_wrong_frozen_or_noncanonical_cannot_pass(self):
-        original_rpc = self.rpc
-        for route in (self.word(0) + "0" * 64,
-                      self.word(self.addresses["sp1_verifier"]) + format(1, "064x"),
-                      self.word(self.addresses["sp1_verifier"]) + format(2, "064x"),
-                      "0x" + "ff" * 12 + self.addresses["sp1_verifier"][2:] + "0" * 64):
-            def changed(method, params):
-                if method == "eth_call" and params[0]["data"].startswith("routes(bytes4)"):
-                    return route
-                return original_rpc(method, params)
-            with self.subTest(route=route):
-                result = release.observe_target(self.root, self.manifest, self.public, changed)
+    def test_audit_1116_sv1_the_adapter_must_target_the_stateless_verifier_directly(self):
+        self.assertEqual(self.observe()["status"], "VERIFIED_AT_FINALIZED_BLOCK")
+        self.assertNotIn("sp1_gateway", release.CONTRACTS)
+        # An adapter still pointing at a router (any other address) cannot pass.
+        for target in ("0x" + "ee" * 20, self.addresses["settlement"]):
+            self.values[("sp1_adapter", "gateway()")] = target
+            with self.subTest(target=target):
+                result = self.observe()
                 self.assertEqual(result["status"], "BLOCKED")
+                self.assertIn("target binding mismatch: sp1_adapter.gateway()", result["blocker"])
+
+    def test_audit_1116_sv1_a_target_exposing_owner_or_routes_is_refused(self):
+        self.routers.add("sp1_verifier")
+        result = self.observe()
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("an owned router is not the stateless verifier", result["blocker"])
+
+    def test_audit_1116_sv1_a_wrong_verifier_hash_is_refused(self):
+        self.values[("sp1_verifier", "VERIFIER_HASH()")] = "0x" + "11" * 32
+        self.assertEqual(self.observe()["status"], "BLOCKED")
 
     def test_noncanonical_address_and_truncated_getter_are_rejected(self):
         for raw in ("0x" + "ff" * 32, "0x" + "00" * 31):
@@ -1010,9 +1020,7 @@ class AnvilTargetTests(unittest.TestCase):
             return transact(artifact["bytecode"]["object"] + "".join(word(arg) for arg in args))["contractAddress"]
         addresses = {}
         addresses["sp1_verifier"] = deploy("sp1_verifier")
-        addresses["sp1_gateway"] = deploy("sp1_gateway", owner)
-        transact(release.deployment_reader.selector("addRoute(address)") + word(addresses["sp1_verifier"]), addresses["sp1_gateway"])
-        addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_gateway"], release.clock.REVIEWED_GUEST["vkey"])
+        addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_verifier"], release.clock.REVIEWED_GUEST["vkey"])
         addresses["clock_verifier"] = deploy("clock_verifier", addresses["sp1_adapter"], 30000, 10000, 3_600_000)
         # DarkPerpSettlement.Config: 12 words, a static struct encoded inline.
         addresses["settlement"] = deploy("settlement", owner, accounts[1], addresses["clock_verifier"], GENESIS_ROOT,
@@ -1033,7 +1041,6 @@ class AnvilTargetTests(unittest.TestCase):
                            "slash_payout_cap_usdc": 1_000_000_000},
             "vault": {"gateway_signer": accounts[2]},
             "clock_verifier": {"configurator": owner},
-            "sp1_gateway": {"owner": owner},
         }
         manifest = release.build_manifest(release.ROOT, public)
         if manifest["real_proof"]["status"] != release.clock.PROVEN:
@@ -1043,7 +1050,7 @@ class AnvilTargetTests(unittest.TestCase):
         observed = release.observe_target(release.ROOT, manifest, public, release.TargetRPC(url),
                                           require_operator_policy=True)
         self.assertEqual(observed["status"], "VERIFIED_AT_FINALIZED_BLOCK", observed)
-        self.assertEqual(len(observed["contracts"]), 6)
+        self.assertEqual(len(observed["contracts"]), 5)
         self.assertTrue(observed["scope"]["operator_and_settlement_policy_matches"])
         self.assertFalse(observed["scope"]["operator_and_settlement_policy_approved"])
         self.assertTrue(observed["scope"]["genesis_root_verified"])
@@ -1075,18 +1082,12 @@ class AnvilTargetTests(unittest.TestCase):
             self.assertIn("target binding mismatch", rejected["blocker"])
             self.assertFalse(rejected["scope"]["operator_and_settlement_policy_matches"])
             policy_rejections[field] = rejected
-        transact(release.deployment_reader.selector("freezeRoute(bytes4)") + release.clock.target.VERIFIER_HASH[:8] + "0" * 56,
-                 addresses["sp1_gateway"])
-        local_rpc("anvil_mine", ["0x80"])
-        frozen = release.observe_target(release.ROOT, manifest, public, release.TargetRPC(url))
-        self.assertEqual(frozen["status"], "BLOCKED", frozen)
-        self.assertIn("wrong or frozen", frozen["blocker"])
+        self.assertEqual(observed["sp1_verifier_stateless"]["verifier"], addresses["sp1_verifier"])
         evidence = os.environ.get("ARCORA_MANIFEST_ANVIL_EVIDENCE")
         if evidence:
             Path(evidence).write_text(json.dumps({"scope": "Owned local Anvil; real compiled constructors and RPC, mock token, no proof submission or target deployment.",
                                                 "pass": observed, "policy_mismatches_rejected": policy_rejections,
-                                                "genesis_root_mismatch_rejected": genesis_rejected,
-                                                "frozen_route_rejected": frozen}, indent=2) + "\n")
+                                                "genesis_root_mismatch_rejected": genesis_rejected}, indent=2) + "\n")
 
 
 if __name__ == "__main__":

@@ -106,7 +106,7 @@ class FakeRPC:
             ("oracle_wrapper", "configurator()"): case.policy["oracle_configurator"],
             ("sp1_verifier", "VERIFIER_HASH()"): "0x" + identity.legacy.clock.target.VERIFIER_HASH,
         })
-        for role, fields in identity.legacy.OPERATOR_ADDRESSES.items():
+        for role, fields in identity.OPERATOR_ADDRESSES.items():
             for name, signature in fields.items():
                 self.values[(role, signature)] = case.policy["operator_policy"][role][name]
         for name, signature in identity.legacy.SETTLEMENT_POLICY.items():

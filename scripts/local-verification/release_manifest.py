@@ -56,7 +56,6 @@ CONTRACTS = {
     "vault": ("out/CollateralVault.sol/CollateralVault.json", "CollateralVault", "0.8.24+commit.e11b9ed9"),
     "sp1_adapter": ("out/SP1ZkVerifier.sol/SP1ZkVerifier.json", "SP1ZkVerifier", "0.8.24+commit.e11b9ed9"),
     "clock_verifier": ("out/ClockBoundVerifier.sol/ClockBoundVerifier.json", "ClockBoundVerifier", "0.8.24+commit.e11b9ed9"),
-    "sp1_gateway": ("out/sp1-upstream/SP1VerifierGateway.sol/SP1VerifierGateway.json", "SP1VerifierGateway", "0.8.20+commit.a1b79de6"),
     "sp1_verifier": ("out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json", "SP1Verifier", "0.8.20+commit.a1b79de6"),
 }
 ENV_ADDRESSES = {
@@ -101,7 +100,6 @@ OPERATOR_ADDRESSES = {
                    "governance": "governance()"},
     "vault": {"gateway_signer": "gatewaySigner()"},
     "clock_verifier": {"configurator": "configurator()"},
-    "sp1_gateway": {"owner": "owner()"},
 }
 # Settlement constructor values, in `DarkPerpSettlement.Config` order. The payout
 # cap is in USDC base units (6 decimals).
@@ -398,7 +396,7 @@ def compiled_contract(root, role):
             and optimizer["enabled"] is True and type(optimizer["runs"]) is int
             and optimizer["runs"] == 200, "wrong optimizer profile: " + role)
     compiler_root = root / ("contracts/vendor/sp1-contracts" if role.startswith("sp1_")
-                            and role in {"sp1_gateway", "sp1_verifier"} else "contracts")
+                            and role == "sp1_verifier" else "contracts")
     sources = metadata["sources"]
     require(isinstance(sources, dict) and sources, "missing compiler source bindings: " + role)
     for source, expected in sources.items():
@@ -558,6 +556,10 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError("RPC redirects are not accepted")
 
 
+class RPCExecutionError(ValueError):
+    """The node answered with a JSON-RPC error (e.g. an eth_call revert)."""
+
+
 class TargetRPC:
     """Strict read-only transport. Diagnostics never include a URL or RPC payload."""
     def __init__(self, url):
@@ -585,6 +587,9 @@ class TargetRPC:
         require(isinstance(value, dict) and value.get("jsonrpc") == "2.0"
                 and type(value.get("id")) is int and value["id"] == self.sequence,
                 "invalid JSON-RPC response envelope")
+        if "error" in value and "result" not in value:
+            # Only a JSON-RPC execution error (a revert); never its message or data.
+            raise RPCExecutionError("RPC did not return a successful result")
         require("error" not in value and "result" in value, "RPC did not return a successful result")
         return value["result"]
 
@@ -707,7 +712,9 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
             ("settlement", "verifier()", "clock_verifier"), ("settlement", "vault()", "vault"),
             ("vault", "settlement()", "settlement"), ("vault", "token()", "token"),
             ("clock_verifier", "settlement()", "settlement"), ("clock_verifier", "innerVerifier()", "sp1_adapter"),
-            ("sp1_adapter", "gateway()", "sp1_gateway"),
+            # The adapter is bound directly to the stateless verifier; no router owner
+            # can add or freeze a route in between (audit SV-1).
+            ("sp1_adapter", "gateway()", "sp1_verifier"),
         ):
             getter(role, signature, expected=addresses[target])
         getter("sp1_adapter", "programVKey()", "bytes32", public["program_vkey"])
@@ -718,15 +725,17 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
         getter("settlement", "ABI_VERSION()", "uint", SETTLEMENT_ABI_VERSION)
         verifier_hash = "0x" + clock.target.VERIFIER_HASH
         getter("sp1_verifier", "VERIFIER_HASH()", "bytes32", verifier_hash)
-        # bytes4 is left-aligned in a 32-byte ABI word. The gateway returns
-        # (address,bool); both canonical encodings and the unfrozen route matter.
-        route_data = deployment_reader.selector("routes(bytes4)") + verifier_hash[2:10] + "0" * 56
-        route = deployment_reader.hex_data(rpc("eth_call", [{"to": addresses["sp1_gateway"], "data": route_data}, pin]), 64)
-        require(route[:12] == bytes(12) and route[32:] in (bytes(32), bytes(31) + b"\x01"),
-                "noncanonical SP1 gateway route ABI")
-        require("0x" + route[12:32].hex() == addresses["sp1_verifier"] and route[32:] == bytes(32),
-                "SP1 gateway route is wrong or frozen")
-        result["sp1_route"] = {"selector": verifier_hash[:10], "verifier": addresses["sp1_verifier"], "frozen": False}
+        # The verifier's runtime is matched against the compiled stateless v6.1.0 artifact
+        # above, so it cannot be a router. Also refuse, by behavior, any contract that
+        # answers owner() or routes(bytes4): such a target has an owner who can bypass or
+        # halt every proof.
+        for signature, argument in (("owner()", ""), ("routes(bytes4)", verifier_hash[2:10] + "0" * 56)):
+            try:
+                rpc("eth_call", [{"to": addresses["sp1_verifier"], "data": deployment_reader.selector(signature) + argument}, pin])
+            except RPCExecutionError:
+                continue
+            raise ValueError("SP1 verifier exposes " + signature + ": an owned router is not the stateless verifier")
+        result["sp1_verifier_stateless"] = {"verifier": addresses["sp1_verifier"], "selector": verifier_hash[:10]}
         # Compare only with explicitly supplied, manifest-bound policy. Omitting
         # a policy keeps legacy observation mode; it cannot produce a match claim.
         observed_operators = set()
