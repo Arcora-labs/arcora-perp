@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
 // The withdrawal minimum's exception is per market: the gateway lets a request
-// below 1 USDC through only when it takes the selected market's whole free
+// below 10 USDC through only when it takes the selected market's whole free
 // balance. The Account tab predicts that answer with the same per-market amount.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -46,7 +46,7 @@ describe("AccountPanel withdrawal minimum across two markets", () => {
   it("refuses a sub-dollar amount that is not the selected market's whole free balance", async () => {
     const { withdraw } = setup(0);
     withdrawAmount("0.40");
-    const refusal = await screen.findByText(/minimum withdrawal is 1 usdc/i);
+    const refusal = await screen.findByText(/minimum withdrawal is 10 usdc/i);
     expect(refusal.textContent).toMatch(/entire free balance in the selected market/i);
     expect(withdraw).not.toHaveBeenCalled();
   });
@@ -55,7 +55,7 @@ describe("AccountPanel withdrawal minimum across two markets", () => {
     // $0.30 + $0.40: the gateway would refuse $0.70 from market 1.
     const { withdraw } = setup(1, 300_000n);
     withdrawAmount("0.70");
-    expect(await screen.findByText(/minimum withdrawal is 1 usdc/i)).toBeTruthy();
+    expect(await screen.findByText(/minimum withdrawal is 10 usdc/i)).toBeTruthy();
     expect(withdraw).not.toHaveBeenCalled();
   });
 

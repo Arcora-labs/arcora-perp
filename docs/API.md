@@ -496,9 +496,17 @@ directly:
    can't be double-spent) and records an authorized withdrawal leaf
    `keccak256(to, amount, nonce)`. `nonce` + `signature` are **required** — see
    § Withdrawal authorization for who must sign, what they sign, and the `to` rule.
-   The minimum is **1 USDC** (1,000,000 base units), unless `amount` is the entire
-   free balance in that market (`marketFree` in `GET /v1/accounts/me`, not the
-   account-wide `settledBalance`); a smaller request is a `400`. Once the admission
+   The minimum is **10 USDC** (10,000,000 base units, the order and deposit minimum),
+   unless `amount` is the entire free balance in that market (`marketFree` in
+   `GET /v1/accounts/me`, not the account-wide `settledBalance`); a smaller request
+   is a `400` `BELOW_MINIMUM`. Every withdrawal adds a leaf and a nullifier to the
+   provable history, which only grows, so each account is limited: at most **3
+   withdrawals per minute** and **10 in the open settlement window** (a `429`
+   `WITHDRAW_RATE_LIMIT_MINUTE` / `WITHDRAW_RATE_LIMIT_WINDOW`; retry later), and
+   at most **50 partial withdrawals over its lifetime** (a `400`
+   `WITHDRAW_QUOTA_EXCEEDED`). A full exit (the whole balance of a closed
+   position) is exempt from the quota and from the minimum, so funds can always
+   leave. The usage counters live in gateway memory and start empty on restart. Once the admission
    cap leaves no room for it, a withdrawal other than a full exit (the whole balance
    of a closed position) is a `400` with a `HISTORY_CAP` error (§ Admission cap).
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals

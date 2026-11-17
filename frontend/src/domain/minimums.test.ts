@@ -13,11 +13,11 @@ import {
 import { QUOTE_SCALE, SIZE_SCALE } from "./types";
 
 describe("minimum values", () => {
-  it("are $1 initial margin, $10 order notional, 10 USDC deposit, 1 USDC withdrawal", () => {
+  it("are $1 initial margin, $10 order notional, 10 USDC deposit, 10 USDC withdrawal", () => {
     expect(MIN_INITIAL_MARGIN).toBe(1n * QUOTE_SCALE);
     expect(MIN_ORDER_NOTIONAL).toBe(10n * QUOTE_SCALE);
     expect(MIN_DEPOSIT).toBe(10n * QUOTE_SCALE);
-    expect(MIN_WITHDRAWAL).toBe(1n * QUOTE_SCALE);
+    expect(MIN_WITHDRAWAL).toBe(10n * QUOTE_SCALE);
   });
 });
 
@@ -69,7 +69,7 @@ describe("depositMinimumError", () => {
 describe("withdrawalMinimumError", () => {
   const balance = 500n * QUOTE_SCALE;
   it("refuses less than 1 USDC that is not the whole free balance", () => {
-    expect(withdrawalMinimumError(MIN_WITHDRAWAL - 1n, balance)).toMatch(/minimum withdrawal is 1 USDC/i);
+    expect(withdrawalMinimumError(MIN_WITHDRAWAL - 1n, balance)).toMatch(/minimum withdrawal is 10 USDC/i);
   });
   it("accepts 1 USDC and above", () => {
     expect(withdrawalMinimumError(MIN_WITHDRAWAL, balance)).toBeNull();

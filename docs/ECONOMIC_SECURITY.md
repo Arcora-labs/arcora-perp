@@ -419,7 +419,7 @@ enforce, as policy that can be tuned without a new program key:
 |---|---|---|
 | Order notional | $10 | reduce-only orders and orders that only reduce a position; a resting remainder below $10 keeps matching |
 | Deposit permit | $10 | — |
-| Withdrawal | $1 | withdrawing the entire free balance in that market |
+| Withdrawal | $10 | withdrawing the entire free balance in that market |
 
 An order below $10 is exempt only while it really reduces. In a batch, the sequencer
 measures it against its owner's position before the batch and after the owner's

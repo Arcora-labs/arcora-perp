@@ -209,7 +209,7 @@ export function AccountPanel() {
         <span className="field__label">Amount (USD)</span>
         <input className="field__input" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
       </label>
-      <p className="muted small">Minimum withdrawal: 1 USDC, unless you withdraw your entire free balance in the selected market.</p>
+      <p className="muted small">Minimum withdrawal: 10 USDC, unless you withdraw your entire free balance in the selected market.</p>
       {authCapable && auth !== undefined && (
         auth.callerSigned ? (
           <p className="muted small">

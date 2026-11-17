@@ -467,9 +467,9 @@ describe("MockDarkPerpClient size minimums (gateway admission policy)", () => {
     ).resolves.toBeTruthy();
   });
 
-  it("refuses a withdrawal under 1 USDC unless it empties the free balance", async () => {
+  it("refuses a withdrawal under 10 USDC unless it empties the free balance", async () => {
     const c = new MockDarkPerpClient();
-    await expect(c.requestWithdrawal(QUOTE_SCALE / 2n)).rejects.toThrow(/minimum withdrawal is 1 USDC/i);
+    await expect(c.requestWithdrawal(QUOTE_SCALE / 2n)).rejects.toThrow(/minimum withdrawal is 10 USDC/i);
     const balance = c.getState().account.settledBalance;
     await c.requestWithdrawal(balance - QUOTE_SCALE / 2n);
     await expect(c.requestWithdrawal(QUOTE_SCALE / 2n)).resolves.toBeUndefined();

@@ -24,9 +24,9 @@ export const MIN_ORDER_NOTIONAL = 10n * QUOTE_SCALE;
 /// Smallest deposit the gateway issues a permit for: 10 USDC.
 export const MIN_DEPOSIT = 10n * QUOTE_SCALE;
 
-/// Smallest withdrawal: 1 USDC, unless it takes the entire free balance in its
+/// Smallest withdrawal: 10 USDC, unless it takes the entire free balance in its
 /// market.
-export const MIN_WITHDRAWAL = QUOTE_SCALE;
+export const MIN_WITHDRAWAL = 10n * QUOTE_SCALE;
 
 /// Does an order of `side`/`size` against a current signed position `positionSize`
 /// add exposure: open from flat, grow the position, or flip it (even to a smaller
@@ -54,12 +54,12 @@ export function depositMinimumError(amount: bigint): string | null {
   return amount < MIN_DEPOSIT ? "Minimum deposit is 10 USDC." : null;
 }
 
-/// The withdrawal-minimum refusal, or null. A withdrawal below 1 USDC is allowed
+/// The withdrawal-minimum refusal, or null. A withdrawal below 10 USDC is allowed
 /// only when it takes the entire free balance of the market it withdraws from:
 /// pass that market's free balance (`marketFreeBalance`), not the account-wide one.
 export function withdrawalMinimumError(amount: bigint, marketFree: bigint): string | null {
   if (amount >= MIN_WITHDRAWAL || amount === marketFree) return null;
-  return "Minimum withdrawal is 1 USDC, unless you withdraw your entire free balance in the selected market.";
+  return "Minimum withdrawal is 10 USDC, unless you withdraw your entire free balance in the selected market.";
 }
 
 /// The free balance a withdrawal from `marketId` takes from, which the gateway
