@@ -282,7 +282,7 @@ impl Gw {
         }
         let discarded = core::mem::take(&mut self.window_withdrawals);
         for w in &discarded {
-            self.withdraw_limits.refund_withdrawal(&w.owner);
+            self.refund_removed_withdrawal(w);
         }
         let voided_withdrawals: std::collections::BTreeSet<[u8; 32]> =
             discarded.iter().map(Withdrawal::leaf).collect();
@@ -791,7 +791,8 @@ mod tests {
             .try_into()
             .unwrap();
         let (key, _) = gw.register_account(Some(address));
-        gw.account_deposit(&key, 0, 100 * QUOTE_SCALE).unwrap();
+        // Its partial withdrawals before close-only leave the entry minimum.
+        gw.account_deposit(&key, 0, 200 * QUOTE_SCALE).unwrap();
         let mut published: Vec<Withdrawal> = Vec::new();
         let mut counters = vec![gw.next_withdraw_nonce];
         // Window 0 settles one withdrawal.

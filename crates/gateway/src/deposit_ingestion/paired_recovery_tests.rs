@@ -94,7 +94,8 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     let hash = sha3::Keccak256::digest(&point.as_bytes()[1..]);
     let mut signer = [0; 20];
     signer.copy_from_slice(&hash[12..]);
-    let (key, first) = permit(&mut gw, 20_000_000, Some(signer));
+    // The withdrawal below leaves the 100 USDC entry minimum (audit G1-1).
+    let (key, first) = permit(&mut gw, 120_000_000, Some(signer));
     let (_, second) = permit(&mut gw, 7_000_000, None);
     assert_eq!(
         gw.apply_deposit_page(page(&gw, &[first, second])).unwrap(),

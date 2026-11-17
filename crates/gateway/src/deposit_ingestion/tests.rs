@@ -1362,7 +1362,8 @@ async fn a_state_beyond_a_bound_holds_a_landed_deposit_with_its_own_alert_while_
     let sk = k256::ecdsa::SigningKey::from_slice(&[0x61; 32]).unwrap();
     let address = eth_address(&sk);
     let (exiting, _) = gw.register_account(Some(address));
-    gw.account_deposit(&exiting, 0, 100 * QUOTE_SCALE).unwrap();
+    // Above the entry minimum, so the partial withdrawal is refused for the bound.
+    gw.account_deposit(&exiting, 0, 200 * QUOTE_SCALE).unwrap();
     let (_, c) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);
     let p = page(&gw, &[c]);
     gw.admission_cap = crate::admission::AdmissionCap {
@@ -1413,7 +1414,7 @@ async fn a_state_beyond_a_bound_holds_a_landed_deposit_with_its_own_alert_while_
             withdraw(&mut gw, MIN_WITHDRAWAL).unwrap_err(),
             crate::admission::HISTORY_CAP_EXIT
         );
-        withdraw(&mut gw, 100 * QUOTE_SCALE).unwrap();
+        withdraw(&mut gw, 200 * QUOTE_SCALE).unwrap();
         gw.admission_cap = crate::admission::measured_cap();
     }
     assert_eq!(ingest_once(&app).await.unwrap(), 1);

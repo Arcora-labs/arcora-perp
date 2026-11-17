@@ -10,12 +10,16 @@ use perp_core::engine::MAX_WITHDRAWAL_NONCE_STEP;
 
 const KEY: [u8; 32] = [0x61; 32];
 
+/// What `withdrawer` holds in market 0: enough that its partial withdrawals leave
+/// the 100 USDC entry minimum (audit G1-1).
+const FUNDED: i128 = 200 * QUOTE_SCALE;
+
 fn withdrawer() -> (Gw, [u8; 32], k256::ecdsa::SigningKey, [u8; 20]) {
     let mut gw = Gw::boot_with(GenesisMode::Production);
     let sk = k256::ecdsa::SigningKey::from_slice(&KEY).unwrap();
     let address = eth_address(&sk);
     let (key, _) = gw.register_account(Some(address));
-    gw.account_deposit(&key, 0, 100 * QUOTE_SCALE).unwrap();
+    gw.account_deposit(&key, 0, FUNDED).unwrap();
     (gw, key, sk, address)
 }
 
@@ -199,7 +203,7 @@ fn the_account_view_reports_the_free_balance_the_minimum_is_judged_against() {
         .iter()
         .map(|m| {
             let free = match m.id {
-                0 => 100 * QUOTE_SCALE,
+                0 => FUNDED,
                 1 => QUOTE_SCALE * 2 / 5,
                 _ => 0,
             };
@@ -207,7 +211,7 @@ fn the_account_view_reports_the_free_balance_the_minimum_is_judged_against() {
         })
         .collect();
     assert_eq!(view["marketFree"], serde_json::json!(expected));
-    let total = 100 * QUOTE_SCALE + QUOTE_SCALE * 2 / 5;
+    let total = FUNDED + QUOTE_SCALE * 2 / 5;
     assert_eq!(view["settledBalance"], total.to_string());
     // Under a dollar, but the account-wide balance is not this market's.
     let error = withdraw(&mut gw, &key, &sk, 1, QUOTE_SCALE / 4, to).unwrap_err();

@@ -62,7 +62,7 @@ fn withdraw_at(
 fn audit_1116_ga2_thousands_of_small_withdrawals_are_stopped_early() {
     let mut gw = Gw::boot_with(GenesisMode::Production);
     let (key, sk, to) = account(&mut gw, 0x71, 100_000 * QUOTE_SCALE);
-    let (honest, honest_sk, honest_to) = account(&mut gw, 0x72, 100 * QUOTE_SCALE);
+    let (honest, honest_sk, honest_to) = account(&mut gw, 0x72, 200 * QUOTE_SCALE);
     let history_before = admission::HistorySize::of(&gw.seq.state).history;
     let now = now_ms();
     let mut done = 0u32;
@@ -164,7 +164,7 @@ fn audit_1116_ga2_a_snapshot_without_usage_has_no_ledger_section() {
     let plain = gw.snapshot_plain();
     assert!(!plain.windows(8).any(|w| w == b"DPWLIM01"));
     assert_eq!(Gw::boot_restored(&plain).unwrap().snapshot_plain(), plain);
-    let (key, sk, to) = account(&mut gw, 0x78, 100 * QUOTE_SCALE);
+    let (key, sk, to) = account(&mut gw, 0x78, 200 * QUOTE_SCALE);
     withdraw_at(&mut gw, &key, &sk, MIN_UNITS, to, 1_000_000).unwrap();
     let plain = gw.snapshot_plain();
     assert!(plain.windows(8).any(|w| w == b"DPWLIM01"));
@@ -500,7 +500,7 @@ fn audit_1116_ga2_many_accounts_under_the_quota_cannot_close_registration() {
 #[test]
 fn audit_1116_ga2_unfunded_permits_do_not_close_partial_withdrawals() {
     let mut gw = Gw::boot_with(GenesisMode::Production);
-    let (honest, honest_sk, honest_to) = account(&mut gw, 0x7d, 100 * QUOTE_SCALE);
+    let (honest, honest_sk, honest_to) = account(&mut gw, 0x7d, 200 * QUOTE_SCALE);
     let history = admission::HistorySize::of(&gw.seq.state).history;
     let mut accounts = 0u8;
     let mut permits = 0u64;
