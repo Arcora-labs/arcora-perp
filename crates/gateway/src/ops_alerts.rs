@@ -66,12 +66,19 @@ pub enum AlertKind {
     /// cap. Writes still succeed; at the cap they fail and order intake stops.
     /// Recovered once a captured payload is below the threshold again.
     SnapshotSizeHigh,
+    /// A clock window cannot register: its timed operations span more than the
+    /// verifier's `maxWindowMs` or its last one is past the registration skew
+    /// (seen when the settle loop pauses, or by the post-seal preflight), or the
+    /// verifier reverted its registration (the log names the reason). Nothing
+    /// is registered: the recovery decides the window, and a timed window is
+    /// voided. Recovered once a window settles.
+    ClockRegistrationRefused,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 17] = [
+    pub const ALL: [AlertKind; 18] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -89,6 +96,7 @@ impl AlertKind {
         AlertKind::WindowVoided,
         AlertKind::ClockRecoveryBlocked,
         AlertKind::SnapshotSizeHigh,
+        AlertKind::ClockRegistrationRefused,
     ];
 }
 

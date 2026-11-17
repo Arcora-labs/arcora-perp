@@ -191,6 +191,9 @@ pub struct RegisterPreconditions {
     pub phase: u8,
     /// The request-body limit the prover advertised, when its identity was read.
     pub prover_body_bytes: Option<usize>,
+    /// The clock verifier's timing policy, which the sealed window's operation
+    /// times must meet.
+    pub timing: crate::l1::ClockTiming,
 }
 impl RegisterPreconditions {
     /// Whether window `batch`, sealed for wind-down `phase`, can register against
@@ -215,6 +218,14 @@ impl RegisterPreconditions {
         }
         Ok(())
     }
+    /// Whether the sealed window's operation times can still register at `now_ms`
+    /// (audit G2-2): its timed operations span at most `maxWindowMs`, and its last
+    /// one is within the registration skew. A refusal is final for the window.
+    pub fn admit_times(&self, w: &WindowWitness, now_ms: u64) -> Result<(), PreflightRefusal> {
+        self.timing
+            .check_registrable(&perp_core::clock::TimeBounds::derive(&w.ops), now_ms)
+            .map_err(|why| PreflightRefusal::Unregistrable(format!("window {}: {why}", w.batch_id)))
+    }
 }
 
 /// Why a sealed window was not registered. Nothing was sent to L1 in either case.
@@ -225,11 +236,16 @@ pub enum PreflightRefusal {
     WrongPhase(String),
     /// The window cannot be proven or registered as it is.
     Refused(String),
+    /// The window's operation times can never register (audit G2-2): they span
+    /// more than `maxWindowMs`, the last one is past the registration skew, or
+    /// they do not derive. Unlike a refusal, rolling the window back does not
+    /// help: its operations keep their times when they are sealed again.
+    Unregistrable(String),
 }
 impl std::fmt::Display for PreflightRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::WrongPhase(e) | Self::Refused(e) => f.write_str(e),
+            Self::WrongPhase(e) | Self::Refused(e) | Self::Unregistrable(e) => f.write_str(e),
         }
     }
 }
@@ -2860,6 +2876,10 @@ mod preflight_tests {
             batch_count: w.batch_id,
             phase: 0,
             prover_body_bytes,
+            timing: crate::l1::ClockTiming {
+                max_window_ms: 30_000,
+                clock_skew_ms: 30_000,
+            },
         };
         assert!(matches!(
             client.preflight(&w, 0, Some(&pre(Some(real / 2)))),

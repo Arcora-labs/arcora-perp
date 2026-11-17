@@ -2039,6 +2039,16 @@ struct Gw {
     /// shows it (`clockRecovery`). Runtime-only, like the recovery itself.
     #[serde(skip)]
     clock_recovery: Option<clock_recovery::RecoveryStatus>,
+    /// When the open clock window stops admitting timed operations (audit G2-2).
+    /// Set from the verifier's timing policy in `main()` when windows are
+    /// clock-bound; `None` in demo and legacy modes. Runtime policy, never
+    /// persisted.
+    #[serde(skip)]
+    clock_window: Option<clock_admission::WindowBound>,
+    /// The first timed operation time of the window whose hold was last logged,
+    /// so a closing window is logged once, not on every tick. Runtime-only.
+    #[serde(skip)]
+    clock_window_held: Option<u64>,
 }
 
 /// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
@@ -2594,6 +2604,8 @@ impl Gw {
             void_breaker: Default::default(),
             last_void: None,
             clock_recovery: None,
+            clock_window: None,
+            clock_window_held: None,
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -3453,6 +3465,8 @@ impl Gw {
             );
         }
         let normal_oracle = if self.seq.state.mode != Mode::CloseOnly {
+            // Audit G2-2: an ordinary withdrawal's unbind is a timed operation.
+            self.refuse_if_clock_window_closing(context.price.now_ms)?;
             self.require_candidate_price(market, context.price)?
         } else {
             None
@@ -3729,6 +3743,8 @@ impl Gw {
         self.batch_orders.insert(batch_id, (ordered, rejected));
         // A voided window's replacement has settled.
         self.ops_alerts.recover(ops_alerts::AlertKind::WindowVoided);
+        self.ops_alerts
+            .recover(ops_alerts::AlertKind::ClockRegistrationRefused);
         // the window manifest is the source of truth for this batch's roots; the legacy
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
         self.pending_ordered.clear();
@@ -3926,6 +3942,47 @@ impl Gw {
         Ok(())
     }
 
+    /// Audit G2-2: refuse a timed operation (a tick's fills, funding and
+    /// liquidations, an order, a withdrawal) at `now_ms` once the open clock
+    /// window's first timed operation is `WindowBound::cutoff_ms` old, until the
+    /// settle loop seals the window. Past the verifier's `maxWindowMs` the window
+    /// could never register, and voiding it would roll back every trade in it.
+    /// A window that holds only idle funding no-ops is dropped instead, as the
+    /// settle loop drops it before a seal, so an idle exchange is not held.
+    /// Without a bound (demo and legacy modes) nothing is refused.
+    fn refuse_if_clock_window_closing(&mut self, now_ms: u64) -> Result<(), String> {
+        let Some(bound) = self.clock_window else {
+            return Ok(());
+        };
+        let Some(first) = self.seq.window_first_timed_ms() else {
+            return Ok(());
+        };
+        if !bound.closing(first, now_ms) {
+            return Ok(());
+        }
+        if self.window_withdrawals.is_empty()
+            && self.seq.state.state_root() == self.last_settled_root
+            && self.seq.discard_idle_funding_window()
+        {
+            return Ok(());
+        }
+        if self.clock_window_held != Some(first) {
+            self.clock_window_held = Some(first);
+            eprintln!(
+                "[clock] window {}: its first timed operation is {} ms old (maxWindowMs {}); \
+                 no timed operation is admitted until the window is sealed",
+                self.seq.current_window_id(),
+                now_ms.saturating_sub(first),
+                bound.timing.max_window_ms
+            );
+        }
+        Err(format!(
+            "{}: the open settlement window is closing; orders, withdrawals and other \
+             timed operations are refused until it is sealed. Retry shortly.",
+            clock_admission::WINDOW_CLOSING
+        ))
+    }
+
     /// Place an order for an account. Ioc/Fok are takers; Gtc/PostOnly rest in the
     /// matcher book (so an MM bot can quote). Returns the signed receipt.
     /// SEC-025-D: refuse while the launch gate is closed.
@@ -3976,6 +4033,8 @@ impl Gw {
             .wallet
             .owner;
         self.refuse_if_persistence_failed()?;
+        // Audit G2-2: the order would fill in a tick of the closing window.
+        self.refuse_if_clock_window_closing(price_use.now_ms)?;
 
         // ── sealed order ingress: decrypt inside the enclave (Task 10) ────────
         // A client may send its order ENCRYPTED to the enclave's current order-epoch
@@ -4686,6 +4745,7 @@ impl Gw {
         self.refuse_if_gate_closed()?;
         let market = 0u64;
         let now = now_ms();
+        self.refuse_if_clock_window_closing(now)?;
         let px = self.px_of(market);
         if px <= 0 {
             return Err("no market price".into());
@@ -4835,6 +4895,7 @@ impl Gw {
             return Err("Insufficient market-0 free balance.".into());
         }
         let now = now_ms();
+        self.refuse_if_clock_window_closing(now)?;
         let oracle = oracle_of(self.px_of(0), now, 0, &self.oracle_signer);
         let c = self.lp_counter;
         self.lp_counter += 1;
@@ -5237,6 +5298,7 @@ impl Gw {
     fn place_order(&mut self, req: &OrderReq) -> Result<(WReceipt, Vec<WEvent>), String> {
         self.refuse_candidate_synthetic_price()?;
         self.refuse_if_persistence_failed()?;
+        self.refuse_if_clock_window_closing(now_ms())?;
         // Legacy dev/demo plaintext ingress (this route is mounted only in the demo
         // build). It shares `OrderReq` — whose fields are `#[serde(default)]` for the
         // sealed wire — so it must enforce the SAME core-field presence as
@@ -5377,6 +5439,7 @@ impl Gw {
 
     fn withdraw(&mut self, amount: i128) -> Result<(), String> {
         self.refuse_candidate_synthetic_price()?;
+        self.refuse_if_clock_window_closing(now_ms())?;
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
@@ -5521,6 +5584,14 @@ impl Gw {
         self.note_engine_close_only();
         self.note_admission_cap();
         if self.wind_down_started || self.deposits.check_ready().is_err() {
+            return Ok((vec![], vec![]));
+        }
+        // Audit G2-2: every tick adds timed operations (funding at least), so none
+        // runs while the open clock window is closing; it resumes in the next window.
+        if self
+            .refuse_if_clock_window_closing(price_use.now_ms)
+            .is_err()
+        {
             return Ok((vec![], vec![]));
         }
         if self.candidate_archive_required {
@@ -8939,6 +9010,7 @@ async fn post_v1_withdraw(
             "status": "recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof",
         }))
         .into_response(),
+        Err(e) if e.starts_with(clock_admission::WINDOW_CLOSING) => mutation_error(e),
         Err(e) => err400(e).into_response(),
     }
 }
@@ -9172,6 +9244,15 @@ async fn post_v1_order(
 /// A refused mutation: `RATE_LIMIT` is 429, `PERSISTENCE_UNAVAILABLE` is 503 (retry
 /// once a snapshot write succeeds), anything else 400.
 fn mutation_error(e: String) -> axum::response::Response {
+    // Audit G2-2: the open clock window seals within seconds; retry like a pause.
+    if e.starts_with(clock_admission::WINDOW_CLOSING) {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(axum::http::header::RETRY_AFTER, "2")],
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response();
+    }
     let status = if e.starts_with("RATE_LIMIT") {
         StatusCode::TOO_MANY_REQUESTS
     } else if e.starts_with(PERSISTENCE_UNAVAILABLE) {
@@ -10437,17 +10518,22 @@ async fn main() {
         }),
     );
     let l1 = l1.map(|chain| chain.with_clock_shutdown(service_policy.shutdown.clone()));
-    let clock_settle_period = if let Some(chain) = l1.as_ref().filter(|c| c.clock_enabled()) {
+    // The clock verifier's timing policy is read once here and kept: it sets the
+    // seal cadence and when the open window stops admitting timed operations.
+    let (clock_timing, clock_settle_period) = if let Some(chain) =
+        l1.as_ref().filter(|c| c.clock_enabled())
+    {
         let chain = chain.clone();
-        match tokio::task::spawn_blocking(move || chain.clock_seal_period()).await {
-            Ok(Ok(period)) => period,
+        let read = tokio::task::spawn_blocking(move || chain.clock_timing()).await;
+        match read.map(|timing| timing.and_then(|t| t.seal_period().map(|p| (t, p)))) {
+            Ok(Ok((timing, period))) => (Some(timing), period),
             _ => {
                 eprintln!("[clock] REFUSING startup: cannot verify timing policy and seal cadence");
                 std::process::exit(1);
             }
         }
     } else {
-        Duration::from_secs(L1_SETTLE_SECS)
+        (None, Duration::from_secs(L1_SETTLE_SECS))
     };
     // SEC-020 Task 4: the DEV_INSECURE escape is refused outright in production
     // (Task-1 posture). `resolve_seal_root` only refuses it when the seal root
@@ -10943,6 +11029,11 @@ async fn main() {
     // be false finality (see `honest_finality_required` + the boot warning above; pinned
     // by `l1_without_a_prover_must_not_simulate_settled`).
     gw.window_settle_mode = honest_finality_required(prover.is_some(), l1.is_some());
+    // Audit G2-2: clock-bound windows stop admitting timed operations before they
+    // outgrow the verifier's maxWindowMs. Only where the settle loop seals them.
+    gw.clock_window = clock_timing
+        .filter(|_| prover.as_ref().is_some_and(|p| p.clock_enabled()))
+        .map(|timing| clock_admission::WindowBound::new(timing, clock_settle_period));
     if gw.window_settle_mode {
         // Task 5 fix round 1 (report Concern 1, memory): the window path never
         // consumes the per-tick rollback snapshots, and with the SETTLE_TICKS
@@ -12345,6 +12436,23 @@ async fn main() {
                             && gw.window_withdrawals.is_empty()
                             && gw.seq.state.state_root() == gw.last_settled_root
                         { gw.seq.discard_idle_funding_window(); }
+                        // Audit G2-2: the pause waited for the work in flight. A
+                        // window that can no longer register is reported before the
+                        // seal; the post-seal preflight then hands it to the recovery
+                        // without sending a registration.
+                        if let Some(bound) = gw.clock_window {
+                            if let Err(why) = bound
+                                .timing
+                                .check_registrable(&gw.seq.window_time_bounds(), now_ms())
+                            {
+                                eprintln!(
+                                    "[clock] window {} can no longer register when sealed: {why}",
+                                    gw.seq.current_window_id()
+                                );
+                                gw.ops_alerts
+                                    .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
+                            }
+                        }
                         // A poisoned archive mutex must HOLD the settle. The old
                         // `.map(lock).and_then(ok)` silently became `None` and
                         // sealed candidate windows with NO binding — a legacy
@@ -12448,6 +12556,15 @@ async fn main() {
                             }
                         };
                         journal = returned;
+                        // Audit G2-2: a window whose operation times can never
+                        // register is not rolled back, which would seal the same
+                        // times again; it goes to the recovery below.
+                        let (preflight, unregistrable) = match preflight {
+                            Err(prover_client::PreflightRefusal::Unregistrable(why)) => {
+                                (Ok(()), Some(why))
+                            }
+                            other => (other, None),
+                        };
                         if let Err(refusal) = preflight {
                             let wrong_phase = matches!(refusal, prover_client::PreflightRefusal::WrongPhase(_));
                             eprintln!("[l1] window {batch_id} was not registered: {refusal}; rolled back, nothing was sent");
@@ -12490,6 +12607,33 @@ async fn main() {
                         if let Err(error) = durable {
                             hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
                             break;
+                        }
+                        if let Some(why) = unregistrable {
+                            // Journaled with its intent and nothing sent: the recovery
+                            // registers nothing and decides the window at finalized
+                            // blocks. A timed window is voided once the chain clock is
+                            // past its registration skew, not after the registration
+                            // wait's twenty minutes.
+                            eprintln!("[clock] {why}; nothing was sent, the recovery decides the window");
+                            app.gw
+                                .lock()
+                                .await
+                                .ops_alerts
+                                .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
+                            let (rec, delay) = start_clock_recovery(
+                                &app,
+                                batch_id,
+                                &witness_rb,
+                                phase,
+                                why,
+                                prune_candidates,
+                                gate_was_closed,
+                                l1.nonce_ceiling(),
+                            )
+                            .await;
+                            pending = Some(rec);
+                            next_attempt = tokio::time::Instant::now() + delay;
+                            continue;
                         }
                     }
                     // Archive-required guard BEFORE any prover/chain side effect:
@@ -12669,6 +12813,18 @@ async fn main() {
                                     now_ms().saturating_sub(b.last_ms)
                                 ),
                                 _ => eprintln!("[recovery] window {batch_id}: clock failed: {e}"),
+                            }
+                            // Audit G2-2: a reverted registration is not waited out, and
+                            // one too late to send was not sent; the operator is told at
+                            // once (the reason is in the log above).
+                            if e.contains(l1::REGISTRATION_REVERTED)
+                                || e.contains(l1::PAST_REGISTRATION_SKEW)
+                            {
+                                app.gw
+                                    .lock()
+                                    .await
+                                    .ops_alerts
+                                    .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
                             }
                             // The ceiling is taken after the worker returned: a send
                             // holds its lane until cast returns, so it covers every

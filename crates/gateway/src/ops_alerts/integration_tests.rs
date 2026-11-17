@@ -525,6 +525,7 @@ fn alert_kinds_have_stable_names_and_active_lists_open_episodes() {
             "window_voided",
             "clock_recovery_blocked",
             "snapshot_size_high",
+            "clock_registration_refused",
         ]
     );
     let alerts = OpsAlerts::default();

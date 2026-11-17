@@ -14,7 +14,65 @@ pub(crate) struct ClockConfig {
     /// The verifier's `clockSkewMs` once read; it is constructor-set, so the
     /// first successful read holds for every clone.
     pub clock_skew_ms: std::sync::Arc<std::sync::OnceLock<u64>>,
+    /// The verifier's `maxWindowMs` once read; constructor-set like the skew.
+    pub max_window_ms: std::sync::Arc<std::sync::OnceLock<u64>>,
 }
+
+/// The clock verifier's timing policy. Both values are constructor-set
+/// (immutable), so one read at boot holds for the life of the deployment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClockTiming {
+    /// `maxWindowMs`: the most a window's timed operations may span
+    /// (`lastMs - firstMs`); a wider window's `register` reverts (`InvalidTime`).
+    pub max_window_ms: u64,
+    /// `clockSkewMs`: a timed window registers only while the block time is at
+    /// most this far past its last timed operation.
+    pub clock_skew_ms: u64,
+}
+impl ClockTiming {
+    /// How often the settle loop seals a window: a quarter of the shorter bound,
+    /// and at least every `L1_SETTLE_SECS`.
+    pub(crate) fn seal_period(&self) -> Result<std::time::Duration, String> {
+        let millis = (self.max_window_ms / 4)
+            .min(self.clock_skew_ms / 4)
+            .min(crate::L1_SETTLE_SECS * 1000);
+        if millis < 100 {
+            return Err("clock timing policy is too narrow for gateway cadence".into());
+        }
+        Ok(std::time::Duration::from_millis(millis))
+    }
+    /// Whether a window whose operations have `bounds` can still register at
+    /// `now_ms` (audit G2-2). Each refusal is final for the window as sealed: its
+    /// operation times are fixed, so no retry registers it. An untimed window
+    /// always can.
+    pub(crate) fn check_registrable(
+        &self,
+        bounds: &Result<TimeBounds, perp_core::EngineError>,
+        now_ms: u64,
+    ) -> Result<(), String> {
+        let b = bounds.as_ref().map_err(|e| {
+            format!("its operation times are not monotonic ({e:?}), so it can never register")
+        })?;
+        if b.count == 0 {
+            return Ok(());
+        }
+        let span = b.last_ms.saturating_sub(b.first_ms);
+        if span > self.max_window_ms {
+            return Err(format!(
+                "its timed operations span {span} ms, more than maxWindowMs {}; the \
+                 verifier would revert its registration (InvalidTime)",
+                self.max_window_ms
+            ));
+        }
+        check_register_skew(b.last_ms, self.clock_skew_ms, now_ms)
+    }
+}
+
+/// Marks a registration the clock verifier reverted (`registration_sent`).
+pub(crate) const REGISTRATION_REVERTED: &str = "the clock verifier reverted the registration";
+/// Marks a timed window refused before sending because its last operation is too
+/// old to register (`check_register_skew`).
+pub(crate) const PAST_REGISTRATION_SKEW: &str = "timed window is past its registration skew";
 
 /// `cell`'s value, or the result of `read`, kept only when it succeeds.
 fn cached_once<T: Copy>(
@@ -49,6 +107,7 @@ impl ClockConfig {
             stop: None,
             program_vkey: Default::default(),
             clock_skew_ms: Default::default(),
+            max_window_ms: Default::default(),
         }))
     }
     pub(crate) fn from_env() -> Result<Option<Self>, String> {
@@ -417,9 +476,67 @@ fn read_clock_skew(r: &CanonicalRead<'_>, verifier: &[u8; 20]) -> Result<u64, St
 pub(super) fn check_register_skew(last_ms: u64, skew_ms: u64, now_ms: u64) -> Result<(), String> {
     let margin = (skew_ms / 10).min(REGISTER_SKEW_MARGIN_MS);
     if now_ms as u128 + margin as u128 > last_ms as u128 + skew_ms as u128 {
-        return Err("timed window is past its registration skew; nothing sent".into());
+        return Err(format!("{PAST_REGISTRATION_SKEW}; nothing sent"));
     }
     Ok(())
+}
+
+/// What a `register` send says about the registration (audit G2-2). Nothing is
+/// swallowed: the outcome is always logged. A revert registered nothing, now or
+/// later, so its reason is returned at once instead of waiting for an anchor that
+/// cannot come; the caller's recovery decides the window. Any other error
+/// leaves the outcome unknown (the transaction may still be mined): it is logged
+/// and `Ok` is returned, so the caller waits for the finalized anchor.
+pub(super) fn registration_sent(batch: u64, sent: Result<String, String>) -> Result<(), String> {
+    match sent {
+        Ok(tx) => {
+            println!("[clock] window {batch}: registration sent in {tx}");
+            Ok(())
+        }
+        Err(e) if is_revert(&e) => {
+            let reason = revert_reason(&e);
+            eprintln!("[clock] window {batch}: {REGISTRATION_REVERTED} ({reason}): {e}");
+            Err(format!(
+                "{REGISTRATION_REVERTED} ({reason}); nothing was registered: {e}"
+            ))
+        }
+        Err(e) => {
+            eprintln!(
+                "[clock] window {batch}: the registration send failed with an unknown \
+                 outcome; waiting for its finalized anchor: {e}"
+            );
+            Ok(())
+        }
+    }
+}
+
+/// A send error that reports a revert of the call itself (the estimate, or the
+/// mined transaction), not a transport failure.
+fn is_revert(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    e.contains("revert") && !e.contains("timed out")
+}
+
+/// The `ClockBoundVerifier` error a revert names by its selector, or "reason not
+/// decoded".
+fn revert_reason(error: &str) -> &'static str {
+    const ERRORS: [&str; 6] = [
+        "InvalidTime",
+        "BadContext",
+        "ReplacementForbidden",
+        "Unauthorized",
+        "InvalidConfiguration",
+        "MissingAnchor",
+    ];
+    let e = error.to_ascii_lowercase();
+    ERRORS
+        .into_iter()
+        .find(|name| {
+            let selector =
+                crate::hex0x(&perp_core::clock::keccak(format!("{name}()").as_bytes())[..4]);
+            e.contains(&selector) || e.contains(&name.to_ascii_lowercase())
+        })
+        .unwrap_or("reason not decoded")
 }
 
 /// What a registration does once the window's anchor at the latest block is
@@ -427,7 +544,8 @@ pub(super) fn check_register_skew(last_ms: u64, skew_ms: u64, now_ms: u64) -> Re
 /// registration with `send` and return `None`. `ExistingOnly` never sends, and
 /// a timed window is never sent past its registration skew; `clock_skew_ms` is
 /// read only for a timed window that would be sent. An error from `send` means
-/// nothing was broadcast; a broadcast whose outcome is unknown returns `Ok`.
+/// nothing was or will be registered by it; a broadcast whose outcome is unknown
+/// returns `Ok`.
 pub(super) fn register_or_reuse(
     mode: crate::clock_client::RegisterMode,
     existing: Option<ClockContext>,
@@ -613,6 +731,7 @@ impl L1 {
             stop: None,
             program_vkey: Default::default(),
             clock_skew_ms: Default::default(),
+            max_window_ms: Default::default(),
         });
         l1
     }
@@ -632,8 +751,22 @@ impl L1 {
     fn clock_stop(&self) -> Option<&crate::service_shutdown::Shutdown> {
         self.clock.as_ref().and_then(|c| c.stop.as_deref())
     }
+    #[cfg(test)]
     pub(crate) fn clock_seal_period(&self) -> Result<std::time::Duration, String> {
+        self.clock_timing()?.seal_period()
+    }
+    /// The configured verifier's timing policy, read at the latest block with the
+    /// settlement's binding to it checked, and kept for every clone once read.
+    pub(crate) fn clock_timing(&self) -> Result<ClockTiming, String> {
         let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
+        if let (Some(max_window_ms), Some(clock_skew_ms)) =
+            (cfg.max_window_ms.get(), cfg.clock_skew_ms.get())
+        {
+            return Ok(ClockTiming {
+                max_window_ms: *max_window_ms,
+                clock_skew_ms: *clock_skew_ms,
+            });
+        }
         let verifier = crate::hex0x(&cfg.verifier);
         let (window, skew) = self.observe_at(observation::AnchorPolicy::Latest, |r| {
             if address(r.word(&self.settlement, "verifier()", None)?)? != cfg.verifier {
@@ -644,11 +777,10 @@ impl L1 {
                 abi_u64(r.word(&verifier, "clockSkewMs()", None)?, "clockSkewMs")?,
             ))
         })?;
-        let millis = (window / 4).min(skew / 4).min(crate::L1_SETTLE_SECS * 1000);
-        if millis < 100 {
-            return Err("clock timing policy is too narrow for gateway cadence".into());
-        }
-        Ok(std::time::Duration::from_millis(millis))
+        Ok(ClockTiming {
+            max_window_ms: *cfg.max_window_ms.get_or_init(|| window),
+            clock_skew_ms: *cfg.clock_skew_ms.get_or_init(|| skew),
+        })
     }
     /// `anchorTimeoutMs()` of the configured clock verifier.
     #[allow(dead_code)] // consumed by the stale-anchor alert
@@ -1086,14 +1218,17 @@ impl L1 {
                 roots.wind_down_phase.to_string(),
             ];
             let args: Vec<&str> = values.iter().map(String::as_str).collect();
-            // Errors are ambiguous: caller retains the pre-registration WAL intent.
-            // A lost receipt is ambiguous. Do not submit changed data or roll back;
-            // observe finalized state until this SAME registration resolves.
+            // A lost receipt is ambiguous: the caller retains the pre-registration
+            // WAL intent. Do not submit changed data or roll back; observe finalized
+            // state until this SAME registration resolves. A revert is not
+            // ambiguous: it registered nothing (`registration_sent`).
             if self.clock_stopping() {
                 return Err("clock registration cancelled before broadcast; retain journal".into());
             }
-            let _send_result = self.send(&crate::hex0x(&cfg.verifier), REGISTER_SIG, &args);
-            Ok(())
+            registration_sent(
+                w.batch_id,
+                self.send(&crate::hex0x(&cfg.verifier), REGISTER_SIG, &args),
+            )
         };
         let reused = register_or_reuse(
             mode,
@@ -1210,12 +1345,104 @@ mod configuration_tests {
             stop: None,
             program_vkey: Default::default(),
             clock_skew_ms: Default::default(),
+            max_window_ms: Default::default(),
         });
         p.outcome.proof = vec![1; 32];
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());
         p.outcome.proof = perp_core::clock::PROOF_MAGIC.to_vec();
         p.outcome.proof.extend([1; 32]);
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());
+    }
+}
+
+/// Audit 2026-11-16 G2-2: the registration send's outcome is surfaced.
+#[cfg(test)]
+mod audit_1116_g2_tests {
+    use super::*;
+
+    /// The revert of a `register` call as cast reports it: the estimate's
+    /// JSON-RPC error with the custom error's selector.
+    fn reverted(error: &str) -> String {
+        let selector =
+            crate::hex0x(&perp_core::clock::keccak(format!("{error}()").as_bytes())[..4]);
+        format!(
+            "Error: server returned an error response: error code 3: execution reverted, \
+             data: \"{selector}\""
+        )
+    }
+
+    /// G2-2: the registration send's result was dropped, so a window the
+    /// verifier refused (InvalidTime past maxWindowMs) waited out the twenty
+    /// minute finality budget for an anchor that could never come, with trading
+    /// closed, before it was voided. A revert now returns at once with its reason
+    /// named, and nothing is waited for; a send whose outcome is unknown (a
+    /// timeout, a lost receipt) still waits for the finalized anchor.
+    #[test]
+    fn audit_1116_g2_2_a_reverted_registration_is_surfaced_and_not_waited_out() {
+        let error = registration_sent(7, Err(reverted("InvalidTime"))).unwrap_err();
+        assert!(error.contains(REGISTRATION_REVERTED), "{error}");
+        assert!(error.contains("InvalidTime"), "{error}");
+        assert!(error.contains("nothing was registered"), "{error}");
+        let error = registration_sent(7, Err(reverted("BadContext"))).unwrap_err();
+        assert!(error.contains("BadContext"), "{error}");
+        let error =
+            registration_sent(7, Err("execution reverted: unknown data".into())).unwrap_err();
+        assert!(error.contains("reason not decoded"), "{error}");
+        // Unknown outcomes and a sent registration wait for the anchor.
+        registration_sent(7, Err("cast timed out after 90s (RPC wedged)".into())).unwrap();
+        registration_sent(7, Err("error sending request: connection refused".into())).unwrap();
+        registration_sent(7, Ok("0xabc".into())).unwrap();
+        // The refusal reaches the caller of the registration, ahead of any wait.
+        let bounds = TimeBounds {
+            first_ms: 1_000,
+            last_ms: 40_000,
+            count: 2,
+        };
+        let refused = register_or_reuse(
+            crate::clock_client::RegisterMode::SendIfAbsent,
+            None,
+            &bounds,
+            40_000,
+            || Ok(30_000),
+            || registration_sent(7, Err(reverted("InvalidTime"))),
+        )
+        .unwrap_err();
+        assert!(refused.contains("InvalidTime"), "{refused}");
+    }
+
+    /// G2-2: the timing policy's own checks: span, skew and derivation.
+    #[test]
+    fn audit_1116_g2_2_clock_timing_checks_span_skew_and_derivation() {
+        let timing = ClockTiming {
+            max_window_ms: 30_000,
+            clock_skew_ms: 30_000,
+        };
+        assert_eq!(
+            timing.seal_period().unwrap(),
+            std::time::Duration::from_millis(7_500)
+        );
+        let b = |first_ms, last_ms| {
+            Ok(TimeBounds {
+                first_ms,
+                last_ms,
+                count: 2,
+            })
+        };
+        timing.check_registrable(&b(0, 30_000), 30_000).unwrap();
+        assert!(timing
+            .check_registrable(&b(0, 30_001), 30_001)
+            .unwrap_err()
+            .contains("maxWindowMs"));
+        assert!(timing
+            .check_registrable(&b(0, 1_000), 31_000)
+            .unwrap_err()
+            .contains("skew"));
+        assert!(timing
+            .check_registrable(&Err(perp_core::EngineError::ClockMismatch), 0)
+            .is_err());
+        timing
+            .check_registrable(&Ok(TimeBounds::default()), u64::MAX)
+            .unwrap();
     }
 }
 

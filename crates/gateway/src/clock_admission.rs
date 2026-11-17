@@ -67,6 +67,44 @@ impl ClockAdmission {
     }
 }
 
+/// Prefix of the refusal of a timed operation while the open window is closing
+/// (`WindowBound`). The HTTP layer answers it 503 with `Retry-After`.
+pub(crate) const WINDOW_CLOSING: &str = "CLOCK_WINDOW_CLOSING";
+
+/// When the open clock window stops admitting timed operations (audit G2-2).
+///
+/// The verifier refuses to register a window whose timed operations span more
+/// than `maxWindowMs`. Only the settle loop's seal bounds the open window, and
+/// several conditions skip a seal (a failed batch-count read, a stale challenge
+/// read, a failed snapshot) while ticks go on adding timed funding operations, so
+/// the window is bounded here instead: once its first timed operation is
+/// `cutoff_ms` old, no further timed operation (a tick's fills, funding and
+/// liquidations, an order, a withdrawal) is admitted until it is sealed. The
+/// cutoff leaves one seal period of `maxWindowMs`, so the next seal finds the
+/// window inside the bound and its last timed operation at most a seal period
+/// before the registration that follows. Runtime policy, read from the verifier
+/// at boot; demo and legacy modes have none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct WindowBound {
+    pub timing: crate::l1::ClockTiming,
+    /// No timed operation is admitted once the window's first one is this old.
+    pub cutoff_ms: u64,
+}
+impl WindowBound {
+    pub(crate) fn new(timing: crate::l1::ClockTiming, seal_period: std::time::Duration) -> Self {
+        let period = u64::try_from(seal_period.as_millis()).unwrap_or(u64::MAX);
+        Self {
+            timing,
+            cutoff_ms: timing.max_window_ms.saturating_sub(period),
+        }
+    }
+    /// Whether a window whose first timed operation is at `first_ms` stops
+    /// admitting timed operations at `now_ms`.
+    pub(crate) fn closing(&self, first_ms: u64, now_ms: u64) -> bool {
+        now_ms.saturating_sub(first_ms) >= self.cutoff_ms
+    }
+}
+
 pub(crate) struct Paused {
     owner: Arc<ClockAdmission>,
     _permit: OwnedRwLockWriteGuard<()>,

@@ -487,6 +487,10 @@ fn preconditions(chain: &Chain) -> Result<crate::prover_client::RegisterPrecondi
         batch_count,
         phase,
         prover_body_bytes: None,
+        timing: super::ClockTiming {
+            max_window_ms: 30_000,
+            clock_skew_ms: 30_000,
+        },
     })
 }
 fn preflight(chain: &Chain, batch: u64, phase: u8) -> Result<(), PreflightRefusal> {
