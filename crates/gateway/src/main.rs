@@ -42,7 +42,9 @@ use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::state::Mode;
-use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
+use sequencer::{
+    adl_tag, adl_tag_key, forced_close_tag, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness,
+};
 
 mod account_recovery;
 mod admission;
@@ -5673,6 +5675,24 @@ impl Gw {
                     })
                     .to_string(),
                 );
+            }
+            // per-account forced close (audit 2026-11-16 PC-1): another account's
+            // liquidation closed some or all of this position at the oracle price,
+            // and the sequencer cancelled the account's resting orders in that
+            // market (`ForcedClose`). Recognized the same way, under its own tag.
+            for m in &self.mkts {
+                let tag = forced_close_tag(&tag_key, m.id, sealed.batch_id);
+                for r in sealed.forced_close_receipts.iter().filter(|r| r.tag == tag) {
+                    acct_events.push(
+                        serde_json::json!({
+                            "owner": owner_hex, "type": "forcedClose", "marketId": m.id,
+                            "size": r.size.to_string(), "price": r.price.to_string(),
+                            "realizedPnl": r.realized.to_string(),
+                            "penalty": r.penalty.to_string(),
+                        })
+                        .to_string(),
+                    );
+                }
             }
             // A04: SETTLED is a finality axis, not proof of full execution. Never
             // evict the only API row for a still-live partial maker. Gather its live

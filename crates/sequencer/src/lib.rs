@@ -24,7 +24,7 @@ use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
 use matcher::{ImpactWindow, Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus};
-use perp_core::engine::BatchOp;
+use perp_core::engine::{BatchOp, ForcedClose};
 use perp_core::fixed::{notional_quote, QUOTE_SCALE, RATE_SCALE};
 use perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL;
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
@@ -177,6 +177,13 @@ pub struct SealedBatch {
     /// surface — a socialized loss is recorded and self-detectable, not silent —
     /// while staying unlinkable to an observer who knows only the public owner id.
     pub adl_receipts: Vec<AdlReceipt>,
+    /// Per-position **forced-close receipts** for this batch (audit 2026-11-16
+    /// PC-1). A liquidation closes the other side of its market by the liquidated
+    /// size; each position it reduced gets a receipt: a secret-keyed
+    /// [`forced_close_tag`] only that account can recognize, paired with what the
+    /// close did. The owner's resting orders in that market are cancelled with
+    /// removal reason `ForcedClose` (in `removals`).
+    pub forced_close_receipts: Vec<ForcedCloseReceipt>,
     /// The batch's replayable op-log: `[applied fills] ++ [maintenance AccrueFunding/
     /// Liquidate]`, in application order. Replaying it against the batch's pre-state
     /// (the retained snapshot) via `apply_batch` reproduces `new_state_root` — the
@@ -254,12 +261,37 @@ pub struct AdlReceipt {
     pub clawed: i128,
 }
 
-/// The liquidated owners and ADL haircuts produced by one [`Sequencer::run_maintenance`]
-/// pass. The haircuts carry `(owner, market, clawed)` so the seal can tag them.
+/// A published forced close (audit 2026-11-16 PC-1): another account's
+/// liquidation closed `size` of the affected account's position at the oracle
+/// `price`. The account recognizes `tag` by recomputing
+/// `forced_close_tag(&adl_tag_key(spend_key), market, batch)`. Unlinkable to any
+/// other observer, like an [`AdlReceipt`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ForcedCloseReceipt {
+    pub tag: Digest,
+    /// The size change the close applied, size-scaled, opposite in sign to the
+    /// position (a short gives up size by buying).
+    pub size: i128,
+    /// The liquidation's validated oracle price, price-scaled.
+    pub price: i128,
+    /// The PnL the close realized, quote-scaled.
+    pub realized: i128,
+    /// The liquidation penalty charged on the closed size (only a position that
+    /// was itself liquidatable pays one), quote-scaled.
+    pub penalty: i128,
+}
+
+/// The liquidated owners, ADL haircuts and forced closes produced by one
+/// [`Sequencer::run_maintenance`] pass. The haircuts carry `(owner, market,
+/// clawed)` and the forced closes `(market, price, close)` so the seal can tag
+/// them.
 pub struct MaintenanceOutcome {
     pub removals: Vec<OrderRemoval>,
     pub liquidated: Vec<(PubKey, MarketId)>,
     pub adl: Vec<(PubKey, MarketId, i128)>,
+    /// Every position a liquidation closed with the liquidated one, with its
+    /// market and the liquidation's oracle price, in application order.
+    pub forced_closes: Vec<(MarketId, i128, ForcedClose)>,
     /// The AccrueFunding + Liquidate ops applied this pass, in application order —
     /// the maintenance half of the batch's replayable op-log (Slice 3a).
     pub ops: Vec<BatchOp>,
@@ -305,6 +337,18 @@ pub fn adl_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
     Keccak256::hash_words(
         Domain::Adl,
         &[*tag_key, word_u64(market_id), word_u64(batch_id)],
+    )
+}
+
+/// A per-`(account, market, batch)` forced-close tag (audit 2026-11-16 PC-1),
+/// keyed on the account's SECRET ADL tag key ([`adl_tag_key`]): the close of the
+/// other side is the size half of the same backstop. A distinct domain
+/// (`Domain::ForcedClose`), so it never equals the account's ADL or liquidation
+/// tag. Published in [`ForcedCloseReceipt`].
+pub fn forced_close_tag(adl_tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
+    Keccak256::hash_words(
+        Domain::ForcedClose,
+        &[*adl_tag_key, word_u64(market_id), word_u64(batch_id)],
     )
 }
 
@@ -1499,6 +1543,7 @@ impl Sequencer {
         self.sample_funding_premiums(now_ms);
         let mut liquidated = Vec::new();
         let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
+        let mut forced_closes: Vec<(MarketId, i128, ForcedClose)> = Vec::new();
         // The replayable op-log for this maintenance pass: every AccrueFunding/Liquidate
         // we actually apply is recorded here, in application order, so the proof can
         // reproduce the maintenance transition (Slice 3a). An op is pushed ONLY when its
@@ -1544,7 +1589,7 @@ impl Sequencer {
             // (audit 2026-11-16 PC-1), so a later candidate may already be reduced
             // or flat: the engine then refuses it and nothing is logged.
             for owner in candidates {
-                if let Ok(haircuts) = self.state.liquidate(&owner, mid, &oracle, now_ms) {
+                if let Ok(report) = self.state.liquidate_reported(&owner, mid, &oracle, now_ms) {
                     liquidated.push((owner, mid));
                     // `state.liquidate` is the SAME transition as `BatchOp::Liquidate`
                     // (both dispatch to `op_liquidate`, incl. the ADL cascade), so record
@@ -1558,8 +1603,13 @@ impl Sequencer {
                     });
                     // Carry each auto-deleverage haircut up with its market so the
                     // seal can publish an attributable receipt for it (audit Q2).
-                    for h in haircuts {
+                    for h in report.haircuts {
                         adl.push((h.owner, mid, h.clawed));
+                    }
+                    // And each position the close of the other side reduced, so the
+                    // seal can cancel its owner's orders here and publish a receipt.
+                    for close in report.forced_closes {
+                        forced_closes.push((mid, price, close));
                     }
                 }
             }
@@ -1568,6 +1618,7 @@ impl Sequencer {
             removals,
             liquidated,
             adl,
+            forced_closes,
             ops,
         }
     }
@@ -1774,15 +1825,28 @@ impl Sequencer {
         // 3b. maintenance: accrue funding + liquidate underwater positions (§5,§8).
         //     Liquidating an owner also cancels its resting orders, so a
         //     bad-debt account can't leave stale makers that would fail to settle.
+        //     A liquidation also closes some or all of the positions on the other
+        //     side (audit 2026-11-16 PC-1): their owners' resting orders in that
+        //     market were placed against positions that changed under them (a
+        //     take-profit that was a close would now open a new position), so they
+        //     are cancelled too, after the liquidated owners', whose removal
+        //     reason wins.
         let MaintenanceOutcome {
             mut removals,
             liquidated: liquidations,
             adl: adl_haircuts,
+            forced_closes,
             ops: maintenance_ops,
         } = self.run_maintenance(now_ms);
         ops.extend(maintenance_ops);
         for (owner, _market) in &liquidations {
             removals.extend(self.matcher.cancel_owner_with_events(owner));
+        }
+        for (market, _, close) in &forced_closes {
+            removals.extend(
+                self.matcher
+                    .cancel_owner_forced_close_with_events(&close.owner, *market),
+            );
         }
         // Keep the minimum-exempt orders that still rest; the rest have filled,
         // been banned, expired or been cancelled with a liquidated owner.
@@ -1920,6 +1984,26 @@ impl Sequencer {
             })
             .collect();
 
+        // Publish each forced close the same way, keyed on the account's ADL tag
+        // key under its own domain (audit 2026-11-16 PC-1).
+        let forced_close_receipts: Vec<ForcedCloseReceipt> = forced_closes
+            .iter()
+            .map(|(market, price, close)| {
+                let tag_key = self
+                    .adl_tag_keys
+                    .get(&close.owner)
+                    .copied()
+                    .unwrap_or_else(|| self.adl_fallback_key(&close.owner));
+                ForcedCloseReceipt {
+                    tag: forced_close_tag(&tag_key, *market, batch_id),
+                    size: close.size,
+                    price: *price,
+                    realized: close.realized,
+                    penalty: close.penalty,
+                }
+            })
+            .collect();
+
         // Append this tick's ops + settled/rejected hashes to the open window's
         // accumulators, in application order. `seal_window` drains these into the
         // per-window `WindowWitness`; `ops`/`manifest` are still moved into `SealedBatch`
@@ -1941,6 +2025,7 @@ impl Sequencer {
             receipts,
             liquidation_tags,
             adl_receipts,
+            forced_close_receipts,
             ops,
         }
     }

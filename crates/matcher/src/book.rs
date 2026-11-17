@@ -598,6 +598,14 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         self.remove_where(|r| &r.owner == owner, "Liquidated")
     }
 
+    /// Cancel every resting order of `owner` in this book because another
+    /// account's liquidation closed some or all of `owner`'s position here
+    /// (audit 2026-11-16 PC-1): an order placed against the old position, a
+    /// take-profit that was a close, could otherwise open a new one.
+    pub fn cancel_owner_forced_close_with_events(&mut self, owner: &PubKey) -> Vec<OrderRemoval> {
+        self.remove_where(|r| &r.owner == owner, "ForcedClose")
+    }
+
     /// Reap before using the book as a funding mark; retain attribution for clients.
     pub fn reap_expired(&mut self, now_ms: u64) -> usize {
         self.reap_expired_with_events(now_ms).len()

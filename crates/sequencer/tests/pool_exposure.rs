@@ -20,7 +20,7 @@ use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Order, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::{EngineError, Note};
-use sequencer::{EnclaveIdentity, Sequencer};
+use sequencer::{adl_tag, adl_tag_key, forced_close_tag, EnclaveIdentity, Sequencer};
 
 const PAIR_LONG: u64 = 1;
 const PAIR_SHORT: u64 = 2;
@@ -429,4 +429,37 @@ fn audit_1116_pc1_a_forced_close_leaves_other_accounts_orders_resting() {
         seq.remaining_order_size(&passive_bid.order_hash::<Keccak256>()),
         None
     );
+}
+
+/// Round-1 review: the forced close left no trace the counterparty could see,
+/// while an ADL haircut gets an attributable receipt. Each reduced position now
+/// gets a receipt under a tag only its owner can recompute.
+#[test]
+fn audit_1116_pc1_a_forced_close_is_reported_to_its_owner_only() {
+    let (_, _, sealed) = take_profit_scenario();
+    let short_key = adl_tag_key(&spend_key(PAIR_SHORT));
+    let short_tag = forced_close_tag(&short_key, 0, sealed.batch_id);
+    assert_eq!(
+        sealed.forced_close_receipts.len(),
+        1,
+        "only the short is closed"
+    );
+    let receipt = sealed.forced_close_receipts[0];
+    assert_eq!(receipt.tag, short_tag);
+    // The short bought its 1 BTC back at $94.5k: $5,500 realized; it was healthy,
+    // so no penalty.
+    assert_eq!(receipt.size, SIZE_SCALE);
+    assert_eq!(receipt.price, 94_500 * PRICE_SCALE);
+    assert_eq!(receipt.realized, usd(5_500));
+    assert_eq!(receipt.penalty, 0);
+    // Not the liquidated long's, not the short's ADL tag, and not computable from
+    // the public owner id.
+    let long_tag = forced_close_tag(&adl_tag_key(&spend_key(PAIR_LONG)), 0, sealed.batch_id);
+    assert_ne!(receipt.tag, long_tag);
+    assert_ne!(receipt.tag, adl_tag(&short_key, 0, sealed.batch_id));
+    assert_ne!(
+        receipt.tag,
+        forced_close_tag(&owner_id(PAIR_SHORT), 0, sealed.batch_id)
+    );
+    assert!(sealed.adl_receipts.is_empty(), "nothing was clawed");
 }

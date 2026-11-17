@@ -133,6 +133,20 @@ impl<H: Hasher> MatchingEngine<H> {
             .collect()
     }
 
+    /// Cancel every resting order of `owner` in `market_id` only, because a
+    /// liquidation on the other side closed some or all of its position there
+    /// (removal reason `ForcedClose`). Its orders in other markets stay.
+    pub fn cancel_owner_forced_close_with_events(
+        &mut self,
+        owner: &perp_core::note::PubKey,
+        market_id: MarketId,
+    ) -> Vec<OrderRemoval> {
+        self.books
+            .get_mut(&market_id)
+            .map(|b| b.cancel_owner_forced_close_with_events(owner))
+            .unwrap_or_default()
+    }
+
     /// The seq number that will be assigned to the next accepted order.
     pub fn peek_seq(&self) -> u64 {
         self.next_seq
@@ -1266,5 +1280,37 @@ mod execution_removal_tests {
             }]
         );
         assert!(e.remaining(&keeper.order_hash::<Keccak256>()).is_none());
+    }
+
+    #[test]
+    fn audit_1116_pc1_a_forced_close_cancels_the_owners_orders_in_that_market_only() {
+        let mut e = MatchingEngine::<Keccak256>::new();
+        e.open_market(0);
+        e.open_market(1);
+        let here = order(3);
+        let mut elsewhere = order(3);
+        elsewhere.market_id = 1;
+        elsewhere.nonce = 30;
+        let other_owner = order(4);
+        for o in [&here, &elsewhere, &other_owner] {
+            e.submit(o, 1);
+        }
+        let removed = e.cancel_owner_forced_close_with_events(&here.owner, 0);
+        assert_eq!(
+            removed,
+            [OrderRemoval {
+                order_hash: here.order_hash::<Keccak256>(),
+                reason: "ForcedClose"
+            }]
+        );
+        assert!(e.remaining(&here.order_hash::<Keccak256>()).is_none());
+        assert_eq!(e.remaining(&elsewhere.order_hash::<Keccak256>()), Some(100));
+        assert_eq!(
+            e.remaining(&other_owner.order_hash::<Keccak256>()),
+            Some(100)
+        );
+        assert!(e
+            .cancel_owner_forced_close_with_events(&here.owner, 7)
+            .is_empty());
     }
 }

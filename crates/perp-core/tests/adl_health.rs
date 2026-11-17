@@ -18,7 +18,7 @@
 
 use k256::ecdsa::SigningKey;
 use perp_core::engine::{allocate_pro_rata, BatchOp};
-use perp_core::fixed::{apply_rate, PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
+use perp_core::fixed::{apply_rate, notional_quote, PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::Keccak256;
 use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
@@ -551,6 +551,7 @@ fn liquidation_preserves_the_health_of_every_other_position() {
     let mut oracles: BTreeMap<i128, OracleTranscript> = BTreeMap::new();
     let (mut liquidated, mut clawed_any, mut tripped, mut from_treasury) = (0, 0, 0, 0);
     let (mut some_spared, mut zero_clawable, mut debtor_closed) = (0, 0, 0);
+    let mut penalized = 0;
 
     for case in 0..1_500 {
         let mut s = state();
@@ -642,10 +643,24 @@ fn liquidation_preserves_the_health_of_every_other_position() {
             .filter(|((o, _), _)| *o != l)
             .map(|((o, _), p)| (*o, *p))
             .collect();
+        // A counterparty that was itself liquidatable pays the liquidation penalty
+        // on the size the close takes, out of its positive collateral.
+        let mut counterparty_penalties = 0;
         for ((o, p), take) in opposite.iter().zip(&takes) {
             if *take > 0 {
                 let mut q = *p;
                 q.apply_fill(loser.size.signum() * take, px, index).unwrap();
+                if p.is_liquidatable(&m, px, index) {
+                    let due =
+                        apply_rate(notional_quote(*take, px).unwrap(), m.liquidation_fee_ratio)
+                            .unwrap();
+                    let charged = due.min(q.collateral.max(0));
+                    q.collateral -= charged;
+                    counterparty_penalties += charged;
+                    if charged > 0 {
+                        penalized += 1;
+                    }
+                }
                 reduced.insert(*o, q);
             }
         }
@@ -675,7 +690,7 @@ fn liquidation_preserves_the_health_of_every_other_position() {
             }
         }
         let bad: i128 = debts.iter().map(|(_, d)| d).sum();
-        let insurance = insurance0 + take;
+        let insurance = insurance0 + take + counterparty_penalties;
         let c1 = bad.min(insurance.max(0));
         let c2 = (bad - c1).min(treasury0.max(0));
         let residual = bad - c1 - c2;
@@ -806,5 +821,9 @@ fn liquidation_preserves_the_health_of_every_other_position() {
     assert!(
         debtor_closed > 4,
         "counterparties closed under water {debtor_closed}"
+    );
+    assert!(
+        penalized > 20,
+        "liquidatable counterparties charged the penalty {penalized}"
     );
 }

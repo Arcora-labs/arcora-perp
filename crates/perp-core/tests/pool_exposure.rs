@@ -487,6 +487,60 @@ fn audit_1116_pc1_funding_receivers_never_outweigh_the_payers() {
     }
 }
 
+/// Round-1 review: the net size a funding tick needs reads every position, so a
+/// batch measures each market once and keeps it. A liquidation in the same batch
+/// changes it, and the ticks after it must see the new value: replaying the ops
+/// one at a time and as one batch gives the same state.
+#[test]
+fn audit_1116_pc1_a_batch_keeps_the_net_size_a_liquidation_leaves() {
+    // A legacy pool short of 0.6 BTC (net +0.6). At $94k, L (long 1 BTC) is
+    // liquidatable; the pool takes 0.6 of the close and W and N the other 0.4.
+    let mut s = state();
+    let (l, m, w, n) = (owner_of(1), owner_of(2), owner_of(3), owner_of(4));
+    put(&mut s, l, btc(10), 100_000, usd(10_000));
+    put(&mut s, m, btc(5), 100_000, usd(10_000));
+    put(&mut s, w, -btc(4), 100_000, usd(10_000));
+    put(&mut s, n, -btc(5), 100_000, usd(10_000));
+    balance(&mut s);
+    assert_eq!(net_size(&s), btc(6));
+    // At a discount the shorts would pay the longs, who outweigh them: nothing is
+    // charged until the liquidation leaves the book balanced, then it is.
+    let tick = |t: u64| BatchOp::AccrueFunding {
+        market_id: 0,
+        mark: 93_000 * PRICE_SCALE,
+        oracle: oracle(94_000, t),
+        now_ms: t,
+    };
+    let ops = [
+        tick(T0),
+        tick(T0 + HOUR),
+        BatchOp::Liquidate {
+            owner: l,
+            market_id: 0,
+            oracle: oracle(94_000, T0 + HOUR),
+            now_ms: T0 + HOUR,
+        },
+        tick(T0 + HOUR),
+        tick(T0 + 2 * HOUR),
+    ];
+
+    let mut one_by_one = s.clone();
+    let mut rates = Vec::new();
+    for op in &ops {
+        one_by_one.apply_op(op).expect("op");
+        rates.push(one_by_one.funding[&0].rate);
+    }
+    assert_eq!(net_size(&one_by_one), 0);
+    assert_eq!(rates[..2], [0, 0], "longs outweigh the paying shorts");
+    assert!(rates[3] < 0, "the balanced book is charged: {rates:?}");
+
+    let mut batch = s.clone();
+    batch.apply_batch(&ops).expect("batch");
+    one_by_one.next_batch_id += 1;
+    assert_eq!(batch.funding[&0], one_by_one.funding[&0]);
+    assert_eq!(batch.state_root(), one_by_one.state_root());
+}
+
 // --- PC-1: no more out than came in ----------------------------------------------
 
 /// `owner_of(5)` holds unspent notes of `amounts`; the clearing pool is $60 short,
