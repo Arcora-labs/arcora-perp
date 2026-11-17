@@ -99,9 +99,13 @@ set. The refund needs only the `Deposit` event fields; anyone may send it. See
 credits these deposits; they leave the vault only as refunds. Ids below the count
 leave only through withdrawal leaves.
 
-**The engine can be close-only before L1 is.** The engine trips to close-only on
-its own when a liquidation's shortfall exceeds insurance, the treasury and
-auto-deleverage (`docs/ECONOMIC_SECURITY.md`, Q3/Q7). From then on:
+**The engine can be close-only before L1 is.** A liquidation closes the other side
+of the market with the liquidated position, at the same price and by the same size,
+so the clearing pool never holds a position. The engine trips to close-only on its
+own when the shortfall those closes leave, on the liquidated position or on a
+counterparty closed out under water, exceeds insurance, the treasury and
+auto-deleverage (`docs/ECONOMIC_SECURITY.md`, Q3/Q7). The uncovered rest stays on
+those closed positions until `SettleAll` covers it. From then on:
 
 - the guest refuses every `Deposit` op, so a later deposit never shares in the
   earlier shortfall;
@@ -258,12 +262,16 @@ changes it, so the genesis root a deployment pins on L1 also pins its recipient.
 
 What the recipient receives: the insurance fund, the treasury and the clearing pool's
 positive balance, after every deficit is covered. At that point every user claim has
-been settled at the settlement price. The clearing pool is the counterparty to open
-interest left behind by liquidations, so the payout also includes that interest's gain
-at the settlement price; a loss on it falls first on the reserves and only then on
-users through the haircut. The payout is protocol reserves, fee revenue and rounding
-residue; no user claim is part of it. If the recipient's key is lost, the payout is
-lost with it.
+been settled at the settlement price. A liquidation closes the other side of the
+market with the liquidated position (audit 2026-11-16, PC-1), so the clearing pool
+holds no open interest: its balance is realized results and funding passed between
+positions, which nets to zero once step 1 has closed every position, up to rounding.
+Only a state written before that rule may still hold a pool position, left by an
+earlier liquidation; its gain at the settlement price is part of the payout, and a
+loss on it falls first on the reserves and only then on users through the haircut.
+The payout is protocol reserves, fee revenue and rounding residue; no user claim is
+part of it, and it never takes the withdrawals above the deposits. If the
+recipient's key is lost, the payout is lost with it.
 
 ## Trust statements
 

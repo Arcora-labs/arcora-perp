@@ -147,8 +147,11 @@ submission does not refuse an order for its size; the batch then rejects it as
 and the ratio product is rounded up too. Initial margin is never below **$1** for an
 open position. The floor applies when an order opens, grows or flips a position, and
 when an unbind leaves the position open; reductions, closes and liquidations are
-checked against maintenance margin only. Submission computes the initial margin of
-the order and of the open position with the engine's own rule
+checked against maintenance margin only. An unbind that leaves the position open must
+also leave the initial margin in collateral alone: unrealized profit does not count
+toward it (the free balance of § Withdrawals; the proof enforces it too). Submission
+computes the initial margin of the order and of the open position with the engine's
+own rule
 (`Position::initial_required`), so for an order that opens a position from flat at
 the oracle price it admits exactly the orders the batch's initial-margin check
 admits.
@@ -501,6 +504,12 @@ directly:
    account-wide `settledBalance`); a smaller request is a `400`. Once the admission
    cap leaves no room for it, a withdrawal other than a full exit (the whole balance
    of a closed position) is a `400` with a `HISTORY_CAP` error (§ Admission cap).
+   The free balance is the market's collateral less the initial margin of the open
+   position, whatever its unrealized profit, and the proven transition applies the
+   same rule. It also refuses a withdrawal that would take the deployment's
+   cumulative withdrawals above its cumulative deposits; either refusal is a `400`
+   `withdrawal refused: …` (`Risk { InsufficientMargin, .. }` or
+   `WithdrawalExceedsDeposits`).
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,

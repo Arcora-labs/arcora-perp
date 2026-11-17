@@ -9,7 +9,10 @@ protocol guarantees something and where it does not.
 The honest one-line summary: the protocol guarantees that solvent value can always
 **exit**, and that protocol-level bad debt is absorbed by a capital stack
 (penalty → insurance → treasury → capped auto-deleverage → halt) before it can
-socialize silently.
+socialize silently. This holds because a liquidation closes the other side of the
+market with the liquidated position, so the clearing pool is never left as the
+counterparty to open interest: no loss can build up in it, outside that stack, and
+later be paid out of other accounts' deposits (audit 2026-11-16, PC-1; Q3/Q7).
 It does **not** guarantee that a trader who loses a trade is made whole — that is
 not a property a perpetual can have, and any design that claims it is hiding a
 subsidy. The line between "recoverable" and "not recoverable" is drawn explicitly
@@ -100,9 +103,12 @@ the loss, because the protocol's obligation is different for each.
    (capacity) and funds the fines.
 2. **Protocol bad debt** (a position goes underwater faster than it can be
    liquidated, leaving a deficit). Recoverable up to the capital stack: the
-   insurance fund absorbs it first, then the treasury, and only a *true* depletion
-   socializes — and even then via the deterministic, attributable ADL path, never
-   silently (Q3/Q7).
+   insurance fund absorbs it first, then the treasury, then auto-deleverage of the
+   winners, which reaches the gain the liquidation's counterparties realize in it;
+   only a *true* depletion halts the system and is shared at wind-down — never
+   silently (Q3/Q7). An account that does not trade carries none of it before that
+   wind-down: the clearing pool takes no position, so a price move after a
+   liquidation cannot turn into a loss that its deposit pays for.
 3. **Counterparty/ADL haircut** (you were a winner clawed to cover someone else's
    deficit). Bounded and attributable: ADL only ever takes your gain net of funding,
    never more than your collateral, and never so much that your equity falls below
@@ -141,9 +147,32 @@ unchanged.
 
 ## Q3 / Q7 — What feeds the insurance fund, and what happens when it's empty?
 
-**Mechanism — the liquidation waterfall.** When a liquidation leaves a deficit
-(bad debt: the close left the position's collateral negative), the engine runs a
-fixed cascade, all inside the one `Liquidate` op:
+**Mechanism — both sides close together.** A liquidation closes the whole position
+at the validated oracle price and, at the same price, the positions on the other
+side of the market by the same size between them, pro rata by size (the remainder
+of the split goes out in key order, so the prover reproduces it). Their realized
+results and settled funding go through the clearing pool like a fill's. So the
+sizes of a market's positions keep summing to zero, and the clearing pool
+(`vault_pool`) is never the counterparty to open interest: it only carries realized
+results and funding between positions, and nets to zero, up to rounding, when every
+position is closed. The engine recomputes that sum after each liquidation and
+refuses one that would leave the pool holding a position (`ClearingPoolExposure`),
+so the proof covers it. A counterparty is reduced like any other trade, without its
+consent, as in any auto-deleverage; its new size shows in its position.
+
+Before this rule (audit 2026-11-16, PC-1), the liquidated position closed against
+the pool alone and its counterparty stayed open. When the price kept moving the same
+way, the pool paid that counterparty's further gain, with no margin and no
+liquidation of its own, out of the deposits of everyone else, and the capital stack
+below never saw it. A state written then may still hold such a pool position: a
+liquidation only shrinks it (the pool takes the part of a close that reduces its own
+position, the other side the rest), funding is not paid out of the pool on its
+account (Q8), and `SettleAll` closes what is left at the settlement price.
+
+**Mechanism — the liquidation waterfall.** When the closes leave a deficit (bad
+debt: the liquidated position's collateral is negative, or a counterparty the close
+left flat was itself under water), the engine runs a fixed cascade, all inside the
+one `Liquidate` op:
 
 1. take the liquidation penalty out of the position's remaining collateral, into the
    insurance fund;
@@ -151,16 +180,25 @@ fixed cascade, all inside the one `Liquidate` op:
 3. draw `min(remaining shortfall, treasury)` from the **treasury**, the operator's
    accrued fee revenue (Q4);
 4. if a shortfall remains, **auto-deleverage** the winners in the same market. Each
-   open position is weighted by what it can give,
-   `max(0, min(P − F, C⁺, E − MM))`: its price gain `P` net of the funding it owes
-   `F`, capped at its non-negative collateral `C⁺` and at the headroom of its equity
-   `E` above its maintenance margin `MM`. The covered amount, `min(shortfall,
-   Σ weights)`, is split floor-pro-rata over those weights, and the remainder is
-   handed out in key order without exceeding any weight, so the haircuts sum to the
-   covered amount exactly and the prover reproduces the same split;
-5. if the position is *still* negative — no winner had anything left to give — the
-   uncovered rest stays parked on the closed position and the whole system trips to
-   `Mode::CloseOnly` (the depletion halt).
+   position that was open before the liquidation is weighted by what it can give,
+   `max(0, min(P − F, C'⁺, E' − MM'))`: its price gain `P` net of the funding it
+   owes `F`, measured before the close (so the gain a counterparty just realized in
+   it still counts), capped at its non-negative collateral `C'⁺` and at the headroom
+   of its equity `E'` above its maintenance margin `MM'` after the close. The
+   covered amount, `min(shortfall, Σ weights)`, is split floor-pro-rata over those
+   weights, and the remainder is handed out in key order without exceeding any
+   weight, so the haircuts sum to the covered amount exactly and the prover
+   reproduces the same split;
+5. if a closed position is *still* negative — no winner had anything left to give —
+   the uncovered rest stays parked on it (the liquidated position's debt is covered
+   first) and the whole system trips to `Mode::CloseOnly` (the depletion halt).
+
+In a market of two positions the counterparty's gain at the liquidation price equals
+the liquidated position's loss, so once the reserves are spent, auto-deleverage
+covers the rest of the shortfall out of that gain. Two accounts trading against each
+other can therefore take out, beyond what they put in, at most what the insurance
+fund and the treasury pay toward a gap (which is what those reserves are for), never
+the deposits of other accounts.
 
 What the ADL cap guarantees:
 
@@ -168,8 +206,11 @@ What the ADL cap guarantees:
   ADL never creates new bad debt and never makes a position liquidatable;
 - only a gain net of funding is taken: funding a winner still owes reduces it, and
   funding it is still owed counts towards it;
-- ADL takes collateral, not size: a clawed winner keeps its full exposure on a
-  thinner margin;
+- ADL takes collateral; the size has already been reduced by the close, and a clawed
+  winner keeps whatever exposure it still holds on a thinner margin;
+- a position that stays open cannot unbind its collateral below its initial margin,
+  whatever its unrealized gain (`Unbind`, audit PC-2; the gateway's withdrawal rule,
+  now also proven), so a profitable winner always has collateral for ADL to take;
 - any arithmetic overflow while planning ADL means no haircut at all: the shortfall
   stays parked and the system trips to close-only (fail closed).
 
@@ -185,9 +226,12 @@ covers any deficit left from the clearing pool, insurance and the treasury befor
 global pro-rata haircut, and pays whatever reserves remain to the deployment's
 wind-down recipient (Q2, `docs/FINAL_SETTLE_RUNBOOK.md`).
 
-— `crates/perp-core/src/engine.rs` (`op_liquidate`, `auto_deleverage_plan`,
-`allocate_pro_rata`), `crates/perp-core/src/position.rs` (`adl_clawable`); tests in
-`crates/perp-core/tests/adl_health.rs` (for example
+— `crates/perp-core/src/engine.rs` (`op_liquidate`, `counterparty_closes`,
+`auto_deleverage_plan`, `allocate_pro_rata`), `crates/perp-core/src/position.rs`
+(`adl_clawable_after`); tests in `crates/perp-core/tests/pool_exposure.rs` (the
+audit PC-1/PC-2 cases), `crates/sequencer/tests/pool_exposure.rs` (the audit
+scenario through the sequencer loop), `crates/perp-core/tests/adl_health.rs` (for
+example
 `the_treasury_covers_the_shortfall_after_insurance_and_before_adl`,
 `adl_stops_at_the_maintenance_margin`,
 `a_winner_whose_funding_debt_exceeds_its_price_gain_gives_nothing`) and
@@ -195,11 +239,13 @@ wind-down recipient (Q2, `docs/FINAL_SETTLE_RUNBOOK.md`).
 `adl_distributes_pro_rata_across_multiple_winners`,
 `true_insolvency_trips_close_only_when_winners_have_exited`).
 
-**Limit.** The trade-off of the cap is more frequent close-only trips: a winner near
-its maintenance margin gives little or nothing. Drawing the treasury before ADL
-offsets that. At wind-down, a deficit the reserves cannot cover is haircut across
-the positive collateral and notes of all markets, not first within the market that
-caused it.
+**Limit.** The trade-off of the cap is more frequent close-only trips: a winner
+that keeps exposure near its maintenance margin gives little or nothing, and a
+counterparty that entered close to the liquidation price has little gain to give.
+Drawing the treasury before ADL offsets that. At wind-down, a deficit the reserves
+cannot cover is haircut across the positive collateral and notes of all markets, not
+first within the market that caused it. The size a counterparty gives up is
+published only as its new position, not as a separate receipt.
 
 **What feeds the fund.** Two real inflows, not a hand-wave: an explicit
 capitalization op (`BatchOp::FundInsurance` / `op_fund_insurance`, SEC-024), which
@@ -232,7 +278,11 @@ inside the conservation identity and is re-checked after each op (`apply_batch`
 checks `Σnotes + Σcollateral + insurance + vault_pool + treasury == external_in −
 external_out`, with checked sums: an overflowing sum fails the identity rather than
 wrapping). An adversarial review confirmed the cascade and its conservation; the
-fixes from that pass are in commit `8aa3559`.
+fixes from that pass are in commit `8aa3559`. Because `vault_pool` is a signed term,
+the identity alone would also hold with the pool driven far below zero; so the
+engine also refuses any withdrawal (and the wind-down payout) that would take the
+cumulative `external_out` above `external_in` (`WithdrawalExceedsDeposits`): the
+protocol never pays out more than came in.
 
 ## Q4 — Why would a market-maker provide liquidity here?
 
@@ -343,7 +393,16 @@ tick and the time from which the not-yet-committed span runs.
   index is kept as a remainder over `RATE_SCALE × FUNDING_INTERVAL_MS`, so many short
   spans add up to exactly what one long span at the same rate would. The span's
   notional is the validated index price at its end. Position-level `funding_owed`
-  still truncates toward zero; that residue stays in the clearing pool.
+  still truncates toward zero, for a payer and a receiver alike, so each position
+  settlement leaves a residue of under one micro-USD with the clearing pool, in
+  either direction.
+- **Both sides.** One index serves both sides, so funding nets out only when the
+  side that receives holds no more open interest than the side that pays. A tick
+  stores the observed rate only then, and a zero rate otherwise, so the receivers
+  never get more than the payers owe and the clearing pool pays no funding (audit
+  2026-11-16, PC-1). Liquidations keep both sides equal (Q3/Q7), so this binds only
+  on a state that already held a pool position; with one side empty nothing is
+  charged.
 - **Idle markets.** A tick that observes a zero rate while the stored rate is zero
   changes nothing, so an idle market's ticks leave the state root unchanged.
 - **Wind-down.** `SettleAll` carries no time, so it settles the committed index only.
@@ -490,7 +549,7 @@ in `docs/API.md` (§ Admission cap).
 | Q4 | MM incentive | **Done** + review hardening | `market.rs`/`engine.rs` (`7cb9eea`,`1c1c34a`) |
 | Q5 | MM hedge / inventory | **Done (protocol side)** — hedge signal; external keeper is the operator's | `perp-core/src/position.rs` + gateway/UI |
 | Q6 | Liquidation privacy | **Done** + review fix | `sequencer/src/lib.rs` (`7e9186d`,`8aa3559`) |
-| Q7 | Bad-debt attribution | **Done** (insurance → treasury → capped ADL → halt) | `engine.rs`, `position.rs` (`adl_clawable`) |
+| Q7 | Bad-debt attribution | **Done** (counterparty close → insurance → treasury → capped ADL → halt) | `engine.rs`, `position.rs` (`adl_clawable_after`) |
 | Q8 | Funding attribution | **Done** — stored rate, exact carry, settlement at every position touch | `funding.rs`, `engine.rs` |
 | Q9 | Dust | **Done** — rounded-up margin with a $1 floor; off-chain admission minimums and a measured history cap | `position.rs`, gateway, sequencer |
 

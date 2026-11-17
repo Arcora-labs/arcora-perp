@@ -198,15 +198,25 @@ Enclave plaintext pozisyonları public oracle'a karşı sürekli değerlendirir 
 **anında** tetikler. **Liveness varsayımı yok:** kullanıcı offline olsa da likide
 edilir. Public'e per-position açıklama **yok**; yalnızca aggregate + ZK proof.
 
-**Canlı bad-debt waterfall'ı:** likidasyonun bıraktığı açık sırasıyla insurance
-fund, treasury ve aynı marketteki kazananların auto-deleverage'ı ile kapatılır. ADL
-her kazanandan en fazla `max(0, min(P − F, C⁺, E − MM))` alır: funding sonrası net
-kazanç, negatif olmayan collateral ve maintenance margin üstündeki equity payı.
-Böylece ADL yeni bad debt yaratmaz ve hiçbir pozisyonu likide edilebilir yapmaz.
-Hâlâ kapanmayan kısım kapanan pozisyonda park edilir ve sistem close-only'ye geçer;
-o andan sonra guest yeni `Deposit`'i reddeder.
-*(Kod: `position.rs` — `is_liquidatable`, `adl_clawable`; `engine.rs` —
-`op_liquidate`, `allocate_pro_rata`.)*
+**Karşı taraf da kapanır:** likidasyon pozisyonu oracle fiyatından kapatırken aynı
+fiyattan marketin karşı tarafındaki pozisyonları da aynı büyüklükte, büyüklükleriyle
+orantılı olarak kapatır. Böylece bir marketteki pozisyon büyüklüklerinin toplamı
+sıfır kalır ve clearing pool (`vault_pool`) hiçbir zaman açık pozisyonun karşı
+tarafı olmaz (audit 2026-11-16, PC-1); engine bu toplamı her likidasyondan sonra
+yeniden hesaplar, yani proof bunu da kapsar.
+
+**Canlı bad-debt waterfall'ı:** kapanışların bıraktığı açık (likide edilen
+pozisyonda ya da tamamen kapatılan ve zaten zararda olan bir karşı tarafta) sırasıyla
+insurance fund, treasury ve aynı marketteki kazananların auto-deleverage'ı ile
+kapatılır. ADL her kazanandan en fazla `max(0, min(P − F, C'⁺, E' − MM'))` alır:
+kapanıştan önce ölçülen, funding sonrası net kazanç (karşı tarafın kapanışta
+gerçekleştirdiği kazanç dahil), kapanıştan sonraki negatif olmayan collateral ve
+maintenance margin üstündeki equity payı. Böylece ADL yeni bad debt yaratmaz ve
+hiçbir pozisyonu likide edilebilir yapmaz. Hâlâ kapanmayan kısım kapanan
+pozisyonlarda park edilir ve sistem close-only'ye geçer; o andan sonra guest yeni
+`Deposit`'i reddeder.
+*(Kod: `position.rs` — `is_liquidatable`, `adl_clawable_after`; `engine.rs` —
+`op_liquidate`, `counterparty_closes`, `allocate_pro_rata`.)*
 
 ---
 
