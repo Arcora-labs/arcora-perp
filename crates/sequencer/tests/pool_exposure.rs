@@ -301,3 +301,132 @@ fn audit_1116_pc1_a_liquidation_through_the_sequencer_leaves_the_pool_flat() {
     );
     assert!(wind_down.conservation_holds());
 }
+
+/// The scenario's pair with the short holding a take-profit: a plain GTC buy of
+/// its whole size below the market. Returns the sequencer, the take-profit's hash
+/// and the batch that liquidated the long at $94.5k.
+fn take_profit_scenario() -> (Sequencer, [u8; 32], sequencer::SealedBatch) {
+    let mut seq = Sequencer::new(EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]), 20);
+    let mut market = Market::conservative(0);
+    market.oracle_pubkey = oracle_addr();
+    seq.add_market(market);
+    seq.set_wind_down_recipient([0x5E; 20]);
+    seq.set_oracle(0, oracle(100_000, 1_000));
+    fund(&mut seq, PAIR_LONG, usd(10_100));
+    fund(&mut seq, PAIR_SHORT, usd(10_100));
+    fund(&mut seq, PASSIVE, usd(50_000));
+    fund(&mut seq, TAKER, usd(30_000));
+    seq.seal_genesis_baseline();
+    seq.seal_batch(
+        &[
+            order(PAIR_LONG, Side::Buy, SIZE_SCALE, 100_000, 1),
+            order(PAIR_SHORT, Side::Sell, SIZE_SCALE, 100_000, 2),
+        ],
+        1_000,
+    );
+    // The short's take-profit: buy its 1 BTC back at $92k.
+    let take_profit = order(PAIR_SHORT, Side::Buy, SIZE_SCALE, 92_000, 3);
+    let hash = take_profit.order_hash::<Keccak256>();
+    seq.set_oracle(0, oracle(100_000, 2_000));
+    seq.seal_batch(&[take_profit], 2_000);
+    assert_eq!(
+        seq.remaining_order_size(&hash),
+        Some(SIZE_SCALE),
+        "the take-profit rests"
+    );
+    // $94.5k: the long is liquidated and the short is closed with it.
+    seq.set_oracle(0, oracle(94_500, 5_000));
+    let sealed = seq.seal_batch(&[], 5_000);
+    assert_eq!(sealed.liquidation_tags.len(), 1, "the long is liquidated");
+    assert_eq!(position(&seq, PAIR_SHORT).size, 0, "the short is closed");
+    (seq, hash, sealed)
+}
+
+/// Round-1 review: the liquidation's close of the other side left the
+/// counterparty's resting orders on the book. A take-profit that was a close
+/// then opened a fresh position the trader never asked for: at $92k a taker
+/// sold into the stale buy and the short ended 1 BTC long. The orders of every
+/// account the close reduced are cancelled in that market, as a liquidated
+/// owner's are, and the removal says why.
+#[test]
+fn audit_1116_pc1_a_forced_close_cancels_the_counterpartys_resting_orders() {
+    let (mut seq, hash, sealed) = take_profit_scenario();
+    assert_eq!(
+        seq.remaining_order_size(&hash),
+        None,
+        "the forced close cancels the take-profit"
+    );
+    let removal = sealed.removals.iter().find(|r| r.order_hash == hash);
+    assert_eq!(
+        removal.map(|r| r.reason),
+        Some("ForcedClose"),
+        "the removal is published with its reason"
+    );
+
+    // A taker sells into the old take-profit price: nothing is left to match.
+    let now = 6_000;
+    seq.set_oracle(0, oracle(92_000, now));
+    seq.seal_batch(&[order(TAKER, Side::Sell, SIZE_SCALE, 92_000, 4)], now);
+    assert_eq!(
+        position(&seq, PAIR_SHORT).size,
+        0,
+        "the closed short is not reopened as a long"
+    );
+    assert_eq!(net_size(&seq), 0);
+    assert!(seq.state.conservation_holds());
+}
+
+/// Only the accounts the close reduced lose their orders: an account on the
+/// liquidated side and one with no position keep theirs.
+#[test]
+fn audit_1116_pc1_a_forced_close_leaves_other_accounts_orders_resting() {
+    let mut seq = Sequencer::new(EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]), 20);
+    let mut market = Market::conservative(0);
+    market.oracle_pubkey = oracle_addr();
+    seq.add_market(market);
+    seq.set_wind_down_recipient([0x5E; 20]);
+    seq.set_oracle(0, oracle(100_000, 1_000));
+    fund(&mut seq, PAIR_LONG, usd(10_100));
+    fund(&mut seq, PAIR_SHORT, usd(10_100));
+    fund(&mut seq, PASSIVE, usd(50_000));
+    fund(&mut seq, TAKER, usd(30_000));
+    seq.seal_genesis_baseline();
+    seq.seal_batch(
+        &[
+            order(PAIR_LONG, Side::Buy, SIZE_SCALE, 100_000, 1),
+            order(PAIR_SHORT, Side::Sell, SIZE_SCALE, 100_000, 2),
+        ],
+        1_000,
+    );
+    // TAKER is long 0.1 BTC against PASSIVE's short 0.1 BTC; then TAKER and an
+    // account with no position rest bids far below the market.
+    seq.set_oracle(0, oracle(100_000, 2_000));
+    seq.seal_batch(
+        &[
+            order(TAKER, Side::Buy, SIZE_SCALE / 10, 100_000, 3),
+            order(PASSIVE, Side::Sell, SIZE_SCALE / 10, 100_000, 4),
+        ],
+        2_000,
+    );
+    let taker_bid = order(TAKER, Side::Buy, SIZE_SCALE / 10, 80_000, 5);
+    let passive_bid = order(PASSIVE, Side::Buy, SIZE_SCALE / 100, 80_000, 6);
+    seq.set_oracle(0, oracle(100_000, 3_000));
+    seq.seal_batch(&[taker_bid, passive_bid], 3_000);
+    seq.set_oracle(0, oracle(94_500, 5_000));
+    let sealed = seq.seal_batch(&[], 5_000);
+    assert_eq!(sealed.liquidation_tags.len(), 1, "the long is liquidated");
+    // The short side gave up 1 BTC pro rata: PAIR_SHORT and PASSIVE were reduced.
+    assert!(position(&seq, PAIR_SHORT).size > -SIZE_SCALE);
+    assert!(position(&seq, PASSIVE).size > -SIZE_SCALE / 10);
+    assert_eq!(net_size(&seq), 0);
+    // TAKER, a long the close did not touch, keeps its bid. PASSIVE's bid is
+    // cancelled with the forced close of its short.
+    assert_eq!(
+        seq.remaining_order_size(&taker_bid.order_hash::<Keccak256>()),
+        Some(SIZE_SCALE / 10)
+    );
+    assert_eq!(
+        seq.remaining_order_size(&passive_bid.order_hash::<Keccak256>()),
+        None
+    );
+}

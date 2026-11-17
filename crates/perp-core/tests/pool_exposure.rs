@@ -236,6 +236,58 @@ fn audit_1116_pc1_an_underwater_counterparty_joins_the_waterfall() {
     }
 }
 
+/// Round-1 review: a counterparty that was itself liquidatable left the close
+/// without the liquidation penalty, so a trader could exit an underwater position
+/// penalty-free whenever an opposite liquidation hit first, and the insurance fund
+/// lost that income. It pays the penalty on the size the close takes, out of its
+/// positive collateral, as a liquidation of that size would have charged it.
+#[test]
+fn audit_1116_pc1_a_liquidatable_counterparty_pays_the_penalty_on_what_the_close_takes() {
+    // At $94k both are under maintenance ($4.7k for 1 BTC): L (long from $100k)
+    // has $4k of equity and W (short from $90k) $2k.
+    let mut s = state();
+    let (l, w, k) = (owner_of(1), owner_of(2), owner_of(3));
+    put(&mut s, l, btc(10), 100_000, usd(10_000));
+    put(&mut s, w, -btc(10), 90_000, usd(6_000));
+    balance(&mut s);
+    let value = s.internal_value().unwrap();
+
+    let haircuts = liquidate(&mut s, &l, 94_000);
+
+    assert!(haircuts.is_empty());
+    // L: −$6k realized, then 1% of $94k.
+    assert_eq!(collateral_of(&s, &l), usd(10_000 - 6_000 - 940));
+    // W is closed with L: −$4k realized, then the same 1% of the $94k it closed.
+    assert_eq!(size_of(&s, &w), 0);
+    assert_eq!(collateral_of(&s, &w), usd(6_000 - 4_000 - 940));
+    assert_eq!(s.insurance_fund, usd(940 + 940));
+    assert_eq!(s.internal_value(), Some(value));
+    assert!(s.conservation_holds());
+
+    // A partial close charges the closed part; the rest is liquidated on its own
+    // and pays for itself, so the total is what one liquidation would charge.
+    let mut s = state();
+    put(&mut s, l, btc(5), 100_000, usd(5_000));
+    put(&mut s, k, btc(5), 90_000, usd(10_000));
+    put(&mut s, w, -btc(10), 90_000, usd(6_000));
+    balance(&mut s);
+    liquidate(&mut s, &l, 94_000);
+    assert_eq!(size_of(&s, &w), -btc(5));
+    assert_eq!(collateral_of(&s, &w), usd(6_000 - 2_000 - 470));
+    assert_eq!(s.insurance_fund, usd(470 + 470));
+    liquidate(&mut s, &w, 94_000);
+    assert_eq!(s.insurance_fund, usd(470 + 470 + 470));
+    assert_eq!(net_size(&s), 0);
+    assert!(s.conservation_holds());
+
+    // A healthy counterparty pays nothing for being closed.
+    let (mut s, [l, _, w1, w2]) = balanced_book();
+    liquidate(&mut s, &l, 94_000);
+    assert_eq!(collateral_of(&s, &w1), usd(10_000 + 3_600));
+    assert_eq!(collateral_of(&s, &w2), usd(10_000 + 2_400));
+    assert_eq!(s.insurance_fund, usd(940));
+}
+
 /// A state written before this rule may already hold a pool exposure. A
 /// liquidation never grows it: the pool takes only the part of the close that
 /// reduces its own position, and the opposite side takes the rest.
