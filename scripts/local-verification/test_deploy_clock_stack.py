@@ -564,6 +564,32 @@ class Order(CastFixture):
         adapter = self.sends()[0][self.sends()[0].index("--create") + 1]
         self.assertEqual(adapter[len(self.artifacts["sp1_adapter"]):][:64], router[2:].lower().rjust(64, "0"))
 
+    def test_audit_1116_sv1_the_records_say_whether_a_router_owner_is_trusted(self):
+        router = "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B"
+        cases = ((None, {}, [], False),
+                 # The opt-in is unused when the reused target is the pinned verifier.
+                 ("0x" + "0b" * 20, {}, ["--accept-sp1-router-owner-trust"], False),
+                 (router, {"FAKE_SP1": "router"}, ["--accept-sp1-router-owner-trust"], True))
+        for target, env, extra, trusted in cases:
+            with self.subTest(target=target), unittest.mock.patch("sys.stderr") as stderr:
+                self.write_config(sp1_verifier=target)
+                self.assertEqual(self.run_cli(env=env, extra=extra), 0)
+                record = json.loads(self.output.with_suffix(".deployment.json").read_text())
+                self.assertIs(record["sp1_router_owner_trust_accepted"], trusted)
+                self.assertEqual(record["sp1_trusted_router"], router.lower() if trusted else None)
+                warned = "".join(c.args[0] for c in stderr.write.call_args_list)
+                self.assertEqual("WARNING" in warned, trusted, warned)
+                self.output.unlink()
+        # A failed deploy keeps the same evidence in its partial record.
+        self.log.write_text("")
+        self.write_config(sp1_verifier=router)
+        with unittest.mock.patch("sys.stderr"):
+            self.assertEqual(self.run_cli(env={"FAKE_SP1": "router", "FAKE_FAIL_AT": "2"},
+                                          extra=["--accept-sp1-router-owner-trust"]), 1)
+        partial = json.loads(self.output.with_suffix(".partial.json").read_text())
+        self.assertIs(partial["sp1_router_owner_trust_accepted"], True)
+        self.assertEqual(partial["sp1_trusted_router"], router.lower())
+
     def test_audit_1116_sv1_the_old_gateway_config_shape_is_refused(self):
         value = plan_config()
         del value["sp1_verifier"]

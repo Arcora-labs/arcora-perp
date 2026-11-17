@@ -272,6 +272,19 @@ class ConfigTests(unittest.TestCase):
             release.public_config(value)
         self.assertNotIn("sensitive-test-value", str(raised.exception))
 
+    def test_audit_1116_sv1_the_release_environment_trusts_no_sp1_router_owner(self):
+        value = release.public_config(config())
+        env = dict(value["gateway"])
+        for allowed in (None, "0"):
+            if allowed is not None:
+                env["L1_ACCEPT_SP1_ROUTER_OWNER_TRUST"] = allowed
+            release.check_environment(value, env)
+        for bad in ("1", "true", ""):
+            env["L1_ACCEPT_SP1_ROUTER_OWNER_TRUST"] = bad
+            with self.subTest(value=bad), self.assertRaisesRegex(
+                    ValueError, "process environment mismatch: L1_ACCEPT_SP1_ROUTER_OWNER_TRUST"):
+                release.check_environment(value, env)
+
     def test_process_environment_must_match_and_does_not_echo_secrets(self):
         value = release.public_config(config())
         env = dict(value["gateway"], L1_SEQUENCER_KEY="sensitive-test-value")
