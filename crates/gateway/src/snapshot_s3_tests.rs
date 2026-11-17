@@ -54,7 +54,7 @@ fn s3_recovery_error_preserves_existing_state() {
     ] {
         let mut trailer = EXT.to_vec();
         trailer.extend(postcard::to_allocvec(&rows).unwrap());
-        assert!(restore(&mut gw, &trailer).is_err());
+        assert!(restore_prefix(&mut gw, &trailer).is_err());
         assert_eq!(
             gw.snapshot_plain(),
             before,
@@ -161,7 +161,7 @@ fn s3_recovery_legacy_absence_cannot_downgrade_existing_generation() {
     gw.accounts.get_mut(&key).unwrap().recovery_nonce = 9;
     let before = gw.snapshot_plain();
     assert!(
-        restore(&mut gw, &[]).is_err(),
+        restore_prefix(&mut gw, &[]).is_err(),
         "legacy absence must not reset an existing generation"
     );
     assert_eq!(gw.snapshot_plain(), before);

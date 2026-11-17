@@ -62,12 +62,16 @@ pub enum AlertKind {
     /// voids stopped the loop, or the recovery has lasted long or used up half of
     /// the close-only budget. Recovered when the recovery resolves.
     ClockRecoveryBlocked,
+    /// The sealed snapshot payload is at or above three quarters of its 64 MiB
+    /// cap. Writes still succeed; at the cap they fail and order intake stops.
+    /// Recovered once a captured payload is below the threshold again.
+    SnapshotSizeHigh,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 16] = [
+    pub const ALL: [AlertKind; 17] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -84,6 +88,7 @@ impl AlertKind {
         AlertKind::DepositBlockedAtCap,
         AlertKind::WindowVoided,
         AlertKind::ClockRecoveryBlocked,
+        AlertKind::SnapshotSizeHigh,
     ];
 }
 

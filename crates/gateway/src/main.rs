@@ -128,6 +128,7 @@ mod ops_alerts;
 mod oracle_crosscheck;
 #[cfg(test)]
 mod oracle_intake_tests;
+mod order_history;
 mod order_log;
 #[cfg(test)]
 mod order_minimum_tests;
@@ -149,6 +150,7 @@ mod service_shutdown;
 #[cfg(test)]
 mod service_shutdown_tests;
 mod settle_health;
+mod side_log;
 mod snapshot;
 mod trading_gate;
 mod wind_down;
@@ -890,6 +892,8 @@ const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain
 /// How often the L1 health task reads liveness, anchor age and finalized close-only.
 const L1_HEALTH_SECS: u64 = 60;
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
+/// Error prefix (HTTP 503) of a durable change refused after a failed snapshot write.
+const PERSISTENCE_UNAVAILABLE: &str = "PERSISTENCE_UNAVAILABLE";
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
 /// Registration bounds across all clients, on top of the per-client limit above.
 const V1_REGISTER_GLOBAL_RATE: u32 = 300; // max account registrations/min, all clients
@@ -1788,6 +1792,14 @@ struct Gw {
     /// Runtime-only alert episode state; never changes the frozen snapshot encoding.
     #[serde(skip)]
     ops_alerts: ops_alerts::OpsAlerts,
+    /// Whether the last snapshot write failed. Order intake and the other promises
+    /// a restart would forget are refused while it did (audit GF-1). Runtime-only.
+    #[serde(skip)]
+    snapshot_health: snapshot::WriteHealth,
+    /// Where the side logs beside the snapshot end (`order_history`). Runtime-only:
+    /// the snapshot's history extension carries the positions.
+    #[serde(skip)]
+    history: order_history::HistoryState,
     /// Persisted as the snapshot payload's flag byte, outside the positional Gw body.
     /// Freezes ordinary ops after SettleAll. It never proves phase-1 completion;
     /// only a canonical L1 read does that.
@@ -1888,7 +1900,9 @@ struct Gw {
     pending_rejected: Vec<Digest>,
     /// Per ON-CHAIN batch id → the (ordered, rejected) order hashes it committed, retained so a
     /// challenge for an order in that batch can be answered with a Merkle proof against its root.
-    batch_orders: std::collections::BTreeMap<u64, (Vec<Digest>, Vec<Digest>)>,
+    /// All in memory; with a state path the snapshot keeps only the batches not yet appended to
+    /// the batches side log (audit GF-1 + SM-4, `order_history`), in the same positional layout.
+    batch_orders: order_history::BatchOrders,
     /// Last on-chain settlement the L1 bridge published (None until it settles once).
     l1_status: Option<L1Status>,
     /// FIN-001 settle-loop health (bounded-retry → HELD circuit breaker). Runtime-only:
@@ -2481,6 +2495,8 @@ impl Gw {
         let mut gw = Gw {
             candidate_archive_required: false,
             ops_alerts: Default::default(),
+            snapshot_health: Default::default(),
+            history: Default::default(),
             wind_down_started: false,
             deposits: Default::default(),
             l1_settlement: None,
@@ -2519,7 +2535,7 @@ impl Gw {
             last_manifest: [0u8; 32],
             pending_ordered: Vec::new(),
             pending_rejected: Vec::new(),
-            batch_orders: std::collections::BTreeMap::new(),
+            batch_orders: Default::default(),
             l1_status: None,
             settle_health: default_settle_health(),
             settlement_held_since_ms: None,
@@ -2572,6 +2588,7 @@ impl Gw {
         );
         execution::append_snapshot(self, &mut bytes);
         account_recovery::append(self, &mut bytes);
+        order_history::append_snapshot(self, &mut bytes);
         bytes
     }
 
@@ -2606,7 +2623,8 @@ impl Gw {
         ) = postcard::take_from_bytes(body).map_err(|e| format!("snapshot decode: {e}"))?;
         gw.deposits = deposits;
         let recovery = execution::restore_snapshot_prefix(&mut gw, rest)?;
-        account_recovery::restore(&mut gw, recovery)?;
+        let history = account_recovery::restore_prefix(&mut gw, recovery)?;
+        order_history::restore_snapshot(&mut gw, history)?;
         // The flag is the terminal latch SettleAll sets; it never proves phase 1
         // settled, and a state that carries it must be in CloseOnly.
         gw.wind_down_started = wind_down_started;
@@ -3858,6 +3876,21 @@ impl Gw {
         Ok(())
     }
 
+    /// Audit GF-1: while the latest snapshot write failed, a restart would forget
+    /// any new order, account, withdrawal or binding, together with the receipt
+    /// or authority it handed out. Refuse them until a write succeeds again (the
+    /// writer retries every `SNAPSHOT_SECS`).
+    fn refuse_if_persistence_failed(&self) -> Result<(), String> {
+        if self.snapshot_health.failed() {
+            return Err(format!(
+                "{PERSISTENCE_UNAVAILABLE}: the latest state snapshot could not be written; \
+                 new orders and other durable changes are refused until a snapshot write \
+                 succeeds. Retry shortly."
+            ));
+        }
+        Ok(())
+    }
+
     /// Place an order for an account. Ioc/Fok are takers; Gtc/PostOnly rest in the
     /// matcher book (so an MM bot can quote). Returns the signed receipt.
     /// SEC-025-D: refuse while the launch gate is closed.
@@ -3907,6 +3940,7 @@ impl Gw {
             .ok_or("Unknown account.")?
             .wallet
             .owner;
+        self.refuse_if_persistence_failed()?;
 
         // ── sealed order ingress: decrypt inside the enclave (Task 10) ────────
         // A client may send its order ENCRYPTED to the enclave's current order-epoch
@@ -4511,7 +4545,7 @@ impl Gw {
     /// reference stays for the tests that pin it.
     #[cfg(test)]
     fn build_challenge_answer(&self, order_hash: &Digest) -> Option<(bool, u64, Vec<[u8; 32]>)> {
-        for (&batch_id, (ordered, rejected)) in &self.batch_orders {
+        for (&batch_id, (ordered, rejected)) in self.batch_orders.iter() {
             if let Some(i) = ordered.iter().position(|h| h == order_hash) {
                 let leaves: Vec<[u8; 32]> = ordered
                     .iter()
@@ -5096,19 +5130,22 @@ impl Gw {
         new != 0 && (pos > 0) != (new > 0)
     }
 
-    fn finality_str(&self, oh: &Digest) -> String {
-        match self.seq.finality_of(oh) {
-            Some(Finality::Accepted) => "ACCEPTED",
-            Some(Finality::Matched) => "MATCHED",
-            Some(Finality::Settled) => "SETTLED",
-            None => "ACCEPTED",
+    /// The order's finality: the sequencer's record, else the finality the row
+    /// last recorded. The sequencer drops a finished order's record once a settle
+    /// hardened it and a tick recorded it here (audit GF-1 + SM-4).
+    fn finality_str(&self, o: &GwOrder) -> String {
+        match self.seq.finality_of(&o.order_hash) {
+            Some(Finality::Accepted) => "ACCEPTED".to_string(),
+            Some(Finality::Matched) => "MATCHED".to_string(),
+            Some(Finality::Settled) => "SETTLED".to_string(),
+            None => o.last_finality.clone(),
         }
-        .to_string()
     }
 
     // ── mutations ───────────────────────────────────────────────────────────
     fn place_order(&mut self, req: &OrderReq) -> Result<(WReceipt, Vec<WEvent>), String> {
         self.refuse_candidate_synthetic_price()?;
+        self.refuse_if_persistence_failed()?;
         // Legacy dev/demo plaintext ingress (this route is mounted only in the demo
         // build). It shares `OrderReq` — whose fields are `#[serde(default)]` for the
         // sealed wire — so it must enforce the SAME core-field presence as
@@ -5613,7 +5650,8 @@ impl Gw {
                 Some(Finality::Accepted) => "ACCEPTED",
                 Some(Finality::Matched) => "MATCHED",
                 Some(Finality::Settled) => "SETTLED",
-                None => "ACCEPTED",
+                // A finished order's record goes after this row recorded it.
+                None => continue,
             };
             if f != o.last_finality {
                 o.last_finality = f.to_string();
@@ -5694,6 +5732,9 @@ impl Gw {
                 });
             }
         }
+        // Every row above has recorded the finality it reports, so the sequencer can
+        // now drop the records of orders a settle finished (audit GF-1 + SM-4).
+        self.seq.prune_settled_order_history();
         if adl_clawed > 0 {
             events.push(WEvent {
                 order_id: format!("adl-{}", sealed.batch_id),
@@ -5793,7 +5834,7 @@ impl Gw {
                 id: o.id.clone(),
                 input: o.input.clone(),
                 receipt: self.receipt_json(&o.receipt, None),
-                finality: self.finality_str(&o.order_hash),
+                finality: self.finality_str(o),
                 cancellable: live.contains(&o.order_hash)
                     || (!o.sealed
                         && self
@@ -5830,7 +5871,7 @@ impl Gw {
                 let hashes: String = os.iter().map(|o| o.receipt.order_hash.clone()).collect();
                 let fin = os
                     .iter()
-                    .map(|o| self.finality_str(&o.order_hash))
+                    .map(|o| self.finality_str(o))
                     .min_by_key(|f| rank(f))
                     .unwrap_or_else(|| "SETTLED".into());
                 let sealed_ms = os.iter().map(|o| o.receipt.recv_time_ms).min().unwrap_or(0);
@@ -6430,6 +6471,7 @@ async fn final_snapshot<'a>(
     let (plain, plan) = match capture {
         Ok(capture) => capture,
         Err(error) => {
+            frozen.snapshot_health.record(false);
             frozen
                 .ops_alerts
                 .activate(ops_alerts::AlertKind::PersistenceFailed);
@@ -6442,6 +6484,7 @@ async fn final_snapshot<'a>(
             return (frozen, false);
         }
     };
+    note_snapshot_size(&frozen.ops_alerts, plain.len());
     let path = path.to_owned();
     let saved = tokio::task::spawn_blocking(move || {
         // Cancellation must not release serialization while the filesystem worker
@@ -6457,6 +6500,7 @@ async fn final_snapshot<'a>(
             ok = commit_candidate_retention(app, plan).is_ok();
         }
     }
+    frozen.snapshot_health.record(ok);
     if ok {
         frozen
             .ops_alerts
@@ -6532,7 +6576,8 @@ async fn write_snapshot_with_entry(
         return tokio::task::spawn_blocking(move || {
             let _serial = guard;
             entry.notify();
-            let gw = app.gw.blocking_lock();
+            let mut gw = app.gw.blocking_lock();
+            let history = append_history_locked(&mut gw, &path, &seed);
             let result = (|| {
                 let (plain, plan) = match archive_slot(app.archive.as_ref()) {
                     ArchiveSlot::Guard(binding) => {
@@ -6540,10 +6585,13 @@ async fn write_snapshot_with_entry(
                     }
                     _ => return Err("candidate checkpoint archive lock unavailable".to_string()),
                 };
+                note_snapshot_size(&gw.ops_alerts, plain.len());
                 snapshot::write_atomic(&path, &snapshot::seal(&plain, &seed))
                     .map_err(|_| "candidate checkpoint filesystem write failed".to_string())?;
                 commit_candidate_retention(&app, plan)
             })();
+            let result = result.and(history);
+            gw.snapshot_health.record(result.is_ok());
             if result.is_ok() {
                 gw.ops_alerts
                     .recover(ops_alerts::AlertKind::PersistenceFailed);
@@ -6567,9 +6615,13 @@ async fn write_snapshot_with_entry(
         .await
         .unwrap_or(false);
     }
-    let (plain, alerts) = {
+    // Side logs first (audit GF-1 + SM-4): whatever they take, the capture below
+    // leaves out. The append runs without the gateway lock but keeps the
+    // serialization guard, so no other writer appends or captures meanwhile.
+    let job = {
         let gw = app.gw.lock().await;
         if gw.candidate_archive_required {
+            gw.snapshot_health.record(false);
             gw.ops_alerts
                 .activate(ops_alerts::AlertKind::PersistenceFailed);
             gw.ops_alerts
@@ -6577,19 +6629,66 @@ async fn write_snapshot_with_entry(
             eprintln!("[state] candidate checkpoint requires its configured archive");
             return false;
         }
-        let alerts = gw.ops_alerts.clone();
-        (gw.snapshot_plain(), alerts)
+        gw.history_append_job(path)
+    };
+    let (guard, appended) = match job {
+        Ok(Some(job)) => {
+            match tokio::task::spawn_blocking(move || {
+                let done = job.run(&seed);
+                (guard, done)
+            })
+            .await
+            {
+                Ok((guard, done)) => (guard, Ok(Some(done))),
+                Err(e) => {
+                    let gw = app.gw.lock().await;
+                    gw.snapshot_health.record(false);
+                    gw.ops_alerts
+                        .activate(ops_alerts::AlertKind::PersistenceFailed);
+                    eprintln!("[state] side-log worker failed: {e}");
+                    return false;
+                }
+            }
+        }
+        Ok(None) => (guard, Ok(None)),
+        Err(error) => (guard, Err(error)),
+    };
+    let (plain, alerts, health, history) = {
+        let mut gw = app.gw.lock().await;
+        let history = match appended {
+            Ok(Some(done)) => {
+                gw.history_appended(&done);
+                done.error.map_or(Ok(()), Err)
+            }
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
+        };
+        let plain = gw.snapshot_plain();
+        note_snapshot_size(&gw.ops_alerts, plain.len());
+        (
+            plain,
+            gw.ops_alerts.clone(),
+            gw.snapshot_health.clone(),
+            history,
+        )
     };
     let path = path.to_path_buf();
     let writer_alerts = alerts.clone();
+    let writer_health = health.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = guard;
         entry.notify();
         let sealed = snapshot::seal(&plain, &seed);
-        let result = snapshot::write_atomic(&path, &sealed);
+        // The snapshot is written even when a side-log append failed: it then
+        // still holds those records itself. The write reports failure all the
+        // same, so promises stay refused until every part is durable.
+        let result = snapshot::write_atomic(&path, &sealed)
+            .map_err(|e| format!("snapshot write failed: {e}"))
+            .and(history.map_err(|e| format!("side log: {e}")));
         // Publish the episode transition before releasing the same serialization
         // guard as the write. A delayed successful caller must not clear an alert
         // emitted by a later failed writer.
+        writer_health.record(result.is_ok());
         if result.is_ok() {
             writer_alerts.recover(ops_alerts::AlertKind::PersistenceFailed);
         } else {
@@ -6601,14 +6700,41 @@ async fn write_snapshot_with_entry(
     {
         Ok(Ok(())) => true,
         Ok(Err(e)) => {
-            eprintln!("[state] snapshot write failed: {e}");
+            eprintln!("[state] {e}");
             false
         }
         Err(e) => {
+            health.record(false);
             alerts.activate(ops_alerts::AlertKind::PersistenceFailed);
             eprintln!("[state] snapshot worker failed: {e}");
             false
         }
+    }
+}
+
+/// Append the side logs for `path` while holding `gw` (the archive writer and
+/// boot). The caller holds the snapshot serialization guard. A failed append
+/// keeps its records in the snapshot; the error is returned for the outcome.
+fn append_history_locked(
+    gw: &mut Gw,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+) -> Result<(), String> {
+    let Some(job) = gw.history_append_job(path)? else {
+        return Ok(());
+    };
+    let done = job.run(seed);
+    gw.history_appended(&done);
+    done.error.map_or(Ok(()), |e| Err(format!("side log: {e}")))
+}
+
+/// Raise `snapshot_size_high` while a captured payload is at or above three
+/// quarters of the cap (audit GF-1), long before a write fails at the cap.
+fn note_snapshot_size(alerts: &ops_alerts::OpsAlerts, plain_len: usize) {
+    if plain_len >= snapshot::SIZE_ALERT_BYTES {
+        alerts.activate(ops_alerts::AlertKind::SnapshotSizeHigh);
+    } else {
+        alerts.recover(ops_alerts::AlertKind::SnapshotSizeHigh);
     }
 }
 
@@ -8122,6 +8248,9 @@ async fn post_v1_register(
     };
     let (key, owner, chain_id, vault) = {
         let mut gw = app.gw.lock().await;
+        if let Err(error) = gw.refuse_if_persistence_failed() {
+            return mutation_error(error);
+        }
         if gw.accounts.len() >= MAX_ACCOUNTS {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -8203,14 +8332,14 @@ async fn post_v1_deposit_address(
         },
         None => None,
     };
-    match app
-        .gw
-        .lock()
-        .await
-        .account_set_deposit_address(&key, addr, &sig, current_sig.as_ref())
-    {
+    let bound = {
+        let mut gw = app.gw.lock().await;
+        gw.refuse_if_persistence_failed()
+            .and_then(|()| gw.account_set_deposit_address(&key, addr, &sig, current_sig.as_ref()))
+    };
+    match bound {
         Ok(()) => Json(serde_json::json!({ "depositAddress": hex0x(&addr) })).into_response(),
-        Err(e) => err400(e).into_response(),
+        Err(e) => mutation_error(e),
     }
 }
 
@@ -8594,6 +8723,9 @@ async fn post_v1_withdraw(
     };
     let r = {
         let mut gw = app.gw.lock().await;
+        if let Err(error) = gw.refuse_if_persistence_failed() {
+            return mutation_error(error);
+        }
         // The terminal wind-down path has no oracle-bearing operations. Its
         // existing pinned L1 phase gate remains sufficient even if feeds stop.
         if gw.seq.state.mode == Mode::CloseOnly {
@@ -8804,9 +8936,22 @@ async fn post_v1_deposit(
 }
 async fn post_v1_order(
     State(app): State<Shared>,
+    Extension(policy): Extension<Arc<service_policy::ServicePolicy>>,
+    peer: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(req): Json<OrderReq>,
 ) -> impl IntoResponse {
+    // Audit GF-1: one client may not spread orders over many accounts unbounded.
+    // Charged before the state lock; the client is the proxy-reported address
+    // behind the trusted loopback proxy (the registration limiter's rule). An
+    // in-process router without connection info has no client to charge.
+    if let Some(ConnectInfo(peer)) = peer {
+        if !policy.admit_order(client_ip(peer, &headers)) {
+            return mutation_error(
+                "RATE_LIMIT: too many orders from this client address, retry shortly".into(),
+            );
+        }
+    }
     let key = match api_key_from(&headers) {
         Ok(k) => k,
         Err(e) => return e.into_response(),
@@ -8837,13 +8982,21 @@ async fn post_v1_order(
     };
     match r {
         Ok(receipt) => Json(receipt).into_response(),
-        Err(e) if e.starts_with("RATE_LIMIT") => (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(serde_json::json!({ "error": e })),
-        )
-            .into_response(),
-        Err(e) => err400(e).into_response(),
+        Err(e) => mutation_error(e),
     }
+}
+
+/// A refused mutation: `RATE_LIMIT` is 429, `PERSISTENCE_UNAVAILABLE` is 503 (retry
+/// once a snapshot write succeeds), anything else 400.
+fn mutation_error(e: String) -> axum::response::Response {
+    let status = if e.starts_with("RATE_LIMIT") {
+        StatusCode::TOO_MANY_REQUESTS
+    } else if e.starts_with(PERSISTENCE_UNAVAILABLE) {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::BAD_REQUEST
+    };
+    (status, Json(serde_json::json!({ "error": e }))).into_response()
 }
 async fn delete_v1_order(
     State(app): State<Shared>,
@@ -9107,7 +9260,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
-                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },
+                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s per account; per client address, 40 at once then 20/s by default)" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; nothing was recorded, retry later" } } },
                 "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null)", "security": auth["security"], "responses": ok("orders") }
             },
             "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a pending order or live maker remainder. Prior fills are unchanged, including settled partial fills. Retains the original receipt and execution history; retries are idempotent. Production success requires a durable snapshot; cancellation is recorded in the open window manifest", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: unknown order or no cancellable remainder" }, "503": { "description": "persistence unavailable or durable cancellation outcome unknown" } } } },
@@ -9226,7 +9379,7 @@ async fn post_order(State(app): State<Shared>, Json(req): Json<OrderReq>) -> imp
             let receipt = app.gw.lock().await.receipt_json(&receipt, None);
             Json(receipt).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => mutation_error(e),
     }
 }
 
@@ -10524,6 +10677,28 @@ async fn main() {
     {
         eprintln!("[wind-down] REFUSING to start: {error}");
         std::process::exit(1);
+    }
+    // Audit GF-1 + SM-4: the order log and the settled batches' hash lists live in
+    // side logs beside the snapshot. Load them against what the snapshot recorded
+    // (an earlier snapshot that still holds them loads as is), then append what the
+    // snapshot still holds, so the next one leaves it out. Before boot recovery:
+    // a recovery snapshot written below records the side logs' new ends.
+    if let Some(p) = &state_path {
+        if let Err(error) = gw.attach_history(p, &enclave_seed, !restored_from_snapshot) {
+            eprintln!(
+                "[state] REFUSING to start: {error}. The side logs ({} and {}) belong \
+                 beside the snapshot; restore them together.",
+                side_log::Kind::OrderLog.path(p).display(),
+                side_log::Kind::Batches.path(p).display()
+            );
+            std::process::exit(1);
+        }
+        if let Err(error) = append_history_locked(&mut gw, p, &enclave_seed) {
+            // Refuse new promises until the writer (which also raises the alert)
+            // gets every part durable.
+            eprintln!("[state] {error}; the snapshot keeps those records and the writer retries");
+            gw.snapshot_health.record(false);
+        }
     }
     gw.prod = prod;
     gw.candidate_archive_required = archive_binding.is_some();
@@ -15984,7 +16159,7 @@ mod tests {
         }
         let pos = gw.seq.state.position(&gw.user.owner, 0).expect("position");
         assert!(pos.size > 0, "user is long after the seal");
-        let fin = gw.finality_str(&gw.orders[0].order_hash);
+        let fin = gw.finality_str(&gw.orders[0]);
         assert!(
             fin == "MATCHED" || fin == "SETTLED",
             "finality advanced: {fin}"
@@ -15993,7 +16168,7 @@ mod tests {
         for _ in 0..(SETTLE_TICKS + 1) {
             gw.tick();
         }
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "SETTLED");
     }
 
     #[test]
@@ -20745,7 +20920,7 @@ mod tests {
         for _ in 0..(SETTLE_TICKS * 3) {
             gw.tick();
         }
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "MATCHED");
         assert!(
             gw.pending_settle.is_empty(),
             "window mode must not accumulate the legacy settle queue"
@@ -20773,7 +20948,7 @@ mod tests {
             status,
             trading_gate::GateObservation::OpensGate,
         );
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "SETTLED");
     }
 
     // Task 5: without a prover (flag defaults false) the demo-era tick simulation is
@@ -20795,11 +20970,11 @@ mod tests {
         };
         let (_r, _ev) = gw.place_order(&req).expect("accepted");
         gw.tick(); // seals the fill → MATCHED
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "MATCHED");
         for _ in 0..(SETTLE_TICKS + 1) {
             gw.tick();
         }
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "SETTLED");
     }
 
     #[test]

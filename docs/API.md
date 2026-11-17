@@ -43,7 +43,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 
 | Method | Path | Auth | Body / notes |
 |--------|------|------|--------------|
-| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned, recoveryNonce, chainId, vault }`; `503` `{ error }` once the account capacity is reached, or while the state itself is at the soft admission cap (§ Admission cap); outstanding deposit permits never close registration |
+| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned, recoveryNonce, chainId, vault }`; `503` `{ error }` once the account capacity is reached, or while the state itself is at the soft admission cap (§ Admission cap), or `PERSISTENCE_UNAVAILABLE` while the state cannot be written (§ When the state cannot be written); outstanding deposit permits never close registration |
 | GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, marketFree[], positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }`, `marketFree` being `[{ marketId, free }]`, each market's free balance (the withdrawal minimum's exception, § Withdrawals); after close-only also `refundableDeposits[]` (§ Refunds after close-only) |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
 | POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
@@ -55,7 +55,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
-| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges) |
+| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges); `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written (§ When the state cannot be written) |
 | GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
@@ -84,6 +84,19 @@ The gateway serializes cancellation and the entire matching tick under the
 same state mutex. The existing Cancelled reason enters the current window
 manifest. Proof-v1 replays accounting and commits that manifest; it does not
 independently prove cancellation authorization or CLOB matching fairness.
+
+### When the state cannot be written
+
+After a state snapshot write fails, the gateway refuses every change that would hand
+out a promise a restart could forget, until a later write succeeds (the writer
+retries every 30 seconds): `POST /v1/orders` (no receipt, no `l1Challenge`),
+`POST /v1/accounts`, `POST /v1/accounts/withdraw` and
+`POST /v1/accounts/deposit/address` answer `503`
+`{ "error": "PERSISTENCE_UNAVAILABLE: ..." }` and change nothing; retry later.
+Cancellation and the routes that already wait for a durable snapshot keep their own
+`503` behaviour below. The `persistence_failed` alert is active meanwhile, and
+`snapshot_size_high` warns once a snapshot reaches three quarters of its 64 MiB cap
+(§ Operational alerts).
 
 Production without persistence refuses cancellation before mutation (503).
 With persistence, success waits for a durable snapshot ACK. Write failure or
@@ -124,7 +137,11 @@ margin but together do not (each passes alone; the second fails initial margin w
 the batch settles). A settlement-rejected order never rests or fills and receives no
 further receipt — it stays `ACCEPTED` in `GET /v1/orders` and is resolved in the
 batch manifest's **rejected** set. **Rate limit:** at most 10 orders/sec per account
-— over that returns `429` `{ "error": "RATE_LIMIT: ..." }`.
+— over that returns `429` `{ "error": "RATE_LIMIT: ..." }`. Each client address (the
+address the gateway's trusted proxy reports; IPv6 counted by /64) is also limited
+across all its accounts: 40 orders at once, then 20 per second
+(`GATEWAY_ORDER_BURST_PER_CLIENT`, `GATEWAY_ORDER_RATE_PER_CLIENT`), with the same
+`429` past it.
 
 **Minimum order size.** An order that opens, grows or flips a position needs at least
 **$10 of notional** (10,000,000 quote units). Reduce-only orders, and orders that
@@ -428,6 +445,21 @@ withdrawal nonce and the wind-down recipient, so this source starts a fresh depl
 with a new genesis root. Its gateway refuses every snapshot and rollback-journal format
 written before that change, by format magic, rather than migrating it. The v5–v7 notes
 above describe how those older formats behaved.
+
+**Order history beside the snapshot.** The encrypted order log and every settled
+batch's ordered/rejected order hashes (which inclusion challenges are answered from)
+grow with each order and are kept for good. They live in two append-only side logs
+beside `DARKPERP_STATE`: `<state>.orderlog` and `<state>.batches`, sealed under the
+same enclave seed and synced like the snapshot. The snapshot keeps only what is not
+appended yet and records where each side log's durable records end, so its size no
+longer grows with order volume. A snapshot written before this change (history
+inside) still loads; boot appends its history to the side logs. A snapshot that
+relies on side logs refuses to start without them, or with a side log rolled back
+to an older copy; a fresh genesis refuses to start beside leftover side logs. Back
+up and restore the side logs together with the snapshot (`gateway_backup.py` copies
+them; `docs/RECOVERY_RESTORE.md`). The sequencer also drops a finished order's
+receipt and finality records once a settle has hardened it; `GET /v1/orders` keeps
+reporting the finality its row last recorded.
 
 ## Trading is gated until launch (SEC-025-D)
 
@@ -992,7 +1024,8 @@ Each is raised once when it becomes active and once when it recovers:
 | Alert | Active while |
 |---|---|
 | `settlement_held` | the settle loop is held after repeated settle failures, or a clock recovery stopped it until a restart (§ Clock recovery status) |
-| `persistence_failed` | a durable state snapshot could not be written |
+| `persistence_failed` | a durable state snapshot (or one of its side logs) could not be written; new orders, registrations, withdrawals and deposit-address bindings are refused meanwhile (§ When the state cannot be written) |
+| `snapshot_size_high` | the sealed snapshot payload is at or above three quarters of its 64 MiB cap; writes still succeed, at the cap they fail |
 | `deposit_halted` | deposit ingestion is stopped by a safety halt |
 | `archive_pressure` | the configured price-report archive is under storage pressure, or a checkpoint with it could not be written |
 | `bond_shortfall` | the bond is below its target and could not be topped up, or top-ups are paused after an unacknowledged slash |

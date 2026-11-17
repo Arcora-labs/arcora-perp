@@ -198,11 +198,14 @@ mod audit_1116_gf1 {
             assert!(gw.accounts[&key].orders.is_empty(), "nothing was recorded");
             assert!(gw.order_log.is_empty(), "nothing was logged");
         }
-        let register = Request::builder()
+        let mut register = Request::builder()
             .method("POST")
             .uri("/v1/accounts")
             .body(Body::empty())
             .unwrap();
+        register.extensions_mut().insert(ConnectInfo(
+            "198.51.100.9:40000".parse::<SocketAddr>().unwrap(),
+        ));
         let refused = router.clone().oneshot(register).await.unwrap();
         assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
 
@@ -258,5 +261,250 @@ mod audit_1116_gf1 {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// Boot's restore: authenticate the snapshot, decode it, load the side logs.
+    fn restore(path: &std::path::Path) -> Result<Gw, String> {
+        let plain = snapshot::open(&std::fs::read(path).unwrap(), &SEED)?;
+        let mut gw = Gw::boot_restored(&plain)?;
+        gw.attach_history(path, &SEED, false)?;
+        Ok(gw)
+    }
+
+    fn assert_same_history(restored: &Gw, live: &Gw) {
+        assert_eq!(restored.order_log.len(), live.order_log.len());
+        assert_eq!(restored.order_log.head(), live.order_log.head());
+        assert_eq!(
+            restored.order_log.recompute_head(),
+            restored.order_log.head()
+        );
+        assert_eq!(&*restored.batch_orders, &*live.batch_orders);
+    }
+
+    /// The order log and the settled batches' hash lists leave the snapshot for
+    /// its side logs, and a restart reads them back: the chain continues and an
+    /// inclusion challenge for an order of the first settled batch can still be
+    /// answered. A snapshot whose side logs are missing, or rolled back to an
+    /// older copy, is refused rather than restored without them.
+    #[tokio::test]
+    async fn audit_1116_gf1_history_restores_from_its_side_logs() {
+        let app = test_app();
+        let key = {
+            let mut gw = app.gw.lock().await;
+            gw.window_settle_mode = true;
+            gw.seq.set_retain_tick_snapshots(false);
+            funded_account(&mut gw)
+        };
+        let dir = TestDir::new();
+        let path = dir.0.join("state");
+        let serial = Arc::new(Mutex::new(()));
+        trade_and_settle(&mut *app.gw.lock().await, &key, 30);
+        let (first_batch, early) = {
+            let gw = app.gw.lock().await;
+            let (batch, (ordered, _)) = gw.batch_orders.iter().next().unwrap();
+            (*batch, ordered[0])
+        };
+        assert!(write_snapshot(&app, &path, SEED, serial.clone()).await);
+        let old_batches = std::fs::read(side_log::Kind::Batches.path(&path)).unwrap();
+        trade_and_settle(&mut *app.gw.lock().await, &key, 30);
+        assert!(write_snapshot(&app, &path, SEED, serial).await);
+
+        let live = app.gw.lock().await;
+        assert!(
+            live.order_log.tail().is_empty(),
+            "every entry is in the side log"
+        );
+        let restored = restore(&path).unwrap();
+        assert_same_history(&restored, &live);
+        let (_, batch, proof) = restored.build_challenge_answer(&early).unwrap();
+        assert_eq!(batch, first_batch);
+        assert_eq!(
+            Some((false, batch, proof)),
+            live.build_challenge_answer(&early)
+        );
+
+        let batches = side_log::Kind::Batches.path(&path);
+        let current = std::fs::read(&batches).unwrap();
+        std::fs::write(&batches, &old_batches).unwrap();
+        let error = restore(&path).err().unwrap();
+        assert!(error.contains("does not hold"), "{error}");
+        std::fs::write(&batches, &current).unwrap();
+        std::fs::remove_file(side_log::Kind::OrderLog.path(&path)).unwrap();
+        let error = restore(&path).err().unwrap();
+        assert!(error.contains("does not hold"), "{error}");
+    }
+
+    /// A snapshot the base commit wrote (the frozen v10 fixture, its order log
+    /// inside) still loads; boot then moves its history out, and the next
+    /// snapshot restores to the same log from the side log.
+    #[test]
+    fn audit_1116_gf1_a_base_commit_snapshot_loads_and_moves_its_history_out() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("testdata/snapshots/v10/plain.bin");
+        let legacy = std::fs::read(fixture).unwrap();
+        let mut gw = Gw::boot_restored(&legacy).unwrap();
+        assert!(gw.order_log.len() >= 2, "the fixture's orders are logged");
+        assert_eq!(gw.order_log.tail().len() as u64, gw.order_log.len());
+        let head = gw.order_log.head();
+
+        let dir = TestDir::new();
+        let path = dir.0.join("state");
+        gw.attach_history(&path, &SEED, false).unwrap();
+        append_history_locked(&mut gw, &path, &SEED).unwrap();
+        assert!(gw.order_log.tail().is_empty());
+        assert_eq!(gw.order_log.head(), head);
+        let plain = gw.snapshot_plain();
+        assert!(plain.len() < legacy.len(), "the entries left the payload");
+        snapshot::write_atomic(&path, &snapshot::seal(&plain, &SEED)).unwrap();
+
+        let restored = restore(&path).unwrap();
+        assert_same_history(&restored, &gw);
+        assert_eq!(restored.snapshot_plain(), plain, "byte-exact re-encoding");
+        // Without its history extension the payload is refused: the head it keeps
+        // no longer follows from the (now empty) entries it holds.
+        let mut cut = plain.clone();
+        cut.truncate(legacy_layout_len(&plain));
+        assert!(
+            Gw::boot_restored(&cut).is_err(),
+            "the extension is not optional"
+        );
+    }
+
+    /// The length of `plain` without its history extension.
+    fn legacy_layout_len(plain: &[u8]) -> usize {
+        plain
+            .windows(8)
+            .rposition(|w| w == b"DPHIST1\0")
+            .expect("a snapshot relying on side logs carries the extension")
+    }
+
+    /// A snapshot that holds settled batches itself (written before this change,
+    /// or by a gateway without side logs) migrates them at boot, and they stay
+    /// answerable after the next restart.
+    #[test]
+    fn audit_1116_gf1_inline_settled_batches_migrate_to_the_side_log() {
+        let mut gw = Gw::boot();
+        gw.window_settle_mode = true;
+        gw.seq.set_retain_tick_snapshots(false);
+        let key = funded_account(&mut gw);
+        trade_and_settle(&mut gw, &key, 20);
+        trade_and_settle(&mut gw, &key, 20);
+        assert!(gw.batch_orders.len() >= 2);
+        let legacy = gw.snapshot_plain();
+        assert!(
+            legacy.windows(8).all(|w| w != b"DPHIST1\0"),
+            "the earlier layout"
+        );
+        let dir = TestDir::new();
+        let path = dir.0.join("state");
+        snapshot::write_atomic(&path, &snapshot::seal(&legacy, &SEED)).unwrap();
+
+        let mut booted = restore(&path).unwrap();
+        assert_same_history(&booted, &gw);
+        append_history_locked(&mut booted, &path, &SEED).unwrap();
+        let plain = booted.snapshot_plain();
+        assert!(plain.len() < legacy.len());
+        snapshot::write_atomic(&path, &snapshot::seal(&plain, &SEED)).unwrap();
+        let restored = restore(&path).unwrap();
+        assert_same_history(&restored, &gw);
+        let (batch, (ordered, _)) = gw.batch_orders.iter().next().unwrap();
+        assert_eq!(
+            restored.build_challenge_answer(&ordered[0]).unwrap().1,
+            *batch
+        );
+    }
+
+    /// A crash after the side logs were appended but before the snapshot that
+    /// records it: the older snapshot restores, the records appended after it
+    /// are kept (the log stays one chain), and a torn append is cut off.
+    #[tokio::test]
+    async fn audit_1116_gf1_a_crash_between_side_log_and_snapshot_keeps_one_history() {
+        let app = test_app();
+        let key = {
+            let mut gw = app.gw.lock().await;
+            gw.window_settle_mode = true;
+            gw.seq.set_retain_tick_snapshots(false);
+            funded_account(&mut gw)
+        };
+        let dir = TestDir::new();
+        let path = dir.0.join("state");
+        trade_and_settle(&mut *app.gw.lock().await, &key, 10);
+        assert!(write_snapshot(&app, &path, SEED, Arc::new(Mutex::new(()))).await);
+        let mut live = app.gw.lock().await;
+        trade_and_settle(&mut live, &key, 10);
+        append_history_locked(&mut live, &path, &SEED).unwrap();
+        // The process dies here, mid-way through a later append.
+        let log = side_log::Kind::OrderLog.path(&path);
+        let durable = std::fs::metadata(&log).unwrap().len();
+        let mut file = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        std::io::Write::write_all(&mut file, &[0x40, 0, 0, 0, 7, 7]).unwrap();
+        drop(file);
+
+        let mut restored = restore(&path).unwrap();
+        assert_same_history(&restored, &live);
+        assert_eq!(
+            std::fs::metadata(&log).unwrap().len(),
+            durable,
+            "torn tail cut"
+        );
+        // It continues the same chain.
+        restored.accounts.get_mut(&key).unwrap().orders_this_sec = 0;
+        restored
+            .account_place_order(&key, &small_ioc("Buy"))
+            .unwrap();
+        append_history_locked(&mut restored, &path, &SEED).unwrap();
+        let plain = restored.snapshot_plain();
+        snapshot::write_atomic(&path, &snapshot::seal(&plain, &SEED)).unwrap();
+        let again = restore(&path).unwrap();
+        assert_same_history(&again, &restored);
+        assert_eq!(again.order_log.len(), live.order_log.len() + 1);
+    }
+
+    /// A fresh genesis never adopts side logs some earlier state left behind, and
+    /// a state that never loaded them never cuts into them.
+    #[tokio::test]
+    async fn audit_1116_gf1_leftover_side_logs_are_never_adopted_or_cut() {
+        let dir = TestDir::new();
+        let path = dir.0.join("state");
+        let mut gw = Gw::boot();
+        gw.attach_history(&path, &SEED, true).unwrap();
+        let log = side_log::Kind::OrderLog.path(&path);
+        std::fs::write(&log, b"left behind").unwrap();
+        let mut fresh = Gw::boot();
+        let error = fresh.attach_history(&path, &SEED, true).unwrap_err();
+        assert!(error.contains("move it aside"), "{error}");
+
+        let app = test_app();
+        let key = funded_account(&mut *app.gw.lock().await);
+        app.gw
+            .lock()
+            .await
+            .account_place_order(&key, &small_ioc("Buy"))
+            .unwrap();
+        assert!(!write_snapshot(&app, &path, SEED, Arc::new(Mutex::new(()))).await);
+        assert_eq!(std::fs::read(&log).unwrap(), b"left behind");
+        assert_eq!(
+            app.gw.lock().await.order_log.tail().len(),
+            1,
+            "kept in the snapshot"
+        );
+        let plain = snapshot::open(&std::fs::read(&path).unwrap(), &SEED).unwrap();
+        assert_eq!(Gw::boot_restored(&plain).unwrap().order_log.len(), 1);
+    }
+
+    /// The size alarm fires at three quarters of the cap, before writes fail.
+    #[test]
+    fn audit_1116_gf1_snapshot_size_alarm_fires_before_the_cap() {
+        let alerts = ops_alerts::OpsAlerts::default();
+        note_snapshot_size(&alerts, snapshot::SIZE_ALERT_BYTES - 1);
+        assert!(alerts.active().is_empty());
+        note_snapshot_size(&alerts, snapshot::SIZE_ALERT_BYTES);
+        assert_eq!(
+            alerts.active(),
+            vec![ops_alerts::AlertKind::SnapshotSizeHigh]
+        );
+        const { assert!(snapshot::SIZE_ALERT_BYTES < snapshot::MAX_PLAIN_BYTES) };
+        note_snapshot_size(&alerts, 1024);
+        assert!(alerts.active().is_empty());
     }
 }

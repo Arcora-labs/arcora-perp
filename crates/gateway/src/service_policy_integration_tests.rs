@@ -22,6 +22,8 @@ fn policy() -> Arc<service_policy::ServicePolicy> {
         max_write_buffer_bytes: 1024 * 1024,
         send_timeout: Duration::from_secs(2),
         messages_per_second: 2,
+        order_rate_per_client: 20,
+        order_burst_per_client: 40,
     }))
 }
 

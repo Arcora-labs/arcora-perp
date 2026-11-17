@@ -85,6 +85,27 @@ pub const PAYLOAD_MAGIC: &[u8] = b"\xffDP-GATEWAY-STATE-v10\0";
 pub const MAX_PLAIN_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_SEALED_BYTES: usize = MAX_PLAIN_BYTES + 72;
 
+/// The payload size at which the `snapshot_size_high` alert is raised: three
+/// quarters of [`MAX_PLAIN_BYTES`], well before writes start failing at the cap.
+pub const SIZE_ALERT_BYTES: usize = MAX_PLAIN_BYTES / 4 * 3;
+
+/// Whether the latest snapshot write failed (audit GF-1). Shared by clones: every
+/// writer records its outcome under the snapshot serialization guard, and the
+/// gateway refuses new orders and other durable promises while it is set, since a
+/// restart would forget them. Runtime-only; a process starts healthy.
+#[derive(Clone, Default)]
+pub struct WriteHealth(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl WriteHealth {
+    pub fn record(&self, written: bool) {
+        self.0.store(!written, std::sync::atomic::Ordering::Release);
+    }
+
+    pub fn failed(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
 /// Explicit recovery intent, separate from an initial deployment's fresh genesis.
 /// A supplied checkpoint always requires a snapshot, even when the flag is "0".
 /// The hash must come from a trusted recovery record; matching it is not proof of

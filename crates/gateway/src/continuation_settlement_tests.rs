@@ -136,8 +136,12 @@ impl Fixture {
         fixture.assert_uncommitted();
         fixture
     }
+    fn finality(&self) -> String {
+        let order = self.gw.orders.iter().find(|o| o.order_hash == self.order);
+        self.gw.finality_str(order.unwrap())
+    }
     fn assert_uncommitted(&self) {
-        assert_eq!(self.gw.finality_str(&self.order), "MATCHED");
+        assert_eq!(self.finality(), "MATCHED");
         assert!(self.gw.withdraw_proofs.is_empty());
         assert!(self.gw.l1_status.is_none());
         let response = self.gw.v1_withdrawals_json(&self.key).unwrap();
@@ -478,7 +482,7 @@ fn restart_expired_session_retry_pending_then_durable_roll_forward() {
             finish_boot_recovery(&f.gw, true, &f.dir.state(), &f.dir.journal(), &SEED, None);
             assert!(!f.dir.journal().exists());
             f.restore();
-            assert_eq!(f.gw.finality_str(&f.order), "SETTLED");
+            assert_eq!(f.finality(), "SETTLED");
             let (published, proof) = &f.gw.withdraw_proofs[&f.leaf];
             assert_eq!(*published, withdrawal_root);
             assert!(withdrawals::verify(*published, f.leaf, proof));

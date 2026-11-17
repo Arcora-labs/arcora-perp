@@ -34,6 +34,10 @@ pub(crate) struct Config {
     pub(crate) max_write_buffer_bytes: usize,
     pub(crate) send_timeout: Duration,
     pub(crate) messages_per_second: usize,
+    /// Sustained orders per second from one client (`GATEWAY_ORDER_RATE_PER_CLIENT`).
+    pub(crate) order_rate_per_client: usize,
+    /// Orders one client may send at once (`GATEWAY_ORDER_BURST_PER_CLIENT`).
+    pub(crate) order_burst_per_client: usize,
 }
 
 impl Config {
@@ -90,6 +94,8 @@ impl Config {
                 number("GATEWAY_WS_SEND_TIMEOUT_MS", 2_000, 30_000)? as u64,
             ),
             messages_per_second: number("GATEWAY_WS_MESSAGES_PER_SECOND", 32, 1_000)?,
+            order_rate_per_client: number("GATEWAY_ORDER_RATE_PER_CLIENT", 20, 10_000)?,
+            order_burst_per_client: number("GATEWAY_ORDER_BURST_PER_CLIENT", 40, 100_000)?,
         };
         if config.max_write_buffer_bytes <= config.write_buffer_bytes {
             return Err(
@@ -144,6 +150,7 @@ pub(crate) struct ServicePolicy {
     slots: Arc<Semaphore>,
     http_slots: Arc<Semaphore>,
     client_shares: Arc<ClientShares>,
+    order_buckets: OrderBuckets,
     socket_finished: Arc<tokio::sync::Notify>,
     pub(crate) shutdown: Arc<Shutdown>,
 }
@@ -168,6 +175,10 @@ impl ServicePolicy {
                 limit: config.http_max_in_flight_per_client,
                 in_flight: std::sync::Mutex::new(HashMap::new()),
             }),
+            order_buckets: OrderBuckets::new(
+                config.order_rate_per_client,
+                config.order_burst_per_client,
+            ),
             socket_finished: Arc::new(tokio::sync::Notify::new()),
             shutdown: Arc::new(Shutdown::default()),
             config,
@@ -188,6 +199,12 @@ impl ServicePolicy {
                 header::HeaderName::from_static("x-api-key"),
                 header::HeaderName::from_static("x-admin-key"),
             ])
+    }
+
+    /// Charge one order to `client`'s bucket (audit GF-1); `false` means refuse it.
+    pub(crate) fn admit_order(&self, client: IpAddr) -> bool {
+        self.order_buckets
+            .take(client_share_key(client), tokio::time::Instant::now())
     }
 
     pub(crate) fn origin_allowed(&self, headers: &HeaderMap) -> bool {
@@ -292,6 +309,57 @@ impl ClientShares {
             shares: self.clone(),
             client,
         })
+    }
+}
+
+/// Per-client token buckets on order submission (audit GF-1 + SM-4). The
+/// per-account limit alone let one client spread orders over many free
+/// accounts. A bucket holds up to `burst` orders and refills at `rate` per
+/// second, counted in thousandths of an order so integer time steps stay exact.
+/// A full bucket is the same as no bucket, so idle clients are pruned once the
+/// map grows; if it is still full of active clients, a new client is refused.
+struct OrderBuckets {
+    rate: u64,
+    burst: u64,
+    buckets: std::sync::Mutex<HashMap<IpAddr, (u64, tokio::time::Instant)>>,
+}
+
+/// Bucket count at which full (idle) buckets are pruned, and the hard bound.
+const ORDER_BUCKETS_PRUNE_AT: usize = 4_096;
+const ORDER_BUCKETS_MAX: usize = 65_536;
+
+impl OrderBuckets {
+    fn new(rate: usize, burst: usize) -> Self {
+        Self {
+            rate: rate as u64,
+            burst: burst as u64 * 1_000,
+            buckets: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn refill(&self, (milli, at): (u64, tokio::time::Instant), now: tokio::time::Instant) -> u64 {
+        let elapsed = now.saturating_duration_since(at).as_millis();
+        let added = u64::try_from(elapsed)
+            .unwrap_or(u64::MAX)
+            .saturating_mul(self.rate);
+        milli.saturating_add(added).min(self.burst)
+    }
+
+    fn take(&self, client: IpAddr, now: tokio::time::Instant) -> bool {
+        let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
+        if !buckets.contains_key(&client) && buckets.len() >= ORDER_BUCKETS_PRUNE_AT {
+            buckets.retain(|_, bucket| self.refill(*bucket, now) < self.burst);
+            if buckets.len() >= ORDER_BUCKETS_MAX {
+                return false;
+            }
+        }
+        let bucket = buckets.entry(client).or_insert((self.burst, now));
+        let milli = self.refill(*bucket, now);
+        if milli < 1_000 {
+            return false;
+        }
+        *bucket = (milli - 1_000, now);
+        true
     }
 }
 
@@ -460,6 +528,63 @@ mod tests {
                 .http_max_in_flight_per_client,
             4
         );
+    }
+
+    /// Audit GF-1: a client gets its burst at once, then `rate` orders a second;
+    /// another client is unaffected, and a client inside one IPv6 /64 shares it.
+    #[test]
+    fn audit_1116_gf1_order_buckets_allow_the_burst_then_the_rate_per_client() {
+        let buckets = OrderBuckets::new(2, 3);
+        let start = tokio::time::Instant::now();
+        let a: IpAddr = "198.51.100.7".parse().unwrap();
+        let b: IpAddr = "198.51.100.8".parse().unwrap();
+        for _ in 0..3 {
+            assert!(buckets.take(a, start));
+        }
+        assert!(!buckets.take(a, start), "the burst is spent");
+        assert!(buckets.take(b, start), "another client has its own bucket");
+        assert!(!buckets.take(a, start + Duration::from_millis(499)));
+        assert!(
+            buckets.take(a, start + Duration::from_millis(500)),
+            "2/s refills one in 500 ms"
+        );
+        assert!(!buckets.take(a, start + Duration::from_millis(500)));
+        // A long pause refills to the burst, never beyond it.
+        let later = start + Duration::from_secs(60);
+        for _ in 0..3 {
+            assert!(buckets.take(a, later));
+        }
+        assert!(!buckets.take(a, later));
+        assert!(config(&[("GATEWAY_ORDER_RATE_PER_CLIENT", "0")], true).is_err());
+        assert!(config(&[("GATEWAY_ORDER_BURST_PER_CLIENT", "100001")], true).is_err());
+        let defaults = config(&[], true).unwrap();
+        assert_eq!(
+            (
+                defaults.order_rate_per_client,
+                defaults.order_burst_per_client
+            ),
+            (20, 40)
+        );
+        let policy = ServicePolicy::new(defaults);
+        let v6a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let v6b: IpAddr = "2001:db8:1:2::ffff".parse().unwrap();
+        for _ in 0..40 {
+            assert!(policy.admit_order(v6a));
+        }
+        assert!(!policy.admit_order(v6b), "one /64 is one client");
+    }
+
+    /// Idle (full) buckets are pruned once the map grows, so it stays bounded.
+    #[test]
+    fn audit_1116_gf1_order_buckets_prune_idle_clients() {
+        let buckets = OrderBuckets::new(1, 1);
+        let start = tokio::time::Instant::now();
+        for i in 0..ORDER_BUCKETS_PRUNE_AT as u32 {
+            assert!(buckets.take(IpAddr::from(i.to_be_bytes()), start));
+        }
+        let later = start + Duration::from_secs(5);
+        assert!(buckets.take("203.0.113.1".parse().unwrap(), later));
+        assert_eq!(buckets.buckets.lock().unwrap().len(), 1);
     }
 
     #[test]

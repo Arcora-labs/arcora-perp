@@ -22,7 +22,7 @@ use perp_core::hash::{Digest, Domain};
 use rand::{CryptoRng, RngCore};
 
 /// One sealed, chained log entry.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LogEntry {
     /// The order's terms commitment (`Order::ciphertext_commit`) — a public,
     /// deterministic keccak over the same canonical terms sealed in `entry_ct`,
@@ -37,8 +37,11 @@ pub struct LogEntry {
     pub entry_hash: Digest,
 }
 
-/// The append-only encrypted order log. Persisted (entries + head) in the
-/// sealed state snapshot; the recipient pubkey is `#[serde(skip)]`ped and
+/// The append-only encrypted order log. With a state path configured, the
+/// entries live in the sealed side log beside the snapshot (`side_log`, audit
+/// GF-1 + SM-4): memory and the snapshot keep only the entries not yet appended
+/// there, plus the head. Without one, every entry stays in memory and in the
+/// snapshot, as before. The recipient pubkey is `#[serde(skip)]`ped and
 /// re-derived from `ENCLAVE_SEED` on boot/restore — no key material, public or
 /// secret, is ever read from disk.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -47,10 +50,18 @@ pub struct OrderLog {
     /// / `boot_restored` re-derive it (same posture as the order-epoch key).
     #[serde(skip)]
     log_pub: [u8; 32],
+    /// The entries after `base`: those not yet appended to the side log.
     entries: Vec<LogEntry>,
     /// Running chain head: the `entry_hash` of the newest entry (zero digest
     /// while the log is empty).
     head: Digest,
+    /// How many entries precede `entries` (durable in the side log). Not in the
+    /// positional encoding: the snapshot's history extension carries it.
+    #[serde(skip)]
+    base: u64,
+    /// The chain head after the first `base` entries.
+    #[serde(skip)]
+    base_head: Digest,
 }
 
 impl OrderLog {
@@ -60,6 +71,8 @@ impl OrderLog {
             log_pub,
             entries: Vec::new(),
             head: [0u8; 32],
+            base: 0,
+            base_head: [0u8; 32],
         }
     }
 
@@ -77,15 +90,55 @@ impl OrderLog {
         self.log_pub
     }
 
-    /// Number of entries appended so far.
-    #[allow(dead_code)] // exercised by the ingest + persistence tests
-    pub fn len(&self) -> usize {
-        self.entries.len()
+    /// Number of entries appended so far, including those in the side log.
+    pub fn len(&self) -> u64 {
+        self.base + self.entries.len() as u64
     }
 
     #[allow(dead_code)] // customary companion of `len` (clippy: len_without_is_empty)
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.len() == 0
+    }
+
+    /// The entries not yet appended to the side log: the last ones of the log.
+    pub fn tail(&self) -> &[LogEntry] {
+        &self.entries
+    }
+
+    /// The chain head before `tail()`: after the entries in the side log.
+    pub fn base_head(&self) -> Digest {
+        self.base_head
+    }
+
+    /// Restore: the snapshot's entries follow `base` side-log entries whose chain
+    /// ends at `base_head`. Refused unless the snapshot's entries continue that
+    /// chain to its stored head.
+    pub fn set_base(&mut self, base: u64, base_head: Digest) -> Result<(), String> {
+        self.base = base;
+        self.base_head = base_head;
+        if self.recompute_head() != self.head {
+            return Err("order log entries do not continue their chain to the stored head".into());
+        }
+        Ok(())
+    }
+
+    /// The first `n` entries of `tail()` are now durable in the side log.
+    pub fn mark_appended(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+        self.base_head = self.entries[n - 1].entry_hash;
+        self.base += n as u64;
+        self.entries.drain(..n);
+    }
+
+    /// The side log already holds every entry of `tail()` and more, written by an
+    /// earlier run after its last snapshot: continue after them.
+    pub fn adopt(&mut self, len: u64, head: Digest) {
+        self.entries.clear();
+        self.base = len;
+        self.base_head = head;
+        self.head = head;
     }
 
     /// Seal `canonical` (the accepted order's canonical terms bytes) to the log
@@ -103,7 +156,7 @@ impl OrderLog {
         canonical: &[u8],
         rng: impl RngCore + CryptoRng,
     ) -> Digest {
-        let seq = self.entries.len() as u64;
+        let seq = self.len();
         let aad = sealed_box::domain_aad(Domain::LogEncryptAad as u8, &seq.to_le_bytes());
         let entry_ct = sealed_box::seal(&self.log_pub, canonical, &aad, rng).to_bytes();
         let entry_hash = chain(&self.head, commitment, &entry_ct);
@@ -129,17 +182,22 @@ impl OrderLog {
         self.head
     }
 
-    /// Re-fold every stored entry from the zero digest. Equal to [`Self::head`]
-    /// iff no entry has been mutated, reordered, or dropped — the
+    /// Re-fold every entry held in memory from the head after the side log's
+    /// `base` entries (the zero digest when there are none). Equal to
+    /// [`Self::head`] iff no entry has been mutated, reordered, or dropped — the
     /// tamper-evidence check a verifier (or test) runs over the log.
-    #[allow(dead_code)] // exercised by the tamper-evidence tests; a verifier's entry point
     pub fn recompute_head(&self) -> Digest {
-        let mut h = [0u8; 32];
+        let mut h = self.base_head;
         for e in &self.entries {
             h = chain(&h, &e.commitment, &e.entry_ct);
         }
         h
     }
+}
+
+/// Whether `entry` is the chain link that follows `prev`.
+pub fn links(prev: &Digest, entry: &LogEntry) -> bool {
+    chain(prev, &entry.commitment, &entry.entry_ct) == entry.entry_hash
 }
 
 /// One chain link: `keccak256(Domain::OrderLogChain ‖ prev ‖ commitment ‖

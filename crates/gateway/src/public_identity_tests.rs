@@ -106,6 +106,8 @@ async fn public_identity_post_retains_bounded_intake_and_cannot_change_state() {
         max_write_buffer_bytes: 1024,
         send_timeout: Duration::from_secs(1),
         messages_per_second: 1,
+        order_rate_per_client: 1,
+        order_burst_per_client: 1,
     }));
     let oversized = build_router_with_policy(app.clone(), true, policy)
         .oneshot(
