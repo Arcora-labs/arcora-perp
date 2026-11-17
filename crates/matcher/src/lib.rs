@@ -24,6 +24,7 @@ mod book;
 
 pub use book::{
     ImpactWindow, Match, OrderBook, OrderRemoval, RestingQuote, SubmitOutcome, SubmitStatus,
+    TradeCheck,
 };
 
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -108,18 +109,18 @@ impl<H: Hasher> MatchingEngine<H> {
         hashes.retain(|h| self.books.values().any(|b| b.rests(h)));
     }
 
-    /// Cancel every order of `owner` resting on `side` of market `market_id`
-    /// except its reduce-only ones, and return their hashes (see
-    /// [`OrderBook::cancel_owner_side`]).
-    pub fn cancel_owner_side(
+    /// Cancel every order resting on `side` of market `market_id` that `select`
+    /// picks, in one walk of that side, and return their hashes (see
+    /// [`OrderBook::cancel_side_where`]).
+    pub fn cancel_side_where<T>(
         &mut self,
         market_id: MarketId,
-        owner: &perp_core::note::PubKey,
         side: Side,
-    ) -> Vec<Digest> {
+        select: impl FnMut(&perp_core::note::PubKey, &Digest, bool) -> Option<T>,
+    ) -> Vec<(Digest, T)> {
         self.books
             .get_mut(&market_id)
-            .map(|b| b.cancel_owner_side(owner, side))
+            .map(|b| b.cancel_side_where(side, select))
             .unwrap_or_default()
     }
 
@@ -162,24 +163,17 @@ impl<H: Hasher> MatchingEngine<H> {
     /// Submit one order. Returns the assigned seq and the matching outcome.
     /// An order for an unknown market is rejected without consuming a seq.
     pub fn submit(&mut self, order: &Order, now_ms: u64) -> Processed {
-        self.submit_journaled(order, now_ms, None)
+        self.submit_journaled(order, now_ms, None, None)
     }
 
-    /// [`Self::submit`], recording the changes to the order's book in `steps`.
-    fn submit_undoable(
-        &mut self,
-        order: &Order,
-        now_ms: u64,
-        steps: &mut Vec<book::Step>,
-    ) -> Processed {
-        self.submit_journaled(order, now_ms, Some(steps))
-    }
-
+    /// [`Self::submit`], recording the changes to the order's book in `steps`
+    /// and asking `check` about each trade, each if given.
     fn submit_journaled(
         &mut self,
         order: &Order,
         now_ms: u64,
         steps: Option<&mut Vec<book::Step>>,
+        check: book::Check<'_>,
     ) -> Processed {
         let Some(book) = self.books.get_mut(&order.market_id) else {
             return Processed {
@@ -194,10 +188,7 @@ impl<H: Hasher> MatchingEngine<H> {
         };
         let seq = self.next_seq;
         self.next_seq += 1;
-        let outcome = match steps {
-            None => book.submit(order, seq, now_ms),
-            Some(steps) => book.submit_undoable(order, seq, now_ms, steps),
-        };
+        let outcome = book.submit_with(order, seq, now_ms, steps, check);
         Processed {
             seq_no: seq,
             outcome,
@@ -207,7 +198,21 @@ impl<H: Hasher> MatchingEngine<H> {
     /// Process a whole arrival-ordered stream, collecting fills and the
     /// manifest's `ordered` / `rejected` lists (§2).
     pub fn process_stream(&mut self, orders: &[Order], now_ms: u64) -> StreamResult {
-        self.process_stream_journaled(orders, now_ms, None)
+        self.process_stream_journaled(orders, now_ms, None, None)
+    }
+
+    /// [`Self::process_stream`], asking `check` about each trade before the
+    /// book changes for it (audit 2026-11-16 SM-2). The sequencer's last
+    /// matching pass settles each fill this way as it is matched, so a fill
+    /// that would fail drops its maker or stops its taker before the other
+    /// side loses any size to it (see [`TradeCheck`]).
+    pub fn process_stream_checked(
+        &mut self,
+        orders: &[Order],
+        now_ms: u64,
+        check: &mut dyn FnMut(&Match) -> TradeCheck,
+    ) -> StreamResult {
+        self.process_stream_journaled(orders, now_ms, None, Some(check))
     }
 
     /// [`Self::process_stream`], returning with its result what it changed, for
@@ -223,7 +228,7 @@ impl<H: Hasher> MatchingEngine<H> {
             next_seq: self.next_seq,
             steps: Vec::new(),
         };
-        let result = self.process_stream_journaled(orders, now_ms, Some(&mut undo.steps));
+        let result = self.process_stream_journaled(orders, now_ms, Some(&mut undo.steps), None);
         (result, undo)
     }
 
@@ -245,14 +250,20 @@ impl<H: Hasher> MatchingEngine<H> {
         orders: &[Order],
         now_ms: u64,
         mut steps: Option<&mut Vec<(MarketId, book::Step)>>,
+        mut check: book::Check<'_>,
     ) -> StreamResult {
         let mut result = StreamResult::default();
         let mut scratch = Vec::new();
         for order in orders {
             let p = match steps.as_deref_mut() {
-                None => self.submit(order, now_ms),
+                None => self.submit_journaled(order, now_ms, None, book::reborrow(&mut check)),
                 Some(steps) => {
-                    let p = self.submit_undoable(order, now_ms, &mut scratch);
+                    let p = self.submit_journaled(
+                        order,
+                        now_ms,
+                        Some(&mut scratch),
+                        book::reborrow(&mut check),
+                    );
                     steps.extend(scratch.drain(..).map(|step| (order.market_id, step)));
                     p
                 }
@@ -1096,7 +1107,14 @@ mod tests {
                                 .collect()
                         };
                         let expected = theirs(&e);
-                        assert_eq!(e.cancel_owner_side(market, &owner, side), expected);
+                        let taken: Vec<Digest> = e
+                            .cancel_side_where(market, side, |o, _, reduce_only| {
+                                (*o == owner && !reduce_only).then_some(())
+                            })
+                            .into_iter()
+                            .map(|(hash, ())| hash)
+                            .collect();
+                        assert_eq!(taken, expected);
                         assert!(theirs(&e).is_empty(), "case {case}");
                     }
                     _ => {
@@ -1115,6 +1133,184 @@ mod tests {
                     .all(|h| resting.contains(h) || walked(&e, h).is_none()));
             }
         }
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: the sequencer's last matching
+    /// pass asks about each trade before the book changes for it, and a trade it
+    /// refuses must cost no other order any size. Over pseudo-random streams in
+    /// two markets, with a check that drops some makers and stops some takers:
+    /// the fills are exactly the trades the check let through, in order; every
+    /// order resting before the stream lost exactly what it traded, or left the
+    /// book filled, dropped or removed; every order of the stream that rests
+    /// holds its size less what it traded; a dropped maker and a stopped taker
+    /// trade no more and do not rest; a fill-or-kill that is killed trades
+    /// nothing. With a check that lets every trade through, a checked stream
+    /// matches as a plain one does.
+    #[test]
+    fn audit_1116_sm2_a_checked_stream_takes_size_only_from_the_trades_it_allows() {
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move |bound: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % bound
+        };
+        let (mut dropped_total, mut stopped_total, mut killed_total) = (0, 0, 0);
+        for case in 0..300 {
+            let mut e = engine();
+            e.open_market(1);
+            let mut nonce = 0u64;
+            for now in 0..8u64 {
+                let orders: Vec<Order> = (0..next(14))
+                    .map(|_| {
+                        nonce += 1;
+                        let side = if next(2) == 0 { Side::Buy } else { Side::Sell };
+                        let price = match next(6) {
+                            0 => 0,
+                            n => (99_998 + n as i128) * PRICE_SCALE,
+                        };
+                        let tif = match next(5) {
+                            0 => TimeInForce::Ioc,
+                            1 => TimeInForce::Fok,
+                            2 => TimeInForce::PostOnly,
+                            _ => TimeInForce::Gtc,
+                        };
+                        let mut o = order(
+                            next(5),
+                            side,
+                            (1 + next(5) as i128) * SIZE_SCALE / 10,
+                            price,
+                            tif,
+                            nonce,
+                        );
+                        o.market_id = next(2);
+                        if next(4) == 0 {
+                            o.expiry_ms = now + 1 + next(3);
+                        }
+                        o
+                    })
+                    .collect();
+
+                let mut plain = e.clone();
+                let expected = alloc::format!("{:?}", plain.process_stream(&orders, now));
+                let mut allowing = e.clone();
+                let allowed =
+                    allowing.process_stream_checked(&orders, now, &mut |_| TradeCheck::TRADE);
+                assert_eq!(alloc::format!("{allowed:?}"), expected, "case {case}");
+                assert_eq!(
+                    alloc::format!("{allowing:?}"),
+                    alloc::format!("{plain:?}"),
+                    "case {case}"
+                );
+
+                let before: BTreeMap<Digest, i128> = e
+                    .books
+                    .values()
+                    .flat_map(|b| b.resting_orders())
+                    .map(|(_, q, _)| (q.order_hash, q.remaining))
+                    .collect();
+                let salt = next(1 << 16) as u8;
+                let mut asked: Vec<(Match, TradeCheck)> = Vec::new();
+                let result = e.process_stream_checked(&orders, now, &mut |m| {
+                    let verdict = TradeCheck {
+                        drop_maker: (m.maker_order_hash[0] ^ salt).is_multiple_of(4),
+                        stop_taker: (m.taker_order_hash[1] ^ salt).is_multiple_of(5),
+                    };
+                    asked.push((*m, verdict));
+                    verdict
+                });
+                assert_indexed(&e);
+                let traded: Vec<Match> = asked
+                    .iter()
+                    .filter(|(_, v)| *v == TradeCheck::TRADE)
+                    .map(|(m, _)| *m)
+                    .collect();
+                assert_eq!(result.fills, traded, "case {case}");
+                let dropped: BTreeSet<Digest> = asked
+                    .iter()
+                    .filter(|(_, v)| v.drop_maker)
+                    .map(|(m, _)| m.maker_order_hash)
+                    .collect();
+                let stopped: BTreeSet<Digest> = asked
+                    .iter()
+                    .filter(|(_, v)| v.stop_taker)
+                    .map(|(m, _)| m.taker_order_hash)
+                    .collect();
+                dropped_total += dropped.len();
+                stopped_total += stopped.len();
+                let removed: BTreeSet<Digest> = result
+                    .processed
+                    .iter()
+                    .flat_map(|p| p.outcome.removals.iter().map(|r| r.order_hash))
+                    .collect();
+                let traded_by = |hash: &Digest| -> i128 {
+                    result
+                        .fills
+                        .iter()
+                        .filter(|m| m.maker_order_hash == *hash || m.taker_order_hash == *hash)
+                        .map(|m| m.size)
+                        .sum()
+                };
+                for (hash, remaining) in &before {
+                    let traded = traded_by(hash);
+                    match e.remaining(hash) {
+                        Some(left) => {
+                            assert_eq!(left, remaining - traded, "case {case}: a maker lost size")
+                        }
+                        None => assert!(
+                            traded == *remaining
+                                || dropped.contains(hash)
+                                || removed.contains(hash),
+                            "case {case}: a maker left the book unreported"
+                        ),
+                    }
+                }
+                for (o, p) in orders.iter().zip(&result.processed) {
+                    let hash = p.outcome.order_hash;
+                    if let Some(left) = e.remaining(&hash) {
+                        assert!(
+                            !stopped.contains(&hash),
+                            "case {case}: a stopped taker rests"
+                        );
+                        if !before.contains_key(&hash) {
+                            assert_eq!(left, o.size - traded_by(&hash), "case {case}");
+                        }
+                    }
+                    if dropped.contains(&hash) || stopped.contains(&hash) {
+                        let last = asked
+                            .iter()
+                            .rposition(|(m, v)| {
+                                (v.drop_maker && m.maker_order_hash == hash)
+                                    || (v.stop_taker && m.taker_order_hash == hash)
+                            })
+                            .unwrap();
+                        assert!(
+                            asked[last + 1..]
+                                .iter()
+                                .all(|(m, v)| *v != TradeCheck::TRADE
+                                    || (m.maker_order_hash != hash && m.taker_order_hash != hash)),
+                            "case {case}: an order traded after it was dropped or stopped"
+                        );
+                    }
+                    if p.outcome.status
+                        == SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable)
+                        && !p.outcome.fills.is_empty()
+                    {
+                        panic!("case {case}: a killed fill-or-kill traded");
+                    }
+                    if o.tif == TimeInForce::Fok
+                        && p.outcome.status
+                            == SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable)
+                    {
+                        killed_total += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            dropped_total > 100 && stopped_total > 100 && killed_total > 10,
+            "{dropped_total} dropped, {stopped_total} stopped, {killed_total} killed"
+        );
     }
 }
 

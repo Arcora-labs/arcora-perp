@@ -23,7 +23,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
-use matcher::{ImpactWindow, Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus};
+use matcher::{
+    ImpactWindow, Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus, TradeCheck,
+};
 use perp_core::engine::{BatchOp, ForcedClose};
 use perp_core::fixed::{notional_quote, QUOTE_SCALE, RATE_SCALE};
 use perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL;
@@ -897,6 +899,9 @@ struct FillSettlement {
     rejected: Vec<(Digest, RejectReason)>,
     /// Order hashes with at least one settled fill, deduplicated, in fill order.
     settled_order_hashes: Vec<Digest>,
+    /// The members of `settled_order_hashes`, to deduplicate it without a scan
+    /// of it per fill.
+    settled_seen: BTreeSet<Digest>,
     /// SEC-022 §6: order hashes whose fill failed for an ATTRIBUTABLE reason
     /// (band / bankruptcy / reduce_only settlement violation), each paired with
     /// the reason recorded at its OWN push site. `seal_batch`'s dry-run bans
@@ -908,11 +913,23 @@ struct FillSettlement {
     /// lookup would commit that earlier, wrong reason into `manifest_hash`
     /// (whole-branch review I2).
     offenders: Vec<(Digest, RejectReason)>,
-    /// The offenders among `offenders` that were the MAKER of a fill their
-    /// owner's collateral could not carry ([`fails_collateral`]), each with that
-    /// owner, the market and the side the order rests on. `seal_batch` bans the
-    /// owner's whole side with such an offender (audit 2026-11-16 SM-2).
-    collateral_makers: BTreeMap<Digest, (PubKey, MarketId, Side)>,
+    /// The offenders among `offenders` that were the MAKER of a fill that failed
+    /// for a reason that can ban the maker's side ([`bans_side`]), once per
+    /// maker and reason: its owner, the market, the side it rests on and the
+    /// reason. `seal_batch` bans the owner's orders on that side that would fail
+    /// the same way with it, under that reason (audit 2026-11-16 SM-2), whatever
+    /// reason the maker itself was first recorded with.
+    side_bans: BTreeMap<(Digest, u8), SideBan>,
+}
+
+/// A maker's failure that can take its owner's other orders on the same side
+/// of the market with it ([`FillSettlement::side_bans`]).
+#[derive(Clone, Copy, Debug)]
+struct SideBan {
+    owner: PubKey,
+    market_id: MarketId,
+    side: Side,
+    reason: RejectReason,
 }
 
 /// Whether a fill failed because its leg's collateral could not carry it: below
@@ -923,6 +940,69 @@ fn fails_collateral(reason: RejectReason) -> bool {
         reason,
         RejectReason::InsufficientMargin | RejectReason::FillWouldBankrupt
     )
+}
+
+/// Whether a maker's failure for `reason` can ban its owner's side (audit
+/// 2026-11-16 SM-2): its collateral could not carry the fill
+/// ([`fails_collateral`]), or the fill would add exposure where only a
+/// reduction may trade (a reduce-only order, close-only mode, an order admitted
+/// below the minimum because it reduced). A price out of band is the order's
+/// own and bans only it.
+fn bans_side(reason: RejectReason) -> bool {
+    fails_collateral(reason)
+        || matches!(
+            reason,
+            RejectReason::ReduceOnlyViolation
+                | RejectReason::MarketCloseOnly
+                | RejectReason::BelowMinimumSize
+        )
+}
+
+/// Whether a side ban for `reason` takes an order of the banned owner that is
+/// `reduce_only` and, if `exempt`, was admitted below the minimum because it
+/// reduced: the orders that would fail the same way. A reduce-only order adds
+/// no exposure, so only a reduce-only ban takes it.
+fn side_ban_takes(reason: RejectReason, reduce_only: bool, exempt: bool) -> bool {
+    match reason {
+        RejectReason::ReduceOnlyViolation => reduce_only,
+        RejectReason::BelowMinimumSize => exempt && !reduce_only,
+        _ => !reduce_only,
+    }
+}
+
+/// Whether `owner`'s position in `market_id` gives an order on `side` nothing
+/// to reduce: no short for a bid to buy back, no long for an ask to sell.
+fn nothing_to_reduce(
+    state: &DefaultState,
+    owner: &PubKey,
+    market_id: MarketId,
+    side: Side,
+) -> bool {
+    let size = state.position(owner, market_id).map_or(0, |p| p.size);
+    match side {
+        Side::Buy => size >= 0,
+        Side::Sell => size <= 0,
+    }
+}
+
+/// The name of `reason`, as a rejection reads in an order's execution record:
+/// the reason of a removal that stands for one (see `Sequencer::seal_batch`).
+fn reason_name(reason: RejectReason) -> &'static str {
+    match reason {
+        RejectReason::Expired => "Expired",
+        RejectReason::SelfTradePrevented => "SelfTradePrevented",
+        RejectReason::PostOnlyWouldTake => "PostOnlyWouldTake",
+        RejectReason::ReduceOnlyViolation => "ReduceOnlyViolation",
+        RejectReason::InsufficientMargin => "InsufficientMargin",
+        RejectReason::MarketCloseOnly => "MarketCloseOnly",
+        RejectReason::OracleUnavailable => "OracleUnavailable",
+        RejectReason::FillOrKillUnfillable => "FillOrKillUnfillable",
+        RejectReason::Cancelled => "Cancelled",
+        RejectReason::InvalidOrder => "InvalidOrder",
+        RejectReason::FillPriceOutOfBand => "FillPriceOutOfBand",
+        RejectReason::FillWouldBankrupt => "FillWouldBankrupt",
+        RejectReason::BelowMinimumSize => "BelowMinimumSize",
+    }
 }
 
 /// Whether a signed `delta` would INCREASE `owner`'s absolute exposure in
@@ -974,132 +1054,166 @@ fn settle_fills(
 ) -> FillSettlement {
     let mut out = FillSettlement::default();
     for m in fills {
-        let Some(oracle) = oracles.get(&m.market_id).copied() else {
-            for oh in [m.taker_order_hash, m.maker_order_hash] {
-                out.rejected.push((oh, RejectReason::OracleUnavailable));
-            }
-            continue;
-        };
-        // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
-        // the fill if it would increase a reduce_only party's absolute exposure. (Matching
-        // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
-        // The pre-trade gate already rejects a reduce_only order that would open against
-        // the pre-batch position; this is the live backstop for an intra-batch change.
-        //
-        // The violation is attributed ONLY to the offending order(s), never to an
-        // innocent counterparty (adversarial-review follow-up). SEC-022 §6 (Task 7
-        // review I1a): it is ATTRIBUTABLE, so the offender is also BANNED like any
-        // other offending leg — without the ban the dropped fill still burned the
-        // innocent counterparty's consumed depth. Reachable cross-batch: a reduce_only
-        // maker resting since batch N whose position an EARLIER fill of this very
-        // settlement pass closed (the pre-trade gate and the owners_with_order guard
-        // see only current-batch orders). Where both legs offend, both are banned.
-        //
-        // The close-only and minimum checks follow the same rule. In close-only mode
-        // the engine refuses a fill when either leg adds exposure; naming that leg here
-        // lets a close that crossed a resting opener (admitted before the mode
-        // changed) be rematched instead of rejected with it.
-        let taker_delta = if m.taker_side == Side::Buy {
-            m.size
-        } else {
-            -m.size
-        };
-        let close_only = state.mode == Mode::CloseOnly;
-        let leg_offense = |owner: &PubKey, hash: &Digest, reduce_only: bool, delta: i128| {
-            if !exposure_increases_in(state, owner, m.market_id, delta) {
-                None
-            } else if reduce_only {
-                Some(RejectReason::ReduceOnlyViolation)
-            } else if close_only {
-                Some(RejectReason::MarketCloseOnly)
-            } else if minimum_exempt.contains(hash) {
-                Some(RejectReason::BelowMinimumSize)
-            } else {
-                None
-            }
-        };
-        let taker_offense = leg_offense(
-            &m.taker,
-            &m.taker_order_hash,
-            m.taker_reduce_only,
-            taker_delta,
-        );
-        let maker_offense = leg_offense(
-            &m.maker,
-            &m.maker_order_hash,
-            m.maker_reduce_only,
-            -taker_delta,
-        );
-        if taker_offense.is_some() || maker_offense.is_some() {
-            for (hash, offense) in [
-                (m.taker_order_hash, taker_offense),
-                (m.maker_order_hash, maker_offense),
-            ] {
-                if let Some(reason) = offense {
-                    out.rejected.push((hash, reason));
-                    out.offenders.push((hash, reason));
-                }
-            }
-            continue;
+        settle_fill(state, oracles, m, now_ms, minimum_exempt, &mut out);
+    }
+    out
+}
+
+/// Settle one matched fill `m` into `out`, as [`settle_fills`] settles each of
+/// its fills in turn, and return which of its orders failed it, attributably:
+/// `drop_maker` for the maker, `stop_taker` for the taker. A fill that settled,
+/// or failed for no order's fault, returns [`TradeCheck::TRADE`]. The last
+/// matching pass of `seal_batch` asks this about each trade before the book
+/// changes for it (audit 2026-11-16 SM-2).
+fn settle_fill(
+    state: &mut DefaultState,
+    oracles: &BTreeMap<MarketId, OracleTranscript>,
+    m: &Match,
+    now_ms: u64,
+    minimum_exempt: &BTreeSet<Digest>,
+    out: &mut FillSettlement,
+) -> TradeCheck {
+    let maker_side = match m.taker_side {
+        Side::Buy => Side::Sell,
+        Side::Sell => Side::Buy,
+    };
+    let maker_failed = |out: &mut FillSettlement, reason: RejectReason| {
+        out.rejected.push((m.maker_order_hash, reason));
+        out.offenders.push((m.maker_order_hash, reason));
+        if bans_side(reason) {
+            out.side_bans
+                .entry((m.maker_order_hash, reason as u8))
+                .or_insert(SideBan {
+                    owner: m.maker,
+                    market_id: m.market_id,
+                    side: maker_side,
+                    reason,
+                });
         }
-        let op = BatchOp::Fill {
-            taker: m.taker,
-            maker: m.maker,
-            market_id: m.market_id,
-            taker_side: m.taker_side,
-            size: m.size,
-            price: m.price,
-            oracle,
-            now_ms,
+    };
+    let Some(oracle) = oracles.get(&m.market_id).copied() else {
+        for oh in [m.taker_order_hash, m.maker_order_hash] {
+            out.rejected.push((oh, RejectReason::OracleUnavailable));
+        }
+        return TradeCheck::TRADE;
+    };
+    // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
+    // the fill if it would increase a reduce_only party's absolute exposure. (Matching
+    // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
+    // The pre-trade gate already rejects a reduce_only order that would open against
+    // the pre-batch position; this is the live backstop for an intra-batch change.
+    //
+    // The violation is attributed ONLY to the offending order(s), never to an
+    // innocent counterparty (adversarial-review follow-up). SEC-022 §6 (Task 7
+    // review I1a): it is ATTRIBUTABLE, so the offender is also BANNED like any
+    // other offending leg — without the ban the dropped fill still burned the
+    // innocent counterparty's consumed depth. Reachable cross-batch: a reduce_only
+    // maker resting since batch N whose position an EARLIER fill of this very
+    // settlement pass closed (the pre-trade gate and the owners_with_order guard
+    // see only current-batch orders). Where both legs offend, both are banned.
+    //
+    // The close-only and minimum checks follow the same rule. In close-only mode
+    // the engine refuses a fill when either leg adds exposure; naming that leg here
+    // lets a close that crossed a resting opener (admitted before the mode
+    // changed) be rematched instead of rejected with it.
+    let taker_delta = if m.taker_side == Side::Buy {
+        m.size
+    } else {
+        -m.size
+    };
+    let close_only = state.mode == Mode::CloseOnly;
+    let leg_offense = |owner: &PubKey, hash: &Digest, reduce_only: bool, delta: i128| {
+        if !exposure_increases_in(state, owner, m.market_id, delta) {
+            None
+        } else if reduce_only {
+            Some(RejectReason::ReduceOnlyViolation)
+        } else if close_only {
+            Some(RejectReason::MarketCloseOnly)
+        } else if minimum_exempt.contains(hash) {
+            Some(RejectReason::BelowMinimumSize)
+        } else {
+            None
+        }
+    };
+    let taker_offense = leg_offense(
+        &m.taker,
+        &m.taker_order_hash,
+        m.taker_reduce_only,
+        taker_delta,
+    );
+    let maker_offense = leg_offense(
+        &m.maker,
+        &m.maker_order_hash,
+        m.maker_reduce_only,
+        -taker_delta,
+    );
+    if taker_offense.is_some() || maker_offense.is_some() {
+        if let Some(reason) = taker_offense {
+            out.rejected.push((m.taker_order_hash, reason));
+            out.offenders.push((m.taker_order_hash, reason));
+        }
+        if let Some(reason) = maker_offense {
+            maker_failed(out, reason);
+        }
+        return TradeCheck {
+            drop_maker: maker_offense.is_some(),
+            stop_taker: taker_offense.is_some(),
         };
-        match state.apply_op(&op) {
-            // A Fill never yields a withdrawal output, so discard it.
-            Ok(_) => {
-                for oh in [m.taker_order_hash, m.maker_order_hash] {
-                    if !out.settled_order_hashes.contains(&oh) {
-                        out.settled_order_hashes.push(oh);
+    }
+    let op = BatchOp::Fill {
+        taker: m.taker,
+        maker: m.maker,
+        market_id: m.market_id,
+        taker_side: m.taker_side,
+        size: m.size,
+        price: m.price,
+        oracle,
+        now_ms,
+    };
+    match state.apply_op(&op) {
+        // A Fill never yields a withdrawal output, so discard it.
+        Ok(_) => {
+            for oh in [m.taker_order_hash, m.maker_order_hash] {
+                if out.settled_seen.insert(oh) {
+                    out.settled_order_hashes.push(oh);
+                }
+            }
+            // log the fill only after it settled — a failed fill (Err arm) is
+            // dropped, so it never enters the replayable op-log.
+            out.ops.push(op);
+            out.applied_fills.push(*m);
+            TradeCheck::TRADE
+        }
+        Err(e) => {
+            let reason = settlement_reason(&e);
+            // Attribute the rejection to the offending leg ONLY, never to an
+            // innocent counterparty — the same rule the reduce_only arm above
+            // already follows.
+            match offending_leg(&e) {
+                Some(FillLeg::Taker) => {
+                    out.rejected.push((m.taker_order_hash, reason));
+                    out.offenders.push((m.taker_order_hash, reason));
+                    TradeCheck {
+                        drop_maker: false,
+                        stop_taker: true,
                     }
                 }
-                // log the fill only after it settled — a failed fill (Err arm) is
-                // dropped, so it never enters the replayable op-log.
-                out.ops.push(op);
-                out.applied_fills.push(*m);
-            }
-            Err(e) => {
-                let reason = settlement_reason(&e);
-                // Attribute the rejection to the offending leg ONLY, never to an
-                // innocent counterparty — the same rule the reduce_only arm above
-                // already follows.
-                match offending_leg(&e) {
-                    Some(FillLeg::Taker) => {
-                        out.rejected.push((m.taker_order_hash, reason));
-                        out.offenders.push((m.taker_order_hash, reason));
+                Some(FillLeg::Maker) => {
+                    maker_failed(out, reason);
+                    TradeCheck {
+                        drop_maker: true,
+                        stop_taker: false,
                     }
-                    Some(FillLeg::Maker) => {
-                        out.rejected.push((m.maker_order_hash, reason));
-                        out.offenders.push((m.maker_order_hash, reason));
-                        if fails_collateral(reason) {
-                            let side = match m.taker_side {
-                                Side::Buy => Side::Sell,
-                                Side::Sell => Side::Buy,
-                            };
-                            out.collateral_makers.entry(m.maker_order_hash).or_insert((
-                                m.maker,
-                                m.market_id,
-                                side,
-                            ));
-                        }
+                }
+                None => {
+                    for oh in [m.taker_order_hash, m.maker_order_hash] {
+                        out.rejected.push((oh, reason));
                     }
-                    None => {
-                        for oh in [m.taker_order_hash, m.maker_order_hash] {
-                            out.rejected.push((oh, reason));
-                        }
-                    }
+                    TradeCheck::TRADE
                 }
             }
         }
     }
-    out
 }
 
 /// serde default for the skipped `enclave` field: a placeholder identity a
@@ -1125,9 +1239,11 @@ const TICK_WINDOW_GRACE_WINDOWS: u64 = 8;
 const TICK_WINDOW_MAX: usize = 16_384;
 /// The matching passes one [`Sequencer::seal_batch`] runs at most (audit
 /// 2026-11-16 SM-2): the first, and a rematch after each pass whose settlement
-/// found an attributable offender. The last pass is kept whatever it finds: its
-/// failed fills are dropped, as a non-attributable failure's always were, and
-/// the poisoned orders it did not reach wait for the next batch.
+/// found an attributable offender. The last pass settles each fill as it
+/// matches it and stands: a fill that would fail for one of its orders drops
+/// that maker from the book or stops that taker before the book changes for
+/// it, so the other side loses no size to it and trades on. The poisoned
+/// orders it did not reach wait for the next batch.
 pub const MAX_MATCH_ROUNDS: u32 = 8;
 
 /// What the pre-trade gate of [`Sequencer::seal_batch`] decided for a batch
@@ -2361,10 +2477,22 @@ impl Sequencer {
         //    pending order of its owner on that side of that market with it (audit
         //    2026-11-16 SM-2): its resting orders and this batch's, which would add
         //    the same exposure to the same collateral; only its reduce-only orders,
-        //    which add none, stay. Thousands of such orders of a few owners then
-        //    cost a pass per owner, not one per order. And the passes are bounded:
-        //    the [`MAX_MATCH_ROUNDS`]th is kept whatever its settlement finds
-        //    (step 3).
+        //    which add none, stay. So does a maker that would add exposure where
+        //    only a reduction may trade, while its owner's position at the start
+        //    of the batch gives that side nothing to reduce (round 1 review): a
+        //    reduce-only maker takes the owner's reduce-only orders on that side, a
+        //    maker in close-only mode its plain ones, a maker admitted below the
+        //    minimum its other such orders, each an order the pre-trade gate would
+        //    refuse now. Thousands of such orders of a few owners then cost a pass
+        //    per owner, not one per order, and a pass bans all its owners' sides in
+        //    one walk of each side it touches.
+        //
+        //    And the passes are bounded: the [`MAX_MATCH_ROUNDS`]th settles each
+        //    fill as it matches it and stands. A fill that would fail there for
+        //    one of its orders drops that maker from the book, or stops that
+        //    taker, before the book changes for it, so the other side loses no
+        //    size and trades on (round 1 review: keeping a pass whose failed fills
+        //    had already taken size off innocent orders burned it unreported).
         let mut live: Vec<Order> = admitted;
         let mut banned: Vec<(Digest, RejectReason)> = Vec::new();
         let mut banned_set: BTreeSet<Digest> = BTreeSet::new();
@@ -2373,6 +2501,17 @@ impl Sequencer {
             round += 1;
             #[cfg(test)]
             count(&MATCH_ROUNDS, 1u64);
+            if round == MAX_MATCH_ROUNDS {
+                let mut probe = self.state.clone();
+                let mut probed = FillSettlement::default();
+                let oracles = &self.oracles;
+                let stream = self
+                    .matcher
+                    .process_stream_checked(&live, now_ms, &mut |m| {
+                        settle_fill(&mut probe, oracles, m, now_ms, &minimum_exempt, &mut probed)
+                    });
+                break (stream, Some((probe, probed)));
+            }
             let (stream, undo) = self.matcher.process_stream_undoable(&live, now_ms);
             // no fills → nothing to probe (`settle_fills` over no fills is a no-op,
             // so its outcome is `FillSettlement::default()` and the state is left
@@ -2389,10 +2528,10 @@ impl Sequencer {
                 now_ms,
                 &minimum_exempt,
             );
-            if probed.offenders.is_empty() || round == MAX_MATCH_ROUNDS {
-                // Clean (or out of passes): carry the probe state + its settlement
-                // out of the loop; step 3 ADOPTS them instead of settling the same
-                // fills a second time (whole-branch review I4).
+            if probed.offenders.is_empty() {
+                // Clean: carry the probe state + its settlement out of the loop;
+                // step 3 ADOPTS them instead of settling the same fills a second
+                // time (whole-branch review I4).
                 break (stream, Some((probe, probed)));
             }
             // Roll the book back to exactly where this batch started, drop the
@@ -2424,25 +2563,50 @@ impl Sequencer {
                          batch-start book nor is a live order of this batch",
                     );
                 }
-                // The rest of an under-collateralized maker's side goes with it,
-                // under the same reason: its orders resting in the book (lower
-                // price first, in queue order), then its orders of this batch;
-                // reduce-only ones excepted.
-                if let Some(&(owner, market_id, side)) = probed.collateral_makers.get(oh) {
-                    let resting = self.matcher.cancel_owner_side(market_id, &owner, side);
-                    let pending = live
+            }
+            // The rest of a failed maker's side goes with it, under the reason of
+            // that failure (its own, not the first the maker was recorded with):
+            // the owner's orders resting in the book that would fail the same way
+            // (lower price first, in queue order), then its orders of this batch.
+            // One walk per side of a market the pass's bans touch, keyed by the
+            // market and whether the side is the bids.
+            let mut sides: BTreeMap<(MarketId, bool), BTreeMap<PubKey, Vec<RejectReason>>> =
+                BTreeMap::new();
+            for ban in probed.side_bans.values() {
+                if fails_collateral(ban.reason)
+                    || nothing_to_reduce(&self.state, &ban.owner, ban.market_id, ban.side)
+                {
+                    let reasons = sides
+                        .entry((ban.market_id, ban.side == Side::Buy))
+                        .or_default()
+                        .entry(ban.owner)
+                        .or_default();
+                    if !reasons.contains(&ban.reason) {
+                        reasons.push(ban.reason);
+                    }
+                }
+            }
+            for (&(market_id, bids), owners) in &sides {
+                let side = if bids { Side::Buy } else { Side::Sell };
+                let ban_of = |owner: &PubKey, hash: &Digest, reduce_only: bool| {
+                    let exempt = minimum_exempt.contains(hash);
+                    owners
+                        .get(owner)?
                         .iter()
-                        .filter(|o| {
-                            o.owner == owner
-                                && o.market_id == market_id
-                                && o.side == side
-                                && !o.reduce_only
-                        })
-                        .map(|o| o.order_hash::<Keccak256>());
-                    for hash in resting.into_iter().chain(pending) {
-                        if banned_set.insert(hash) {
-                            banned.push((hash, *reason));
-                        }
+                        .copied()
+                        .find(|reason| side_ban_takes(*reason, reduce_only, exempt))
+                };
+                let resting = self.matcher.cancel_side_where(market_id, side, ban_of);
+                let pending = live
+                    .iter()
+                    .filter(|o| o.market_id == market_id && o.side == side)
+                    .filter_map(|o| {
+                        let hash = o.order_hash::<Keccak256>();
+                        ban_of(&o.owner, &hash, o.reduce_only).map(|reason| (hash, reason))
+                    });
+                for (hash, reason) in resting.into_iter().chain(pending) {
+                    if banned_set.insert(hash) {
+                        banned.push((hash, reason));
                     }
                 }
             }
@@ -2459,6 +2623,30 @@ impl Sequencer {
             live.retain(|o| !banned_set.contains(&o.order_hash::<Keccak256>()));
         };
 
+        // The last pass settled each fill as it matched it: an order that failed
+        // a fill there was dropped from the book or stopped, and no other order
+        // lost size to it. One with no settled fill is rejected like a ban, under
+        // the reason of its own failure (I2): it leaves `ordered` and gets no
+        // receipt. One that traded first stays ordered, and a removal under that
+        // reason shows that it left the book. (Every other pass that stands found
+        // no offender.)
+        let mut last_pass_removals: Vec<OrderRemoval> = Vec::new();
+        if let Some((_, probed)) = &probe_outcome {
+            let mut removed: BTreeSet<Digest> = BTreeSet::new();
+            for (oh, reason) in &probed.offenders {
+                if probed.settled_seen.contains(oh) {
+                    if removed.insert(*oh) {
+                        last_pass_removals.push(OrderRemoval {
+                            order_hash: *oh,
+                            reason: reason_name(*reason),
+                        });
+                    }
+                } else if banned_set.insert(*oh) {
+                    banned.push((*oh, *reason));
+                }
+            }
+        }
+
         // 2. issue signed receipts for every accepted (non-rejected) order in the
         //    FINAL stream. A banned order never entered the book on that pass, so it
         //    gets no receipt — it is resolved in `manifest.rejected` (bound by
@@ -2466,7 +2654,9 @@ impl Sequencer {
         //    rejection rather than censorship.
         let mut receipts = Vec::new();
         for p in &stream.processed {
-            if !matches!(p.outcome.status, SubmitStatus::Rejected(_)) {
+            if !matches!(p.outcome.status, SubmitStatus::Rejected(_))
+                && !banned_set.contains(&p.outcome.order_hash)
+            {
                 receipts.push(self.issue_receipt(p.outcome.order_hash, now_ms));
             }
         }
@@ -2483,9 +2673,9 @@ impl Sequencer {
         //    whose proof RSS already scales with state size. Swapping the probe in
         //    IS the committed settlement; the old "committed pass must reproduce
         //    the dry run" assert is structurally unnecessary now — the loop's break
-        //    condition (`probed.offenders.is_empty()`, or the pass cap) is the
-        //    guarantee. A no-fills break settles nothing and leaves `self.state`
-        //    untouched. See [`settle_fills`] for the failure-attribution rule;
+        //    condition (`probed.offenders.is_empty()`, or the last pass, which
+        //    settled as it matched) is the guarantee. A no-fills break settles
+        //    nothing and leaves `self.state` untouched. See [`settle_fills`] for the failure-attribution rule;
         //    NON-attributable failures (no offender) still reject here, and an
         //    order all of whose recorded fills failed is moved out of `ordered`
         //    into `rejected` below. `ops` becomes the batch's replayable op-log:
@@ -2495,8 +2685,7 @@ impl Sequencer {
             mut ops,
             rejected: settlement_rejected,
             settled_order_hashes,
-            offenders: unbanned,
-            collateral_makers: _,
+            ..
         } = match probe_outcome {
             Some((mut probe, probed)) => {
                 std::mem::swap(&mut self.state, &mut probe);
@@ -2504,16 +2693,6 @@ impl Sequencer {
             }
             None => FillSettlement::default(),
         };
-        // A pass kept at the `MAX_MATCH_ROUNDS` cap can still carry offenders:
-        // their failed fills are not applied, and one none of whose fills settled
-        // is rejected below, as any order all of whose recorded fills failed is.
-        // Such an offender also leaves the book, as a ban would have taken it
-        // off, so a rejected order cannot rest on to fail the next batch's taker.
-        for (oh, _) in &unbanned {
-            if !settled_order_hashes.contains(oh) {
-                let _ = self.matcher.cancel_order(oh);
-            }
-        }
         // Advance finality for every hash with a settled fill. Lives at the call
         // site (not in `settle_fills`) so a Task-7 probe run cannot touch the real
         // finality map; inserting once per deduped hash is identical to the old
@@ -2565,6 +2744,7 @@ impl Sequencer {
                 .iter()
                 .flat_map(|p| p.outcome.removals.iter().copied()),
         );
+        removals.extend(last_pass_removals);
 
         // 4. build the manifest, keeping `ordered`/`rejected` DISJOINT and HONEST.
         //    `rejected` = pre-trade rejects + dry-run BANS (attributable offenders,
@@ -2580,7 +2760,7 @@ impl Sequencer {
         let mut failed_unsettled: Vec<(Digest, RejectReason)> = Vec::new();
         let mut seen_failed: std::collections::BTreeSet<Digest> = std::collections::BTreeSet::new();
         for (oh, reason) in &settlement_rejected {
-            if !settled_set.contains(oh) && seen_failed.insert(*oh) {
+            if !settled_set.contains(oh) && !banned_set.contains(oh) && seen_failed.insert(*oh) {
                 failed_unsettled.push((*oh, *reason));
             }
         }
@@ -2590,7 +2770,7 @@ impl Sequencer {
             .ordered
             .iter()
             .copied()
-            .filter(|h| !reject_set.contains(h))
+            .filter(|h| !reject_set.contains(h) && !banned_set.contains(h))
             .collect();
         let mut rejected = pre_rejected.clone();
         rejected.extend_from_slice(&banned);
@@ -5326,6 +5506,197 @@ mod tests {
                 .position(&owner_id(owner), 0)
                 .is_none_or(|p| p.size == 0));
         }
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: pseudo-random batches against books
+    /// full of orders that fail as makers (under-margined owners' orders, and
+    /// reduce-only orders of owners who hold nothing they reduce), many of them
+    /// reaching the last pass. After every batch: at most `MAX_MATCH_ROUNDS`
+    /// passes, every change to an order that rested before it named by one of
+    /// its fills, rejections or removals, `ordered` and `rejected` disjoint, every
+    /// settled order ordered, conservation; and each session's op-log replays to
+    /// its state root.
+    #[test]
+    fn audit_1116_sm2_poisoned_sessions_report_every_book_change() {
+        let mut last_passes = 0;
+        for seed in 1..=10u64 {
+            let mut rng = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+            let mut next = move |bound: u64| {
+                rng ^= rng << 13;
+                rng ^= rng >> 7;
+                rng ^= rng << 17;
+                rng % bound
+            };
+            let mut s = test_sequencer();
+            for owner in 3..6u64 {
+                fund(&mut s, owner, 20_000, owner as u8);
+            }
+            for owner in 6..9u64 {
+                fund(&mut s, owner, 20_000, owner as u8);
+            }
+            underfunded(&mut s, 10..40);
+            let mut nonce = 100_000u64;
+            for _ in 0..24 {
+                let book = s.book(0).unwrap();
+                let (best_bid, best_ask) = (book.best_bid(), book.best_ask());
+                let poisoned: Vec<Order> = (0..next(10))
+                    .filter_map(|_| {
+                        nonce += 1;
+                        let side = if next(2) == 0 { Side::Buy } else { Side::Sell };
+                        let price = match side {
+                            Side::Buy => 99_990 - next(60) as i128,
+                            Side::Sell => 100_010 + next(60) as i128,
+                        };
+                        let crosses = match side {
+                            Side::Buy => best_ask.is_some_and(|a| a <= price * PRICE_SCALE),
+                            Side::Sell => best_bid.is_some_and(|b| b >= price * PRICE_SCALE),
+                        };
+                        let owner = if next(3) == 0 {
+                            6 + next(3)
+                        } else {
+                            10 + next(30)
+                        };
+                        let mut o = t_order_at(owner, side, price, LOT, nonce);
+                        o.reduce_only = owner < 10;
+                        (!crosses).then_some(o)
+                    })
+                    .collect();
+                restore_onto_book(&mut s, &poisoned);
+                let orders: Vec<Order> = (0..1 + next(4))
+                    .map(|_| {
+                        nonce += 1;
+                        let side = if next(2) == 0 { Side::Buy } else { Side::Sell };
+                        let price = match next(4) {
+                            0 => 0,
+                            _ => 99_900 + next(200) as i128,
+                        };
+                        let mut o = t_order_at(
+                            1 + next(5),
+                            side,
+                            price,
+                            LOT * (1 + next(3) as i128),
+                            nonce,
+                        );
+                        o.limit_price = price * PRICE_SCALE;
+                        o.tif = match next(6) {
+                            0 => TimeInForce::Fok,
+                            1 | 2 => TimeInForce::Gtc,
+                            3 => TimeInForce::PostOnly,
+                            _ => TimeInForce::Ioc,
+                        };
+                        o.reduce_only = next(6) == 0;
+                        o
+                    })
+                    .collect();
+                let before = resting(&s);
+
+                let (sealed, rounds, _) = counted(|| s.seal_batch(&orders, now()));
+
+                assert!(rounds <= u64::from(MAX_MATCH_ROUNDS), "seed {seed}");
+                if rounds == u64::from(MAX_MATCH_ROUNDS) {
+                    last_passes += 1;
+                }
+                assert_book_changes_reported(&before, &s, &sealed);
+                // A limit GTC of this batch that was neither rejected nor removed
+                // traded or rests every bit of its size.
+                let named: BTreeSet<Digest> = sealed
+                    .manifest
+                    .rejected
+                    .iter()
+                    .map(|(h, _)| *h)
+                    .chain(sealed.removals.iter().map(|r| r.order_hash))
+                    .collect();
+                for o in orders
+                    .iter()
+                    .filter(|o| o.tif == TimeInForce::Gtc && o.limit_price != 0)
+                {
+                    let hash = o.order_hash::<Keccak256>();
+                    if named.contains(&hash) {
+                        continue;
+                    }
+                    let traded: i128 = sealed
+                        .applied_fills
+                        .iter()
+                        .filter(|m| m.taker_order_hash == hash || m.maker_order_hash == hash)
+                        .map(|m| m.size)
+                        .sum();
+                    let left = s.remaining_order_size(&hash).unwrap_or(0);
+                    assert_eq!(traded + left, o.size, "seed {seed}: a GTC lost size");
+                }
+                let ordered: BTreeSet<Digest> = sealed.manifest.ordered.iter().copied().collect();
+                assert!(
+                    sealed
+                        .manifest
+                        .rejected
+                        .iter()
+                        .all(|(h, _)| !ordered.contains(h)),
+                    "seed {seed}: ordered and rejected overlap"
+                );
+                assert!(
+                    sealed
+                        .settled_order_hashes
+                        .iter()
+                        .all(|h| ordered.contains(h) || before.iter().any(|(r, _)| r == h)),
+                    "seed {seed}: a settled order of this batch is not ordered"
+                );
+                assert!(s.state.conservation_holds(), "seed {seed}");
+            }
+            let w = s.seal_window();
+            let derived =
+                perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
+                    .expect("the session replays");
+            assert_eq!(derived.new_state_root, s.state.state_root(), "seed {seed}");
+        }
+        assert!(
+            last_passes >= 10,
+            "{last_passes} batches reached the last pass"
+        );
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: a maker recorded twice in one pass,
+    /// first for a price out of band (which bans only that order) and then for
+    /// margin, bans its side under the margin failure's reason, not under the
+    /// first reason it was recorded with.
+    #[test]
+    fn audit_1116_sm2_a_side_ban_carries_the_reason_of_its_own_failure() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..11);
+        let fill = |price_usd: i128| Match {
+            market_id: 0,
+            taker: owner_id(2),
+            maker: owner_id(10),
+            taker_side: Side::Buy,
+            size: LOT,
+            price: price_usd * PRICE_SCALE,
+            taker_order_hash: [2; 32],
+            maker_order_hash: [10; 32],
+            taker_reduce_only: false,
+            maker_reduce_only: false,
+        };
+        let mut state = s.state.clone();
+        let out = settle_fills(
+            &mut state,
+            &s.oracles,
+            &[fill(110_000), fill(100_000)],
+            now(),
+            &BTreeSet::new(),
+        );
+        assert_eq!(
+            out.offenders,
+            vec![
+                ([10; 32], RejectReason::FillPriceOutOfBand),
+                ([10; 32], RejectReason::InsufficientMargin),
+            ]
+        );
+        let bans: Vec<(PubKey, bool, RejectReason)> = out
+            .side_bans
+            .values()
+            .map(|ban| (ban.owner, ban.side == Side::Sell, ban.reason))
+            .collect();
+        assert_eq!(
+            bans,
+            vec![(owner_id(10), true, RejectReason::InsufficientMargin)]
+        );
     }
 
     /// Audit 2026-11-16 SM-2: the side ban leaves an under-margined maker's

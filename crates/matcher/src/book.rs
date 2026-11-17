@@ -36,6 +36,39 @@ pub struct Match {
     pub maker_reduce_only: bool,
 }
 
+/// What the caller of a checked submission decided about one trade an order is
+/// about to make, before the book changes for it
+/// ([`crate::MatchingEngine::process_stream_checked`], audit 2026-11-16 SM-2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TradeCheck {
+    /// The resting maker cannot trade: it leaves the book without trading,
+    /// with no removal recorded (the caller reports it), and the order goes on
+    /// to the next maker.
+    pub drop_maker: bool,
+    /// The incoming order cannot trade on: it stops here, without trading, and
+    /// its remainder neither trades nor rests.
+    pub stop_taker: bool,
+}
+
+impl TradeCheck {
+    /// Trade as matched.
+    pub const TRADE: Self = Self {
+        drop_maker: false,
+        stop_taker: false,
+    };
+}
+
+/// The check a checked submission asks about each trade, if any.
+pub(crate) type Check<'a> = Option<&'a mut dyn FnMut(&Match) -> TradeCheck>;
+
+/// `check` again, for one more submission.
+pub(crate) fn reborrow<'b>(check: &'b mut Check<'_>) -> Check<'b> {
+    match check {
+        Some(check) => Some(&mut **check),
+        None => None,
+    }
+}
+
 /// What happened to a submitted order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SubmitStatus {
@@ -628,12 +661,15 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     /// the fill-or-kill all-or-nothing pre-check, so it must count exactly the
     /// liquidity the matching loop can actually consume — no expired maker, or FOK
     /// would pass the check and then under-fill.
+    /// The size a taker of `taker_side` up to `limit` could trade here, counted
+    /// until it reaches `needed`.
     fn crossable_liquidity(
         &self,
         taker_side: Side,
         limit: i128,
         taker: &PubKey,
         now_ms: u64,
+        needed: i128,
     ) -> i128 {
         let book = match taker_side {
             Side::Buy => &self.asks,
@@ -654,6 +690,9 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                     total = total.saturating_add(r.remaining);
                 }
             }
+            if total >= needed {
+                break;
+            }
         }
         total
     }
@@ -669,19 +708,25 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     /// Submit an order to the book. `seq` is the sequencer-assigned arrival
     /// number (§2); `now_ms` is the batch reference clock for expiry.
     pub fn submit(&mut self, order: &Order, seq: u64, now_ms: u64) -> SubmitOutcome {
-        self.submit_journaled(order, seq, now_ms, Journal(None))
+        self.submit_journaled(order, seq, now_ms, Journal(None), None)
     }
 
-    /// [`Self::submit`], recording each change it makes to the book in `steps`,
-    /// for [`Self::undo`].
-    pub(crate) fn submit_undoable(
+    /// [`Self::submit`], recording each change it makes to the book in `steps`
+    /// if given, for [`Self::undo`], and asking `check` about each trade before
+    /// making it if given (see [`TradeCheck`]). A maker dropped or a taker
+    /// stopped this way changes nothing else: no other order loses size for it.
+    /// A fill-or-kill that has not traded yet is killed when, after a maker is
+    /// dropped, what is left cannot fill it in full; once it has traded, it can
+    /// end short.
+    pub(crate) fn submit_with(
         &mut self,
         order: &Order,
         seq: u64,
         now_ms: u64,
-        steps: &mut Vec<Step>,
+        steps: Option<&mut Vec<Step>>,
+        check: Check<'_>,
     ) -> SubmitOutcome {
-        self.submit_journaled(order, seq, now_ms, Journal(Some(steps)))
+        self.submit_journaled(order, seq, now_ms, Journal(steps), check)
     }
 
     fn submit_journaled(
@@ -690,7 +735,9 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         seq: u64,
         now_ms: u64,
         mut journal: Journal<'_>,
+        mut check: Check<'_>,
     ) -> SubmitOutcome {
+        let checked = check.is_some();
         debug_assert_eq!(order.market_id, self.market_id);
         let order_hash = order.order_hash::<H>();
         let mut out = SubmitOutcome {
@@ -750,7 +797,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
 
         // 3. fill-or-kill: all-or-nothing pre-check before mutating the book
         if order.tif == TimeInForce::Fok
-            && self.crossable_liquidity(side, limit, &order.owner, now_ms) < order.size
+            && self.crossable_liquidity(side, limit, &order.owner, now_ms, order.size) < order.size
         {
             out.status = SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable);
             return out;
@@ -758,7 +805,18 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
 
         // 4. match against the opposite side, best price first
         let mut remaining = order.size;
+        // a checked submission: the taker was stopped; a fill-or-kill was killed;
+        // a fill-or-kill that has not traded yet must be checked again for a
+        // full fill after a maker was dropped
+        let (mut stopped, mut killed, mut recheck) = (false, false, false);
         while remaining > 0 {
+            if core::mem::take(&mut recheck)
+                && self.crossable_liquidity(side, limit, &order.owner, now_ms, remaining)
+                    < remaining
+            {
+                killed = true;
+                break;
+            }
             let Some(level_price) = self.best_opposite_key(side) else {
                 break;
             };
@@ -806,7 +864,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 continue;
             };
             let trade = remaining.min(front.remaining);
-            out.fills.push(Match {
+            let fill = Match {
                 market_id: self.market_id,
                 taker: order.owner,
                 maker: front.owner,
@@ -817,7 +875,41 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 maker_order_hash: front.order_hash,
                 taker_reduce_only: order.reduce_only,
                 maker_reduce_only: front.reduce_only,
-            });
+            };
+            let verdict = match check.as_mut() {
+                Some(check) => check(&fill),
+                None => TradeCheck::TRADE,
+            };
+            if verdict.drop_maker {
+                let dropped = queue.pop_front().expect("front exists");
+                self.index.remove(&Spot::of(&dropped, half, level_price));
+                journal.note(Step::Popped {
+                    half,
+                    price: level_price,
+                    order: dropped,
+                });
+                if queue.is_empty() {
+                    opposite.remove(&level_price);
+                    journal.note(Step::LevelDropped {
+                        half,
+                        price: level_price,
+                    });
+                }
+                if verdict.stop_taker {
+                    stopped = true;
+                    break;
+                }
+                recheck = order.tif == TimeInForce::Fok && remaining == order.size;
+                continue;
+            }
+            if verdict.stop_taker {
+                stopped = true;
+                break;
+            }
+            let front = queue
+                .front_mut()
+                .expect("the maker checked is at the front");
+            out.fills.push(fill);
             remaining -= trade;
             front.remaining -= trade;
             journal.note(Step::Traded {
@@ -845,10 +937,20 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
 
         // 5. handle the remainder by time-in-force
         let filled = order.size - remaining;
+        let cut_short = if filled > 0 {
+            SubmitStatus::FilledCancelled {
+                cancelled: remaining,
+            }
+        } else {
+            SubmitStatus::CancelledNoFill
+        };
         out.status = match order.tif {
+            _ if killed => SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable),
+            _ if stopped => cut_short,
+            TimeInForce::Fok if remaining == 0 => SubmitStatus::FilledFull,
             TimeInForce::Fok => {
-                debug_assert_eq!(remaining, 0, "FOK pre-check guarantees full fill");
-                SubmitStatus::FilledFull
+                debug_assert!(checked, "FOK pre-check guarantees full fill");
+                cut_short
             }
             TimeInForce::Ioc => {
                 if remaining == 0 {
@@ -936,21 +1038,31 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         )
     }
 
-    /// Cancel every order of `owner` resting on `side` (its bids for
-    /// [`Side::Buy`], its asks for [`Side::Sell`]) except its reduce-only ones,
-    /// and return their hashes, lower price first and in queue order. The
-    /// sequencer bans the side of a maker whose collateral failed a fill this way
-    /// (audit 2026-11-16 SM-2); a reduce-only order adds no exposure, so it
-    /// stays.
-    pub fn cancel_owner_side(&mut self, owner: &PubKey, side: Side) -> Vec<Digest> {
+    /// Cancel every order resting on `side` (the bids for [`Side::Buy`], the
+    /// asks for [`Side::Sell`]) that `select` picks by its owner, its hash and
+    /// whether it is reduce-only, in one walk of that side, and return their
+    /// hashes, lower price first and in queue order, each with what `select`
+    /// returned for it. The sequencer bans the
+    /// sides of the makers that failed in one pass this way, all of them at once
+    /// (audit 2026-11-16 SM-2).
+    pub fn cancel_side_where<T>(
+        &mut self,
+        side: Side,
+        mut select: impl FnMut(&PubKey, &Digest, bool) -> Option<T>,
+    ) -> Vec<(Digest, T)> {
+        let mut taken = Vec::new();
         self.remove_where(
             &[Half::of(side)],
-            |r| &r.owner == owner && !r.reduce_only,
+            |r| match select(&r.owner, &r.order_hash, r.reduce_only) {
+                Some(t) => {
+                    taken.push((r.order_hash, t));
+                    true
+                }
+                None => false,
+            },
             "Banned",
-        )
-        .into_iter()
-        .map(|removal| removal.order_hash)
-        .collect()
+        );
+        taken
     }
 
     /// Cancel every resting order of `owner` in this book because another
@@ -983,7 +1095,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     fn remove_where(
         &mut self,
         halves: &[Half],
-        remove: impl Fn(&Resting) -> bool,
+        mut remove: impl FnMut(&Resting) -> bool,
         reason: &'static str,
     ) -> Vec<OrderRemoval> {
         let mut removed = Vec::new();
