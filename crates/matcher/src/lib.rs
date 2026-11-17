@@ -30,7 +30,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 use perp_core::hash::{Digest, Hasher, Keccak256};
 use perp_core::market::MarketId;
-use perp_core::order::{Order, RejectReason};
+use perp_core::order::{Order, RejectReason, Side};
 
 /// A multi-market matching engine. Assigns a monotonic sequence number to every
 /// accepted order (the §2 receipt `seq_no`) and routes it to the right book.
@@ -102,18 +102,25 @@ impl<H: Hasher> MatchingEngine<H> {
         self.books.values().find_map(|b| b.remaining(hash))
     }
 
-    /// Keep in `hashes` only the orders that still rest on a book, in one pass
-    /// over the books.
+    /// Keep in `hashes` only the orders that still rest on a book, each looked
+    /// up by its hash.
     pub fn retain_resting(&self, hashes: &mut BTreeSet<Digest>) {
-        if hashes.is_empty() {
-            return;
-        }
-        let resting: BTreeSet<Digest> = self
-            .books
-            .values()
-            .flat_map(|b| b.resting_order_hashes())
-            .collect();
-        hashes.retain(|h| resting.contains(h));
+        hashes.retain(|h| self.books.values().any(|b| b.rests(h)));
+    }
+
+    /// Cancel every order of `owner` resting on `side` of market `market_id`
+    /// except its reduce-only ones, and return their hashes (see
+    /// [`OrderBook::cancel_owner_side`]).
+    pub fn cancel_owner_side(
+        &mut self,
+        market_id: MarketId,
+        owner: &perp_core::note::PubKey,
+        side: Side,
+    ) -> Vec<Digest> {
+        self.books
+            .get_mut(&market_id)
+            .map(|b| b.cancel_owner_side(owner, side))
+            .unwrap_or_default()
     }
 
     pub fn reap_expired_with_events(&mut self, now_ms: u64) -> Vec<OrderRemoval> {
@@ -155,6 +162,25 @@ impl<H: Hasher> MatchingEngine<H> {
     /// Submit one order. Returns the assigned seq and the matching outcome.
     /// An order for an unknown market is rejected without consuming a seq.
     pub fn submit(&mut self, order: &Order, now_ms: u64) -> Processed {
+        self.submit_journaled(order, now_ms, None)
+    }
+
+    /// [`Self::submit`], recording the changes to the order's book in `steps`.
+    fn submit_undoable(
+        &mut self,
+        order: &Order,
+        now_ms: u64,
+        steps: &mut Vec<book::Step>,
+    ) -> Processed {
+        self.submit_journaled(order, now_ms, Some(steps))
+    }
+
+    fn submit_journaled(
+        &mut self,
+        order: &Order,
+        now_ms: u64,
+        steps: Option<&mut Vec<book::Step>>,
+    ) -> Processed {
         let Some(book) = self.books.get_mut(&order.market_id) else {
             return Processed {
                 seq_no: u64::MAX,
@@ -168,7 +194,10 @@ impl<H: Hasher> MatchingEngine<H> {
         };
         let seq = self.next_seq;
         self.next_seq += 1;
-        let outcome = book.submit(order, seq, now_ms);
+        let outcome = match steps {
+            None => book.submit(order, seq, now_ms),
+            Some(steps) => book.submit_undoable(order, seq, now_ms, steps),
+        };
         Processed {
             seq_no: seq,
             outcome,
@@ -178,9 +207,56 @@ impl<H: Hasher> MatchingEngine<H> {
     /// Process a whole arrival-ordered stream, collecting fills and the
     /// manifest's `ordered` / `rejected` lists (§2).
     pub fn process_stream(&mut self, orders: &[Order], now_ms: u64) -> StreamResult {
+        self.process_stream_journaled(orders, now_ms, None)
+    }
+
+    /// [`Self::process_stream`], returning with its result what it changed, for
+    /// [`Self::undo`] to put back (audit 2026-11-16 SM-2). Recording costs a
+    /// step per order the stream rests, takes off a level or trades against, so
+    /// putting the books back costs what the stream changed, not a copy of them.
+    pub fn process_stream_undoable(
+        &mut self,
+        orders: &[Order],
+        now_ms: u64,
+    ) -> (StreamResult, StreamUndo) {
+        let mut undo = StreamUndo {
+            next_seq: self.next_seq,
+            steps: Vec::new(),
+        };
+        let result = self.process_stream_journaled(orders, now_ms, Some(&mut undo.steps));
+        (result, undo)
+    }
+
+    /// Put the books and the sequence counter back to where they were before
+    /// the [`Self::process_stream_undoable`] call that returned `undo`. Nothing
+    /// else may have changed the books since.
+    pub fn undo(&mut self, undo: StreamUndo) {
+        for (market_id, step) in undo.steps.into_iter().rev() {
+            self.books
+                .get_mut(&market_id)
+                .expect("an undone step's market has a book")
+                .undo(step);
+        }
+        self.next_seq = undo.next_seq;
+    }
+
+    fn process_stream_journaled(
+        &mut self,
+        orders: &[Order],
+        now_ms: u64,
+        mut steps: Option<&mut Vec<(MarketId, book::Step)>>,
+    ) -> StreamResult {
         let mut result = StreamResult::default();
+        let mut scratch = Vec::new();
         for order in orders {
-            let p = self.submit(order, now_ms);
+            let p = match steps.as_deref_mut() {
+                None => self.submit(order, now_ms),
+                Some(steps) => {
+                    let p = self.submit_undoable(order, now_ms, &mut scratch);
+                    steps.extend(scratch.drain(..).map(|step| (order.market_id, step)));
+                    p
+                }
+            };
             match p.outcome.status {
                 SubmitStatus::Rejected(reason) => {
                     result.rejected.push((p.outcome.order_hash, reason));
@@ -193,6 +269,27 @@ impl<H: Hasher> MatchingEngine<H> {
             result.processed.push(p);
         }
         result
+    }
+}
+
+/// What one [`MatchingEngine::process_stream_undoable`] call changed: the
+/// sequence counter before it and each change to a book, oldest first.
+#[derive(Debug)]
+pub struct StreamUndo {
+    next_seq: u64,
+    steps: Vec<(MarketId, book::Step)>,
+}
+
+impl StreamUndo {
+    /// The changes recorded: one per order rested, taken off a level or traded
+    /// against, and per level removed.
+    pub fn len(&self) -> usize {
+        self.steps.len()
+    }
+
+    /// Whether the stream changed no book.
+    pub fn is_empty(&self) -> bool {
+        self.steps.is_empty()
     }
 }
 
@@ -891,6 +988,133 @@ mod tests {
             e.process_stream(&orders, 0).fills
         };
         assert_eq!(run(), run(), "matching must be deterministic");
+    }
+
+    /// Every book's hash index matches its levels.
+    fn assert_indexed(e: &MatchingEngine) {
+        for book in e.books.values() {
+            book.assert_indexed();
+        }
+    }
+
+    /// The remainder of the order with `hash` as a walk of the books finds it.
+    fn walked(e: &MatchingEngine, hash: &Digest) -> Option<i128> {
+        e.books.values().find_map(|book| {
+            book.resting_orders()
+                .find(|(_, q, _)| q.order_hash == *hash)
+                .map(|(_, q, _)| q.remaining)
+        })
+    }
+
+    /// Audit 2026-11-16 GA-1 + SM-2: over pseudo-random streams in two markets
+    /// (self-trades, expiries, fill-or-kill, post-only, market orders, partial
+    /// fills) and cancellations, the hash index always matches the books and
+    /// every lookup agrees with a walk of them; an undoable stream matches as a
+    /// plain one does, and undoing it puts back exactly the books and the
+    /// sequence counter it started from, so a rematch sees the batch-start book.
+    #[test]
+    fn audit_1116_sm2_undoing_a_stream_puts_back_the_books_it_started_from() {
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move |bound: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % bound
+        };
+        for case in 0..300 {
+            let mut e = engine();
+            e.open_market(1);
+            let mut nonce = 0u64;
+            let mut seen: Vec<Digest> = Vec::new();
+            for now in 0..8u64 {
+                let orders: Vec<Order> = (0..next(14))
+                    .map(|_| {
+                        nonce += 1;
+                        let side = if next(2) == 0 { Side::Buy } else { Side::Sell };
+                        let price = match next(6) {
+                            0 => 0,
+                            n => (99_998 + n as i128) * PRICE_SCALE,
+                        };
+                        let tif = match next(5) {
+                            0 => TimeInForce::Ioc,
+                            1 => TimeInForce::Fok,
+                            2 => TimeInForce::PostOnly,
+                            _ => TimeInForce::Gtc,
+                        };
+                        let mut o = order(
+                            next(5),
+                            side,
+                            (1 + next(5) as i128) * SIZE_SCALE / 10,
+                            price,
+                            tif,
+                            nonce,
+                        );
+                        o.market_id = next(2);
+                        if next(4) == 0 {
+                            o.expiry_ms = now + 1 + next(3);
+                        }
+                        o
+                    })
+                    .collect();
+                seen.extend(orders.iter().map(|o| o.order_hash::<Keccak256>()));
+
+                let before = alloc::format!("{e:?}");
+                let mut plain = e.clone();
+                let expected = alloc::format!("{:?}", plain.process_stream(&orders, now));
+                let (result, undo) = e.process_stream_undoable(&orders, now);
+                assert_eq!(alloc::format!("{result:?}"), expected, "case {case}");
+                assert_eq!(
+                    alloc::format!("{e:?}"),
+                    alloc::format!("{plain:?}"),
+                    "case {case}"
+                );
+                assert_indexed(&e);
+                e.undo(undo);
+                assert_eq!(alloc::format!("{e:?}"), before, "case {case}: undo");
+                assert_indexed(&e);
+                e.process_stream(&orders, now);
+
+                match next(4) {
+                    0 if !seen.is_empty() => {
+                        let hash = seen[next(seen.len() as u64) as usize];
+                        let walked = walked(&e, &hash);
+                        assert_eq!(e.cancel_order(&hash), walked, "case {case}");
+                    }
+                    1 => {
+                        e.cancel_owner_orders(&word_u64(next(5)));
+                    }
+                    2 => {
+                        let side = if next(2) == 0 { Side::Buy } else { Side::Sell };
+                        let (market, owner) = (next(2), word_u64(next(5)));
+                        let theirs = |e: &MatchingEngine| -> Vec<Digest> {
+                            e.books[&market]
+                                .resting_orders()
+                                .filter(|(s, q, _)| {
+                                    *s == side && q.owner == owner && !q.reduce_only
+                                })
+                                .map(|(_, q, _)| q.order_hash)
+                                .collect()
+                        };
+                        let expected = theirs(&e);
+                        assert_eq!(e.cancel_owner_side(market, &owner, side), expected);
+                        assert!(theirs(&e).is_empty(), "case {case}");
+                    }
+                    _ => {
+                        e.reap_expired(now);
+                    }
+                }
+                assert_indexed(&e);
+                for hash in &seen {
+                    assert_eq!(e.remaining(hash), walked(&e, hash), "case {case}");
+                }
+                let mut resting: BTreeSet<Digest> = seen.iter().copied().collect();
+                e.retain_resting(&mut resting);
+                assert!(resting.iter().all(|h| walked(&e, h).is_some()));
+                assert!(seen
+                    .iter()
+                    .all(|h| resting.contains(h) || walked(&e, h).is_none()));
+            }
+        }
     }
 }
 

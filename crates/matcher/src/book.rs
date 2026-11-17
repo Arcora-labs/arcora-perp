@@ -8,7 +8,7 @@
 //! price level orders rest in a FIFO queue ordered by the monotonically
 //! increasing `seq` the sequencer assigned at receipt (§2).
 
-use alloc::collections::{BTreeMap, VecDeque};
+use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::vec::Vec;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::Digest;
@@ -100,7 +100,7 @@ impl ImpactWindow {
 /// A resting order on the book.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct Resting {
+pub(crate) struct Resting {
     order_hash: Digest,
     owner: PubKey,
     remaining: i128,
@@ -117,6 +117,96 @@ struct Resting {
     /// whose expiry has passed relative to the batch clock is void and must not
     /// provide liquidity, so matching prunes it instead of trading against it.
     expiry_ms: u64,
+    /// The order's place in its level's queue for the hash index (audit
+    /// 2026-11-16 GA-1): given by the book when the order comes to rest, and
+    /// increasing along every queue, so a lookup finds the order by binary
+    /// search. Not persisted: a restore numbers the queues again.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    slot: u64,
+}
+
+/// A side of the book, in the order the hash lookups have always met them:
+/// bids before asks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Half {
+    Bids,
+    Asks,
+}
+
+impl Half {
+    /// The side `side`'s orders rest on.
+    fn of(side: Side) -> Self {
+        match side {
+            Side::Buy => Half::Bids,
+            Side::Sell => Half::Asks,
+        }
+    }
+
+    /// The other side.
+    fn opposite(self) -> Self {
+        match self {
+            Half::Bids => Half::Asks,
+            Half::Asks => Half::Bids,
+        }
+    }
+}
+
+/// Where one resting order is: its key in the book's hash index. Ordered by the
+/// hash, then as a walk of the book meets the orders (bids before asks, lower
+/// price first, then queue order), so the first spot of a hash is the order the
+/// linear lookups found.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Spot {
+    hash: Digest,
+    half: Half,
+    price: i128,
+    slot: u64,
+}
+
+impl Spot {
+    fn of(r: &Resting, half: Half, price: i128) -> Self {
+        Self {
+            hash: r.order_hash,
+            half,
+            price,
+            slot: r.slot,
+        }
+    }
+}
+
+/// One change [`OrderBook::submit`] made to the book, as recorded for
+/// [`crate::MatchingEngine::undo`] (audit 2026-11-16 SM-2). Undone newest
+/// first, each puts back exactly what it changed.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Step {
+    /// The order came to rest at the back of the level at `price`; `created`
+    /// when that level did not exist before.
+    Rested {
+        half: Half,
+        price: i128,
+        created: bool,
+    },
+    /// `order` left the front of the level at `price`.
+    Popped {
+        half: Half,
+        price: i128,
+        order: Resting,
+    },
+    /// The order at the front of the level at `price` traded `size`.
+    Traded { half: Half, price: i128, size: i128 },
+    /// The (empty) level at `price` was removed.
+    LevelDropped { half: Half, price: i128 },
+}
+
+/// Where [`OrderBook::submit`] records its changes, if anywhere.
+struct Journal<'a>(Option<&'a mut Vec<Step>>);
+
+impl Journal<'_> {
+    fn note(&mut self, step: Step) {
+        if let Some(steps) = self.0.as_mut() {
+            steps.push(step);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -141,13 +231,49 @@ fn resting_expired(r: &Resting, now_ms: u64) -> bool {
 /// One market's order book.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(bound = ""))]
+#[cfg_attr(feature = "serde", serde(bound = "", from = "BookState<H>"))]
 pub struct OrderBook<H: perp_core::hash::Hasher> {
     market_id: MarketId,
     /// price → FIFO queue (by seq). Bids and asks both keyed by raw price.
     bids: BTreeMap<i128, VecDeque<Resting>>,
     asks: BTreeMap<i128, VecDeque<Resting>>,
     _h: core::marker::PhantomData<H>,
+    /// Every resting order by its hash (audit 2026-11-16 GA-1): the gateway
+    /// looks up each order a batch touched, and a ban or a cancellation removes
+    /// one order, without walking the book. Not persisted: rebuilt on restore.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    index: BTreeSet<Spot>,
+    /// The slot the next order to rest takes. Not persisted.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    next_slot: u64,
+}
+
+/// The persisted fields of an [`OrderBook`], as every snapshot has written them;
+/// a restore numbers the queues and builds the hash index from them.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(bound = "")]
+struct BookState<H> {
+    market_id: MarketId,
+    bids: BTreeMap<i128, VecDeque<Resting>>,
+    asks: BTreeMap<i128, VecDeque<Resting>>,
+    _h: core::marker::PhantomData<H>,
+}
+
+#[cfg(feature = "serde")]
+impl<H: perp_core::hash::Hasher> From<BookState<H>> for OrderBook<H> {
+    fn from(state: BookState<H>) -> Self {
+        let mut book = Self {
+            market_id: state.market_id,
+            bids: state.bids,
+            asks: state.asks,
+            _h: state._h,
+            index: BTreeSet::new(),
+            next_slot: 0,
+        };
+        book.reindex();
+        book
+    }
 }
 
 impl<H: perp_core::hash::Hasher> OrderBook<H> {
@@ -157,6 +283,146 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
             _h: core::marker::PhantomData,
+            index: BTreeSet::new(),
+            next_slot: 0,
+        }
+    }
+
+    /// Number every queue again, in order, and rebuild the hash index from the
+    /// levels.
+    #[cfg_attr(not(feature = "serde"), allow(dead_code))]
+    fn reindex(&mut self) {
+        let Self {
+            bids,
+            asks,
+            index,
+            next_slot,
+            ..
+        } = self;
+        index.clear();
+        let mut slot = 0u64;
+        for (half, levels) in [(Half::Bids, bids), (Half::Asks, asks)] {
+            for (price, queue) in levels.iter_mut() {
+                for r in queue.iter_mut() {
+                    r.slot = slot;
+                    slot += 1;
+                    index.insert(Spot::of(r, half, *price));
+                }
+            }
+        }
+        *next_slot = slot;
+    }
+
+    fn levels(&self, half: Half) -> &BTreeMap<i128, VecDeque<Resting>> {
+        match half {
+            Half::Bids => &self.bids,
+            Half::Asks => &self.asks,
+        }
+    }
+
+    fn levels_mut(&mut self, half: Half) -> &mut BTreeMap<i128, VecDeque<Resting>> {
+        match half {
+            Half::Bids => &mut self.bids,
+            Half::Asks => &mut self.asks,
+        }
+    }
+
+    /// Where the orders with `hash` rest, first the one a walk of the book
+    /// meets first.
+    fn spots(&self, hash: &Digest) -> impl Iterator<Item = &Spot> + '_ {
+        let first = Spot {
+            hash: *hash,
+            half: Half::Bids,
+            price: i128::MIN,
+            slot: 0,
+        };
+        let last = Spot {
+            hash: *hash,
+            half: Half::Asks,
+            price: i128::MAX,
+            slot: u64::MAX,
+        };
+        self.index.range(first..=last)
+    }
+
+    /// The position of the order at `spot` in its level's queue.
+    fn position(&self, spot: &Spot) -> Option<usize> {
+        let queue = self.levels(spot.half).get(&spot.price)?;
+        queue
+            .binary_search_by_key(&spot.slot, |r| {
+                #[cfg(test)]
+                visited();
+                r.slot
+            })
+            .ok()
+    }
+
+    /// The order at `spot`.
+    fn at(&self, spot: &Spot) -> Option<&Resting> {
+        let position = self.position(spot)?;
+        self.levels(spot.half).get(&spot.price)?.get(position)
+    }
+
+    /// Whether an order with `hash` rests on this book.
+    pub(crate) fn rests(&self, hash: &Digest) -> bool {
+        self.spots(hash).next().is_some()
+    }
+
+    /// The hash index holds exactly the orders on the levels, every queue's
+    /// slots increase and stay below the next one (tests only).
+    #[cfg(test)]
+    pub(crate) fn assert_indexed(&self) {
+        let mut spots = BTreeSet::new();
+        for half in [Half::Bids, Half::Asks] {
+            for (price, queue) in self.levels(half) {
+                for pair in queue.iter().collect::<Vec<_>>().windows(2) {
+                    assert!(pair[0].slot < pair[1].slot, "a queue's slots must increase");
+                }
+                for r in queue {
+                    assert!(r.slot < self.next_slot);
+                    spots.insert(Spot::of(r, half, *price));
+                }
+            }
+        }
+        assert_eq!(spots, self.index, "the hash index must match the book");
+    }
+
+    /// Put back one change [`Self::submit`] recorded. Steps are undone newest
+    /// first, so each finds the book as the change left it.
+    pub(crate) fn undo(&mut self, step: Step) {
+        match step {
+            Step::Rested {
+                half,
+                price,
+                created,
+            } => {
+                let levels = self.levels_mut(half);
+                let queue = levels.get_mut(&price).expect("an undone order rests");
+                let r = queue.pop_back().expect("an undone order rests last");
+                if created {
+                    levels.remove(&price);
+                }
+                self.index.remove(&Spot::of(&r, half, price));
+                self.next_slot = r.slot;
+            }
+            Step::Popped { half, price, order } => {
+                self.levels_mut(half)
+                    .entry(price)
+                    .or_default()
+                    .push_front(order);
+                self.index.insert(Spot::of(&order, half, price));
+            }
+            Step::Traded { half, price, size } => {
+                let front = self
+                    .levels_mut(half)
+                    .get_mut(&price)
+                    .and_then(VecDeque::front_mut)
+                    .expect("an undone trade's maker is at the front");
+                front.remaining += size;
+            }
+            Step::LevelDropped { half, price } => {
+                self.levels_mut(half).entry(price).or_default();
+            }
         }
     }
 
@@ -297,41 +563,19 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         None
     }
 
-    /// Internal execution lookup. Public depth remains undisclosed.
+    /// Internal execution lookup. Public depth remains undisclosed. Found
+    /// through the hash index, not by walking the book.
     pub fn remaining(&self, hash: &Digest) -> Option<i128> {
-        self.bids
-            .values()
-            .chain(self.asks.values())
-            .flat_map(|q| q.iter())
-            .find(|o| {
-                #[cfg(test)]
-                visited();
-                &o.order_hash == hash
-            })
-            .map(|o| o.remaining)
-    }
-
-    /// The hashes of every order resting on this book, live or not yet reaped.
-    pub(crate) fn resting_order_hashes(&self) -> impl Iterator<Item = Digest> + '_ {
-        self.bids
-            .values()
-            .chain(self.asks.values())
-            .flat_map(|q| q.iter())
-            .map(|r| r.order_hash)
+        let spot = self.spots(hash).next()?;
+        self.at(spot).map(|r| r.remaining)
     }
 
     /// Owner-scoped remaining quantity, for cancellation eligibility. This is
     /// not public market depth and must only be exposed through authenticated views.
     pub fn remaining_for(&self, owner: &PubKey, order_hash: &Digest) -> Option<i128> {
-        self.bids
-            .values()
-            .chain(self.asks.values())
-            .flat_map(|queue| queue.iter())
-            .find(|r| {
-                #[cfg(test)]
-                visited();
-                &r.owner == owner && &r.order_hash == order_hash
-            })
+        self.spots(order_hash)
+            .filter_map(|spot| self.at(spot))
+            .find(|r| &r.owner == owner)
             .map(|r| r.remaining)
     }
 
@@ -425,6 +669,28 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     /// Submit an order to the book. `seq` is the sequencer-assigned arrival
     /// number (§2); `now_ms` is the batch reference clock for expiry.
     pub fn submit(&mut self, order: &Order, seq: u64, now_ms: u64) -> SubmitOutcome {
+        self.submit_journaled(order, seq, now_ms, Journal(None))
+    }
+
+    /// [`Self::submit`], recording each change it makes to the book in `steps`,
+    /// for [`Self::undo`].
+    pub(crate) fn submit_undoable(
+        &mut self,
+        order: &Order,
+        seq: u64,
+        now_ms: u64,
+        steps: &mut Vec<Step>,
+    ) -> SubmitOutcome {
+        self.submit_journaled(order, seq, now_ms, Journal(Some(steps)))
+    }
+
+    fn submit_journaled(
+        &mut self,
+        order: &Order,
+        seq: u64,
+        now_ms: u64,
+        mut journal: Journal<'_>,
+    ) -> SubmitOutcome {
         debug_assert_eq!(order.market_id, self.market_id);
         let order_hash = order.order_hash::<H>();
         let mut out = SubmitOutcome {
@@ -477,7 +743,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 out.status = SubmitStatus::Rejected(RejectReason::PostOnlyWouldTake);
                 return out;
             }
-            self.rest(order, order_hash, order.size, seq);
+            self.rest(order, order_hash, order.size, seq, &mut journal);
             out.status = SubmitStatus::Resting;
             return out;
         }
@@ -499,6 +765,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             if !Self::price_crosses(side, limit, level_price) {
                 break;
             }
+            let half = Half::of(side).opposite();
             let opposite = match side {
                 Side::Buy => &mut self.asks,
                 Side::Sell => &mut self.bids,
@@ -512,6 +779,12 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             while let Some(front) = queue.front() {
                 if front.owner == order.owner || resting_expired(front, now_ms) {
                     let removed = queue.pop_front().expect("front exists");
+                    self.index.remove(&Spot::of(&removed, half, level_price));
+                    journal.note(Step::Popped {
+                        half,
+                        price: level_price,
+                        order: removed,
+                    });
                     out.removals.push(OrderRemoval {
                         order_hash: removed.order_hash,
                         reason: if resting_expired(&removed, now_ms) {
@@ -526,6 +799,10 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             }
             let Some(front) = queue.front_mut() else {
                 opposite.remove(&level_price);
+                journal.note(Step::LevelDropped {
+                    half,
+                    price: level_price,
+                });
                 continue;
             };
             let trade = remaining.min(front.remaining);
@@ -543,11 +820,26 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             });
             remaining -= trade;
             front.remaining -= trade;
+            journal.note(Step::Traded {
+                half,
+                price: level_price,
+                size: trade,
+            });
             if front.remaining == 0 {
-                queue.pop_front();
+                let filled = queue.pop_front().expect("front exists");
+                self.index.remove(&Spot::of(&filled, half, level_price));
+                journal.note(Step::Popped {
+                    half,
+                    price: level_price,
+                    order: filled,
+                });
             }
             if queue.is_empty() {
                 opposite.remove(&level_price);
+                journal.note(Step::LevelDropped {
+                    half,
+                    price: level_price,
+                });
             }
         }
 
@@ -583,7 +875,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                         SubmitStatus::CancelledNoFill
                     }
                 } else {
-                    self.rest(order, order_hash, remaining, seq);
+                    self.rest(order, order_hash, remaining, seq, &mut journal);
                     if filled > 0 {
                         SubmitStatus::FilledResting { resting: remaining }
                     } else {
@@ -596,23 +888,38 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         out
     }
 
-    /// Rest `remaining` of `order` at its limit price.
-    fn rest(&mut self, order: &Order, order_hash: Digest, remaining: i128, seq: u64) {
-        let book = match order.side {
-            Side::Buy => &mut self.bids,
-            Side::Sell => &mut self.asks,
+    /// Rest `remaining` of `order` at its limit price, at the back of its level.
+    fn rest(
+        &mut self,
+        order: &Order,
+        order_hash: Digest,
+        remaining: i128,
+        seq: u64,
+        journal: &mut Journal<'_>,
+    ) {
+        let half = Half::of(order.side);
+        let price = order.limit_price;
+        let slot = self.next_slot;
+        self.next_slot += 1;
+        let resting = Resting {
+            order_hash,
+            owner: order.owner,
+            remaining,
+            price,
+            seq,
+            reduce_only: order.reduce_only,
+            expiry_ms: order.expiry_ms,
+            slot,
         };
-        book.entry(order.limit_price)
-            .or_default()
-            .push_back(Resting {
-                order_hash,
-                owner: order.owner,
-                remaining,
-                price: order.limit_price,
-                seq,
-                reduce_only: order.reduce_only,
-                expiry_ms: order.expiry_ms,
-            });
+        let levels = self.levels_mut(half);
+        let created = !levels.contains_key(&price);
+        levels.entry(price).or_default().push_back(resting);
+        self.index.insert(Spot::of(&resting, half, price));
+        journal.note(Step::Rested {
+            half,
+            price,
+            created,
+        });
     }
 
     /// Cancel every resting order belonging to `owner` (e.g. after the owner is
@@ -622,7 +929,28 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     }
 
     pub fn cancel_owner_with_events(&mut self, owner: &PubKey) -> Vec<OrderRemoval> {
-        self.remove_where(|r| &r.owner == owner, "Liquidated")
+        self.remove_where(
+            &[Half::Bids, Half::Asks],
+            |r| &r.owner == owner,
+            "Liquidated",
+        )
+    }
+
+    /// Cancel every order of `owner` resting on `side` (its bids for
+    /// [`Side::Buy`], its asks for [`Side::Sell`]) except its reduce-only ones,
+    /// and return their hashes, lower price first and in queue order. The
+    /// sequencer bans the side of a maker whose collateral failed a fill this way
+    /// (audit 2026-11-16 SM-2); a reduce-only order adds no exposure, so it
+    /// stays.
+    pub fn cancel_owner_side(&mut self, owner: &PubKey, side: Side) -> Vec<Digest> {
+        self.remove_where(
+            &[Half::of(side)],
+            |r| &r.owner == owner && !r.reduce_only,
+            "Banned",
+        )
+        .into_iter()
+        .map(|removal| removal.order_hash)
+        .collect()
     }
 
     /// Cancel every resting order of `owner` in this book because another
@@ -630,7 +958,11 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     /// (audit 2026-11-16 PC-1): an order placed against the old position, a
     /// take-profit that was a close, could otherwise open a new one.
     pub fn cancel_owner_forced_close_with_events(&mut self, owner: &PubKey) -> Vec<OrderRemoval> {
-        self.remove_where(|r| &r.owner == owner, "ForcedClose")
+        self.remove_where(
+            &[Half::Bids, Half::Asks],
+            |r| &r.owner == owner,
+            "ForcedClose",
+        )
     }
 
     /// Reap before using the book as a funding mark; retain attribution for clients.
@@ -639,19 +971,34 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     }
 
     pub fn reap_expired_with_events(&mut self, now_ms: u64) -> Vec<OrderRemoval> {
-        self.remove_where(|r| resting_expired(r, now_ms), "Expired")
+        self.remove_where(
+            &[Half::Bids, Half::Asks],
+            |r| resting_expired(r, now_ms),
+            "Expired",
+        )
     }
 
+    /// Remove every order on `halves` that `remove` selects, bids before asks,
+    /// lower price first and in queue order, and drop the levels left empty.
     fn remove_where(
         &mut self,
+        halves: &[Half],
         remove: impl Fn(&Resting) -> bool,
         reason: &'static str,
     ) -> Vec<OrderRemoval> {
         let mut removed = Vec::new();
-        for book in [&mut self.bids, &mut self.asks] {
-            book.retain(|_, q| {
+        let Self {
+            bids, asks, index, ..
+        } = self;
+        for &half in halves {
+            let levels = match half {
+                Half::Bids => &mut *bids,
+                Half::Asks => &mut *asks,
+            };
+            levels.retain(|price, q| {
                 q.retain(|r| {
                     if remove(r) {
+                        index.remove(&Spot::of(r, half, *price));
                         removed.push(OrderRemoval {
                             order_hash: r.order_hash,
                             reason,
@@ -668,31 +1015,18 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     }
 
     /// Cancel a resting order by hash. Returns the cancelled remaining size.
+    /// Found through the hash index; with two orders of one hash, the one a
+    /// walk of the book meets first (bids before asks, lower price first).
     pub fn cancel(&mut self, order_hash: &Digest) -> Option<i128> {
-        for book in [&mut self.bids, &mut self.asks] {
-            let mut empty_key = None;
-            let mut found = None;
-            for (price, q) in book.iter_mut() {
-                if let Some(pos) = q.iter().position(|r| {
-                    #[cfg(test)]
-                    visited();
-                    &r.order_hash == order_hash
-                }) {
-                    let r = q.remove(pos).unwrap();
-                    found = Some(r.remaining);
-                    if q.is_empty() {
-                        empty_key = Some(*price);
-                    }
-                    break;
-                }
-            }
-            if let Some(k) = empty_key {
-                book.remove(&k);
-            }
-            if found.is_some() {
-                return found;
-            }
+        let spot = *self.spots(order_hash).next()?;
+        let position = self.position(&spot)?;
+        let levels = self.levels_mut(spot.half);
+        let queue = levels.get_mut(&spot.price)?;
+        let r = queue.remove(position)?;
+        if queue.is_empty() {
+            levels.remove(&spot.price);
         }
-        None
+        self.index.remove(&spot);
+        Some(r.remaining)
     }
 }
