@@ -1233,6 +1233,72 @@ mod impact_price_tests {
         rest(&mut deep, 1, Side::Buy, i128::MAX / 4, 1);
         assert_eq!(deep.impact_price(Side::Buy, THOUSAND, 0, all), Some(1));
     }
+
+    /// Audit 2026-11-16 SM-3: the sweep checks the notional after each order it
+    /// counts, not after a whole level. $50,000 of bids at $100 followed by 10,000
+    /// more orders at the same price: the first order already holds the $1,000, so
+    /// the filter sees it alone and never the orders queued behind it.
+    #[test]
+    fn audit_1116_sm3_the_sweep_stops_at_the_order_that_completes_the_notional() {
+        let mut book = OrderBook::<Keccak256>::new(0);
+        rest(&mut book, 1, Side::Buy, 500 * SIZE_SCALE, 100 * PRICE_SCALE);
+        for n in 2..10_002 {
+            rest(&mut book, n, Side::Buy, SIZE_SCALE / 100, 100 * PRICE_SCALE);
+        }
+        let mut shown = 0usize;
+        let price = book.impact_price(Side::Buy, THOUSAND, 0, |_| {
+            shown += 1;
+            true
+        });
+        assert_eq!(price, Some(100 * PRICE_SCALE));
+        assert_eq!(shown, 1, "the walk ends inside the level");
+    }
+
+    /// Where every order counts, the per-order walk prices a side exactly as a walk
+    /// that sums each level first: pseudo-random books of a few levels, compared
+    /// with that reference.
+    #[test]
+    fn audit_1116_sm3_the_per_order_walk_prices_like_the_per_level_walk() {
+        let mut seed = 0x5eed_u64;
+        let mut next = move |bound: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % bound
+        };
+        for case in 0..200 {
+            let mut book = OrderBook::<Keccak256>::new(0);
+            let mut levels: Vec<(i128, i128)> = Vec::new();
+            for n in 0..(1 + next(30)) {
+                let price = (95 + next(10) as i128) * PRICE_SCALE;
+                let size = (1 + next(400) as i128) * SIZE_SCALE / 100;
+                rest(&mut book, 1 + n, Side::Sell, size, price);
+                match levels.iter_mut().find(|(p, _)| *p == price) {
+                    Some(level) => level.1 += size,
+                    None => levels.push((price, size)),
+                }
+            }
+            levels.sort();
+            let notional = (1 + next(2_000) as i128) * QUOTE_SCALE;
+            let divisor = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
+            let target = notional * divisor;
+            let (mut left, mut base) = (target, 0i128);
+            let mut reference = None;
+            for (price, size) in levels {
+                if size * price >= left {
+                    reference = Some(target * price / (base * price + left));
+                    break;
+                }
+                base += size;
+                left -= size * price;
+            }
+            assert_eq!(
+                book.impact_price(Side::Sell, notional, 0, all),
+                reference,
+                "case {case}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

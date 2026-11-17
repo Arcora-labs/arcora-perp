@@ -4035,4 +4035,102 @@ mod tests {
         assert_eq!(book.resting_size(Side::Buy), 0, "the taker fully filled");
         assert!(sq.state.conservation_holds());
     }
+
+    /// Rest `orders` straight on the book, without the pre-trade gate: the book a
+    /// snapshot written before the open-order limits restores.
+    fn restore_onto_book(seq: &mut Sequencer, orders: &[Order]) {
+        for o in orders {
+            let processed = seq.matcher.submit(o, now());
+            assert_eq!(processed.outcome.status, SubmitStatus::Resting);
+        }
+    }
+
+    /// Audit 2026-11-16 GA-1: orders that a snapshot from before the open-order cap
+    /// restores above it stay on the book (nothing cancels them), but the account's
+    /// new orders are refused until it is back under the cap. An IOC, which never
+    /// rests, is not refused for the cap.
+    #[test]
+    fn audit_1116_ga1_orders_restored_above_the_cap_stay_but_new_ones_are_refused() {
+        const PER_MARKET: u64 = 64;
+        let mut s = test_sequencer();
+        fund(&mut s, 3, 1_000_000, 0x33);
+        let restored: Vec<Order> = (0..PER_MARKET + 36)
+            .map(|n| t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 10 + n))
+            .collect();
+        restore_onto_book(&mut s, &restored);
+        let fresh = t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 1_000);
+        let sealed = s.seal_batch(&[fresh], now());
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(fresh.order_hash::<Keccak256>(), RejectReason::InvalidOrder)]
+        );
+        for o in &restored {
+            assert!(s
+                .remaining_order_size(&o.order_hash::<Keccak256>())
+                .is_some());
+        }
+        // still above the cap after one cancel
+        assert!(s.cancel_order(&owner_id(3), &restored[0], true).is_some());
+        let again = t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 1_001);
+        let sealed = s.seal_batch(&[again], now());
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(again.order_hash::<Keccak256>(), RejectReason::InvalidOrder)]
+        );
+        // an IOC is admitted: it trades nothing here and does not rest
+        let take = Order {
+            tif: TimeInForce::Ioc,
+            ..t_order_at(3, Side::Sell, 101_000, SIZE_SCALE / 100, 1_002)
+        };
+        let sealed = s.seal_batch(&[take], now());
+        assert!(sealed
+            .manifest
+            .ordered
+            .contains(&take.order_hash::<Keccak256>()));
+        // back under the cap, the next order rests
+        for o in &restored[1..37] {
+            assert!(s.cancel_order(&owner_id(3), o, true).is_some());
+        }
+        let under = t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 1_003);
+        let sealed = s.seal_batch(&[under], now());
+        assert!(sealed.manifest.rejected.is_empty());
+        assert!(s
+            .remaining_order_size(&under.order_hash::<Keccak256>())
+            .is_some());
+    }
+
+    /// A book restored from before the collateral reserve: owner 3, with $15 of
+    /// collateral, rests `wall` $10 bids at $100,010, ahead of owner 1's $10,000 of
+    /// bids at $99,990; owner 2 asks $10,000 at $100,030.
+    fn walled_book(wall: u64) -> Sequencer {
+        let mut s = test_sequencer();
+        fund(&mut s, 3, 15, 0x33);
+        let dust: Vec<Order> = (0..wall)
+            .map(|n| t_order_at(3, Side::Buy, 100_010, SIZE_SCALE / 10_000, 10 + n))
+            .collect();
+        restore_onto_book(&mut s, &dust);
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(1, Side::Buy, 99_990, SIZE_SCALE / 10, 1),
+                t_order_at(2, Side::Sell, 100_030, SIZE_SCALE / 10, 2),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        s
+    }
+
+    /// Audit 2026-11-16 SM-3, the original wall: 4,096 such bids, and as many again.
+    /// Only the first few could fill; the honest bids price the rest of the side,
+    /// exactly as in a book where owner 3 rests only twenty, and the mark is not
+    /// pinned to the index.
+    #[test]
+    fn audit_1116_sm3_a_restored_dust_wall_does_not_pin_the_mark() {
+        let few = walled_book(20).impact_mid(0, now());
+        let mid = few.expect("the honest bids are reached");
+        assert!(mid > 100_000 * PRICE_SCALE && mid < 100_030 * PRICE_SCALE);
+        for wall in [4_096, 8_192] {
+            assert_eq!(walled_book(wall).impact_mid(0, now()), few, "{wall}");
+        }
+    }
 }

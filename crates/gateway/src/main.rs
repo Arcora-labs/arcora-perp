@@ -126,6 +126,8 @@ mod injected_inputs;
 mod l1;
 mod listen_config;
 mod live_void;
+#[cfg(test)]
+mod open_order_limit_tests;
 mod ops_alerts;
 mod oracle_crosscheck;
 #[cfg(test)]
