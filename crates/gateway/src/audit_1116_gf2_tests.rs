@@ -241,4 +241,247 @@ mod audit_1116_gf2 {
         assert!(gw.accounts[&key].orders.is_empty());
         assert_eq!(gw.accounts[&key].nonce, nonce);
     }
+
+    // ── Second line: an open challenge for an order the gateway does not know ──
+
+    use crate::challenge_scan::{AnswerPlan, Watcher};
+    use perp_core::order::RejectReason;
+
+    /// One watcher round over an open set read with `open` (no stored details).
+    fn round(gw: &mut Gw, watcher: &mut Watcher, open: &[Digest]) -> AnswerPlan {
+        watcher.observe(crate::l1::OpenSetRead {
+            head: 20,
+            batch_count: gw.seq.state.next_batch_id,
+            hashes: open.to_vec(),
+            details: vec![],
+        });
+        gw.plan_challenge_round(watcher)
+    }
+
+    /// How often the open window's manifest rejects `hash`.
+    fn rejections(gw: &Gw, hash: &Digest) -> usize {
+        gw.seq
+            .window_rejected()
+            .iter()
+            .filter(|(h, _)| h == hash)
+            .count()
+    }
+
+    fn settling_gw() -> Gw {
+        let mut gw = Gw::boot();
+        gw.window_settle_mode = true;
+        gw.seq.set_retain_tick_snapshots(false);
+        gw
+    }
+
+    /// Seal the open window (an empty one when `keepalive`), as the settle loop does.
+    fn seal(gw: &mut Gw, keepalive: bool) -> (WindowWitness, Vec<Withdrawal>) {
+        let batch_count = gw.seq.state.next_batch_id;
+        gw.begin_window_settle_mode(batch_count, keepalive)
+            .unwrap()
+            .expect("the window has something to settle")
+    }
+
+    /// Record the sealed window as settled on L1.
+    fn commit(gw: &mut Gw, witness: WindowWitness, ww: Vec<Withdrawal>) {
+        let ordered = witness.manifest.ordered.clone();
+        let rejected: Vec<_> = witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id = witness.batch_id;
+        let prepared = prover_client::prepare_unproved(&witness, &ww).unwrap();
+        let status = L1Status {
+            settled_root: hex32(&prepared.outcome.new_root),
+            batch_count: batch_id + 1,
+            last_tx: "0xtx".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(
+            batch_id,
+            ordered,
+            rejected,
+            prepared,
+            status,
+            trading_gate::GateObservation::OpensGate,
+        );
+    }
+
+    /// GF-2 second line: an open challenge for a hash no batch holds and the
+    /// gateway does not know (the order was lost) used only to raise an alert, so
+    /// the bond was slashed. The gateway now declares it rejected in the open
+    /// window once, and the settled batch's rejected root answers the challenge.
+    #[test]
+    fn audit_1116_gf2_an_unknown_challenged_hash_is_rejected_once_and_answered() {
+        let mut gw = settling_gw();
+        let lost = [0x51; 32];
+        let mut watcher = Watcher::default();
+        round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(rejections(&gw, &lost), 1, "the next batch rejects it");
+        assert!(gw
+            .seq
+            .window_rejected()
+            .contains(&(lost, RejectReason::Cancelled)));
+        round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(rejections(&gw, &lost), 1, "declared once");
+
+        // While its window settles, later rounds declare nothing new.
+        let batch = gw.seq.state.next_batch_id;
+        let (witness, ww) = seal(&mut gw, false);
+        let sealed: Vec<_> = witness.manifest.rejected.iter().filter(|(h, _)| *h == lost).collect();
+        assert_eq!(sealed.len(), 1);
+        round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(rejections(&gw, &lost), 0, "not again while its window settles");
+
+        // Settled: the batch's rejected root answers it, and nothing more is declared.
+        commit(&mut gw, witness, ww);
+        let plan = round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(rejections(&gw, &lost), 0);
+        assert!(plan.unanswerable.is_empty());
+        assert_eq!(plan.sends.len(), 1);
+        let (answer_batch, answers) = &plan.sends[0];
+        assert_eq!(*answer_batch, batch);
+        assert_eq!(answers.len(), 1);
+        assert!(answers[0].by_rejection);
+        assert_eq!(answers[0].order_hash, lost);
+        let rejected = &gw.batch_orders[&batch].1;
+        let root = perp_core::merkle::merkle_root(
+            &rejected
+                .iter()
+                .map(|h| crate::withdrawals::rejection_leaf(batch, h))
+                .collect::<Vec<_>>(),
+        );
+        assert!(perp_core::merkle::verify(
+            root,
+            crate::withdrawals::rejection_leaf(batch, &lost),
+            &answers[0].proof
+        ));
+    }
+
+    /// GF-2 second line: the declaration survives a restart, so neither the open
+    /// window nor a settling one rejects the hash a second time.
+    #[test]
+    fn audit_1116_gf2_a_declared_rejection_survives_a_restart_without_repeating() {
+        let mut gw = settling_gw();
+        let lost = [0x52; 32];
+        round(&mut gw, &mut Watcher::default(), &[lost]);
+        assert_eq!(rejections(&gw, &lost), 1);
+
+        // Restart with the open window holding the rejection; the watcher's own
+        // state is rebuilt from nothing.
+        let plain = gw.snapshot_plain();
+        let mut gw = Gw::boot_restored(&plain).unwrap();
+        assert_eq!(gw.snapshot_plain(), plain, "byte-exact re-encoding");
+        round(&mut gw, &mut Watcher::default(), &[lost]);
+        assert_eq!(rejections(&gw, &lost), 1, "not declared again after a restart");
+
+        // Restart while its window settles.
+        let (witness, _) = seal(&mut gw, false);
+        assert!(witness
+            .manifest
+            .rejected
+            .contains(&(lost, RejectReason::Cancelled)));
+        let mut gw = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+        round(&mut gw, &mut Watcher::default(), &[lost]);
+        assert_eq!(rejections(&gw, &lost), 0, "not again while its window settles");
+    }
+
+    /// GF-2 second line: only hashes truly unknown are declared. Orders the
+    /// gateway accepted (pending, resting, cancelled, or with their row gone) and
+    /// orders a settled batch holds are never rejected by a challenge.
+    #[test]
+    fn audit_1116_gf2_a_challenge_never_rejects_an_order_the_gateway_knows() {
+        let mut gw = settling_gw();
+        let (key, _) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 50_000 * QUOTE_SCALE).unwrap();
+        let px = gw.px_of(0);
+        let mut place = |gw: &mut Gw, side: &str, limit: i128| {
+            gw.accounts.get_mut(&key).unwrap().orders_this_sec = 0;
+            gw.account_place_order(
+                &key,
+                &OrderReq {
+                    market_id: 0,
+                    side: side.into(),
+                    size: (SIZE_SCALE / 100).to_string(),
+                    limit_price: limit.to_string(),
+                    tif: "Gtc".into(),
+                    reduce_only: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            gw.accounts[&key].orders[0].order_hash
+        };
+        // A resting maker sequenced in a tick, and an order cancelled after it
+        // whose finished row is gone (the row budget evicts such rows).
+        let resting = place(&mut gw, "Buy", px * 9 / 10);
+        let cancelled = place(&mut gw, "Sell", px * 11 / 10);
+        gw.tick();
+        let id = gw.accounts[&key].orders[0].id.clone();
+        gw.account_cancel(&key, &id).unwrap();
+        gw.accounts.get_mut(&key).unwrap().orders.remove(0);
+        // A pending order, accepted but not sequenced yet.
+        let pending = place(&mut gw, "Buy", px * 8 / 10);
+        let before = gw.seq.window_rejected().to_vec();
+        let known = [resting, cancelled, pending];
+        let mut watcher = Watcher::default();
+        round(&mut gw, &mut watcher, &known);
+        assert_eq!(gw.seq.window_rejected(), before.as_slice());
+
+        // Settled orders are answered from their batch, never declared rejected.
+        gw.tick();
+        let (witness, ww) = seal(&mut gw, false);
+        let batch = witness.batch_id;
+        assert!(witness.manifest.ordered.contains(&resting));
+        commit(&mut gw, witness, ww);
+        let plan = round(&mut gw, &mut watcher, &known);
+        assert!(gw.seq.window_rejected().is_empty());
+        for hash in known {
+            assert!(
+                plan.sends
+                    .iter()
+                    .any(|(b, answers)| *b == batch && answers.iter().any(|a| a.order_hash == hash)),
+                "answered from its batch"
+            );
+        }
+    }
+
+    /// GF-2 second line: a challenge that left the open set (answered, slashed or
+    /// released) is resolved on L1 for good, and its record goes with it; a
+    /// snapshot without records keeps the earlier layout.
+    #[test]
+    fn audit_1116_gf2_a_resolved_challenge_drops_its_record() {
+        let mut gw = settling_gw();
+        let earlier = gw.snapshot_plain();
+        let lost = [0x53; 32];
+        let mut watcher = Watcher::default();
+        round(&mut gw, &mut watcher, &[lost]);
+        let (witness, ww) = seal(&mut gw, false);
+        commit(&mut gw, witness, ww);
+        round(&mut gw, &mut watcher, &[]);
+        let plain = gw.snapshot_plain();
+        let restored = Gw::boot_restored(&plain).unwrap();
+        assert_eq!(restored.snapshot_plain(), plain);
+        // Only the settled batch and the counters moved: the layout is the earlier one.
+        assert_eq!(&plain[..8], &earlier[..8]);
+        assert!(plain.windows(8).all(|w| w != b"DPCHRJ1\0"));
+    }
+
+    /// GF-2 second line: if the batch a declaration was due in settles without the
+    /// hash (its rejection was lost on the way), the next round declares it again.
+    #[test]
+    fn audit_1116_gf2_a_lost_declaration_is_declared_again() {
+        let mut gw = settling_gw();
+        let lost = [0x54; 32];
+        let mut watcher = Watcher::default();
+        round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(rejections(&gw, &lost), 1);
+        // Discard the open window without publishing its rejections again.
+        let _ = gw.seq.void_open_window();
+        assert_eq!(rejections(&gw, &lost), 0);
+        round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(rejections(&gw, &lost), 0, "its window has not settled yet");
+        let (witness, ww) = seal(&mut gw, true);
+        commit(&mut gw, witness, ww);
+        round(&mut gw, &mut watcher, &[lost]);
+        assert_eq!(rejections(&gw, &lost), 1, "declared again");
+    }
 }
