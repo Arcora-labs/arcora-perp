@@ -462,9 +462,14 @@ bounds it:
 The cap counts the outstanding deposit permits as if credited and keeps room for one
 more exit of every position entry. At the soft cap it issues no new deposit permit
 that adds to the bound at it (a top-up adds no position entry), and it registers no
-new account while the state itself is at it; outstanding permits never close
-registration. An account with no position holds permits for one market at a time, so
-it reserves at most one entry. A withdrawal that would need more room than the bound
+new account while the state's own history or unspent notes are at it; the position
+entries and outstanding permits never close registration. An account with no
+position holds permits for one market at a time, so it reserves at most one entry.
+Every position entry costs the same to prove whatever it holds, so dust entries count
+toward the bound like any other; instead, a permit that opens an entry needs 100 USDC,
+and when the entries alone refuse such a permit the gateway sweeps flat entries below
+100 USDC (a forced full exit to the owner's bound deposit address, announced to the
+owner) to make room. Entries with an open position are never swept (audit G1-1). A withdrawal that would need more room than the bound
 leaves is refused unless it is a full exit (the whole balance of a closed position),
 so the deposit of every permit already signed is credited within the bound and funds
 can always leave. Only a state already beyond a bound credits no further deposit.
