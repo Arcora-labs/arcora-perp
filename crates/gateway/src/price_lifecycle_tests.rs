@@ -821,7 +821,7 @@ fn candidate_refuses_synthetic_demo_prices_and_unguarded_entrypoints() {
     let mm = f.gw.mm;
     assert!(f.gw.pool_transfer(&user, &mm, QUOTE_SCALE).is_err());
     assert_eq!(f.fingerprint(), before);
-    assert!(f.gw.withdraw(QUOTE_SCALE).is_err());
+    assert!(f.gw.withdraw(MIN_WITHDRAWAL).is_err());
     assert_eq!(f.fingerprint(), before);
     assert!(f.gw.place_order(&OrderReq::default()).is_err());
     assert_eq!(f.fingerprint(), before);
@@ -858,11 +858,11 @@ fn run_wind_down() -> (Fixture, sequencer::WindowWitness) {
         batch_count: f.gw.seq.current_window_id(),
         root: f.gw.last_settled_root,
     };
-    let sig = f.withdrawal_sig(QUOTE_SCALE, 1);
+    let sig = f.withdrawal_sig(MIN_WITHDRAWAL, 1);
     f.gw.account_withdraw_checked(
         &f.key,
         0,
-        QUOTE_SCALE,
+        MIN_WITHDRAWAL,
         f.to,
         (1, &sig),
         WithdrawalContext {

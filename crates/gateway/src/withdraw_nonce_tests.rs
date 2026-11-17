@@ -50,13 +50,13 @@ fn withdraw(
 #[test]
 fn leaf_nonces_follow_the_engine_when_the_counter_lags() {
     let (mut gw, key, sk, to) = withdrawer();
-    let first = withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to).unwrap();
+    let first = withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to).unwrap();
     assert_eq!(first.nonce, 1);
     assert_eq!(gw.seq.state.last_withdrawal_nonce, 1);
     assert_eq!(gw.next_withdraw_nonce, 2);
     // A counter behind the engine never reuses a committed nonce.
     gw.next_withdraw_nonce = 1;
-    let second = withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to).unwrap();
+    let second = withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to).unwrap();
     assert_eq!(second.nonce, 2);
     assert_eq!(gw.seq.state.last_withdrawal_nonce, 2);
     assert_eq!(gw.next_withdraw_nonce, 3);
@@ -76,7 +76,7 @@ fn the_counter_stays_ahead_after_a_void_moves_the_engine_back() {
     gw.seq.seal_genesis_baseline();
     for nonce in 1..=2 {
         assert_eq!(
-            withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to)
+            withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to)
                 .unwrap()
                 .nonce,
             nonce
@@ -89,7 +89,7 @@ fn the_counter_stays_ahead_after_a_void_moves_the_engine_back() {
     assert_eq!(gw.seq.state.last_withdrawal_nonce, 0);
     assert_eq!(gw.next_withdraw_nonce, 3);
     assert_eq!(
-        withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to)
+        withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to)
             .unwrap()
             .nonce,
         3
@@ -100,8 +100,8 @@ fn the_counter_stays_ahead_after_a_void_moves_the_engine_back() {
 #[test]
 fn a_restored_lagging_counter_is_repaired_with_an_alert() {
     let (mut gw, key, sk, to) = withdrawer();
-    withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to).unwrap();
-    withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to).unwrap();
+    withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to).unwrap();
+    withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to).unwrap();
     assert!(!gw.repair_withdraw_nonce(), "an honest counter is ahead");
     gw.next_withdraw_nonce = 2;
     let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
@@ -124,7 +124,7 @@ fn an_engine_refusal_leaves_the_position_and_notes_untouched() {
     let nonce = gw.next_withdraw_nonce;
     let mut blind = [0xD0u8; 32];
     blind[..8].copy_from_slice(&nonce.to_le_bytes());
-    let note = Note::new(wallet.owner, 0, QUOTE_SCALE, blind);
+    let note = Note::new(wallet.owner, 0, MIN_WITHDRAWAL, blind);
     assert!(gw
         .seq
         .state
@@ -132,7 +132,7 @@ fn an_engine_refusal_leaves_the_position_and_notes_untouched() {
         .insert(note.nullifier::<Keccak256>(&wallet.spend_key)));
     let before = gw.snapshot_plain();
     let collateral = gw.seq.state.position(&wallet.owner, 0).unwrap().collateral;
-    let error = withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to).unwrap_err();
+    let error = withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to).unwrap_err();
     assert!(error.contains("withdrawal refused"), "{error}");
     assert_eq!(
         gw.seq.state.position(&wallet.owner, 0).unwrap().collateral,
@@ -155,13 +155,13 @@ fn a_nonce_beyond_the_engine_step_is_refused_before_anything_is_applied() {
     let (mut gw, key, sk, to) = withdrawer();
     gw.next_withdraw_nonce = MAX_WITHDRAWAL_NONCE_STEP + 1;
     let before = gw.snapshot_plain();
-    let error = withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to).unwrap_err();
+    let error = withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to).unwrap_err();
     assert!(error.contains("step limit"), "{error}");
     assert_eq!(gw.snapshot_plain(), before);
     // The step limit itself is accepted.
     gw.next_withdraw_nonce = MAX_WITHDRAWAL_NONCE_STEP;
     assert_eq!(
-        withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE, to)
+        withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to)
             .unwrap()
             .nonce,
         MAX_WITHDRAWAL_NONCE_STEP
@@ -169,10 +169,10 @@ fn a_nonce_beyond_the_engine_step_is_refused_before_anything_is_applied() {
 }
 
 #[test]
-fn a_withdrawal_below_one_dollar_must_take_the_whole_free_balance() {
+fn a_withdrawal_below_ten_dollars_must_take_the_whole_free_balance() {
     let (mut gw, key, sk, to) = withdrawer();
     let before = gw.snapshot_plain();
-    let error = withdraw(&mut gw, &key, &sk, 0, QUOTE_SCALE - 1, to).unwrap_err();
+    let error = withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL - 1, to).unwrap_err();
     assert!(error.contains("BELOW_MINIMUM"), "{error}");
     assert_eq!(gw.snapshot_plain(), before);
     assert!(withdraw(&mut gw, &key, &sk, 0, MIN_WITHDRAWAL, to).is_ok());

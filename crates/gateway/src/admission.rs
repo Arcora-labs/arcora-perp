@@ -7,6 +7,11 @@
 //!   withdrawal moves at least `MIN_WITHDRAWAL` unless it takes the whole free
 //!   balance of its market (so a small remainder can always leave). The order-size
 //!   minimum is the sequencer's (`sequencer::MIN_ORDER_NOTIONAL`).
+//! * **Withdrawal limits.** Every withdrawal adds a leaf and a nullifier to the
+//!   provable history, which only grows, so one account must not spend it for
+//!   everyone: a per-minute and a per-settlement-window rate limit per account, and
+//!   a lifetime quota of partial withdrawals per account. A full exit (a closed
+//!   position's whole balance) is exempt from the quota, so funds can always leave.
 //! * **Engine close-only.** Once a liquidation's bad debt trips the engine into
 //!   close-only, the engine refuses every deposit. The gateway then issues no
 //!   deposit permit and credits no deposit, and alerts the operator: governance
@@ -44,9 +49,69 @@ use std::collections::BTreeSet;
 /// The smallest deposit permit, quote-scaled ($10).
 pub(crate) const MIN_DEPOSIT_PERMIT: u128 = 10 * QUOTE_SCALE as u128;
 
-/// The smallest withdrawal, quote-scaled ($1), unless the withdrawal takes the
-/// whole free balance of its market.
-pub(crate) const MIN_WITHDRAWAL: i128 = QUOTE_SCALE;
+/// The smallest withdrawal, quote-scaled ($10, the order and deposit minimum),
+/// unless the withdrawal takes the whole free balance of its market.
+pub(crate) const MIN_WITHDRAWAL: i128 = 10 * QUOTE_SCALE;
+
+/// Most withdrawals one account may make within a minute.
+pub(crate) const MAX_WITHDRAWALS_PER_MINUTE: u32 = 3;
+
+/// Most withdrawals one account may have in the open settlement window.
+pub(crate) const MAX_WITHDRAWALS_PER_WINDOW: usize = 10;
+
+/// Most partial withdrawals (anything but a full exit) one account may make over
+/// its lifetime: 50 of them take 100 units, under 1% of `MAX_PROVABLE_HISTORY`.
+pub(crate) const MAX_PARTIAL_WITHDRAWALS_PER_ACCOUNT: u32 = 50;
+
+const MINUTE_MS: u64 = 60_000;
+
+/// Returned for a withdrawal over the per-minute rate limit.
+pub(crate) const WITHDRAW_RATE_LIMIT_MINUTE: &str = "WITHDRAW_RATE_LIMIT_MINUTE: this account \
+     made its maximum number of withdrawals in the last minute; retry shortly";
+
+/// Returned for a withdrawal over the per-settlement-window rate limit.
+pub(crate) const WITHDRAW_RATE_LIMIT_WINDOW: &str = "WITHDRAW_RATE_LIMIT_WINDOW: this account \
+     already has its maximum number of withdrawals in the open settlement window; retry \
+     after the next settlement";
+
+/// Returned for a partial withdrawal over the account's lifetime quota.
+pub(crate) const WITHDRAW_QUOTA_EXCEEDED: &str = "WITHDRAW_QUOTA_EXCEEDED: this account used its \
+     quota of partial withdrawals. A full exit is still accepted: close the position, then \
+     withdraw the whole balance of this market";
+
+/// Runtime-only withdrawal usage of one account (never in the snapshot: it
+/// restarts empty, which only loosens the limits until they fill again).
+#[derive(Clone, Copy, Debug, Default)]
+struct WithdrawUsage {
+    minute_start_ms: u64,
+    minute_count: u32,
+    partial: u32,
+}
+
+/// Withdrawal usage per account owner.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WithdrawLimits {
+    by_owner: std::collections::BTreeMap<[u8; 32], WithdrawUsage>,
+}
+
+impl WithdrawLimits {
+    fn usage(&self, owner: &[u8; 32]) -> WithdrawUsage {
+        self.by_owner.get(owner).copied().unwrap_or_default()
+    }
+
+    /// Count a withdrawal that was applied at `now_ms`.
+    pub(crate) fn record(&mut self, owner: &[u8; 32], now_ms: u64, partial: bool) {
+        let u = self.by_owner.entry(*owner).or_default();
+        if u.minute_count == 0 || now_ms.saturating_sub(u.minute_start_ms) >= MINUTE_MS {
+            u.minute_start_ms = now_ms;
+            u.minute_count = 0;
+        }
+        u.minute_count = u.minute_count.saturating_add(1);
+        if partial {
+            u.partial = u.partial.saturating_add(1);
+        }
+    }
+}
 
 /// Bound on the provable history: note-tree leaves plus spent nullifiers.
 ///
@@ -414,6 +479,46 @@ impl Gw {
             .then_some(HISTORY_CAP_INTAKE)
     }
 
+    /// Whether withdrawing `amount` is a full exit: the whole balance of a closed
+    /// position, which removes its entry.
+    pub(crate) fn is_full_exit(&self, owner: &PubKey, market: u64, amount: i128) -> bool {
+        self.seq
+            .state
+            .position(owner, market)
+            .is_some_and(|p| p.size == 0 && p.collateral == amount)
+    }
+
+    /// Why a withdrawal of `amount` by `owner` at `now_ms` exceeds the account's
+    /// rate limits or history quota, if it does. The rate limits apply to every
+    /// withdrawal, the quota to every one but a full exit.
+    pub(crate) fn withdrawal_limit_refusal(
+        &self,
+        owner: &PubKey,
+        market: u64,
+        amount: i128,
+        now_ms: u64,
+    ) -> Option<&'static str> {
+        let usage = self.withdraw_limits.usage(owner);
+        let in_minute = now_ms.saturating_sub(usage.minute_start_ms) < MINUTE_MS;
+        if in_minute && usage.minute_count >= MAX_WITHDRAWALS_PER_MINUTE {
+            return Some(WITHDRAW_RATE_LIMIT_MINUTE);
+        }
+        let in_window = self
+            .window_withdrawals
+            .iter()
+            .filter(|w| &w.owner == owner)
+            .count();
+        if in_window >= MAX_WITHDRAWALS_PER_WINDOW {
+            return Some(WITHDRAW_RATE_LIMIT_WINDOW);
+        }
+        if usage.partial >= MAX_PARTIAL_WITHDRAWALS_PER_ACCOUNT
+            && !self.is_full_exit(owner, market, amount)
+        {
+            return Some(WITHDRAW_QUOTA_EXCEEDED);
+        }
+        None
+    }
+
     /// Why a withdrawal of `amount` from `owner`'s (account `key`) entry in `market`
     /// may not be applied under the admission cap, if it may not. Each withdrawal
     /// adds a leaf and a nullifier. A full exit (a closed position's whole balance)
@@ -435,11 +540,7 @@ impl Gw {
         } else {
             state
         };
-        let full_exit = self
-            .seq
-            .state
-            .position(owner, market)
-            .is_some_and(|p| p.size == 0 && p.collateral == amount);
+        let full_exit = self.is_full_exit(owner, market, amount);
         let reopenable = full_exit && creditable && self.holds_collateral_permit(key, market);
         let after = HistorySize {
             history: before.history.saturating_add(2),
@@ -1059,25 +1160,28 @@ mod tests {
         let (mut gw, key, sk, to) = funded_withdrawer();
         let (depositor, commit) = held_permit(&mut gw);
         gw.admission_cap = AdmissionCap {
-            max_history: 200,
+            max_history: 40,
             max_positions: 100,
             max_notes: 100,
         };
         // Issued below the soft cap: the state, the permit and their exits fit.
         assert_eq!(gw.admission_size(), size(4, 2, 0));
-        let room = (200 - gw.admission_size().with_exits()) / 2;
+        let room = (40 - gw.admission_size().with_exits()) / 2;
         let mut partial = 0;
         let refusal = loop {
-            match withdraw(&mut gw, &key, &sk, QUOTE_SCALE, to) {
+            // This test is about the history cap, not the per-account limits.
+            gw.withdraw_limits = Default::default();
+            gw.window_withdrawals.clear();
+            match withdraw(&mut gw, &key, &sk, MIN_WITHDRAWAL, to) {
                 Ok(_) => partial += 1,
                 Err(error) => break error,
             }
-            assert!(gw.admission_size().with_exits() <= 200);
+            assert!(gw.admission_size().with_exits() <= 40);
             assert!(partial <= room, "a partial withdrawal past the room");
         };
         assert_eq!(partial, room);
         assert_eq!(refusal, HISTORY_CAP_EXIT);
-        assert_eq!(gw.admission_size().with_exits(), 200);
+        assert_eq!(gw.admission_size().with_exits(), 40);
         // The held permit is still re-signed, and its deposit is credited.
         assert!(!gw.held_permit_beyond_cap(&commit));
         let page = credit_page(&gw, commit);
@@ -1088,9 +1192,11 @@ mod tests {
         gw.deposits.dirty = false;
         // Both entries can still leave in full, and the history stays in bounds.
         let left = gw.market_free_of(&gw.accounts[&key].wallet.owner, 0);
-        assert!(left > QUOTE_SCALE);
+        assert!(left > MIN_WITHDRAWAL);
+        gw.withdraw_limits = Default::default();
+        gw.window_withdrawals.clear();
         assert_eq!(
-            withdraw(&mut gw, &key, &sk, QUOTE_SCALE, to).unwrap_err(),
+            withdraw(&mut gw, &key, &sk, MIN_WITHDRAWAL, to).unwrap_err(),
             HISTORY_CAP_EXIT
         );
         withdraw(&mut gw, &key, &sk, left, to).unwrap();
@@ -1099,8 +1205,8 @@ mod tests {
             gw.exit_cap_refusal(&depositor, &owner, 0, MIN_DEPOSIT_PERMIT as i128),
             None
         );
-        assert!(HistorySize::of(&gw.seq.state).history <= 200);
-        assert_eq!(gw.admission_size().with_exits(), 200);
+        assert!(HistorySize::of(&gw.seq.state).history <= 40);
+        assert_eq!(gw.admission_size().with_exits(), 40);
     }
 
     /// At the bound a full exit by an account that holds an outstanding permit for

@@ -47,6 +47,8 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
 mod account_recovery;
 mod admission;
 mod answer_lane;
+#[cfg(test)]
+mod audit_1116_ga2_tests;
 mod bootstrap;
 #[cfg(test)]
 mod candidate_bridge;
@@ -1793,6 +1795,9 @@ struct Gw {
     /// only a canonical L1 read does that.
     #[serde(skip)]
     wind_down_started: bool,
+    /// Runtime-only per-account withdrawal rate / quota usage (audit GA-2).
+    #[serde(skip)]
+    withdraw_limits: admission::WithdrawLimits,
 
     // Encoded beside the positional Gw body in the snapshot payload.
     #[serde(skip)]
@@ -2499,6 +2504,7 @@ impl Gw {
             pending_settle: Vec::new(),
             user_adl_clawed: 0,
             accounts: std::collections::BTreeMap::new(),
+            withdraw_limits: Default::default(),
             pending_withdrawals: Vec::new(),
             next_withdraw_nonce: 1,
             withdraw_proofs: std::collections::BTreeMap::new(),
@@ -3420,6 +3426,13 @@ impl Gw {
         if let Some(refusal) = self.exit_cap_refusal(key, &wallet.owner, market, amount) {
             return Err(refusal.into());
         }
+        let limit_now = context.price.now_ms;
+        if let Some(refusal) =
+            self.withdrawal_limit_refusal(&wallet.owner, market, amount, limit_now)
+        {
+            return Err(refusal.into());
+        }
+        let partial = !self.is_full_exit(&wallet.owner, market, amount);
         let nonce = self.next_withdrawal_nonce()?;
         let mut blind = [0xD0u8; 32];
         blind[..8].copy_from_slice(&nonce.to_le_bytes());
@@ -3474,6 +3487,8 @@ impl Gw {
             }
         })?;
         self.next_withdraw_nonce = nonce.saturating_add(1);
+        self.withdraw_limits
+            .record(&wallet.owner, limit_now, partial);
         let w = Withdrawal {
             owner: wallet.owner,
             to,
@@ -5257,6 +5272,21 @@ impl Gw {
             );
         }
         let now = now_ms();
+        let owner = self.user.owner;
+        if amount < MIN_WITHDRAWAL && amount != self.market_free(self.selected) {
+            return Err(format!(
+                "BELOW_MINIMUM: a withdrawal must be at least {} USDC unless it withdraws the \
+                 whole free balance in this market",
+                MIN_WITHDRAWAL / QUOTE_SCALE
+            ));
+        }
+        if let Some(refusal) = self.exit_cap_refusal(&owner, &owner, self.selected, amount) {
+            return Err(refusal.into());
+        }
+        if let Some(refusal) = self.withdrawal_limit_refusal(&owner, self.selected, amount, now) {
+            return Err(refusal.into());
+        }
+        let partial = !self.is_full_exit(&owner, self.selected, amount);
         let oracle = oracle_of(
             self.px_of(self.selected),
             now,
@@ -5291,6 +5321,7 @@ impl Gw {
                 nonce: 0,
             })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
+        self.withdraw_limits.record(&owner, now, partial);
         Ok(())
     }
 
@@ -8654,6 +8685,11 @@ async fn post_v1_withdraw(
             "status": "recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof",
         }))
         .into_response(),
+        Err(e) if e.starts_with("WITHDRAW_RATE_LIMIT") => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
         Err(e) => err400(e).into_response(),
     }
 }
@@ -16858,8 +16894,8 @@ mod tests {
         // One REAL authorized withdrawal: the served nonce must track
         // `last_withdraw_nonce` (the withdrawal-auth counter) — not any other
         // per-account counter, which all still read 0 here.
-        fund_test_account(&mut gw, &key, 10_000_000);
-        signed_withdraw(&mut gw, &key, &sk, 0, 5_000_000, eoa).expect("authorized withdrawal");
+        fund_test_account(&mut gw, &key, 20_000_000);
+        signed_withdraw(&mut gw, &key, &sk, 0, 10_000_000, eoa).expect("authorized withdrawal");
         let v = gw.v1_account(&key).unwrap();
         assert_eq!(
             v["nextWithdrawNonce"], 2,
@@ -16935,16 +16971,16 @@ mod tests {
         );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
-        fund_test_account(&mut gw, &key, 10_000_000);
+        fund_test_account(&mut gw, &key, 20_000_000);
 
         // Wrong destination, even with a valid signature over that destination.
         let elsewhere = [0x66u8; 20];
         let sig_elsewhere = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &elsewhere, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &elsewhere, 1),
         );
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, elsewhere, 1, &sig_elsewhere)
+            .account_withdraw(&key, 0, 10_000_000, elsewhere, 1, &sig_elsewhere)
             .expect_err("server-custody withdrawal to a non-bound address must be refused");
         assert!(
             err.contains("bound deposit address"),
@@ -16954,17 +16990,17 @@ mod tests {
         // Correct destination + signature.
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1),
         );
         let w = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect("accepted");
         assert_eq!(w.to, eoa);
         assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
 
         // Replay of the same signed request.
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect_err("replay must be refused");
         assert!(err.contains("nonce"), "unexpected error: {err}");
     }
@@ -16989,10 +17025,10 @@ mod tests {
 
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1),
         );
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect_err("over-balance withdrawal fails");
         assert!(err.contains("Not withdrawable"), "unexpected error: {err}");
         assert_eq!(
@@ -17002,8 +17038,8 @@ mod tests {
         );
 
         // Fund and retry the SAME signed request — it must now succeed.
-        fund_test_account(&mut gw, &key, 10_000_000);
-        gw.account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+        fund_test_account(&mut gw, &key, 20_000_000);
+        gw.account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect("the unchanged signed request is still valid on retry");
     }
 
@@ -17025,19 +17061,19 @@ mod tests {
         );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
-        fund_test_account(&mut gw, &key, 10_000_000);
+        fund_test_account(&mut gw, &key, 20_000_000);
 
-        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1);
+        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1);
         // The bound address signs — must be refused, the account registered a signer.
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
             .expect_err("bound-address signature must not authorize a caller-signed account");
         assert!(err.contains("signature"), "unexpected error: {err}");
         // The registered signer signs — accepted, and `to` is free for caller-signed.
         gw.account_withdraw(
             &key,
             0,
-            5_000_000,
+            10_000_000,
             eoa,
             1,
             &sign_digest(&signer_sk, &digest),
@@ -17083,7 +17119,7 @@ mod tests {
         let to = [0x66u8; 20];
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &to, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &to, 1),
         );
         // Amount tampered.
         assert!(gw
@@ -17091,16 +17127,16 @@ mod tests {
             .is_err());
         // Destination tampered.
         assert!(gw
-            .account_withdraw(&key, 0, 5_000_000, [0x77u8; 20], 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, [0x77u8; 20], 1, &sig)
             .is_err());
         // Nonce tampered.
         assert!(gw
-            .account_withdraw(&key, 0, 5_000_000, to, 2, &sig)
+            .account_withdraw(&key, 0, 10_000_000, to, 2, &sig)
             .is_err());
         // Nothing was applied by any of the three.
         assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 0);
         // The untampered request still works.
-        gw.account_withdraw(&key, 0, 5_000_000, to, 1, &sig)
+        gw.account_withdraw(&key, 0, 10_000_000, to, 1, &sig)
             .expect("untampered request is valid");
     }
 
@@ -17116,11 +17152,12 @@ mod tests {
         for shape in 0..3 {
             let mut gw = Gw::boot();
             let (key, owner) = gw.register_account(Some(addr));
-            fund_test_account(&mut gw, &key, 10_000_000);
-            let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &to, 1);
+            fund_test_account(&mut gw, &key, 20_000_000);
+            let digest =
+                withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &to, 1);
             let prehash = eip191_prehash_candidates(&digest)[shape];
             let sig = sign_digest(&sk, &prehash);
-            gw.account_withdraw(&key, 0, 5_000_000, to, 1, &sig)
+            gw.account_withdraw(&key, 0, 10_000_000, to, 1, &sig)
                 .unwrap_or_else(|e| panic!("prehash shape {shape} must be accepted: {e}"));
         }
     }

@@ -102,8 +102,15 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     );
     // Exercise a real signed withdrawal and retain the drained claim leaf.
     let owner = gw.accounts[&key].wallet.owner;
-    let digest =
-        crate::withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &[0x71; 20], 1);
+    let digest = crate::withdraw_auth_digest(
+        gw.chain_id,
+        &gw.vault,
+        &owner,
+        0,
+        10_000_000,
+        &[0x71; 20],
+        1,
+    );
     let (signature, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
     let mut wire = [0; 65];
     wire[..64].copy_from_slice(&signature.to_bytes());
@@ -112,7 +119,7 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     // this fixture has no live RPC source, remote attestation or admission service.
     crate::persist_recovery(&gw, &state, &TEST_SEED, None).unwrap();
     gw.deposits.dirty = false;
-    gw.account_withdraw(&key, 0, 5_000_000, [0x71; 20], 1, &wire)
+    gw.account_withdraw(&key, 0, 10_000_000, [0x71; 20], 1, &wire)
         .unwrap();
     let batch_id = gw.seq.state.next_batch_id;
     let (witness, ww) = gw.begin_window_settle(batch_id).unwrap().unwrap();

@@ -444,7 +444,7 @@ mod tests {
                 .account_withdraw_observed(
                     &key,
                     0,
-                    QUOTE_SCALE,
+                    MIN_WITHDRAWAL,
                     address,
                     (1, &[0; 65]),
                     Some(&initial)
@@ -533,7 +533,15 @@ mod tests {
         // Actual HTTP withdrawal, fresh pinned L1 phase observation, real signature.
         let digest = {
             let gw = app.gw.lock().await;
-            withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, QUOTE_SCALE, &address, 1)
+            withdraw_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                MIN_WITHDRAWAL,
+                &address,
+                1,
+            )
         };
         let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
         let mut wire = [0; 65];
@@ -545,7 +553,7 @@ mod tests {
             .header("x-api-key", hex0x(&key))
             .header("content-type", "application/json")
             .body(axum::body::Body::from(
-                serde_json::json!({"marketId":0,"amount":QUOTE_SCALE.to_string(),
+                serde_json::json!({"marketId":0,"amount":MIN_WITHDRAWAL.to_string(),
                 "to":hex0x(&address),"nonce":1,"signature":hex0x(&wire)})
                 .to_string(),
             ))
@@ -780,8 +788,8 @@ mod tests {
         let mut published: Vec<Withdrawal> = Vec::new();
         let mut counters = vec![gw.next_withdraw_nonce];
         // Window 0 settles one withdrawal.
-        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
-        gw.account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, MIN_WITHDRAWAL, address);
+        gw.account_withdraw(&key, 0, MIN_WITHDRAWAL, address, nonce, &sig)
             .unwrap();
         counters.push(gw.next_withdraw_nonce);
         let (w0, ww0) = gw.begin_window_settle(0).unwrap().unwrap();
@@ -802,9 +810,9 @@ mod tests {
         assert!(settled_last > 0);
         let consumed = gw.seq.state.consumed_deposit_count;
         // Window 1 never settles: its withdrawal is voided by the rebase.
-        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, MIN_WITHDRAWAL, address);
         let voided = gw
-            .account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+            .account_withdraw(&key, 0, MIN_WITHDRAWAL, address, nonce, &sig)
             .unwrap();
         assert_eq!(voided.nonce, settled_last + 1);
         counters.push(gw.next_withdraw_nonce);
@@ -885,14 +893,15 @@ mod tests {
             trading_gate::GateObservation::StaysClosed,
         );
         // A phase-2 withdrawal through the HTTP route.
-        let (nonce, sig) = signed_withdraw(&*app.gw.lock().await, &key, &sk, QUOTE_SCALE, address);
+        let (nonce, sig) =
+            signed_withdraw(&*app.gw.lock().await, &key, &sk, MIN_WITHDRAWAL, address);
         let req = axum::http::Request::builder()
             .method("POST")
             .uri("/v1/accounts/withdraw")
             .header("x-api-key", hex0x(&key))
             .header("content-type", "application/json")
             .body(axum::body::Body::from(
-                serde_json::json!({"marketId":0,"amount":QUOTE_SCALE.to_string(),
+                serde_json::json!({"marketId":0,"amount":MIN_WITHDRAWAL.to_string(),
                 "to":hex0x(&address),"nonce":nonce,"signature":hex0x(&sig)})
                 .to_string(),
             ))

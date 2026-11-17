@@ -1410,7 +1410,7 @@ async fn a_state_beyond_a_bound_holds_a_landed_deposit_with_its_own_alert_while_
             gw.account_withdraw(&exiting, 0, amount, address, auth_nonce, &wire)
         };
         assert_eq!(
-            withdraw(&mut gw, QUOTE_SCALE).unwrap_err(),
+            withdraw(&mut gw, MIN_WITHDRAWAL).unwrap_err(),
             crate::admission::HISTORY_CAP_EXIT
         );
         withdraw(&mut gw, 100 * QUOTE_SCALE).unwrap();
