@@ -154,6 +154,8 @@ mod service_shutdown;
 mod service_shutdown_tests;
 mod settle_health;
 mod snapshot;
+#[cfg(test)]
+mod tick_scaling_tests;
 mod trading_gate;
 mod wind_down;
 #[cfg(test)]
@@ -5635,6 +5637,8 @@ impl Gw {
         let mut acct_events: Vec<String> = Vec::new();
         for (i, o) in self.orders.iter_mut().enumerate() {
             let fresh = pending.contains(&i);
+            #[cfg(test)]
+            tick_scaling_tests::count_row_update();
             let _ = execution::update(o, &self.seq, &sealed, fresh);
             if fresh {
                 o.sealed = true;
@@ -5643,6 +5647,8 @@ impl Gw {
         for (key, acct) in &mut self.accounts {
             for (i, o) in acct.orders.iter_mut().enumerate() {
                 let fresh = account_refs.contains(&(*key, i));
+                #[cfg(test)]
+                tick_scaling_tests::count_row_update();
                 for mut event in execution::update(o, &self.seq, &sealed, fresh) {
                     event["owner"] = serde_json::json!(hex0x(&acct.wallet.owner));
                     acct_events.push(event.to_string());

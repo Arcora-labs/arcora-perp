@@ -1282,6 +1282,43 @@ mod impact_price_tests {
         assert_eq!(shown, 1, "the walk ends inside the level");
     }
 
+    /// Audit 2026-11-16 GA-1: the gateway looks up each order a batch touched by its
+    /// hash, and a ban or a cancellation removes one order by its hash. Neither
+    /// may walk the book: 4,096 bids rest in one level and 4,096 asks across 64
+    /// levels, and the order looked up rests last in its queue. Finding it,
+    /// checking its owner and cancelling it each examine a handful of orders.
+    #[test]
+    fn audit_1116_ga1_an_order_is_found_by_its_hash_without_walking_the_book() {
+        let mut book = OrderBook::<Keccak256>::new(0);
+        let size = SIZE_SCALE / 100;
+        for n in 1..=4_096 {
+            rest(&mut book, n, Side::Buy, size, 99_000 * PRICE_SCALE);
+        }
+        for n in 4_097..=8_192 {
+            let price = (101_000 + i128::from(n as u8 % 64)) * PRICE_SCALE;
+            rest(&mut book, n, Side::Sell, size, price);
+        }
+        let last_bid = rest(&mut book, 8_193, Side::Buy, size, 99_000 * PRICE_SCALE);
+        let last_ask = rest(&mut book, 8_194, Side::Sell, size, 101_063 * PRICE_SCALE);
+        let examined = |lookup: &mut dyn FnMut()| {
+            book::ORDERS_VISITED.with(|n| n.set(0));
+            lookup();
+            book::ORDERS_VISITED.with(core::cell::Cell::get)
+        };
+        for hash in [last_bid, last_ask] {
+            let n = examined(&mut || assert_eq!(book.remaining(&hash), Some(size)));
+            assert!(n <= 32, "remaining examined {n} orders");
+        }
+        let owner = word_u64(8_193);
+        let n = examined(&mut || assert_eq!(book.remaining_for(&owner, &last_bid), Some(size)));
+        assert!(n <= 32, "remaining_for examined {n} orders");
+        let n = examined(&mut || assert!(book.remaining(&[0xAB; 32]).is_none()));
+        assert!(n <= 32, "a miss examined {n} orders");
+        let n = examined(&mut || assert_eq!(book.cancel(&last_bid), Some(size)));
+        assert!(n <= 32, "cancel examined {n} orders");
+        assert!(book.remaining(&last_bid).is_none());
+    }
+
     /// Where every order counts, the per-order walk prices a side exactly as a walk
     /// that sums each level first: pseudo-random books of a few levels, compared
     /// with that reference.

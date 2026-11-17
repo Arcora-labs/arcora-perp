@@ -119,6 +119,19 @@ struct Resting {
     expiry_ms: u64,
 }
 
+#[cfg(test)]
+std::thread_local! {
+    /// Resting orders examined on this thread to find one order by its hash
+    /// ([`OrderBook::remaining`], [`OrderBook::remaining_for`], [`OrderBook::cancel`]).
+    pub(crate) static ORDERS_VISITED: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Count one resting order examined by a lookup (tests only).
+#[cfg(test)]
+fn visited() {
+    ORDERS_VISITED.with(|n| n.set(n.get() + 1));
+}
+
 /// Is this resting maker expired at the batch reference clock `now_ms`?
 /// (`expiry_ms == 0` means good-till-cancelled — never expires.)
 fn resting_expired(r: &Resting, now_ms: u64) -> bool {
@@ -290,7 +303,11 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             .values()
             .chain(self.asks.values())
             .flat_map(|q| q.iter())
-            .find(|o| &o.order_hash == hash)
+            .find(|o| {
+                #[cfg(test)]
+                visited();
+                &o.order_hash == hash
+            })
             .map(|o| o.remaining)
     }
 
@@ -310,7 +327,11 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             .values()
             .chain(self.asks.values())
             .flat_map(|queue| queue.iter())
-            .find(|r| &r.owner == owner && &r.order_hash == order_hash)
+            .find(|r| {
+                #[cfg(test)]
+                visited();
+                &r.owner == owner && &r.order_hash == order_hash
+            })
             .map(|r| r.remaining)
     }
 
@@ -652,7 +673,11 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             let mut empty_key = None;
             let mut found = None;
             for (price, q) in book.iter_mut() {
-                if let Some(pos) = q.iter().position(|r| &r.order_hash == order_hash) {
+                if let Some(pos) = q.iter().position(|r| {
+                    #[cfg(test)]
+                    visited();
+                    &r.order_hash == order_hash
+                }) {
                     let r = q.remove(pos).unwrap();
                     found = Some(r.remaining);
                     if q.is_empty() {

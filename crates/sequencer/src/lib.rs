@@ -832,6 +832,19 @@ impl FundingMarkWindow {
 thread_local! {
     /// Funding-premium samples computed on this thread (each walks the book).
     static PREMIUM_SAMPLES: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+    /// Matching passes `seal_batch` ran on this thread: the first of each batch
+    /// and every rematch.
+    static MATCH_ROUNDS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+    /// Resting orders `seal_batch` copied or put back on this thread to return
+    /// the book to where its batch started, for a rematch.
+    static ROLLBACK_ORDERS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Add `n` to one of this thread's counters (tests only).
+#[cfg(test)]
+fn count(counter: &'static std::thread::LocalKey<core::cell::Cell<u64>>, n: impl TryInto<u64>) {
+    let n = n.try_into().unwrap_or(u64::MAX);
+    counter.with(|c| c.set(c.get().saturating_add(n)));
 }
 
 /// Why an order was rejected at settlement, mapped from an engine error.
@@ -2308,10 +2321,14 @@ impl Sequencer {
         //    a ban also cancels the hash from the rematch base book — for a
         //    current-batch offender that cancel is a no-op (it never rested there).
         let mut rematch_base = self.matcher.clone();
+        #[cfg(test)]
+        count(&ROLLBACK_ORDERS, self.resting_order_count());
         let mut live: Vec<Order> = admitted;
         let mut banned: Vec<(Digest, RejectReason)> = Vec::new();
         let mut banned_set: BTreeSet<Digest> = BTreeSet::new();
         let (stream, probe_outcome) = loop {
+            #[cfg(test)]
+            count(&MATCH_ROUNDS, 1u64);
             let stream = self.matcher.process_stream(&live, now_ms);
             // no fills → nothing to probe (`settle_fills` over no fills is a no-op,
             // so its outcome is `FillSettlement::default()` and the state is left
@@ -2373,6 +2390,8 @@ impl Sequencer {
             );
             live.retain(|o| !banned_set.contains(&o.order_hash::<Keccak256>()));
             self.matcher = rematch_base.clone();
+            #[cfg(test)]
+            count(&ROLLBACK_ORDERS, self.resting_order_count());
         };
 
         // 2. issue signed receipts for every accepted (non-rejected) order in the
@@ -2644,6 +2663,17 @@ impl Sequencer {
 
     pub fn remaining_order_size(&self, hash: &Digest) -> Option<i128> {
         self.matcher.remaining(hash)
+    }
+
+    /// Every order resting on the books (tests only).
+    #[cfg(test)]
+    fn resting_order_count(&self) -> usize {
+        self.state
+            .markets
+            .keys()
+            .filter_map(|id| self.matcher.book(*id))
+            .map(|book| book.resting_orders().count())
+            .sum()
     }
 
     /// Pending fill ticks are removed when a window settle hardens them on the
@@ -4732,6 +4762,161 @@ mod tests {
         );
         assert!(sealed.manifest.rejected.is_empty());
         s
+    }
+
+    /// Run `f` with this thread's matching-round and rollback counters reset;
+    /// return its result, the matching passes it ran and the resting orders it
+    /// copied or put back to roll the book back.
+    fn counted<T>(f: impl FnOnce() -> T) -> (T, u64, u64) {
+        MATCH_ROUNDS.with(|n| n.set(0));
+        ROLLBACK_ORDERS.with(|n| n.set(0));
+        let out = f();
+        (
+            out,
+            MATCH_ROUNDS.with(core::cell::Cell::get),
+            ROLLBACK_ORDERS.with(core::cell::Cell::get),
+        )
+    }
+
+    /// 0.001 BTC: $100 at the $100k mark, so $10 of initial margin.
+    const LOT: i128 = SIZE_SCALE / 1_000;
+
+    /// Fund `owners` with $5 each: not enough for the initial margin of one lot,
+    /// so every sell of theirs that fills fails for margin, as the maker leg.
+    fn underfunded(s: &mut Sequencer, owners: core::ops::Range<u64>) {
+        for owner in owners {
+            fund(s, owner, 5, owner as u8);
+        }
+    }
+
+    /// Audit 2026-11-16 SM-2: thousands of resting sells of three under-margined
+    /// owners (a book a snapshot from before the collateral reserve restores),
+    /// interleaved, ahead of an honest one. One taker crosses them all. A maker
+    /// that fails for margin takes every pending sell of its owner with it, so the
+    /// batch matches at most once per poisoned owner and once more, instead of
+    /// once per poisoned order; and the taker still fills against the honest sell.
+    #[test]
+    fn audit_1116_sm2_thousands_of_poisoned_makers_of_three_owners_resolve_in_four_rounds() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..13);
+        let poisoned: Vec<Order> = (0..3_000u64)
+            .map(|n| t_order_at(10 + n % 3, Side::Sell, 100_000, LOT, 10_000 + n))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 20_000);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 20_001);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert!(rounds <= 4, "{rounds} matching rounds");
+        let rejected: BTreeMap<Digest, RejectReason> =
+            sealed.manifest.rejected.iter().copied().collect();
+        assert_eq!(rejected.len(), poisoned.len());
+        for o in &poisoned {
+            assert_eq!(
+                rejected.get(&o.order_hash::<Keccak256>()),
+                Some(&RejectReason::InsufficientMargin)
+            );
+        }
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&taker.order_hash::<Keccak256>()));
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&honest.order_hash::<Keccak256>()));
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+        let book = s.matcher.book(0).unwrap();
+        assert_eq!(book.resting_size(Side::Sell), 0);
+        assert_eq!(book.resting_size(Side::Buy), 0);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// Audit 2026-11-16 SM-2: however many owners are poisoned, a batch runs a
+    /// bounded number of matching passes. Twenty under-margined owners rest one
+    /// sell each ahead of an honest sell; a taker crosses in every batch. No batch
+    /// matches more than 8 times; each takes poisoned sells off the book, and
+    /// within three batches a taker fills against the honest sell.
+    #[test]
+    fn audit_1116_sm2_matching_rounds_are_bounded_however_many_owners_are_poisoned() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..30);
+        let poisoned: Vec<Order> = (10..30u64)
+            .map(|owner| t_order_at(owner, Side::Sell, 100_000, LOT, 10_000 + owner))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 20_000);
+        let honest_h = honest.order_hash::<Keccak256>();
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+
+        let mut rejected = BTreeSet::new();
+        let mut batches = 0;
+        let filled = loop {
+            batches += 1;
+            assert!(
+                batches <= 3,
+                "the honest sell is not reached in three batches"
+            );
+            let taker = t_order_at(2, Side::Buy, 100_000, LOT, 20_000 + batches);
+            let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+            assert!(rounds <= 8, "batch {batches} matched {rounds} times");
+            rejected.extend(sealed.manifest.rejected.iter().map(|(h, _)| *h));
+            assert!(s.state.conservation_holds());
+            if sealed.settled_order_hashes.contains(&honest_h) {
+                break sealed;
+            }
+        };
+        assert!(filled
+            .settled_order_hashes
+            .iter()
+            .all(|h| !rejected.contains(h)));
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+        for o in &poisoned {
+            let h = o.order_hash::<Keccak256>();
+            assert!(rejected.contains(&h), "a poisoned sell was never rejected");
+            assert!(s.remaining_order_size(&h).is_none());
+        }
+    }
+
+    /// Audit 2026-11-16 SM-2: returning the book to where its batch started, to
+    /// rematch, costs what the batch changed, not a copy of the book. Two thousand
+    /// bids rest untouched far below the mark. A batch that finds no culprit, and
+    /// an idle one, copy nothing; one poisoned maker costs the orders its round
+    /// took off the book.
+    #[test]
+    fn audit_1116_sm2_rolling_the_book_back_costs_what_the_round_changed() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..11);
+        let untouched: Vec<Order> = (0..2_000u64)
+            .map(|n| t_order_at(1, Side::Buy, 95_000, LOT, 30_000 + n))
+            .collect();
+        restore_onto_book(&mut s, &untouched);
+
+        let (_, _, copied) = counted(|| s.seal_batch(&[], now()));
+        assert_eq!(copied, 0, "an idle batch");
+        let clean = [
+            t_order_at(1, Side::Sell, 100_000, LOT, 40_000),
+            t_order_at(2, Side::Buy, 100_000, LOT, 40_001),
+        ];
+        let (sealed, rounds, copied) = counted(|| s.seal_batch(&clean, now()));
+        assert_eq!(sealed.settled_order_hashes.len(), 2);
+        assert_eq!((rounds, copied), (1, 0), "a batch without a culprit");
+
+        let poisoned = t_order_at(10, Side::Sell, 100_000, LOT, 40_002);
+        restore_onto_book(&mut s, &[poisoned]);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 40_003);
+        s.seal_batch(&[honest], now());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 40_004);
+        let (sealed, rounds, copied) = counted(|| s.seal_batch(&[taker], now()));
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(
+                poisoned.order_hash::<Keccak256>(),
+                RejectReason::InsufficientMargin
+            )]
+        );
+        assert_eq!(rounds, 2);
+        assert!(copied <= 4, "{copied} orders copied or put back");
     }
 
     /// Audit 2026-11-16 SM-3, the original wall: 4,096 such bids, and as many again.
