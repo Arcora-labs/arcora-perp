@@ -15,7 +15,9 @@
 //! budget, so the mark fell back to the oracle index; the same dust queued behind
 //! $50,000 of honest depth at the same price did it too, because the sweep summed a
 //! whole price level before it looked at the notional. Now neither moves the mark:
-//! it is the mark of the honest depth alone.
+//! it is the mark of the fillable depth alone. And every order a taker could fill
+//! is depth, whatever its size: a bid at the order minimum resting below the index
+//! is worth a little less than $10 at its own price, and still counts.
 
 use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
@@ -109,22 +111,6 @@ fn fund(s: &mut Sequencer, owner: u64, market: MarketId, amount_usd: i128) {
         market_id: market,
         note_commitment: cm,
         spend_key: [owner as u8; 32],
-    })
-    .unwrap();
-}
-
-/// Unbind all of `owner`'s collateral in `market` (its position is flat), so none
-/// of its resting orders could fill any more.
-fn unbind_all(s: &mut Sequencer, owner: u64, market: MarketId, now: u64) {
-    let o = owner_id(owner);
-    let amount = s.state.position(&o, market).unwrap().collateral;
-    s.apply(&BatchOp::Unbind {
-        owner: o,
-        market_id: market,
-        amount,
-        blinding: [owner as u8 ^ 0xA5; 32],
-        oracle: oracle(market, now),
-        now_ms: now,
     })
     .unwrap();
 }
@@ -522,23 +508,48 @@ const FIRST_DUST: u64 = 100;
 const DUST_ACCOUNTS: u64 = 64;
 const DUST_PER_ACCOUNT: u64 = 64;
 
-/// Rest a 4,096-order wall of $10 bids at `price_usd`, from 64 accounts, each
-/// margined when it is posted; then every dust account unbinds its collateral, so
-/// no order of the wall could fill any more.
-fn dust_wall(s: &mut Sequencer, mut t: u64, price_usd: i128) -> u64 {
+/// Rest a wall of reduce-only $10 bids at `price_usd`, `per_account` from each of
+/// 64 accounts. Each account first sells $10 into owner 1's bid at $100,000, so it
+/// is short $10; each of its bids on its own only closes that short, so the caps
+/// and the reserve (which counts a reduce-only order only up to the size that
+/// closes the position) admit all of them. But once one has closed the short, the
+/// others could only open a long, which a reduce-only order may not: at most one
+/// bid per account can ever fill, and with 64 per account the other 4,032 of the
+/// wall cannot. A reduce-only order must be its owner's only order in its market in
+/// a batch, so the wall takes one batch per bid of an account.
+fn dust_wall(s: &mut Sequencer, mut t: u64, price_usd: i128, per_account: u64) -> u64 {
+    let shorts: Vec<Order> = (0..DUST_ACCOUNTS)
+        .map(|a| {
+            fund(s, FIRST_DUST + a, 0, 5);
+            ioc(order(
+                FIRST_DUST + a,
+                0,
+                Side::Sell,
+                TEN_DOLLARS,
+                INDEX_USD,
+                0,
+            ))
+        })
+        .collect();
+    let sealed = tick(s, t, &shorts);
+    assert!(sealed.manifest.rejected.is_empty(), "{:?}", sealed.manifest);
     for a in 0..DUST_ACCOUNTS {
-        let owner = FIRST_DUST + a;
-        fund(s, owner, 0, 70);
-        let batch: Vec<Order> = (0..DUST_PER_ACCOUNT)
-            .map(|n| order(owner, 0, Side::Buy, TEN_DOLLARS, price_usd, n))
+        let position = s.state.position(&owner_id(FIRST_DUST + a), 0).unwrap();
+        assert_eq!(position.size, -TEN_DOLLARS, "dust account {a} is short");
+    }
+    for n in 1..=per_account {
+        t += 700;
+        let batch: Vec<Order> = (0..DUST_ACCOUNTS)
+            .map(|a| Order {
+                reduce_only: true,
+                ..order(FIRST_DUST + a, 0, Side::Buy, TEN_DOLLARS, price_usd, n)
+            })
             .collect();
         let sealed = tick(s, t, &batch);
-        assert!(sealed.manifest.rejected.is_empty(), "dust account {a}");
-        t += 700;
+        assert!(sealed.manifest.rejected.is_empty(), "{:?}", sealed.manifest);
     }
     for a in 0..DUST_ACCOUNTS {
-        unbind_all(s, FIRST_DUST + a, 0, t);
-        assert_eq!(resting(s, FIRST_DUST + a, 0), DUST_PER_ACCOUNT as usize);
+        assert_eq!(resting(s, FIRST_DUST + a, 0), per_account as usize);
     }
     t
 }
@@ -575,28 +586,46 @@ fn honest_quotes(s: &mut Sequencer, t: u64) {
 
 const HONEST_MID: i128 = 100_020 * PRICE_SCALE;
 
-/// The original wall: 4,096 dust bids at $100,010, ahead of the honest bids at
-/// $100,000. The impact bid is still owner 1's, and the mark carries the honest
-/// premium instead of falling back to the index.
+/// The original wall: 4,096 bids at $100,010, ahead of the honest bids at
+/// $100,000, all but 64 of them unfillable. The sweep walks past them to the honest
+/// bids: the impact bid is exactly the one of a book where each dust account rests
+/// only the bid it could fill, and the mark carries that premium instead of falling
+/// back to the index.
 #[test]
 fn audit_1116_sm3_a_dust_wall_ahead_of_honest_depth_does_not_pin_the_mark() {
-    let mut t = 10_000u64;
-    let mut s = setup(&[0], t);
-    honest_quotes(&mut s, t);
-    assert_eq!(s.impact_mid(0, t), Some(HONEST_MID));
-    t += 700;
-    t = dust_wall(&mut s, t, 100_010);
-    assert_eq!(s.book(0).unwrap().best_bid(), Some(100_010 * PRICE_SCALE));
-    assert_eq!(s.impact_mid(0, t), Some(HONEST_MID));
-    // the window's samples are the honest premium, not zero
+    let walled = |per_account: u64| {
+        let mut t = 10_000u64;
+        let mut s = setup(&[0], t);
+        honest_quotes(&mut s, t);
+        assert_eq!(s.impact_mid(0, t), Some(HONEST_MID));
+        t += 700;
+        t = dust_wall(&mut s, t, 100_010, per_account);
+        assert_eq!(s.book(0).unwrap().best_bid(), Some(100_010 * PRICE_SCALE));
+        (s, t)
+    };
+    let (few, t_few) = walled(1);
+    let mid = few
+        .impact_mid(0, t_few)
+        .expect("the honest bids are reached");
+    // the 64 fillable dust bids ($640 at $100,010) and $360 of owner 1's bids
+    let bid = reference_impact(
+        Side::Buy,
+        &[(TEN_DOLLARS * 64, 100_010), (SIZE_SCALE / 10, 100_000)],
+    );
+    assert_eq!(mid, bid / 2 + 100_040 * PRICE_SCALE / 2);
+    let (mut s, mut t) = walled(DUST_PER_ACCOUNT);
+    assert_eq!(s.impact_mid(0, t), Some(mid));
+    // the window's samples are that premium, not zero
     let _ = s.seal_window();
     let sealed = tick(&mut s, t, &[]);
     assert_eq!(accrue_mark(&sealed), INDEX_USD * PRICE_SCALE);
     t += 700;
     let sealed = tick(&mut s, t, &[]);
+    let premium = mid - INDEX_USD * PRICE_SCALE;
+    assert!(premium > 0);
     assert_eq!(
         accrue_mark(&sealed),
-        INDEX_USD * PRICE_SCALE + 20 * PRICE_SCALE * 700 / 7_000
+        INDEX_USD * PRICE_SCALE + premium * 700 / 7_000
     );
 }
 
@@ -620,7 +649,7 @@ fn audit_1116_sm3_dust_behind_honest_depth_at_the_same_price_does_not_pin_the_ma
     assert!(sealed.manifest.rejected.is_empty());
     assert_eq!(s.impact_mid(0, t), Some(HONEST_MID));
     t += 700;
-    t = dust_wall(&mut s, t, 100_000);
+    t = dust_wall(&mut s, t, 100_000, DUST_PER_ACCOUNT);
     assert_eq!(s.impact_mid(0, t), Some(HONEST_MID));
     let _ = s.seal_window();
     tick(&mut s, t, &[]);
@@ -662,32 +691,98 @@ fn audit_1116_sm3_honest_books_keep_their_mark() {
     let sealed = tick(&mut s, t, &orders);
     assert!(sealed.manifest.rejected.is_empty());
     let reference = |side: Side| -> i128 {
-        let mut levels: Vec<(i128, i128)> = Vec::new();
-        for (_, _, size, price) in book.iter().filter(|o| o.1 == side) {
-            let p = price * PRICE_SCALE;
-            match levels.iter_mut().find(|(lp, _)| *lp == p) {
-                Some(level) => level.1 += size,
-                None => levels.push((p, *size)),
-            }
-        }
-        // best price first
-        match side {
-            Side::Buy => levels.sort_by_key(|level| -level.0),
-            Side::Sell => levels.sort_by_key(|level| level.0),
-        }
-        let divisor = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
-        let target = 1_000 * QUOTE_SCALE * divisor;
-        let (mut left, mut base) = (target, 0i128);
-        for (price, size) in levels {
-            let value = size * price;
-            if value >= left {
-                return target * price / (base * price + left);
-            }
-            base += size;
-            left -= value;
-        }
-        panic!("fixture: the side holds the impact notional");
+        let orders: Vec<(i128, i128)> = book
+            .iter()
+            .filter(|o| o.1 == side)
+            .map(|o| (o.2, o.3))
+            .collect();
+        reference_impact(side, &orders)
     };
     let (bid, ask) = (reference(Side::Buy), reference(Side::Sell));
     assert_eq!(s.impact_mid(0, t), Some(bid / 2 + ask / 2));
+}
+
+/// The impact price of one side of a book holding `orders` (size, price in USD),
+/// as a walk that sums each price level first computes it: best price first, every
+/// order counted.
+fn reference_impact(side: Side, orders: &[(i128, i128)]) -> i128 {
+    let mut levels: Vec<(i128, i128)> = Vec::new();
+    for (size, price) in orders {
+        let p = price * PRICE_SCALE;
+        match levels.iter_mut().find(|(lp, _)| *lp == p) {
+            Some(level) => level.1 += size,
+            None => levels.push((p, *size)),
+        }
+    }
+    // best price first
+    match side {
+        Side::Buy => levels.sort_by_key(|level| -level.0),
+        Side::Sell => levels.sort_by_key(|level| level.0),
+    }
+    let divisor = SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE);
+    let target = 1_000 * QUOTE_SCALE * divisor;
+    let (mut left, mut base) = (target, 0i128);
+    for (price, size) in levels {
+        let value = size * price;
+        if value >= left {
+            return target * price / (base * price + left);
+        }
+        base += size;
+        left -= value;
+    }
+    panic!("fixture: the side holds the impact notional");
+}
+
+/// Round 2 of the review: an order at the order minimum is depth wherever it
+/// rests in the fill band. 0.0001 BTC is the minimum at the $100,000 index, and
+/// worth $9.999 at $99,990. Three accounts with $50 each rest forty such bids each,
+/// $1,199.88 a taker could sell into, against a $10,000 ask at $100,040: the impact
+/// bid is $99,990 and the mark carries the premium. A partial fill's remainder worth
+/// less than $10 is depth too, as it was before the audit fix.
+#[test]
+fn audit_1116_sm3_minimum_size_bids_below_the_index_are_depth() {
+    let mut t = 10_000u64;
+    let mut s = setup(&[0], t);
+    for owner in 1..=3 {
+        fund(&mut s, owner, 0, 50);
+    }
+    for owner in 4..=6 {
+        fund(&mut s, owner, 0, 20_000);
+    }
+    let mut orders: Vec<Order> = (1..=3u64)
+        .flat_map(|owner| {
+            (0..40u64).map(move |n| order(owner, 0, Side::Buy, TEN_DOLLARS, 99_990, n))
+        })
+        .collect();
+    orders.push(order(4, 0, Side::Sell, SIZE_SCALE / 10, 100_040, 1));
+    let sealed = tick(&mut s, t, &orders);
+    assert!(sealed.manifest.rejected.is_empty(), "{:?}", sealed.manifest);
+    let mid = 99_990 * PRICE_SCALE / 2 + 100_040 * PRICE_SCALE / 2;
+    assert_eq!(s.impact_mid(0, t), Some(mid));
+    let _ = s.seal_window();
+    tick(&mut s, t, &[]);
+    t += 700;
+    let sealed = tick(&mut s, t, &[]);
+    assert_eq!(
+        accrue_mark(&sealed),
+        INDEX_USD * PRICE_SCALE + (mid - INDEX_USD * PRICE_SCALE) * 700 / 7_000
+    );
+
+    // owner 5 bids $1,010 at $99,995 and owner 6 sells $1,000 into it: the $9.9995
+    // left is the best bid, and it counts
+    t += 700;
+    let partial = order(5, 0, Side::Buy, THOUSAND_DOLLARS + TEN_DOLLARS, 99_995, 1);
+    let hit = ioc(order(6, 0, Side::Sell, THOUSAND_DOLLARS, 99_995, 1));
+    let sealed = tick(&mut s, t, &[partial, hit]);
+    assert!(sealed.manifest.rejected.is_empty(), "{:?}", sealed.manifest);
+    assert_eq!(s.remaining_order_size(&hash(&partial)), Some(TEN_DOLLARS));
+    let bid = reference_impact(
+        Side::Buy,
+        &[(TEN_DOLLARS, 99_995), (TEN_DOLLARS * 120, 99_990)],
+    );
+    assert!(bid > 99_990 * PRICE_SCALE);
+    assert_eq!(
+        s.impact_mid(0, t),
+        Some(bid / 2 + 100_040 * PRICE_SCALE / 2)
+    );
 }
