@@ -5747,38 +5747,48 @@ impl Gw {
     }
 
     /// Bound the API order rows kept per account, and so in the snapshot (audit
-    /// GF-1 + SM-4): each account holding rows keeps at most
-    /// [`account_order_history_cap`] rows, its share of `budget`. Only finished
-    /// rows are evicted, oldest first: sealed, off the book, a terminal execution,
-    /// and a finality that reached SETTLED or whose record the sequencer dropped (an
-    /// order that never filled is never SETTLED). A04: never evict the only API row
-    /// of a still-live partial maker; live rows count but stay.
+    /// GF-1 + SM-4): each account holding rows (the demo user's list counts as
+    /// one) keeps at most [`account_order_history_cap`] rows, its share of
+    /// `budget`. Only finished rows are evicted, oldest first: sealed, off the
+    /// book, a terminal execution, and a finality that reached SETTLED or whose
+    /// record the sequencer dropped (an order that never filled is never SETTLED).
+    /// A04: never evict the only API row of a still-live partial maker; live rows
+    /// count but stay.
     fn cap_account_order_history(&mut self, budget: usize) {
-        let holders = self.accounts.values().filter(|a| !a.orders.is_empty());
-        let cap = account_order_history_cap(holders.count(), budget);
-        for acct in self.accounts.values_mut() {
-            if acct.orders.len() <= cap {
+        let holders = usize::from(!self.orders.is_empty())
+            + self
+                .accounts
+                .values()
+                .filter(|a| !a.orders.is_empty())
+                .count();
+        let cap = account_order_history_cap(holders, budget);
+        let (seq, mkts) = (&self.seq, &self.mkts);
+        let lists = std::iter::once((self.user.owner, &mut self.orders)).chain(
+            self.accounts
+                .values_mut()
+                .map(|a| (a.wallet.owner, &mut a.orders)),
+        );
+        for (owner, rows) in lists {
+            if rows.len() <= cap {
                 continue;
             }
-            // Gather the live hashes once per account, not once per history row.
-            let live: std::collections::BTreeSet<Digest> = self
-                .mkts
+            // Gather the live hashes once per list, not once per history row.
+            let live: std::collections::BTreeSet<Digest> = mkts
                 .iter()
-                .filter_map(|m| self.seq.book(m.id))
-                .flat_map(|book| book.resting_hashes_for(&acct.wallet.owner))
+                .filter_map(|m| seq.book(m.id))
+                .flat_map(|book| book.resting_hashes_for(&owner))
                 .collect();
             // Rows are kept newest first; `cap_history` evicts from the front.
-            acct.orders.reverse();
-            cap_history(&mut acct.orders, cap, |o| {
+            rows.reverse();
+            cap_history(rows, cap, |o| {
                 o.sealed
-                    && (o.last_finality == "SETTLED"
-                        || self.seq.finality_of(&o.order_hash).is_none())
+                    && (o.last_finality == "SETTLED" || seq.finality_of(&o.order_hash).is_none())
                     && !live.contains(&o.order_hash)
                     && o.execution
                         .as_ref()
                         .is_some_and(execution::Execution::terminal)
             });
-            acct.orders.reverse();
+            rows.reverse();
         }
     }
 

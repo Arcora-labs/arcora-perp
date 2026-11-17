@@ -253,6 +253,11 @@ mod audit_1116_gf1 {
                 gw.account_place_order(key, &unfilled).unwrap();
             }
         }
+        // The demo user's list is one more holder.
+        assert!(gw.orders.is_empty());
+        for _ in 0..8 {
+            gw.place_order(&unfilled).unwrap();
+        }
         gw.tick();
         settle_open_window(&mut gw);
         gw.tick();
@@ -269,15 +274,19 @@ mod audit_1116_gf1 {
         gw.accounts.get_mut(&keys[0]).unwrap().orders_this_sec = 0;
         gw.account_place_order(&keys[0], &pending).unwrap();
 
-        // Four holders share a budget of 20: five rows each. Only finished rows
+        let demo_newest = gw.orders[0].id.clone();
+
+        // Five holders share a budget of 25: five rows each. Only finished rows
         // are evicted, oldest first; the live one counts but stays.
-        gw.cap_account_order_history(20);
+        gw.cap_account_order_history(25);
         for (i, key) in keys.iter().enumerate() {
             let rows = &gw.accounts[key].orders;
             assert_eq!(rows.len(), 5, "account {i}");
             assert!(rows.iter().any(|o| o.id == newest[i]));
         }
         assert!(!gw.accounts[&keys[0]].orders[0].sealed, "the live row stays");
+        assert_eq!(gw.orders.len(), 5);
+        assert_eq!(gw.orders[0].id, demo_newest);
     }
 
     fn order_request(key: &[u8; 32], client: Option<SocketAddr>) -> Request<Body> {
