@@ -95,6 +95,17 @@ fetching it. Measured times on one H100 are in `docs/audits/2026-10-21-gpu-day/`
   it. Do not point the adapter at Succinct's shared `SP1VerifierGateway`: a gateway owner
   can add an accept-everything route or freeze the route (docs/SECURITY.md, audit SV-1).
   `deploy_clock_stack.py` does both steps.
+- **Liveness trade-off of the direct binding.** The `SP1ZkVerifier` NatSpec says it
+  "stays valid across SP1 verifier versions"; that held only behind a gateway, whose
+  owner could add the new version's route. Bound directly, the adapter accepts only
+  proofs for the one verifier it names. An SP1 verifier upgrade (a new
+  `VERIFIER_HASH()` selector, e.g. a new SP1 release or a security fix in the
+  verifier) therefore means deploying the new verifier, a new `SP1ZkVerifier`, a new
+  `ClockBoundVerifier` and a new `DarkPerpSettlement` + vault (all bind their inner
+  verifier immutably), i.e. a full redeploy and migration per
+  [REDEPLOY-CC-RUNBOOK.md](REDEPLOY-CC-RUNBOOK.md). Proofs from the new prover do not
+  verify on the old stack in the meantime, so keep the prover on the pinned SP1
+  version until the new stack is live.
 
 ## 6. Redeploy the settlement pointing at it
 `DarkPerpSettlement.verifier` is immutable, so swapping the verifier is a redeploy. The
