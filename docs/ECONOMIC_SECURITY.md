@@ -466,10 +466,16 @@ new account while the state's own history or unspent notes are at it; the positi
 entries and outstanding permits never close registration. An account with no
 position holds permits for one market at a time, so it reserves at most one entry.
 Every position entry costs the same to prove whatever it holds, so dust entries count
-toward the bound like any other; instead, a permit that opens an entry needs 100 USDC,
-and when the entries alone refuse such a permit the gateway sweeps flat entries below
-100 USDC (a forced full exit to the owner's bound deposit address, announced to the
-owner) to make room. Entries with an open position are never swept (audit G1-1). A withdrawal that would need more room than the bound
+toward the bound like any other; instead, a permit that may open an entry (no entry in
+that market, or only a flat one below 100 USDC) needs 100 USDC and counts as opening
+one from its issuance, a withdrawal leaves at least 100 USDC in its entry unless it is
+a full exit (open position or not), and when the entries alone refuse a permit that
+opens an entry the gateway sweeps as many flat entries below 100 USDC as admit it (a
+forced full exit to the owner's bound deposit address, announced to the owner,
+whatever permits the owner holds). Entries with an open position are never swept, so
+an entry the sweep leaves alone holds at least 100 USDC unless trading lost it:
+holding the 1,063-entry soft cap that way locks about $106,300 (audit G1-1). A
+withdrawal that would need more room than the bound
 leaves is refused unless it is a full exit (the whole balance of a closed position),
 so the deposit of every permit already signed is credited within the bound and funds
 can always leave. Only a state already beyond a bound credits no further deposit.
