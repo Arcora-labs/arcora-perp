@@ -4983,15 +4983,57 @@ mod tests {
         assert!(copied <= 4, "{copied} orders copied or put back");
     }
 
+    /// Every order of market 0's book with its remainder.
+    fn resting(s: &Sequencer) -> Vec<(Digest, i128)> {
+        s.book(0)
+            .unwrap()
+            .resting_orders()
+            .map(|(_, quote, _)| (quote.order_hash, quote.remaining))
+            .collect()
+    }
+
+    /// Every order that rested before `sealed` (`before`, see [`resting`]) and
+    /// whose remainder it changed is named by one of its applied fills,
+    /// rejections or removals: the gateway updates only the rows a batch names.
+    fn assert_book_changes_reported(
+        before: &[(Digest, i128)],
+        s: &Sequencer,
+        sealed: &SealedBatch,
+    ) {
+        let named: BTreeSet<Digest> = sealed
+            .applied_fills
+            .iter()
+            .flat_map(|m| [m.taker_order_hash, m.maker_order_hash])
+            .chain(sealed.manifest.rejected.iter().map(|(h, _)| *h))
+            .chain(sealed.removals.iter().map(|r| r.order_hash))
+            .collect();
+        for (hash, remaining) in before {
+            if s.remaining_order_size(hash) != Some(*remaining) {
+                assert!(
+                    named.contains(hash),
+                    "{hash:?} rested with {remaining} and now {:?}, unreported",
+                    s.remaining_order_size(hash)
+                );
+            }
+        }
+    }
+
+    /// An IOC version of `t_order_at`.
+    fn ioc_at(owner: u64, side: Side, price_usd: i128, size: i128, nonce: u64) -> Order {
+        Order {
+            tif: TimeInForce::Ioc,
+            ..t_order_at(owner, side, price_usd, size, nonce)
+        }
+    }
+
     /// Audit 2026-11-16 SM-2, the pass cap: eight under-margined owners rest one
     /// sell each ahead of an honest one, the last of them two lots. A taker of one
-    /// lot bans the first seven, one pass each; the eighth pass is the last and is
-    /// kept. Its fill against the two-lot sell fails and is dropped: that sell is
-    /// rejected and leaves the book (its untraded lot does not rest on), the taker
-    /// is not blamed and gets no fill, and the honest sell still rests for the
-    /// next batch's taker, which fills in one pass.
+    /// lot bans the first seven, one pass each; the eighth pass is the last, and it
+    /// settles each fill as it matches it. The two-lot sell fails and leaves the
+    /// book without trading, rejected; the taker goes on to the honest sell and
+    /// fills against it in this batch.
     #[test]
-    fn audit_1116_sm2_the_last_pass_is_kept_and_its_offender_leaves_the_book() {
+    fn audit_1116_sm2_the_last_pass_settles_each_fill_as_it_matches() {
         let mut s = test_sequencer();
         underfunded(&mut s, 10..18);
         let mut poisoned: Vec<Order> = (10..17u64)
@@ -5004,6 +5046,7 @@ mod tests {
         assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
         let taker = t_order_at(2, Side::Buy, 100_000, LOT, 50_101);
         let taker_h = taker.order_hash::<Keccak256>();
+        let before = resting(&s);
 
         let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
 
@@ -5018,21 +5061,271 @@ mod tests {
             })
             .collect();
         assert_eq!(sealed.manifest.rejected, expected);
-        assert!(s.remaining_order_size(&expected[7].0).is_none());
-        assert!(sealed.manifest.ordered.contains(&taker_h));
-        assert!(sealed.applied_fills.is_empty());
+        for (hash, _) in &expected {
+            assert!(s.remaining_order_size(hash).is_none());
+        }
+        assert_eq!(sealed.manifest.ordered, vec![taker_h]);
+        assert_eq!(sealed.settled_order_hashes, vec![taker_h, honest_h]);
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+        assert!(s.remaining_order_size(&honest_h).is_none());
+        assert!(sealed.removals.is_empty());
+        assert_book_changes_reported(&before, &s, &sealed);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: the last pass must not burn an
+    /// innocent maker's size. Through the pre-trade gate: X shorts a lot; seven
+    /// under-margined owners' bids rest ahead of X's plain bid; owner 1 asks a lot.
+    /// One batch sells into the bids and sends X's reduce-only buy. Each of the
+    /// first seven passes bans one under-margined owner, and X's buy reduces X's
+    /// short there. In the eighth and last pass the sell fills X's bid first, so
+    /// X's buy would open a position: X's buy stops there and is rejected, and
+    /// owner 1's ask, which it never traded with, keeps its lot on the book.
+    #[test]
+    fn audit_1116_sm2_an_innocent_maker_keeps_its_size_in_the_last_pass() {
+        let mut s = test_sequencer();
+        fund(&mut s, 3, 20_000, 0x33);
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(3, Side::Sell, 100_000, LOT, 70_000),
+                ioc_at(1, Side::Buy, 100_000, LOT, 70_001),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        assert_eq!(s.state.position(&owner_id(3), 0).unwrap().size, -LOT);
+        underfunded(&mut s, 10..17);
+        let poisoned: Vec<Order> = (10..17u64)
+            .map(|owner| t_order_at(owner, Side::Buy, 99_900, LOT, 70_100 + owner))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let x_bid = t_order_at(3, Side::Buy, 99_900, LOT, 70_200);
+        let ask = t_order_at(1, Side::Sell, 100_100, LOT, 70_201);
+        let ask_h = ask.order_hash::<Keccak256>();
+        assert!(s
+            .seal_batch(&[x_bid, ask], now())
+            .manifest
+            .rejected
+            .is_empty());
+        let sell = ioc_at(2, Side::Sell, 99_900, LOT, 70_300);
+        let mut x_buy = ioc_at(3, Side::Buy, 100_100, LOT, 70_301);
+        x_buy.reduce_only = true;
+        let x_buy_h = x_buy.order_hash::<Keccak256>();
+        let owner_1 = s.state.position(&owner_id(1), 0).copied();
+        let before = resting(&s);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[sell, x_buy], now()));
+
+        assert_eq!(rounds, u64::from(MAX_MATCH_ROUNDS));
+        assert_eq!(s.remaining_order_size(&ask_h), Some(LOT));
+        assert_eq!(s.state.position(&owner_id(1), 0).copied(), owner_1);
+        let rejected: BTreeMap<Digest, RejectReason> =
+            sealed.manifest.rejected.iter().copied().collect();
+        assert_eq!(
+            rejected.get(&x_buy_h),
+            Some(&RejectReason::ReduceOnlyViolation)
+        );
+        for o in &poisoned {
+            assert_eq!(
+                rejected.get(&o.order_hash::<Keccak256>()),
+                Some(&RejectReason::InsufficientMargin)
+            );
+        }
+        assert_eq!(rejected.len(), poisoned.len() + 1);
+        assert_eq!(
+            sealed.settled_order_hashes,
+            vec![
+                sell.order_hash::<Keccak256>(),
+                x_bid.order_hash::<Keccak256>()
+            ]
+        );
         assert!(s
             .state
-            .position(&owner_id(2), 0)
+            .position(&owner_id(3), 0)
             .is_none_or(|p| p.size == 0));
-        assert_eq!(s.remaining_order_size(&honest_h), Some(LOT));
+        assert_book_changes_reported(&before, &s, &sealed);
         assert!(s.state.conservation_holds());
+    }
 
-        let next = t_order_at(2, Side::Buy, 100_000, LOT, 50_102);
-        let (sealed, rounds, _) = counted(|| s.seal_batch(&[next], now()));
-        assert_eq!(rounds, 1);
-        assert!(sealed.settled_order_hashes.contains(&honest_h));
-        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+    /// Audit 2026-11-16 SM-2, round 1 review: in the last pass a maker that
+    /// already traded in it and then fails leaves the book with a removal naming
+    /// the failure, so its row shows it; the taker it failed goes on to the next
+    /// maker. Fourteen under-margined owners' sells take seven passes (two takers
+    /// each meet one per pass); owner 4 sells two lots with the margin for one.
+    #[test]
+    fn audit_1116_sm2_a_maker_that_traded_and_then_fails_in_the_last_pass_is_removed() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..24);
+        fund(&mut s, 4, 15, 0x44);
+        let poisoned: Vec<Order> = (10..24u64)
+            .map(|owner| t_order_at(owner, Side::Sell, 99_900, LOT, 90_000 + owner))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let twice = t_order_at(4, Side::Sell, 100_000, 2 * LOT, 90_100);
+        let twice_h = twice.order_hash::<Keccak256>();
+        restore_onto_book(&mut s, &[twice]);
+        let honest = t_order_at(1, Side::Sell, 100_050, LOT, 90_101);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let first = ioc_at(2, Side::Buy, 100_100, LOT, 90_200);
+        let second = ioc_at(2, Side::Buy, 100_100, LOT, 90_201);
+        let before = resting(&s);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[first, second], now()));
+
+        assert_eq!(rounds, u64::from(MAX_MATCH_ROUNDS));
+        assert!(s.remaining_order_size(&twice_h).is_none());
+        assert!(sealed.settled_order_hashes.contains(&twice_h));
+        assert!(!sealed.manifest.rejected.iter().any(|(h, _)| *h == twice_h));
+        assert!(sealed
+            .removals
+            .iter()
+            .any(|r| r.order_hash == twice_h && r.reason == "InsufficientMargin"));
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&honest.order_hash::<Keccak256>()));
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, 2 * LOT);
+        assert_eq!(s.state.position(&owner_id(4), 0).unwrap().size, -LOT);
+        assert_book_changes_reported(&before, &s, &sealed);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: reduce-only orders left resting
+    /// after their owner closed the position fail one by one, as makers; one
+    /// account's seven such bids used up seven passes. A maker that fails as
+    /// reduce-only while its owner holds nothing its side reduces (at the start of
+    /// the batch) takes the owner's other reduce-only orders on that side with
+    /// it, so they cost one rematch; the owner's plain bid stays and trades.
+    #[test]
+    fn audit_1116_sm2_reduce_only_leftovers_of_one_owner_cost_one_rematch() {
+        let mut s = test_sequencer();
+        fund(&mut s, 4, 20_000, 0x44);
+        let leftovers: Vec<Order> = (0..7u64)
+            .map(|n| Order {
+                reduce_only: true,
+                ..t_order_at(4, Side::Buy, 99_900, LOT, 80_000 + n)
+            })
+            .collect();
+        restore_onto_book(&mut s, &leftovers);
+        let plain = t_order_at(4, Side::Buy, 99_800, LOT, 80_010);
+        restore_onto_book(&mut s, &[plain]);
+        let honest = t_order_at(1, Side::Buy, 99_850, LOT, 80_011);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = ioc_at(2, Side::Sell, 99_800, 2 * LOT, 80_012);
+        let before = resting(&s);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        let expected: Vec<(Digest, RejectReason)> = leftovers
+            .iter()
+            .map(|o| {
+                (
+                    o.order_hash::<Keccak256>(),
+                    RejectReason::ReduceOnlyViolation,
+                )
+            })
+            .collect();
+        assert_eq!(sealed.manifest.rejected, expected);
+        for hash in [
+            taker.order_hash::<Keccak256>(),
+            honest.order_hash::<Keccak256>(),
+            plain.order_hash::<Keccak256>(),
+        ] {
+            assert!(sealed.settled_order_hashes.contains(&hash));
+        }
+        assert_eq!(s.state.position(&owner_id(4), 0).unwrap().size, LOT);
+        assert_book_changes_reported(&before, &s, &sealed);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// The reduce-only side ban takes only an owner who holds nothing that side
+    /// reduces: owner 4 is short a lot, and its two-lot reduce-only bid would flip
+    /// the position, but its one-lot one still closes it. Only the two-lot bid is
+    /// rejected; the one-lot bid trades in the rematch.
+    #[test]
+    fn audit_1116_sm2_a_reduce_only_order_that_still_reduces_is_not_banned_with_its_side() {
+        let mut s = test_sequencer();
+        fund(&mut s, 4, 20_000, 0x44);
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(4, Side::Sell, 100_000, LOT, 81_000),
+                ioc_at(1, Side::Buy, 100_000, LOT, 81_001),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        let flips = Order {
+            reduce_only: true,
+            ..t_order_at(4, Side::Buy, 99_900, 2 * LOT, 81_002)
+        };
+        let closes = Order {
+            reduce_only: true,
+            ..t_order_at(4, Side::Buy, 99_850, LOT, 81_003)
+        };
+        restore_onto_book(&mut s, &[flips, closes]);
+        let taker = ioc_at(2, Side::Sell, 99_850, 3 * LOT, 81_004);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(
+                flips.order_hash::<Keccak256>(),
+                RejectReason::ReduceOnlyViolation
+            )]
+        );
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&closes.order_hash::<Keccak256>()));
+        assert!(s
+            .state
+            .position(&owner_id(4), 0)
+            .is_none_or(|p| p.size == 0));
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: in close-only mode a resting bid of
+    /// an owner holding nothing a bid reduces fails as `MarketCloseOnly`, and so
+    /// would each of its other plain bids: the first takes them with it, one
+    /// rematch for all three, and the closing sell trades against the honest bid.
+    #[test]
+    fn audit_1116_sm2_close_only_openers_of_one_owner_cost_one_rematch() {
+        let mut s = test_sequencer();
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(1, Side::Sell, 100_000, LOT, 82_000),
+                ioc_at(2, Side::Buy, 100_000, LOT, 82_001),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        fund(&mut s, 4, 20_000, 0x44);
+        let openers: Vec<Order> = (0..3u64)
+            .map(|n| t_order_at(4, Side::Buy, 99_900, LOT, 82_010 + n))
+            .collect();
+        restore_onto_book(&mut s, &openers);
+        let closing_bid = t_order_at(1, Side::Buy, 99_800, LOT, 82_020);
+        restore_onto_book(&mut s, &[closing_bid]);
+        s.state.mode = Mode::CloseOnly;
+        let taker = ioc_at(2, Side::Sell, 99_800, LOT, 82_021);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        let expected: Vec<(Digest, RejectReason)> = openers
+            .iter()
+            .map(|o| (o.order_hash::<Keccak256>(), RejectReason::MarketCloseOnly))
+            .collect();
+        assert_eq!(sealed.manifest.rejected, expected);
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&closing_bid.order_hash::<Keccak256>()));
+        for owner in [1, 2] {
+            assert!(s
+                .state
+                .position(&owner_id(owner), 0)
+                .is_none_or(|p| p.size == 0));
+        }
     }
 
     /// Audit 2026-11-16 SM-2: the side ban leaves an under-margined maker's

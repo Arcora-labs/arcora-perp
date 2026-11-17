@@ -66,6 +66,60 @@ fn order(side: &str, size: i128, limit: i128, tif: &str) -> OrderReq {
     }
 }
 
+/// A reduce-only version of [`order`].
+fn reducing(side: &str, size: i128, limit: i128, tif: &str) -> OrderReq {
+    OrderReq {
+        reduce_only: true,
+        ..order(side, size, limit, tif)
+    }
+}
+
+/// An exchange in window-settle mode: no fill settles until a window settles
+/// on L1, which a test does with [`settle_windows`].
+fn windowed() -> Gw {
+    let mut gw = Gw::boot();
+    gw.window_settle_mode = true;
+    gw.seq.set_retain_tick_snapshots(false);
+    gw
+}
+
+/// Settle on L1 every window up to the open one: every tick sealed so far.
+fn settle_windows(gw: &mut Gw) {
+    let open = gw.seq.current_window_id();
+    gw.seq.mark_window_settled(open);
+}
+
+/// Every row's record agrees with the book: an order the book holds reads
+/// RESTING or PARTIALLY_FILLED with the book's remainder, and no row reads so
+/// for an order the book does not hold.
+fn assert_rows_match_book(gw: &Gw) {
+    for o in gw
+        .orders
+        .iter()
+        .chain(gw.accounts.values().flat_map(|a| &a.orders))
+    {
+        let Some(e) = o.execution.as_ref().filter(|e| e.known) else {
+            continue;
+        };
+        let live = gw.seq.remaining_order_size(&o.order_hash);
+        match e.status {
+            execution::Status::Resting | execution::Status::PartiallyFilled => {
+                assert_eq!(live, Some(e.remaining), "row {} reads {e:?}", o.id);
+            }
+            _ => assert_eq!(live, None, "row {} reads {e:?}", o.id),
+        }
+    }
+}
+
+/// The events of `kind` among a tick's account events.
+fn events_of(events: &[String], kind: &str) -> Vec<serde_json::Value> {
+    events
+        .iter()
+        .map(|e| serde_json::from_str::<serde_json::Value>(e).unwrap())
+        .filter(|e| e["type"] == kind)
+        .collect()
+}
+
 /// Register an account and credit it $50,000 in market 0.
 fn account(gw: &mut Gw) -> [u8; 32] {
     let (key, _) = gw.register_account(None);
@@ -157,15 +211,16 @@ fn audit_1116_ga1_a_trade_updates_the_rows_it_touched() {
 }
 
 /// Over a pseudo-random session of four accounts and the demo user (resting,
-/// crossing, IOC, FOK, post-only and market orders, the house counters,
-/// cancellations, and fills settling SETTLE_TICKS later), every row a tick
-/// skips would have changed nothing had the tick updated it as it used to: no
-/// event, and nothing a response shows. So the events and the responses are
-/// the ones a tick that updates every row gives.
-#[test]
-fn audit_1116_ga1_a_skipped_row_would_have_shown_no_change() {
+/// crossing, IOC, FOK, post-only, reduce-only and market orders, the house
+/// counters, cancellations, and fills settling SETTLE_TICKS later or, in
+/// window-settle mode, when a window settles), every row a tick skips would
+/// have changed nothing had the tick updated it as it used to: no event, and
+/// nothing a response shows. So the events and the responses are the ones a
+/// tick that updates every row gives. And after every tick each row agrees with
+/// the book.
+fn skipped_rows_session(window: bool) {
     CHECK_SKIPPED.with(|c| c.set(Some(0)));
-    let mut gw = Gw::boot();
+    let mut gw = if window { windowed() } else { Gw::boot() };
     let keys: Vec<[u8; 32]> = (0..4).map(|_| account(&mut gw)).collect();
     let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
     let mut next = move |bound: usize| {
@@ -174,7 +229,7 @@ fn audit_1116_ga1_a_skipped_row_would_have_shown_no_change() {
         seed ^= seed << 17;
         (seed % bound as u64) as usize
     };
-    let (mut fills, mut cancels, mut updates) = (0, 0, 0);
+    let (mut fills, mut cancels, mut updates, mut settles) = (0, 0, 0, 0);
     for _ in 0..60 {
         let px = gw.px_of(0);
         for _ in 0..next(6) {
@@ -186,10 +241,12 @@ fn audit_1116_ga1_a_skipped_row_would_have_shown_no_change() {
                 n => px + px / 1_000 * (n as i128 - 3),
             };
             let tif = ["Gtc", "Gtc", "Ioc", "Fok", "PostOnly"][next(5)];
+            let mut req = order(side, size, limit, tif);
+            req.reduce_only = next(5) == 0;
             let a = gw.accounts.get_mut(&key).unwrap();
             a.last_order_ms = 0;
             a.orders_this_sec = 0;
-            let _ = gw.account_place_order(&key, &order(side, size, limit, tif));
+            let _ = gw.account_place_order(&key, &req);
         }
         if next(3) == 0 {
             let key = keys[next(keys.len())];
@@ -206,21 +263,175 @@ fn audit_1116_ga1_a_skipped_row_would_have_shown_no_change() {
             let side = ["Buy", "Sell"][next(2)];
             let _ = gw.place_order(&order(side, SIZE_SCALE / 100, 0, "Ioc"));
         }
+        if window && next(6) == 0 {
+            settle_windows(&mut gw);
+            settles += 1;
+        }
         let mut events = Vec::new();
         updates += row_updates(|| events = gw.tick().1);
-        fills += events
-            .iter()
-            .map(|e| serde_json::from_str::<serde_json::Value>(e).unwrap())
-            .filter(|e| e["type"] == "fill")
-            .count();
+        fills += events_of(&events, "fill").len();
+        assert_rows_match_book(&gw);
     }
     let skipped = CHECK_SKIPPED.with(|c| c.replace(None)).unwrap();
     assert!(fills > 10, "{fills} fills");
     assert!(cancels > 2, "{cancels} cancellations");
+    assert!(!window || settles > 2, "{settles} settles");
     assert!(
         updates > 0 && skipped > updates,
         "{skipped} rows skipped, {updates} updated"
     );
+}
+
+#[test]
+fn audit_1116_ga1_a_skipped_row_would_have_shown_no_change() {
+    skipped_rows_session(false);
+}
+
+/// The same session in window-settle mode, where fills wait for a window to
+/// settle on L1 and the rows holding them are updated only by the tick after.
+#[test]
+fn audit_1116_ga1_a_skipped_row_would_have_shown_no_change_in_window_mode() {
+    skipped_rows_session(true);
+}
+
+/// Audit 2026-11-16 GA-1 + SM-1, round 1 review: in window-settle mode a fill
+/// stays unsettled until its window settles on L1, minutes later, and IOCs the
+/// house answers make such rows for free. A quiet tick updates no row however
+/// many rows hold unsettled fills; the tick after a window settles updates
+/// exactly those rows and reports each settled, as every tick used to. The same
+/// holds for rows restored from a snapshot.
+#[test]
+fn audit_1116_ga1_a_quiet_tick_does_not_scale_with_unsettled_filled_rows() {
+    let mut quiet = Vec::new();
+    for filled in [2usize, 18] {
+        let mut gw = windowed();
+        let key = account(&mut gw);
+        for _ in 0..filled {
+            post(&mut gw, &key, &order("Buy", SIZE_SCALE / 100, 0, "Ioc"));
+            gw.tick();
+        }
+        let rows = gw.v1_orders_json(&key).unwrap()["orders"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert_eq!(rows.len(), filled);
+        for row in &rows {
+            assert_eq!(row["execution"]["status"], "FILLED", "{row}");
+            assert_eq!(
+                row["execution"]["unsettledSize"],
+                (SIZE_SCALE / 100).to_string(),
+                "{row}"
+            );
+        }
+        quiet.push(row_updates(|| {
+            gw.tick();
+        }));
+
+        let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+        restored.window_settle_mode = true;
+        restored.seq.set_retain_tick_snapshots(false);
+        for gw in [&mut gw, &mut restored] {
+            assert_eq!(
+                row_updates(|| {
+                    gw.tick();
+                }),
+                0
+            );
+            settle_windows(gw);
+            let mut events = Vec::new();
+            let updated = row_updates(|| events = gw.tick().1);
+            assert_eq!(updated as usize, filled);
+            let settled = events_of(&events, "execution");
+            assert_eq!(settled.len(), filled, "{events:?}");
+            for event in &settled {
+                assert_eq!(event["execution"]["unsettledSize"], "0", "{event}");
+                assert_eq!(event["execution"]["status"], "FILLED", "{event}");
+            }
+            assert_eq!(
+                row_updates(|| {
+                    gw.tick();
+                }),
+                0
+            );
+        }
+    }
+    assert_eq!(quiet, [0, 0], "quiet ticks updated rows");
+}
+
+/// Audit 2026-11-16 GA-1 + SM-2, round 1 review, through the gateway's
+/// admission: seven accounts each short a lot, rest a reduce-only bid and close
+/// the short, leaving the bid behind; X is short with a plain bid just under
+/// theirs; H asks a lot. One tick carries A's sell into the bids and, sealed
+/// after it, X's reduce-only buy into H's ask. Its first seven passes each ban one
+/// leftover bid, with X's buy closing X's short; in the eighth and last the sell
+/// closes X's short first, so X's buy would open a position and is refused. H's
+/// ask never traded: it still rests with its lot, its row says so and H can
+/// cancel it. Every row the tick skipped would have shown no change, and every
+/// row agrees with the book.
+#[test]
+fn audit_1116_ga1_the_last_pass_leaves_every_row_true() {
+    CHECK_SKIPPED.with(|c| c.set(Some(0)));
+    let mut gw = windowed();
+    let px = gw.px_of(0);
+    let lot = SIZE_SCALE / 100;
+    let bid = px - px / 50;
+    let ask = px + px / 100;
+    let leftovers: Vec<[u8; 32]> = (0..7).map(|_| account(&mut gw)).collect();
+    // A tick seals the accounts' orders in the order of their keys.
+    let mut pair = [account(&mut gw), account(&mut gw)];
+    pair.sort();
+    let [a, x] = pair;
+    let h = account(&mut gw);
+    for key in leftovers.iter().chain([&x]) {
+        post(&mut gw, key, &order("Sell", lot, 0, "Ioc"));
+    }
+    gw.tick();
+    for key in &leftovers {
+        post(&mut gw, key, &reducing("Buy", lot, bid, "Gtc"));
+    }
+    post(&mut gw, &x, &order("Buy", lot, bid - px / 1_000, "Gtc"));
+    post(&mut gw, &h, &order("Sell", lot, ask, "Gtc"));
+    gw.tick();
+    for key in &leftovers {
+        post(&mut gw, key, &order("Buy", lot, 0, "Ioc"));
+    }
+    gw.tick();
+    assert_rows_match_book(&gw);
+    let (h_id, h_hash) = {
+        let row = &gw.accounts[&h].orders[0];
+        (row.id.clone(), row.order_hash)
+    };
+    assert_eq!(gw.seq.remaining_order_size(&h_hash), Some(lot));
+    for key in &leftovers {
+        let rows = &gw.accounts[key].orders;
+        assert_eq!(rows.len(), 3);
+        assert!(gw.seq.remaining_order_size(&rows[1].order_hash).is_some());
+    }
+
+    post(&mut gw, &a, &order("Sell", lot, bid - px / 500, "Gtc"));
+    post(&mut gw, &x, &reducing("Buy", lot, ask, "Gtc"));
+    let events = gw.tick().1;
+
+    assert_rows_match_book(&gw);
+    assert_eq!(gw.seq.remaining_order_size(&h_hash), Some(lot));
+    let row = &gw.v1_orders_json(&h).unwrap()["orders"][0];
+    assert_eq!(row["execution"]["status"], "RESTING", "{row}");
+    assert_eq!(row["execution"]["remainingSize"], lot.to_string(), "{row}");
+    let x_buy = &gw.v1_orders_json(&x).unwrap()["orders"][0];
+    assert_eq!(x_buy["execution"]["status"], "REJECTED", "{x_buy}");
+    assert_eq!(
+        x_buy["execution"]["reason"], "ReduceOnlyViolation",
+        "{x_buy}"
+    );
+    for key in &leftovers {
+        let row = &gw.v1_orders_json(key).unwrap()["orders"][1];
+        assert_eq!(row["execution"]["status"], "REJECTED", "{row}");
+    }
+    assert_eq!(events_of(&events, "fill").len(), 2, "{events:?}");
+    let a_sell = &gw.v1_orders_json(&a).unwrap()["orders"][0];
+    assert_eq!(a_sell["execution"]["status"], "FILLED", "{a_sell}");
+    assert_eq!(gw.account_cancel(&h, &h_id), Ok(lot));
+    assert!(CHECK_SKIPPED.with(|c| c.replace(None)).unwrap() > 0);
 }
 
 /// A resting order as every snapshot has written it, field for field.
