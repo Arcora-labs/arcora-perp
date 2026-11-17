@@ -11319,24 +11319,27 @@ async fn main() {
                 )?;
                 let p = l1c.boot_posture()?;
                 l1::check_boot_posture(&p, &e)?;
-                // Mock proofs verify nothing, so there is no verifier to pin.
-                if l1c.clock_enabled() && !allow_mock_proof {
-                    l1c.check_sp1_target(
-                        std::env::var(l1::SP1_ROUTER_TRUST_VAR).ok().as_deref() == Some("1"),
-                    )?;
-                }
-                Ok(p)
+                // The SP1 route (audit SV-1); mock proofs verify nothing, so pin nothing.
+                let sp1 = l1c.sp1_boot_gate(
+                    allow_mock_proof,
+                    std::env::var(l1::SP1_ROUTER_TRUST_VAR).ok().as_deref(),
+                )?;
+                Ok((p, sp1))
             })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
         };
         match verdict {
-            Ok(p) => {
+            Ok((p, sp1)) => {
+                if let Some(warning) = sp1.warning() {
+                    eprintln!("[l1] WARN: {warning}");
+                }
                 println!(
-                    "[l1] boot handshake OK (ABI_VERSION {}, anchorTimeoutMs {}, consumedDepositCount {}, permit TTL {permit_ttl_secs} s)",
+                    "[l1] boot handshake OK (ABI_VERSION {}, anchorTimeoutMs {}, consumedDepositCount {}, permit TTL {permit_ttl_secs} s, {})",
                     p.abi_version,
                     p.anchor_timeout_ms.unwrap_or_default(),
-                    p.consumed_deposit_count
+                    p.consumed_deposit_count,
+                    sp1.describe()
                 );
                 // With matching roots the settled state consumed exactly this
                 // many deposits; credits at or above it are not settled yet.

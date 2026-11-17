@@ -598,33 +598,202 @@ pub(super) fn read_program_vkey(
     r.word(&read_adapter(r, verifier)?, "programVKey()", None)
 }
 
-/// keccak256 of the runtime code of the compiled stateless SP1 v6.1.0 Groth16
-/// verifier (`out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json`, no
-/// immutables). `scripts/local-verification/test_release_manifest.py` keeps it equal
-/// to the artifact the release manifest matches.
-pub(crate) const SP1_VERIFIER_RUNTIME_KECCAK: &str =
-    "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849";
+/// A compiled runtime the boot gate pins (audit SV-1). The deployed code must have
+/// the template's length, every occurrence of one immutable must hold the same word
+/// (so a getter cannot report one value while `verify` uses another), and with the
+/// immutable words zeroed, as the compiler leaves them, the code must hash to
+/// `keccak`. `scripts/local-verification/test_release_manifest.py` keeps every
+/// template here equal to its compiler artifact.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RuntimeTemplate {
+    /// The compiler artifact, relative to `contracts/`.
+    pub(crate) artifact: &'static str,
+    pub(crate) keccak: &'static str,
+    pub(crate) len: usize,
+    /// The byte offsets of each immutable's 32-byte occurrences.
+    pub(crate) immutables: &'static [&'static [usize]],
+}
 
-/// The adapter must verify through the pinned stateless SP1 verifier itself: a router
-/// (an SP1 verifier gateway) has an owner who can add an accept-everything route or
-/// freeze the real one, and so bypass or halt every proof (audit SV-1). The runtime
-/// code at `adapter.gateway()` is matched byte for byte (by hash) against the
-/// pinned verifier. `accept_router_owner_trust` is the operator's explicit opt-in to
-/// trust a router's owner instead; it skips the match.
-pub(super) fn check_sp1_target(
+impl RuntimeTemplate {
+    fn name(&self) -> &'static str {
+        let file = self.artifact.rsplit('/').next().unwrap_or(self.artifact);
+        file.strip_suffix(".json").unwrap_or(file)
+    }
+
+    fn matches(&self, code: &[u8]) -> bool {
+        if code.len() != self.len {
+            return false;
+        }
+        let mut masked = code.to_vec();
+        for occurrences in self.immutables {
+            let Some(first) = occurrences.first().and_then(|&at| code.get(at..at + 32)) else {
+                return false;
+            };
+            for &at in *occurrences {
+                if code.get(at..at + 32) != Some(first) {
+                    return false;
+                }
+                masked[at..at + 32].fill(0);
+            }
+        }
+        crate::parse_hex32(self.keccak)
+            .is_some_and(|pinned| <sha3::Keccak256 as sha3::Digest>::digest(&masked)[..] == pinned)
+    }
+}
+
+/// Every hop between the settlement's clock verifier and the SP1 proof check.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RoutePins {
+    pub(crate) clock: RuntimeTemplate,
+    /// The optional oracle wrapper between the clock verifier and the adapter.
+    pub(crate) wrapper: RuntimeTemplate,
+    pub(crate) adapter: RuntimeTemplate,
+    /// The stateless SP1 v6.1.0 Groth16 verifier: no immutables, no owner, no routes.
+    pub(crate) verifier: RuntimeTemplate,
+}
+
+pub(crate) const ROUTE_PINS: RoutePins = RoutePins {
+    clock: RuntimeTemplate {
+        artifact: "out/ClockBoundVerifier.sol/ClockBoundVerifier.json",
+        keccak: "0x293e9a8ebae978c305db4ca1bd0051d3e6fb8d2ea45ec42253bc1856d03c1dff",
+        len: 6569,
+        immutables: &[
+            &[300, 4993],
+            &[363, 3930, 4384, 5507],
+            &[447, 4137, 4218, 4417, 5541],
+            &[572, 2266],
+            &[611, 1505],
+        ],
+    },
+    wrapper: RuntimeTemplate {
+        artifact: "out/ChainlinkOracleVerifier.sol/ChainlinkOracleVerifier.json",
+        keccak: "0xd414b10813242c0d513b4be218ce5f4cf8e01758208c8906bf6e4ec2a7550637",
+        len: 8467,
+        immutables: &[
+            &[375, 2507, 4142],
+            &[526, 1074],
+            &[755, 2468, 5863],
+            &[802, 2103],
+            &[860, 1988, 2314, 5525],
+            &[899, 1823, 2667],
+            &[996, 2021, 2347, 5558, 5656],
+        ],
+    },
+    adapter: RuntimeTemplate {
+        artifact: "out/SP1ZkVerifier.sol/SP1ZkVerifier.json",
+        keccak: "0x7fa987de58884430b5484a32fbb5dc7f2514ea7f1c735ef69fc87a247ccd9aa5",
+        len: 734,
+        immutables: &[&[72, 226], &[140, 273]],
+    },
+    verifier: RuntimeTemplate {
+        artifact: "out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json",
+        keccak: "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+        len: 6741,
+        immutables: &[],
+    },
+};
+
+/// What the boot gate established about the clock route's SP1 proof check.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Sp1Route {
+    /// `L1_ALLOW_MOCK_PROOF=1`: mock proofs verify nothing, so nothing is pinned.
+    MockProofs,
+    /// Pinned clock verifier (and wrapper) and adapter, verifying through the
+    /// pinned stateless verifier.
+    Pinned { verifier: [u8; 20] },
+    /// The pinned adapter verifies through a router the operator explicitly trusts
+    /// (`L1_ACCEPT_SP1_ROUTER_OWNER_TRUST=1`); `owner` is its `owner()`, if readable.
+    TrustedRouter {
+        router: [u8; 20],
+        owner: Option<[u8; 20]>,
+    },
+}
+
+impl Sp1Route {
+    /// The boot-handshake log fragment.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Self::MockProofs => "SP1 route not pinned (mock proofs)".into(),
+            Self::Pinned { verifier } => format!(
+                "SP1 verifier {} (pinned stateless v6.1.0)",
+                crate::hex0x(verifier)
+            ),
+            Self::TrustedRouter { router, .. } => format!(
+                "SP1 ROUTER {} (owner trusted: {SP1_ROUTER_TRUST_VAR}=1)",
+                crate::hex0x(router)
+            ),
+        }
+    }
+
+    /// The loud boot warning a trusted router needs.
+    pub(crate) fn warning(&self) -> Option<String> {
+        let Self::TrustedRouter { router, owner } = self else {
+            return None;
+        };
+        Some(format!(
+            "{SP1_ROUTER_TRUST_VAR}=1: proofs verify through the SP1 router {}, not the stateless \
+             verifier. Its owner ({}) can add an accept-everything route, so a fabricated batch \
+             settles, or freeze the route, so settlement halts (docs/SECURITY.md, audit SV-1)",
+            crate::hex0x(router),
+            owner.map_or_else(|| "unreadable".into(), |o| crate::hex0x(&o))
+        ))
+    }
+}
+
+/// Check the clock route a settlement's proofs go through (audit SV-1): the clock
+/// verifier, the optional oracle wrapper and the SP1 adapter must run their pinned
+/// compiled code, so their constructor-set links are what their getters report and
+/// what `verify` uses. The adapter must then verify through the pinned stateless SP1
+/// verifier: a router (an SP1 verifier gateway) has an owner who can add an
+/// accept-everything route or freeze the real one, and so bypass or halt every proof.
+/// `accept_router_owner_trust` is the operator's explicit opt-in to trust that owner
+/// instead; it waives only the last check.
+pub(super) fn check_sp1_route(
     r: &CanonicalRead<'_>,
     verifier: &[u8; 20],
     accept_router_owner_trust: bool,
-    pinned: &str,
-) -> Result<[u8; 20], String> {
-    let adapter = read_adapter(r, verifier)?;
-    let target = address(r.word(&adapter, "gateway()", None)?)?;
-    if accept_router_owner_trust {
-        return Ok(target);
+    pins: &RoutePins,
+) -> Result<Sp1Route, String> {
+    let code = |a: &[u8; 20]| r.code(&crate::hex0x(a));
+    let refuse = |role: &str, a: &[u8; 20], t: &RuntimeTemplate| {
+        format!(
+            "the {role} {} is not the pinned {} runtime; only the reviewed compiled route is \
+             accepted (audit SV-1)",
+            crate::hex0x(a),
+            t.name()
+        )
+    };
+    if !pins.clock.matches(&code(verifier)?) {
+        return Err(refuse("clock verifier", verifier, &pins.clock));
     }
-    let code = r.code(&crate::hex0x(&target))?;
-    let pinned = crate::parse_hex32(pinned).ok_or("invalid pinned SP1 verifier hash")?;
-    if <sha3::Keccak256 as sha3::Digest>::digest(&code)[..] != pinned[..] {
+    let inner = address(r.word(&crate::hex0x(verifier), "innerVerifier()", None)?)?;
+    let inner_code = code(&inner)?;
+    let adapter = if pins.adapter.matches(&inner_code) {
+        inner
+    } else if pins.wrapper.matches(&inner_code) {
+        let adapter = address(r.word(&crate::hex0x(&inner), "innerVerifier()", None)?)?;
+        if !pins.adapter.matches(&code(&adapter)?) {
+            return Err(refuse(
+                "oracle wrapper's inner verifier",
+                &adapter,
+                &pins.adapter,
+            ));
+        }
+        adapter
+    } else {
+        return Err(format!(
+            "the clock verifier's inner verifier {} is not the pinned {} or {} runtime; only \
+             the reviewed compiled route is accepted (audit SV-1)",
+            crate::hex0x(&inner),
+            pins.adapter.name(),
+            pins.wrapper.name()
+        ));
+    };
+    let target = address(r.word(&crate::hex0x(&adapter), "gateway()", None)?)?;
+    if pins.verifier.matches(&code(&target)?) {
+        return Ok(Sp1Route::Pinned { verifier: target });
+    }
+    if !accept_router_owner_trust {
         return Err(format!(
             "the SP1 adapter's target {} is not the pinned stateless SP1 v6.1.0 verifier (a router \
              or any other contract lets its owner bypass or halt proof verification); redeploy the \
@@ -632,12 +801,43 @@ pub(super) fn check_sp1_target(
             crate::hex0x(&target)
         ));
     }
-    Ok(target)
+    // Best effort, for the warning: who can change the router's routes.
+    let owner = r
+        .word(&crate::hex0x(&target), "owner()", None)
+        .ok()
+        .and_then(|w| address(w).ok());
+    Ok(Sp1Route::TrustedRouter {
+        router: target,
+        owner,
+    })
 }
 
-/// Operator opt-in (`1`) to boot against an SP1 router whose owner can bypass or halt
-/// proof verification (docs/SECURITY.md).
+/// Operator opt-in (`1`; any other value keeps the gate) to boot against an SP1
+/// router whose owner can bypass or halt proof verification (docs/SECURITY.md).
 pub(crate) const SP1_ROUTER_TRUST_VAR: &str = "L1_ACCEPT_SP1_ROUTER_OWNER_TRUST";
+
+/// The boot gate over one finalized snapshot, separate from its transport so
+/// in-process fixtures run the routine [`L1::sp1_boot_gate`] uses. Mock proofs pin
+/// nothing; otherwise [`check_sp1_route`] must pass, with the router opt-in only for
+/// `router_trust == Some("1")`.
+pub(super) fn sp1_boot_gate_from(
+    primary: &dyn crate::deposit_rpc::Rpc,
+    witness: Option<&dyn crate::deposit_rpc::Rpc>,
+    expected_chain: Option<u64>,
+    verifier: Option<[u8; 20]>,
+    allow_mock_proof: bool,
+    router_trust: Option<&str>,
+    pins: &RoutePins,
+) -> Result<Sp1Route, String> {
+    if allow_mock_proof {
+        return Ok(Sp1Route::MockProofs);
+    }
+    let verifier = verifier.ok_or("clock mode not configured")?;
+    let read = CanonicalRead::new(primary, witness, expected_chain)?;
+    let route = check_sp1_route(&read, &verifier, router_trust == Some("1"), pins)?;
+    read.finish()?;
+    Ok(route)
+}
 
 fn address(word: Digest) -> Result<[u8; 20], String> {
     if word[..12] != [0; 12] {
@@ -948,19 +1148,34 @@ impl L1 {
             })
         })
     }
-    /// Boot check: the clock route's SP1 adapter targets the pinned stateless
-    /// verifier (see [`check_sp1_target`]).
-    pub(crate) fn check_sp1_target(&self, accept_router_owner_trust: bool) -> Result<(), String> {
-        let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
-        self.observe(|r| {
-            check_sp1_target(
-                r,
-                &cfg.verifier,
-                accept_router_owner_trust,
-                SP1_VERIFIER_RUNTIME_KECCAK,
-            )
-        })
-        .map(|_| ())
+    /// Boot gate (audit SV-1): the clock route's hops run pinned code and the SP1
+    /// adapter verifies through the pinned stateless verifier, unless mock proofs are
+    /// allowed or `router_trust` (`L1_ACCEPT_SP1_ROUTER_OWNER_TRUST`) is `1` (see
+    /// [`check_sp1_route`]).
+    pub(crate) fn sp1_boot_gate(
+        &self,
+        allow_mock_proof: bool,
+        router_trust: Option<&str>,
+    ) -> Result<Sp1Route, String> {
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        sp1_boot_gate_from(
+            &primary,
+            witness.as_ref().map(|r| r as &dyn crate::deposit_rpc::Rpc),
+            self.witness_chain,
+            self.clock.as_ref().map(|c| c.verifier),
+            allow_mock_proof,
+            router_trust,
+            &ROUTE_PINS,
+        )
     }
     /// Cancel a dead anchor after `anchorTimeoutMs`, as its registrant role (the
     /// sequencer for phase 0, governance for phases 1 and 2). Every precondition
