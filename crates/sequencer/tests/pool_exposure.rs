@@ -3,11 +3,12 @@
 //!
 //! Two colluding accounts open opposite sides of one BTC. The price falls far
 //! enough to liquidate the long and keeps falling. Before the fix the short stayed
-//! open against the clearing pool, closed later at the lower price, and the pair
-//! withdrew more than it deposited; the pool went negative and a passive account
-//! that never traded paid for it in `SettleAll`. Now the liquidation closes the
-//! short with the long, so the pool holds no position, the pair cannot take out
-//! more than it put in, and the passive account keeps all of its collateral.
+//! open against the clearing pool and closed later at the lower price: the pair
+//! deposited $20,200 and withdrew $43,755, the pool ended $24,500 short, and in
+//! `SettleAll` a passive $50,000 account that never traded was left with $35,278.
+//! Now the liquidation closes the short with the long, so the pool holds no
+//! position, the pair cannot take out more than it put in, and the passive
+//! account keeps all of its collateral.
 
 use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
@@ -18,7 +19,7 @@ use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Order, Side, TimeInForce};
 use perp_core::position::Position;
-use perp_core::Note;
+use perp_core::{EngineError, Note};
 use sequencer::{EnclaveIdentity, Sequencer};
 
 const PAIR_LONG: u64 = 1;
@@ -157,6 +158,24 @@ fn withdraw_free(seq: &mut Sequencer, owner: u64, price_usd: i128, now: u64) -> 
     amount
 }
 
+/// What the scenario observes, amounts in whole dollars. Every assertion prints
+/// it, so a failure shows the whole run (the numbers before the fix are in the
+/// module documentation).
+#[derive(Debug)]
+struct Outcome {
+    /// The market's net size right after the liquidation, in size units; the
+    /// clearing pool's implicit position is its negation.
+    net_size_after_liquidation: i128,
+    short_size_after_liquidation: i128,
+    pair_in: i128,
+    pair_out: i128,
+    vault_pool: i128,
+    external_in: i128,
+    external_out: i128,
+    settle_all: Result<(), EngineError>,
+    passive_after_settle_all: Option<i128>,
+}
+
 #[test]
 fn audit_1116_pc1_a_liquidation_through_the_sequencer_leaves_the_pool_flat() {
     let mut seq = Sequencer::new(EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]), 20);
@@ -189,17 +208,9 @@ fn audit_1116_pc1_a_liquidation_through_the_sequencer_leaves_the_pool_flat() {
     let sealed = seq.seal_batch(&[], 5_000);
     assert_eq!(sealed.liquidation_tags.len(), 1, "the long is liquidated");
     assert_eq!(position(&seq, PAIR_LONG).size, 0);
-    assert_eq!(
-        net_size(&seq),
-        0,
-        "the clearing pool holds no position after the liquidation"
-    );
-    assert_eq!(
-        position(&seq, PAIR_SHORT).size,
-        0,
-        "the short is closed with the long"
-    );
     assert!(seq.state.conservation_holds());
+    let net_size_after_liquidation = net_size(&seq);
+    let short_size_after_liquidation = position(&seq, PAIR_SHORT).size;
 
     // The window that holds the liquidation replays to the live root.
     let w = seq.seal_window();
@@ -215,7 +226,7 @@ fn audit_1116_pc1_a_liquidation_through_the_sequencer_leaves_the_pool_flat() {
         now += 5_000;
         seq.set_oracle(0, oracle(price, now));
         seq.seal_batch(&[], now);
-        assert_eq!(net_size(&seq), 0, "${price}");
+        assert_eq!(net_size(&seq), net_size_after_liquidation, "${price}");
         assert!(seq.state.conservation_holds(), "${price}");
     }
 
@@ -237,28 +248,56 @@ fn audit_1116_pc1_a_liquidation_through_the_sequencer_leaves_the_pool_flat() {
     seq.set_oracle(0, oracle(70_000, now));
     let pair_out = withdraw_free(&mut seq, PAIR_LONG, 70_000, now)
         + withdraw_free(&mut seq, PAIR_SHORT, 70_000, now);
-    assert!(
-        pair_out <= pair_in,
-        "the pair took out {pair_out} against {pair_in} deposited"
-    );
-    assert!(seq.state.vault_pool >= 0, "the pool paid no one's gain");
-    assert!(seq.state.external_out <= seq.state.external_in);
     assert!(seq.state.conservation_holds());
+    assert_eq!(position(&seq, PASSIVE).collateral, usd(50_000));
 
-    // The wind-down needs no haircut: the passive account keeps everything.
-    let passive = position(&seq, PASSIVE);
-    assert_eq!(passive.collateral, usd(50_000));
+    // The wind-down.
     let mut wind_down = seq.state.clone();
-    wind_down
-        .apply_batch(&[BatchOp::SettleAll])
-        .expect("the wind-down is solvent");
-    assert_eq!(
+    let settle_all = wind_down.apply_batch(&[BatchOp::SettleAll]).map(|_| ());
+    let passive_after_settle_all = settle_all.is_ok().then(|| {
         wind_down
             .position(&owner_id(PASSIVE), 0)
-            .unwrap()
-            .collateral,
-        usd(50_000),
-        "the passive account pays for nobody"
+            .map_or(0, |p| p.collateral)
+            / QUOTE_SCALE
+    });
+    let outcome = Outcome {
+        net_size_after_liquidation,
+        short_size_after_liquidation,
+        pair_in: pair_in / QUOTE_SCALE,
+        pair_out: pair_out / QUOTE_SCALE,
+        vault_pool: seq.state.vault_pool / QUOTE_SCALE,
+        external_in: seq.state.external_in / QUOTE_SCALE,
+        external_out: seq.state.external_out / QUOTE_SCALE,
+        settle_all,
+        passive_after_settle_all,
+    };
+
+    assert_eq!(
+        outcome.net_size_after_liquidation, 0,
+        "the clearing pool holds no position after the liquidation: {outcome:#?}"
+    );
+    assert_eq!(
+        outcome.short_size_after_liquidation, 0,
+        "the short is closed with the long: {outcome:#?}"
+    );
+    assert!(
+        outcome.pair_out <= outcome.pair_in,
+        "the pair takes out no more than it put in: {outcome:#?}"
+    );
+    assert!(
+        outcome.vault_pool >= 0,
+        "the pool paid no one's gain: {outcome:#?}"
+    );
+    assert!(outcome.external_out <= outcome.external_in, "{outcome:#?}");
+    assert_eq!(
+        outcome.settle_all,
+        Ok(()),
+        "the wind-down is solvent: {outcome:#?}"
+    );
+    assert_eq!(
+        outcome.passive_after_settle_all,
+        Some(50_000),
+        "the passive account pays for nobody: {outcome:#?}"
     );
     assert!(wind_down.conservation_holds());
 }
