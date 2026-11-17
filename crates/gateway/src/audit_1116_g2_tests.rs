@@ -394,4 +394,427 @@ mod audit_1116_g2 {
             "{refused:?}"
         );
     }
+
+    /// A JSON-RPC endpoint whose every answer waits until the test releases it,
+    /// like a slow or rate-limited L1 provider. Once released, `answer` gives a
+    /// request's result, or `None` for a JSON-RPC error; `started` reports each
+    /// request as it arrives.
+    struct SlowChain {
+        url: String,
+        started: tokio::sync::mpsc::UnboundedReceiver<()>,
+        release: tokio::sync::watch::Sender<bool>,
+        server: tokio::task::JoinHandle<()>,
+    }
+    impl SlowChain {
+        async fn start(answer: fn(&serde_json::Value) -> Option<serde_json::Value>) -> Self {
+            let (reported, started) = tokio::sync::mpsc::unbounded_channel();
+            let (release, released) = tokio::sync::watch::channel(false);
+            let rpc = Router::new().route(
+                "/",
+                post(move |Json(req): Json<serde_json::Value>| {
+                    let reported = reported.clone();
+                    let mut released = released.clone();
+                    async move {
+                        let _ = reported.send(());
+                        let _ = released.wait_for(|released| *released).await;
+                        let id = req["id"].clone();
+                        Json(match answer(&req) {
+                            Some(result) => serde_json::json!({"jsonrpc":"2.0","id":id,"result":result}),
+                            None => serde_json::json!({"jsonrpc":"2.0","id":id,
+                                "error":{"code":-32000,"message":"test RPC unavailable"}}),
+                        })
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move {
+                axum::serve(listener, rpc).await.unwrap();
+            });
+            Self {
+                url,
+                started,
+                release,
+                server,
+            }
+        }
+        /// A read-only bridge to this endpoint.
+        fn l1(&self) -> L1 {
+            let mut l1 = L1::test_reader(self.url.clone());
+            l1.settlement = format!("0x{}", "11".repeat(20));
+            l1
+        }
+        /// Until the first L1 call reaches the endpoint.
+        async fn read_started(&mut self) {
+            tokio::time::timeout(Duration::from_secs(30), self.started.recv())
+                .await
+                .expect("no L1 read reached the endpoint")
+                .expect("the endpoint stopped");
+        }
+        /// Answer every call, held or later, at once.
+        fn release(&self) {
+            self.release.send_replace(true);
+        }
+    }
+    impl Drop for SlowChain {
+        fn drop(&mut self) {
+            self.release();
+            self.server.abort();
+        }
+    }
+
+    /// The settlement's deposit terms at the latest block: accepting deposits.
+    fn deposit_terms(req: &serde_json::Value) -> Option<serde_json::Value> {
+        match req["method"].as_str()? {
+            "eth_getBlockByNumber" => {
+                Some(serde_json::json!({"number": "0x1c", "hash": hex32(&[0x42; 32])}))
+            }
+            "eth_call" => {
+                let data = req["params"][0]["input"]
+                    .as_str()
+                    .or_else(|| req["params"][0]["data"].as_str())?;
+                [
+                    ("closeOnly()", 0u64),
+                    ("acceptingDeposits()", 1),
+                    ("depositCapacity()", 1_000_000_000_000),
+                    ("consumedDepositCount()", 0),
+                    ("lastProgressBlock()", 0x1c),
+                    ("livenessTimeoutBlocks()", 43_200),
+                ]
+                .into_iter()
+                .find(|(signature, _)| {
+                    let selector = <sha3::Keccak256 as sha3::Digest>::digest(signature.as_bytes());
+                    data.starts_with(&hex0x(&selector[..4]))
+                })
+                .map(|(_, value)| serde_json::json!(format!("0x{value:064x}")))
+            }
+            _ => None,
+        }
+    }
+
+    /// No call is ever answered with a result.
+    fn unavailable(_: &serde_json::Value) -> Option<serde_json::Value> {
+        None
+    }
+
+    fn post_json(uri: &str, key: &[u8; 32], body: serde_json::Value) -> axum::http::Request<axum::body::Body> {
+        axum::http::Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json")
+            .header("x-api-key", hex0x(key))
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap()
+    }
+
+    /// G2-1 (round 2): POST /v1/accounts/deposit/route waits for the deposit
+    /// lock, which the deposit scan holds across its L1 read, and it held the
+    /// HTTP admission permit while it waited: the clock pause still waited for the
+    /// scan's slow read. Any 32-byte key with a well-formed body reaches that lock
+    /// before an account is checked, and so does an honest legacy-route call. The
+    /// route now takes the permit after the lock, only to adopt the route and make
+    /// it durable, and answers 503 with Retry-After once admission has closed.
+    #[tokio::test]
+    async fn audit_1116_g2_1_a_legacy_deposit_route_does_not_hold_off_the_clock_pause() {
+        use tower::ServiceExt as _;
+        let (app, _source, release, reading, writer) = slow_app();
+        // A permit issued before routing was recorded with it.
+        let (key, commit) = {
+            let mut gw = app.gw.lock().await;
+            let (key, commit) = permit(&mut gw, 7_000_000, Purpose::Collateral, 0);
+            gw.deposits.routes.remove(&commit);
+            (key, commit)
+        };
+        let route = || {
+            post_json(
+                "/v1/accounts/deposit/route",
+                &key,
+                serde_json::json!({
+                    "ownerCommit": hex0x(&commit), "from": hex0x(&[0x42; 20]),
+                    "amount": "7000000", "marketId": 0, "purpose": "collateral",
+                }),
+            )
+        };
+        let scan = tokio::spawn({
+            let app = app.clone();
+            async move { deposit_ingestion::ingest_once(&app).await }
+        });
+        let _reading = read_started(reading).await;
+        let call = tokio::spawn(build_router(app.clone(), false).oneshot(route()));
+        // This runtime runs one task at a time: while the test sleeps, the request
+        // runs until it waits for the deposit lock the scan holds.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!call.is_finished());
+        let stop = service_shutdown::Shutdown::default();
+        let paused =
+            tokio::time::timeout(Duration::from_secs(10), app.clock_admission.pause(&stop)).await;
+        release.send(()).unwrap();
+        let mut paused = paused
+            .expect(
+                "the clock pause waited for the deposit scan's L1 read via \
+                 /v1/accounts/deposit/route",
+            )
+            .unwrap()
+            .unwrap();
+        paused.arm();
+        let refused = scan.await.unwrap().unwrap_err();
+        assert!(refused.contains("clock settlement"), "{refused}");
+        let response = call.await.unwrap().unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.headers()["retry-after"], "2");
+        assert!(!app.gw.lock().await.deposits.routes.contains_key(&commit));
+        // Once the window resolves, the same request records the route.
+        paused.resolved();
+        drop(paused);
+        let response = build_router(app.clone(), false)
+            .oneshot(route())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(app.gw.lock().await.deposits.routes.contains_key(&commit));
+        writer.abort();
+    }
+
+    /// G2-1 (round 2): POST /v1/accounts/deposit/authorize reads the
+    /// settlement's deposit terms at the latest block (several L1 calls, each
+    /// bounded only by the RPC timeout) before the account is checked, and it
+    /// held the HTTP admission permit across that read: a slow RPC held off the
+    /// clock pause on every permit request, honest or not. The read now runs
+    /// without the permit; the permit is taken to store the permit and make it
+    /// durable. A request whose read finished after admission closed answers 503
+    /// with Retry-After and stores nothing.
+    #[tokio::test]
+    async fn audit_1116_g2_1_a_deposit_permit_request_does_not_hold_off_the_clock_pause() {
+        use tower::ServiceExt as _;
+        let mut chain = SlowChain::start(deposit_terms).await;
+        let mut app = test_app();
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        {
+            let a = Arc::get_mut(&mut app).unwrap();
+            a.clock_admission = clock_admission::ClockAdmission::new(true);
+            a.snapshot_req = Some(tx);
+            a.l1 = Some(chain.l1());
+        }
+        let writer = ack_every_snapshot(rx);
+        let key = {
+            let mut gw = app.gw.lock().await;
+            let (key, _) = gw.register_account(None);
+            gw.accounts.get_mut(&key).unwrap().deposit_address = Some([0x42; 20]);
+            key
+        };
+        let request = || {
+            post_json(
+                "/v1/accounts/deposit/authorize",
+                &key,
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "10000000",
+                    "marketId": 0, "purpose": "collateral"}),
+            )
+        };
+        let call = tokio::spawn(build_router(app.clone(), false).oneshot(request()));
+        chain.read_started().await;
+        let stop = service_shutdown::Shutdown::default();
+        let paused =
+            tokio::time::timeout(Duration::from_secs(10), app.clock_admission.pause(&stop)).await;
+        chain.release();
+        let mut paused = paused
+            .expect("the clock pause waited for a deposit permit request's L1 read")
+            .unwrap()
+            .unwrap();
+        paused.arm();
+        let response = tokio::time::timeout(Duration::from_secs(60), call)
+            .await
+            .expect("the permit request never finished")
+            .unwrap()
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.headers()["retry-after"], "2");
+        {
+            let gw = app.gw.lock().await;
+            assert!(gw.accounts[&key].deposit_authorizations.is_empty());
+            assert!(gw.deposits.routes.is_empty());
+        }
+        // Once the window resolves, the same request is served.
+        paused.resolved();
+        drop(paused);
+        let response = build_router(app.clone(), false)
+            .oneshot(request())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            app.gw.lock().await.accounts[&key].deposit_authorizations.len(),
+            1
+        );
+        writer.abort();
+    }
+
+    /// The paths `build_router` mounts with a mutating method, read from its
+    /// source so that no route can be left out of the table below.
+    fn mutating_routes() -> std::collections::BTreeSet<String> {
+        let source = include_str!("main.rs");
+        let body = &source[source.find("fn build_router_with_policy(").unwrap()..];
+        let body: String = body[..body.find("\n}\n").unwrap()]
+            .split_whitespace()
+            .collect();
+        body.split(".route(")
+            .skip(1)
+            .filter_map(|entry| {
+                let path = entry.strip_prefix('"')?.split('"').next()?;
+                ["post(", "delete(", "put(", "patch("]
+                    .iter()
+                    .any(|method| entry.contains(method))
+                    .then(|| path.to_string())
+            })
+            .collect()
+    }
+
+    /// G2-1 (round 2): every mutating route, with a deposit scan in the middle
+    /// of a slow L1 read and an L1 endpoint that answers nothing until released:
+    /// none may hold the clock admission permit across an L1 call, or across a
+    /// lock held across one, so the clock pause never waits for an RPC. Admin
+    /// routes run with the admin key; the withdrawal runs in close-only too,
+    /// where it reads the L1 wind-down phase.
+    #[tokio::test]
+    async fn audit_1116_g2_1_no_mutating_route_holds_the_admission_permit_across_l1() {
+        use tower::ServiceExt as _;
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match self.0.take() {
+                    Some(value) => std::env::set_var("FIN_ADMIN_KEY", value),
+                    None => std::env::remove_var("FIN_ADMIN_KEY"),
+                }
+            }
+        }
+        let _env = crate::wind_down::ADMIN_ENV_LOCK.lock().await;
+        let _restore = Restore(std::env::var_os("FIN_ADMIN_KEY"));
+        let admin = format!("0x{}", "bb".repeat(32));
+        std::env::set_var("FIN_ADMIN_KEY", &admin);
+        let sig = hex0x(&[0u8; 65]);
+        let withdrawal = serde_json::json!({"marketId": 0, "amount": "1000000",
+            "to": hex0x(&[7; 20]), "nonce": 1, "signature": sig});
+        let cases: Vec<(&str, &str, String, serde_json::Value, bool)> = vec![
+            ("POST", "/api/order", "/api/order".into(), serde_json::json!({}), false),
+            ("POST", "/api/deposit", "/api/deposit".into(), serde_json::json!({"amount": "1"}), false),
+            ("POST", "/api/withdraw", "/api/withdraw".into(), serde_json::json!({"amount": "1"}), false),
+            ("POST", "/api/lp/deposit", "/api/lp/deposit".into(), serde_json::json!({"amount": "1"}), false),
+            ("POST", "/api/lp/withdraw", "/api/lp/withdraw".into(), serde_json::json!({"shares": "1"}), false),
+            ("POST", "/api/close", "/api/close".into(), serde_json::json!({"marketId": 0}), false),
+            ("POST", "/api/cancel", "/api/cancel".into(), serde_json::json!({"orderId": "0x00"}), false),
+            ("POST", "/api/mode", "/api/mode".into(), serde_json::json!({}), false),
+            ("POST", "/api/simulate-adl", "/api/simulate-adl".into(), serde_json::json!({}), false),
+            ("POST", "/api/select-market", "/api/select-market".into(), serde_json::json!({"marketId": 0}), false),
+            ("POST", "/api/recover", "/api/recover".into(), serde_json::json!({}), false),
+            ("POST", "/v1/lp/deposit", "/v1/lp/deposit".into(), serde_json::json!({"amount": "1000000"}), false),
+            ("POST", "/v1/lp/withdraw", "/v1/lp/withdraw".into(),
+                serde_json::json!({"shares": "1", "nonce": 1, "signature": sig}), false),
+            ("POST", "/v1/accounts", "/v1/accounts".into(), serde_json::json!({}), false),
+            ("POST", "/v1/accounts/recovery", "/v1/accounts/recovery".into(), serde_json::json!({}), false),
+            ("POST", "/v1/accounts/deposit", "/v1/accounts/deposit".into(),
+                serde_json::json!({"marketId": 0, "amount": "1000000"}), false),
+            ("POST", "/v1/accounts/deposit/address", "/v1/accounts/deposit/address".into(),
+                serde_json::json!({"address": hex0x(&[0x42; 20])}), false),
+            ("POST", "/v1/accounts/deposit/authorize", "/v1/accounts/deposit/authorize".into(),
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "10000000",
+                    "marketId": 0, "purpose": "collateral"}), false),
+            ("POST", "/v1/accounts/deposit/route", "/v1/accounts/deposit/route".into(),
+                serde_json::json!({"ownerCommit": hex0x(&[0x5c; 32]), "from": hex0x(&[0x42; 20]),
+                    "amount": "10000000", "marketId": 0, "purpose": "collateral"}), false),
+            ("POST", "/v1/accounts/deposit/onchain", "/v1/accounts/deposit/onchain".into(),
+                serde_json::json!({"txHash": hex0x(&[9; 32]), "marketId": 0}), false),
+            ("POST", "/v1/accounts/withdraw", "/v1/accounts/withdraw".into(), withdrawal.clone(), false),
+            ("POST", "/v1/accounts/withdraw", "/v1/accounts/withdraw".into(), withdrawal, true),
+            ("POST", "/v1/orders", "/v1/orders".into(),
+                serde_json::json!({"marketId": 0, "side": "Buy", "size": (SIZE_SCALE / 100).to_string(),
+                    "limitPrice": "0", "tif": "Ioc", "reduceOnly": false}), false),
+            ("DELETE", "/v1/orders/:order_id", format!("/v1/orders/{}", hex0x(&[3; 32])),
+                serde_json::Value::Null, false),
+            ("POST", "/v1/admin/settlement/resume", "/v1/admin/settlement/resume".into(),
+                serde_json::Value::Null, false),
+            ("POST", "/v1/admin/settlement/cancel-anchor", "/v1/admin/settlement/cancel-anchor".into(),
+                serde_json::json!({"batchId": 0, "phase": 0, "receipt": hex0x(&[1; 32])}), false),
+            ("POST", "/v1/admin/wind-down", "/v1/admin/wind-down".into(), serde_json::Value::Null, false),
+            ("POST", "/v1/admin/bond/acknowledge-slash", "/v1/admin/bond/acknowledge-slash".into(),
+                serde_json::json!({"slashCount": 0}), false),
+            ("POST", "/v1/admin/insurance/bootstrap", "/v1/admin/insurance/bootstrap".into(),
+                serde_json::json!({"txHash": hex0x(&[9; 32]), "marketId": 0}), false),
+        ];
+        let covered: std::collections::BTreeSet<String> =
+            cases.iter().map(|(_, path, ..)| path.to_string()).collect();
+        assert_eq!(covered, mutating_routes(), "a mutating route is missing from the table");
+        let mut held = Vec::new();
+        for (method, _, uri, body, close_only) in cases {
+            let mut chain = SlowChain::start(unavailable).await;
+            let (mut app, _source, release, reading, writer) = slow_app();
+            {
+                let a = Arc::get_mut(&mut app).unwrap();
+                a.l1 = Some(chain.l1());
+                a.prover = Some(Arc::new(prover_client::MockProverClient));
+            }
+            let key = {
+                let mut gw = app.gw.lock().await;
+                let (key, _) = gw.register_account(None);
+                gw.accounts.get_mut(&key).unwrap().deposit_address = Some([0x42; 20]);
+                if close_only {
+                    gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+                }
+                key
+            };
+            // A deposit scan in the middle of its L1 read, holding the deposit lock.
+            let scan = tokio::spawn({
+                let app = app.clone();
+                async move { deposit_ingestion::ingest_once(&app).await }
+            });
+            let _reading = read_started(reading).await;
+            let request = axum::http::Request::builder()
+                .method(method)
+                .uri(&uri)
+                .header("content-type", "application/json")
+                .header("x-api-key", hex0x(&key))
+                .header("x-admin-key", &admin)
+                .body(match body {
+                    serde_json::Value::Null => axum::body::Body::empty(),
+                    body => axum::body::Body::from(body.to_string()),
+                })
+                .unwrap();
+            let call = tokio::spawn(build_router(app.clone(), false).oneshot(request));
+            // Let the request run until it waits: on the L1 endpoint, on a lock, or
+            // not at all. This runtime runs one task at a time.
+            tokio::select! {
+                _ = chain.read_started() => {}
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+            }
+            let stop = service_shutdown::Shutdown::default();
+            let paused =
+                tokio::time::timeout(Duration::from_secs(10), app.clock_admission.pause(&stop))
+                    .await;
+            chain.release();
+            release.send(()).unwrap();
+            // Admission stays closed until the request and the scan are done.
+            let paused = match paused {
+                Ok(paused) => {
+                    let mut paused = paused.unwrap().unwrap();
+                    paused.arm();
+                    Some(paused)
+                }
+                Err(_) => {
+                    held.push(format!("{method} {uri} (close-only: {close_only})"));
+                    None
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(60), call)
+                .await
+                .unwrap_or_else(|_| panic!("{method} {uri} never finished"))
+                .unwrap()
+                .unwrap();
+            let _ = scan.await.unwrap();
+            drop(paused);
+            writer.abort();
+        }
+        assert!(
+            held.is_empty(),
+            "these routes held the clock admission permit across an L1 read or the deposit \
+             lock, so the clock pause waited for an RPC: {held:#?}"
+        );
+    }
 }
