@@ -59,6 +59,23 @@ describe("AccountPanel withdrawal minimum across two markets", () => {
     expect(withdraw).not.toHaveBeenCalled();
   });
 
+  it("refuses a withdrawal that would leave a flat market below 100 USDC (audit G1-1)", async () => {
+    const { withdraw } = setup(0);
+    withdrawAmount("10");
+    expect(await screen.findByText(/must leave at least 100 usdc in the selected market/i)).toBeTruthy();
+    expect(withdraw).not.toHaveBeenCalled();
+  });
+
+  it("sends a withdrawal that leaves 100 USDC, or the market's whole balance", async () => {
+    const { withdraw } = setup(0, 125_000_000n);
+    withdrawAmount("25");
+    await waitFor(() => expect(withdraw).toHaveBeenCalledWith(25_000_000n));
+    cleanup();
+    const second = setup(0);
+    withdrawAmount("25");
+    await waitFor(() => expect(second.withdraw).toHaveBeenCalledWith(25_000_000n));
+  });
+
   it("says the exception is per market", () => {
     setup(1);
     expect(screen.getByText(/unless you withdraw your entire free balance in the selected market/i)).toBeTruthy();

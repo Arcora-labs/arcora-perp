@@ -1,13 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
   MIN_DEPOSIT,
+  MIN_ENTRY_BALANCE,
+  MIN_ENTRY_DEPOSIT,
   MIN_INITIAL_MARGIN,
   MIN_ORDER_NOTIONAL,
   MIN_WITHDRAWAL,
   depositMinimumError,
+  depositOpensEntry,
   increasesExposure,
   marketFreeBalance,
   orderMinimumError,
+  withdrawalEntryBalanceError,
   withdrawalMinimumError,
 } from "./minimums";
 import { QUOTE_SCALE, SIZE_SCALE } from "./types";
@@ -18,6 +22,10 @@ describe("minimum values", () => {
     expect(MIN_ORDER_NOTIONAL).toBe(10n * QUOTE_SCALE);
     expect(MIN_DEPOSIT).toBe(10n * QUOTE_SCALE);
     expect(MIN_WITHDRAWAL).toBe(10n * QUOTE_SCALE);
+  });
+  it("are 100 USDC for a deposit that opens a market and for what a market keeps (audit G1-1)", () => {
+    expect(MIN_ENTRY_DEPOSIT).toBe(100n * QUOTE_SCALE);
+    expect(MIN_ENTRY_BALANCE).toBe(100n * QUOTE_SCALE);
   });
 });
 
@@ -63,6 +71,44 @@ describe("depositMinimumError", () => {
   it("refuses less than 10 USDC and accepts 10 USDC", () => {
     expect(depositMinimumError(MIN_DEPOSIT - 1n)).toMatch(/minimum deposit is 10 USDC/i);
     expect(depositMinimumError(MIN_DEPOSIT)).toBeNull();
+  });
+  it("refuses less than 100 USDC for a deposit that opens a market (BELOW_ENTRY_MINIMUM)", () => {
+    expect(depositMinimumError(MIN_DEPOSIT, true)).toMatch(/minimum deposit into this market is 100 USDC/i);
+    expect(depositMinimumError(MIN_ENTRY_DEPOSIT - 1n, true)).toMatch(/100 USDC/);
+    expect(depositMinimumError(MIN_ENTRY_DEPOSIT, true)).toBeNull();
+  });
+});
+
+describe("depositOpensEntry (mirrors the gateway's entry minimum)", () => {
+  const usdc = QUOTE_SCALE;
+  const open = { marketId: 2, size: SIZE_SCALE, entryPrice: 0n, collateral: usdc, unrealizedPnl: 0n, liquidationPrice: 0n };
+  const account = {
+    settledBalance: 0n,
+    marketFree: { 0: 150n * usdc, 1: 99n * usdc, 2: 3n * usdc },
+    positions: [open],
+  };
+  it("is true for a market holding nothing, or flat and below 100 USDC", () => {
+    expect(depositOpensEntry(account, 3)).toBe(true);
+    expect(depositOpensEntry(account, 1)).toBe(true);
+  });
+  it("is false for a market holding 100 USDC or more, or an open position", () => {
+    expect(depositOpensEntry(account, 0)).toBe(false);
+    expect(depositOpensEntry(account, 2)).toBe(false);
+  });
+});
+
+describe("withdrawalEntryBalanceError (mirrors BELOW_ENTRY_BALANCE for a flat market)", () => {
+  const usdc = QUOTE_SCALE;
+  it("refuses a withdrawal that leaves a flat market below 100 USDC", () => {
+    expect(withdrawalEntryBalanceError(10n * usdc, 100n * usdc, false)).toMatch(/at least 100 USDC/);
+    expect(withdrawalEntryBalanceError(51n * usdc, 150n * usdc, false)).toMatch(/at least 100 USDC/);
+  });
+  it("accepts one that leaves 100 USDC, or takes the whole balance", () => {
+    expect(withdrawalEntryBalanceError(50n * usdc, 150n * usdc, false)).toBeNull();
+    expect(withdrawalEntryBalanceError(40n * usdc, 40n * usdc, false)).toBeNull();
+  });
+  it("leaves a market with an open position to the gateway", () => {
+    expect(withdrawalEntryBalanceError(10n * usdc, 20n * usdc, true)).toBeNull();
   });
 });
 
