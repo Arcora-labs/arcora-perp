@@ -5765,13 +5765,21 @@ impl Gw {
                 .count();
         let cap = account_order_history_cap(holders, budget);
         let (seq, mkts) = (&self.seq, &self.mkts);
+        let finished = |o: &GwOrder| {
+            o.sealed
+                && (o.last_finality == "SETTLED" || seq.finality_of(&o.order_hash).is_none())
+                && o.execution
+                    .as_ref()
+                    .is_some_and(execution::Execution::terminal)
+        };
         let lists = std::iter::once((self.user.owner, &mut self.orders)).chain(
             self.accounts
                 .values_mut()
                 .map(|a| (a.wallet.owner, &mut a.orders)),
         );
         for (owner, rows) in lists {
-            if rows.len() <= cap {
+            // Scan the books only for a list with something to evict.
+            if rows.len() <= cap || !rows.iter().any(finished) {
                 continue;
             }
             // Gather the live hashes once per list, not once per history row.
@@ -5782,14 +5790,7 @@ impl Gw {
                 .collect();
             // Rows are kept newest first; `cap_history` evicts from the front.
             rows.reverse();
-            cap_history(rows, cap, |o| {
-                o.sealed
-                    && (o.last_finality == "SETTLED" || seq.finality_of(&o.order_hash).is_none())
-                    && !live.contains(&o.order_hash)
-                    && o.execution
-                        .as_ref()
-                        .is_some_and(execution::Execution::terminal)
-            });
+            cap_history(rows, cap, |o| finished(o) && !live.contains(&o.order_hash));
             rows.reverse();
         }
     }
