@@ -422,6 +422,22 @@ mod audit_1116_g2 {
         assert!(!idle.clock_window_near_cutoff(t0 + 40_000));
     }
 
+    /// G2-2 (round 2): `main()` bounds the open window only where windows are
+    /// clock-bound: the verifier's timing was read and the settle loop's prover
+    /// is clock-enabled. Demo and legacy modes have no bound.
+    #[test]
+    fn audit_1116_g2_2_main_bounds_the_window_only_in_clock_mode() {
+        let period = TIMING.seal_period().unwrap();
+        assert_eq!(
+            clock_window_bound(Some(TIMING), true, period),
+            Some(bound())
+        );
+        assert_eq!(bound().seal_period_ms, 7_500);
+        assert_eq!(clock_window_bound(Some(TIMING), false, period), None);
+        assert_eq!(clock_window_bound(None, true, period), None);
+        assert_eq!(clock_window_bound(None, false, period), None);
+    }
+
     /// A sealed window whose timed operations are at `t0` and `t0 + span`.
     fn sealed_spanning(t0: u64, span: u64) -> sequencer::WindowWitness {
         let (mut gw, _) = trading_window(t0, None);

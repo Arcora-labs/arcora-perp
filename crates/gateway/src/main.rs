@@ -7819,6 +7819,68 @@ async fn start_clock_recovery(
     (rec, delay)
 }
 
+/// Audit G2-2: the settle loop's turn for a sealed window whose operation times
+/// can never register (`PreflightRefusal::Unregistrable`). Its intent is already
+/// journaled and nothing was sent. It is not rolled back, which would seal the
+/// same times again: `clock_registration_refused` is raised and the recovery
+/// registers nothing and decides the window at finalized blocks, voiding a timed
+/// window once the chain clock is past its registration skew.
+#[allow(clippy::too_many_arguments)] // `start_clock_recovery`'s arguments
+async fn start_unregistrable_recovery(
+    app: &Shared,
+    batch_id: u64,
+    witness: &WindowWitness,
+    phase: u8,
+    why: String,
+    prune_candidates: Vec<[u8; 32]>,
+    gate_was_closed: bool,
+    ceiling: l1::Ceiling,
+) -> (clock_recovery::PendingRecovery, Duration) {
+    eprintln!("[clock] {why}; nothing was sent, the recovery decides the window");
+    app.gw
+        .lock()
+        .await
+        .ops_alerts
+        .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
+    start_clock_recovery(
+        app,
+        batch_id,
+        witness,
+        phase,
+        why,
+        prune_candidates,
+        gate_was_closed,
+        ceiling,
+    )
+    .await
+}
+
+/// Audit G2-2: raise `clock_registration_refused` for a clock failure that says
+/// the window's registration was refused: the verifier reverted it, or it was
+/// too late to send. Such a failure is not waited out; the reason is in the log.
+async fn note_registration_refusal(app: &Shared, error: &str) {
+    if error.contains(l1::REGISTRATION_REVERTED) || error.contains(l1::PAST_REGISTRATION_SKEW) {
+        app.gw
+            .lock()
+            .await
+            .ops_alerts
+            .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
+    }
+}
+
+/// Audit G2-2: the open window's admission bound. Clock-bound windows, sealed by
+/// a clock-enabled settle loop, stop admitting timed operations before they
+/// outgrow the verifier's `maxWindowMs`; demo and legacy modes have none.
+fn clock_window_bound(
+    timing: Option<l1::ClockTiming>,
+    clock_prover: bool,
+    seal_period: Duration,
+) -> Option<clock_admission::WindowBound> {
+    timing
+        .filter(|_| clock_prover)
+        .map(|timing| clock_admission::WindowBound::new(timing, seal_period))
+}
+
 /// Whether a clock settle that failed after its send goes to the recovery:
 /// while the finalized batch count is still the window's, or could not be read
 /// (`None`). Outside clock mode, or at any other count, the loop holds (a count
@@ -11070,9 +11132,11 @@ async fn main() {
     gw.window_settle_mode = honest_finality_required(prover.is_some(), l1.is_some());
     // Audit G2-2: clock-bound windows stop admitting timed operations before they
     // outgrow the verifier's maxWindowMs. Only where the settle loop seals them.
-    gw.clock_window = clock_timing
-        .filter(|_| prover.as_ref().is_some_and(|p| p.clock_enabled()))
-        .map(|timing| clock_admission::WindowBound::new(timing, clock_settle_period));
+    gw.clock_window = clock_window_bound(
+        clock_timing,
+        prover.as_ref().is_some_and(|p| p.clock_enabled()),
+        clock_settle_period,
+    );
     if gw.window_settle_mode {
         // Task 5 fix round 1 (report Concern 1, memory): the window path never
         // consumes the per-tick rollback snapshots, and with the SETTLE_TICKS
@@ -12670,13 +12734,7 @@ async fn main() {
                             // blocks. A timed window is voided once the chain clock is
                             // past its registration skew, not after the registration
                             // wait's twenty minutes.
-                            eprintln!("[clock] {why}; nothing was sent, the recovery decides the window");
-                            app.gw
-                                .lock()
-                                .await
-                                .ops_alerts
-                                .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
-                            let (rec, delay) = start_clock_recovery(
+                            let (rec, delay) = start_unregistrable_recovery(
                                 &app,
                                 batch_id,
                                 &witness_rb,
@@ -12873,15 +12931,7 @@ async fn main() {
                             // Audit G2-2: a reverted registration is not waited out, and
                             // one too late to send was not sent; the operator is told at
                             // once (the reason is in the log above).
-                            if e.contains(l1::REGISTRATION_REVERTED)
-                                || e.contains(l1::PAST_REGISTRATION_SKEW)
-                            {
-                                app.gw
-                                    .lock()
-                                    .await
-                                    .ops_alerts
-                                    .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
-                            }
+                            note_registration_refusal(&app, &e).await;
                             // The ceiling is taken after the worker returned: a send
                             // holds its lane until cast returns, so it covers every
                             // send the attempt made.
