@@ -58,7 +58,7 @@ def policy():
                                "progress_batches": 2, "slash_payout_cap_usdc": 1_000_000_000},
                 "vault": {"gateway_signer": address(104)},
                 "clock_verifier": {"configurator": address(105)},
-                "sp1_gateway": {"owner": address(106)}}}
+                "sp1_gateway": {"owner": address(0)}}}
 
 
 class FakeRPC:
@@ -245,6 +245,8 @@ class ObserverTests(unittest.TestCase):
                        lambda p: p.update(runtime_hash_algorithm="sha256"),
                        lambda p: p.pop("operator_policy"),
                        lambda p: p["operator_policy"]["sp1_gateway"].pop("owner"),
+                       # audit SV-1: a live gateway owner can add an accept-all route.
+                       lambda p: p["operator_policy"]["sp1_gateway"].update(owner=address(106)),
                        lambda p: p.update(private_key="owned-test-secret-marker"),
                        lambda p: p.update(oracle_configurator="0x1"),
                        lambda p: p["operator_policy"]["settlement"].update(challenge_bond_wei=True)):
@@ -252,6 +254,15 @@ class ObserverTests(unittest.TestCase):
             mutate(self.policy)
             with self.subTest(policy=self.policy.keys()):
                 self.blocked(before_rpc=True)
+
+    def test_audit_1116_sv1_an_owned_sp1_gateway_is_never_verified(self):
+        # The declared policy cannot bless an owner; a gateway reporting a live owner is refused.
+        self.policy["operator_policy"]["sp1_gateway"]["owner"] = address(106)
+        self.blocked(before_rpc=True)
+        self.policy = policy()
+        self.rpc = FakeRPC(self)
+        self.rpc.values[("sp1_gateway", "owner()")] = address(106)
+        self.blocked()
 
     def test_wrong_schema_missing_roles_and_forged_manifest_hash_refuse_before_rpc(self):
         original = copy.deepcopy(self.manifest)

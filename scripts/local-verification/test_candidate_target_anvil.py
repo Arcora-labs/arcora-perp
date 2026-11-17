@@ -203,7 +203,7 @@ class CandidateTargetAnvilTests(unittest.TestCase):
                                "slash_payout_cap_usdc": 1_000_000_000},
                 "vault": {"gateway_signer": accounts[2]},
                 "clock_verifier": {"configurator": owner},
-                "sp1_gateway": {"owner": owner},
+                "sp1_gateway": {"owner": "0x" + "0" * 40},
             },
             "oracle_configurator": owner,
         }
@@ -221,6 +221,18 @@ class CandidateTargetAnvilTests(unittest.TestCase):
             result = observer.observe_target(identity.ROOT, declaration or manifest,
                                              config, expected, traced)
             return result, calls
+
+        # audit SV-1: while the gateway still has an owner, that owner can add an accept-everything
+        # route for a selector of its choosing; the observation must never report VERIFIED.
+        accept_all = "0x60298060" + "0b" + "6000" + "39" + "6000f3" + "7f" + "deadbeef" + "00" * 28 + "60005260206000f3"  # returns 0xdeadbeef.. for every call
+        evil = transact(accept_all)["contractAddress"].lower()
+        call_transaction("addRoute(address)", addresses["sp1_gateway"], evil)
+        mine_finalized()
+        owned_result, _ = observe()
+        self.assertEqual(owned_result["status"], "BLOCKED", owned_result)
+        self.assertEqual(owned_result["blocker"], "target binding mismatch: sp1_gateway.owner()")
+        call_transaction("renounceOwnership()", addresses["sp1_gateway"])
+        mine_finalized()
 
         observed, calls = observe()
         self.assertEqual(observed["status"], "VERIFIED_AT_FINALIZED_BLOCK", observed)
@@ -327,13 +339,6 @@ class CandidateTargetAnvilTests(unittest.TestCase):
             rejections["direct_sp1_clock_instead_of_wrapper"]["blocker"],
             "target binding mismatch: clock_verifier.innerVerifier()")
 
-        # Actual mutation of OUR gateway, then a newly finalized observation.
-        # The test never registers reports, submits proofs or invokes settlement.
-        freeze = (legacy.deployment_reader.selector("freezeRoute(bytes4)")
-                  + legacy.clock.target.VERIFIER_HASH[:8] + "0" * 56)
-        transact(freeze, addresses["sp1_gateway"])
-        mine_finalized()
-        rejected("actual_frozen_sp1_route")
         if evidence_path is not None:
             payload = {
                 "scope": "Owned disposable Anvil chain84532, seven real compiled contracts and mock token/streams/uptime; no public target, DON, service, proof or release acceptance.",

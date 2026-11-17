@@ -15,9 +15,9 @@ The adapter is bound DIRECTLY to the stateless v6.1.0 SP1 verifier: no ownable
 SP1 verifier gateway (router) sits between settlement and proof verification,
 because a router owner can add an accept-everything route or freeze the route
 and so bypass or halt every proof. The first step is skipped when `sp1_verifier`
-names an existing verifier; before any transaction it must then report the
-pinned VERIFIER_HASH() and expose neither `owner()` nor `routes(bytes4)`, so a
-router (e.g. Succinct's shared gateway) is refused. `--accept-sp1-router-owner-trust`
+names an existing verifier; before any transaction its runtime must then equal
+the compiled stateless verifier and it must report the pinned VERIFIER_HASH(), so
+a router (e.g. Succinct's shared gateway) is refused. `--accept-sp1-router-owner-trust`
 is the only way past that check: the operator then accepts that the router's
 owner can bypass or halt proof verification (docs/SECURITY.md), and
 `observe-target` will not report such a stack VERIFIED. The program key is never
@@ -213,13 +213,19 @@ def cast(args, rpc):
     return _run_cast([*args, "--rpc-url", rpc])
 
 
+def pinned_verifier_artifact():
+    return release.read_json(release.ROOT / "contracts" / release.CONTRACTS["sp1_verifier"][0])
+
+
 def check_reused_verifier(config, rpc, accept_router_owner_trust=False):
     """Refuse a reused SP1 target that is not the pinned stateless verifier.
 
-    A router (SP1VerifierGateway or any contract with an owner or routes) lets
-    its owner add an accept-everything route or freeze the route, so it must be
-    an explicit, documented opt-in; the stateless verifier must report the
-    pinned VERIFIER_HASH() and have neither `owner()` nor `routes(bytes4)`.
+    A router (SP1VerifierGateway or any contract with an owner, routes or an
+    upgrade path) lets its owner add an accept-everything route or freeze the
+    route, so it must be an explicit, documented opt-in. Otherwise the target's
+    whole runtime must equal the compiled stateless v6.1.0 SP1 verifier (the same
+    match `observe-target` makes), and it must report the pinned VERIFIER_HASH().
+    Behavior probes alone would pass any lookalike that merely lacks an `owner()`.
     """
     if not config["reuse"]:
         return
@@ -228,16 +234,16 @@ def check_reused_verifier(config, rpc, accept_router_owner_trust=False):
         print("[deploy] WARNING: --accept-sp1-router-owner-trust: the owner of " + target
               + " can bypass or halt proof verification (docs/SECURITY.md)", file=sys.stderr)
         return
+    code = cast(["code", target], rpc)
+    try:
+        release.runtime_identity(pinned_verifier_artifact(), release.deployment_reader.hex_data(code), "sp1_verifier")
+    except ValueError:
+        raise DeployError("sp1_verifier's runtime is not the compiled stateless SP1 v6.1.0 verifier: a router "
+                          "or any other contract is refused (--accept-sp1-router-owner-trust accepts "
+                          "trusting a router owner)") from None
     pinned = "0x" + release.clock.target.VERIFIER_HASH
     if cast(["call", target, "VERIFIER_HASH()(bytes32)"], rpc).lower() != pinned:
         raise DeployError("sp1_verifier does not report the pinned SP1 v6.1.0 VERIFIER_HASH()")
-    for signature in ("owner()(address)", "routes(bytes4)(address,bool)"):
-        try:
-            cast(["call", target, signature] + (["0x" + pinned[2:10]] if "routes" in signature else []), rpc)
-        except DeployError:
-            continue
-        raise DeployError(f"sp1_verifier exposes {signature.split('(')[0]}(): it is a router, not the stateless "
-                          "verifier (--accept-sp1-router-owner-trust accepts trusting a router owner)")
 
 
 def check_chain(config, rpc, allow_public, owned_test_chain=False):

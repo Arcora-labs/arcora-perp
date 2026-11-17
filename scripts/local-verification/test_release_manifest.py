@@ -630,6 +630,21 @@ class TargetTests(unittest.TestCase):
         self.assertEqual(result["status"], "BLOCKED")
         self.assertIn("an owned router is not the stateless verifier", result["blocker"])
 
+    def test_audit_1116_sv1_a_failed_probe_is_not_read_as_not_exposed(self):
+        # Anything but a revert (rate limit, transport) must block, never pass the probe.
+        def fail_probe(params):
+            if params[0]["data"].startswith(("owner()", "routes(bytes4)")):
+                raise ValueError("RPC did not return a successful result")
+            return self.word(1)
+        self.overrides["eth_call"] = fail_probe
+        self.assertEqual(self.observe()["status"], "BLOCKED")
+
+    def test_audit_1116_sv1_a_reverting_getter_keeps_its_diagnostic(self):
+        def revert(params):
+            raise release.RPCExecutionError("RPC did not return a successful result")
+        self.overrides["eth_call"] = revert
+        self.assertEqual(self.observe()["blocker"], "RPC did not return a successful result")
+
     def test_audit_1116_sv1_a_wrong_verifier_hash_is_refused(self):
         self.values[("sp1_verifier", "VERIFIER_HASH()")] = "0x" + "11" * 32
         self.assertEqual(self.observe()["status"], "BLOCKED")
@@ -937,10 +952,33 @@ class TransportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "redirects"):
             release.NoRedirect().redirect_request(None, None, 302, "", {}, "https://private.invalid")
 
+    def test_audit_1116_sv1_only_a_revert_is_an_execution_error(self):
+        class Response:
+            def __init__(self, body):
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def read(self, limit):
+                return self.body[:limit]
+        # A rate limit or a missing header must never read as "the probe reverted (not exposed)".
+        for error, reverted in (({"code": 3, "message": "execution reverted"}, True),
+                                ({"code": -32000, "message": "Execution Reverted: x"}, True),
+                                ({"code": -32005, "message": "rate limit exceeded"}, False),
+                                ({"code": -32000, "message": "header not found"}, False),
+                                ("revert", False)):
+            rpc = release.TargetRPC("https://example.invalid/x")
+            body = json.dumps({"jsonrpc": "2.0", "id": 1, "error": error}).encode()
+            with self.subTest(error=error), patch.object(rpc.opener, "open", return_value=Response(body)):
+                with self.assertRaises(ValueError) as raised:
+                    rpc("eth_call", [])
+                self.assertEqual(isinstance(raised.exception, release.RPCExecutionError), reverted)
+
 
 @unittest.skipUnless(os.environ.get("ARCORA_RUN_MANIFEST_ANVIL") == "1", "opt-in owned Anvil integration")
 class AnvilTargetTests(unittest.TestCase):
-    def test_actual_deployed_stack_matches_then_frozen_route_fails(self):
+    def test_actual_deployed_stack_matches_then_policy_mismatches_fail(self):
         """Deploy only to a new child Anvil; no external URL or key is accepted."""
         # The child requests a kernel-assigned port and reports it after binding.
         # Reserving/closing a socket first could race an existing local service.

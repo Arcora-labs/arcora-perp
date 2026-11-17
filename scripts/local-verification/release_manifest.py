@@ -588,8 +588,12 @@ class TargetRPC:
                 and type(value.get("id")) is int and value["id"] == self.sequence,
                 "invalid JSON-RPC response envelope")
         if "error" in value and "result" not in value:
-            # Only a JSON-RPC execution error (a revert); never its message or data.
-            raise RPCExecutionError("RPC did not return a successful result")
+            # Only a revert is an execution error. Rate limits, missing headers and the like
+            # stay plain ValueErrors so a probe can never mistake them for "not exposed".
+            failure = value["error"]
+            if isinstance(failure, dict) and (failure.get("code") == 3 or (
+                    isinstance(failure.get("message"), str) and "revert" in failure["message"].lower())):
+                raise RPCExecutionError("RPC did not return a successful result")
         require("error" not in value and "result" in value, "RPC did not return a successful result")
         return value["result"]
 
@@ -768,7 +772,7 @@ def observe_target(root, manifest, config, rpc, *, require_operator_policy=False
                                genesis_root_verified=batches == 0)
     except Exception as error:
         # Never expose provider error data, response body, credential URL or paths.
-        result["blocker"] = str(error) if type(error) is ValueError else deployment_reader.safe_error(error)
+        result["blocker"] = str(error) if type(error) in (ValueError, RPCExecutionError) else deployment_reader.safe_error(error)
     return result
 
 

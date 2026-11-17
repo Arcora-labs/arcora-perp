@@ -6,6 +6,7 @@ import stat
 import subprocess
 import tempfile
 import textwrap
+import time
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -86,18 +87,13 @@ FAKE_CAST = textwrap.dedent("""\
         if "--create" in args:
             receipt["contractAddress"] = "0x" + format(count, "040x")
         print(json.dumps(receipt))
+    elif args[0] == "code":
+        # FAKE_SP1 = stateless (default) | wrong_hash | router (any other runtime)
+        print("0x6002" if os.environ.get("FAKE_SP1") == "router" else "0x6001")
     elif args[0] == "call":
-        # Reads of a reused SP1 target: FAKE_SP1 = stateless (default) | wrong_hash | owner | routes
-        mode = os.environ.get("FAKE_SP1", "stateless")
-        signature = args[2]
-        if signature == "VERIFIER_HASH()(bytes32)":
-            print("0x" + ("11" * 32 if mode == "wrong_hash" else os.environ["FAKE_VERIFIER_HASH"]))
-        elif signature == "owner()(address)" and mode == "owner":
-            print("0x" + "99" * 20)
-        elif signature == "routes(bytes4)(address,bool)" and mode == "routes":
-            print("0x" + "99" * 20 + "\\nfalse")
-        else:
+        if args[2] != "VERIFIER_HASH()(bytes32)":
             sys.exit(1)
+        print("0x" + ("11" * 32 if os.environ.get("FAKE_SP1") == "wrong_hash" else os.environ["FAKE_VERIFIER_HASH"]))
     else:
         sys.exit(3)
 """)
@@ -131,6 +127,10 @@ class CastFixture(unittest.TestCase):
         self.log.touch()
         self.env = {"PATH": f"{self.tmp}{os.pathsep}{os.environ['PATH']}", "FAKE_CAST_LOG": str(self.log),
                     "FAKE_VERIFIER_HASH": release.clock.target.VERIFIER_HASH}
+        stateless = unittest.mock.patch.object(
+            deploy, "pinned_verifier_artifact", lambda: {"deployedBytecode": {"object": "0x6001"}})
+        stateless.start()
+        self.addCleanup(stateless.stop)
         self.config = self.tmp / "deploy.json"
         self.output = self.tmp / "public-config.json"
         self.artifacts = {role: "0x60" + format(i, "02x") for i, role in enumerate(deploy.ROLES_IN_ORDER, 1)}
@@ -542,17 +542,25 @@ class Order(CastFixture):
         self.assertFalse(any("addRoute(address)" in s for s in sends))
 
     def test_audit_1116_sv1_a_reused_router_or_wrong_verifier_is_refused_before_any_transaction(self):
-        for mode in ("wrong_hash", "owner", "routes"):
-            with self.subTest(mode=mode):
+        for mode, text in (("wrong_hash", "pinned SP1 v6.1.0 VERIFIER_HASH"),
+                           ("router", "not the compiled stateless SP1 v6.1.0 verifier")):
+            with self.subTest(mode=mode), unittest.mock.patch("sys.stderr") as stderr:
                 self.write_config(sp1_verifier="0x397A5f7f3dBd538f23DE225B51f532c34448dA9B")
                 self.assertEqual(self.run_cli(env={"FAKE_SP1": mode}), 2)
+                self.assertIn(text, "".join(c.args[0] for c in stderr.write.call_args_list))
                 self.assertEqual(self.sends(), [])
                 self.assertFalse(self.output.exists())
+
+    def test_audit_1116_sv1_a_lookalike_without_owner_is_still_refused_by_its_runtime(self):
+        # Answers the pinned VERIFIER_HASH() and has no owner(), yet its code differs.
+        self.write_config(sp1_verifier="0x397A5f7f3dBd538f23DE225B51f532c34448dA9B")
+        self.assertEqual(self.run_cli(env={"FAKE_SP1": "router"}), 2)
+        self.assertEqual(self.sends(), [])
 
     def test_audit_1116_sv1_a_router_needs_the_explicit_owner_trust_opt_in(self):
         router = "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B"
         self.write_config(sp1_verifier=router)
-        self.assertEqual(self.run_cli(env={"FAKE_SP1": "owner"}, extra=["--accept-sp1-router-owner-trust"]), 0)
+        self.assertEqual(self.run_cli(env={"FAKE_SP1": "router"}, extra=["--accept-sp1-router-owner-trust"]), 0)
         adapter = self.sends()[0][self.sends()[0].index("--create") + 1]
         self.assertEqual(adapter[len(self.artifacts["sp1_adapter"]):][:64], router[2:].lower().rjust(64, "0"))
 
@@ -636,7 +644,6 @@ class OwnedAnvil(unittest.TestCase):
                            "slash_payout_cap_usdc": 1_000_000_000},
             "vault": {"gateway_signer": accounts[2]},
             "clock_verifier": {"configurator": owner},
-            "sp1_gateway": {"owner": owner},
         }
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
@@ -680,3 +687,39 @@ class OwnedAnvil(unittest.TestCase):
                                              "latest"]), 16)
         self.assertEqual(progress, record["settlement_block"])
         self.assertLessEqual(record["deploy_block"], record["settlement_block"])
+
+    def test_audit_1116_sv1_real_gateway_is_refused_and_the_real_verifier_is_reused(self):
+        url = start_owned_anvil(self, ["--chain-id", "31337"])
+        owner = rpc(url, "eth_accounts", [])[0]
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+
+        def create(path, *args):
+            artifact = release.read_json(release.ROOT / "contracts" / path)
+            code = artifact["bytecode"]["object"]
+            code = code if code.startswith("0x") else "0x" + code
+            tx = rpc(url, "eth_sendTransaction", [{"from": owner, "gas": "0x1c9c380",
+                                                    "data": code + "".join(deploy.word(a) for a in args)}])
+            for _ in range(100):
+                receipt = rpc(url, "eth_getTransactionReceipt", [tx])
+                if receipt:
+                    return receipt["contractAddress"]
+                time.sleep(0.05)
+            self.fail("owned deployment was not mined")
+
+        gateway = create("out/sp1-upstream/SP1VerifierGateway.sol/SP1VerifierGateway.json", owner)
+        verifier = create(release.CONTRACTS["sp1_verifier"][0])
+        operator_policy = json.loads(json.dumps(policy()).replace(OWNER, owner))
+
+        def run(target, extra=()):
+            config = tmp / "deploy.json"
+            config.write_text(json.dumps(plan_config(sp1_verifier=target, operator_policy=operator_policy)))
+            return deploy.main(["--config", str(config), "--rpc", url, "--output", str(tmp / "out.json"), *extra,
+                                "--", "--unlocked", "--from", owner])
+
+        with unittest.mock.patch("sys.stderr") as stderr:
+            self.assertEqual(run(gateway), 2)
+        self.assertIn("not the compiled stateless SP1 v6.1.0 verifier",
+                      "".join(c.args[0] for c in stderr.write.call_args_list))
+        self.assertFalse((tmp / "out.json").exists())
+        self.assertEqual(run(verifier), 0)

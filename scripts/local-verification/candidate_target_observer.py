@@ -52,13 +52,21 @@ def selector(root, signature):
 
 
 def candidate_operator_policy(value):
-    """The release policy plus this candidate graph's SP1 gateway owner (its gateway is still used)."""
+    """The release policy plus this candidate graph's SP1 gateway owner (its gateway is still used).
+
+    The gateway's route is only as trustworthy as its owner: an owner can add an accept-everything
+    route or freeze the real one (audit SV-1). A graph that still routes through a gateway is
+    therefore observable only once its owner is renounced (the zero address), which makes the
+    routes immutable.
+    """
     if not isinstance(value, dict) or "sp1_gateway" not in value:
         raise ObserverError("invalid explicit target policy")
     rest = {role: fields for role, fields in value.items() if role != "sp1_gateway"}
     result = legacy.operator_policy(rest)
     identity.exact(value["sp1_gateway"], {"owner"}, "operator policy sp1_gateway")
-    result["sp1_gateway"] = {"owner": identity.hex_value(value["sp1_gateway"]["owner"], 20, "sp1_gateway.owner")}
+    owner = identity.hex_value(value["sp1_gateway"]["owner"], 20, "sp1_gateway.owner")
+    require(int(owner, 16) == 0, "SP1 gateway owner must be renounced")
+    result["sp1_gateway"] = {"owner": owner}
     return result
 
 
