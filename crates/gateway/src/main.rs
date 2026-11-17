@@ -5641,6 +5641,11 @@ impl Gw {
                 }
             }
             self.pending_settle = still;
+            // No window settles on L1 here, so `commit_window_settle` never takes or
+            // clears the manifest accumulators: keep them from growing with every
+            // order, inside the snapshot (audit GF-1 + SM-4).
+            self.pending_ordered.clear();
+            self.pending_rejected.clear();
         }
 
         // 4) emit finality-transition events for toasts
