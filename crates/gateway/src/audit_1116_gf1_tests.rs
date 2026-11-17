@@ -144,6 +144,42 @@ mod audit_1116_gf1 {
         );
     }
 
+    /// The legacy settle simulation (no prover, no L1) never settles a window on
+    /// L1, so nothing publishes or clears the manifest accumulators there, yet
+    /// every matched or cancelled order's hash went into them, and so into the
+    /// snapshot, for good.
+    #[test]
+    fn audit_1116_gf1_legacy_settle_mode_keeps_no_manifest_accumulators() {
+        let mut gw = Gw::boot();
+        assert!(!gw.window_settle_mode);
+        let key = funded_account(&mut gw);
+        for i in 0..30 {
+            gw.accounts.get_mut(&key).unwrap().orders_this_sec = 0;
+            let side = if i % 2 == 0 { "Buy" } else { "Sell" };
+            gw.account_place_order(&key, &small_ioc(side)).unwrap();
+            gw.tick();
+        }
+        let pending = OrderReq {
+            limit_price: gw.px_of(0).to_string(),
+            tif: "Gtc".into(),
+            ..small_ioc("Sell")
+        };
+        gw.accounts.get_mut(&key).unwrap().orders_this_sec = 0;
+        gw.account_place_order(&key, &pending).unwrap();
+        // Rows are kept newest first.
+        let id = gw.accounts[&key].orders[0].id.clone();
+        gw.account_cancel(&key, &id).unwrap();
+        for _ in 0..(SETTLE_TICKS + 1) {
+            gw.tick();
+        }
+        assert!(
+            gw.pending_ordered.is_empty() && gw.pending_rejected.is_empty(),
+            "{} ordered and {} rejected hashes kept",
+            gw.pending_ordered.len(),
+            gw.pending_rejected.len()
+        );
+    }
+
     fn order_request(key: &[u8; 32], client: Option<SocketAddr>) -> Request<Body> {
         let mut request = Request::builder()
             .method("POST")
