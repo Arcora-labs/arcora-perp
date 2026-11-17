@@ -68,10 +68,10 @@ describe("depositMinimumError", () => {
 
 describe("withdrawalMinimumError", () => {
   const balance = 500n * QUOTE_SCALE;
-  it("refuses less than 1 USDC that is not the whole free balance", () => {
+  it("refuses less than 10 USDC that is not the whole free balance", () => {
     expect(withdrawalMinimumError(MIN_WITHDRAWAL - 1n, balance)).toMatch(/minimum withdrawal is 10 USDC/i);
   });
-  it("accepts 1 USDC and above", () => {
+  it("accepts 10 USDC and above", () => {
     expect(withdrawalMinimumError(MIN_WITHDRAWAL, balance)).toBeNull();
   });
   it("accepts a sub-dollar amount that empties the free balance", () => {
