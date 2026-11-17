@@ -20930,4 +20930,5 @@ mod tests {
     include!("execution_regression_tests.rs");
     include!("audit_cancellation_tests.rs");
     include!("permit_keepalive_tests.rs");
+    include!("audit_1116_gf1_tests.rs");
 }
