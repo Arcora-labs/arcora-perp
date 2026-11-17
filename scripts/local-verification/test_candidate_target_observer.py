@@ -57,8 +57,7 @@ def policy():
                                "inclusion_deadline_seconds": 600, "final_settle_grace_blocks": 10,
                                "progress_batches": 2, "slash_payout_cap_usdc": 1_000_000_000},
                 "vault": {"gateway_signer": address(104)},
-                "clock_verifier": {"configurator": address(105)},
-                "sp1_gateway": {"owner": address(0)}}}
+                "clock_verifier": {"configurator": address(105)}}}
 
 
 class FakeRPC:
@@ -89,7 +88,8 @@ class FakeRPC:
             ("oracle_wrapper", "streamsVerifier()", "verifier_proxy"),
             ("oracle_wrapper", "clockVerifier()", "clock_verifier"),
             ("oracle_wrapper", "sequencerUptimeFeed()", "uptime_feed"),
-            ("sp1_adapter", "gateway()", "sp1_gateway"),
+            # audit SV-1: the adapter is bound directly to the stateless verifier.
+            ("sp1_adapter", "gateway()", "sp1_verifier"),
         )
         self.values.update({(role, signature): case.public["addresses"][target]
                             for role, signature, target in links})
@@ -106,15 +106,13 @@ class FakeRPC:
             ("oracle_wrapper", "configurator()"): case.policy["oracle_configurator"],
             ("sp1_verifier", "VERIFIER_HASH()"): "0x" + identity.legacy.clock.target.VERIFIER_HASH,
         })
-        for role, fields in identity.OPERATOR_ADDRESSES.items():
+        for role, fields in identity.legacy.OPERATOR_ADDRESSES.items():
             for name, signature in fields.items():
                 self.values[(role, signature)] = case.policy["operator_policy"][role][name]
         for name, signature in identity.legacy.SETTLEMENT_POLICY.items():
             self.values[("settlement", signature)] = case.policy["operator_policy"]["settlement"][name]
         self.by_selector = {mocked_selector(None, signature): signature
                             for _, signature in self.values}
-        self.route_selector = mocked_selector(None, "routes(bytes4)")
-        self.route = word(case.public["addresses"]["sp1_verifier"]) + "0" * 64
 
     def __call__(self, method, params):
         self.case.assertIn(method, observer.READ_METHODS)
@@ -138,13 +136,8 @@ class FakeRPC:
         else:
             role = self.by_address[params[0]["to"]]
             data = params[0]["data"]
-            if data.startswith(self.route_selector):
-                self.case.assertEqual(data, self.route_selector
-                                      + identity.legacy.clock.target.VERIFIER_HASH[:8] + "0" * 56)
-                result = self.route
-            else:
-                self.case.assertEqual(len(data), 10)
-                result = word(self.values[(role, self.by_selector[data])])
+            self.case.assertEqual(len(data), 10)
+            result = word(self.values[(role, self.by_selector[data])])
         if method in self.overrides:
             override = self.overrides[method]
             result = override(params, result, count) if callable(override) else override
@@ -205,10 +198,13 @@ class ObserverTests(unittest.TestCase):
             self.assertEqual(self.rpc.calls, [])
         return result
 
-    def test_all_ten_roles_seven_templates_candidate_graph_and_repeat_reads_hold(self):
+    def test_all_nine_roles_six_templates_candidate_graph_and_repeat_reads_hold(self):
         result = self.observe()
         self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
         self.assertEqual(set(result["contracts"]), identity.ADDRESS_ROLES)
+        self.assertEqual((len(identity.ADDRESS_ROLES), len(identity.CONTRACTS)), (9, 6))
+        self.assertEqual(result["contracts"]["sp1_adapter"]["getters"]["gateway()"],
+                         self.public["addresses"]["sp1_verifier"])
         for role, item in result["contracts"].items():
             expected = ("compiler_template_and_declared_code_hash" if role in identity.CONTRACTS
                         else "declared_code_hash_only")
@@ -244,9 +240,8 @@ class ObserverTests(unittest.TestCase):
         for mutate in (lambda p: p.update(schema="foreign"),
                        lambda p: p.update(runtime_hash_algorithm="sha256"),
                        lambda p: p.pop("operator_policy"),
-                       lambda p: p["operator_policy"]["sp1_gateway"].pop("owner"),
-                       # audit SV-1: a live gateway owner can add an accept-all route.
-                       lambda p: p["operator_policy"]["sp1_gateway"].update(owner=address(106)),
+                       # audit SV-1: no SP1 gateway owner is a policy role, renounced or not.
+                       lambda p: p["operator_policy"].update(sp1_gateway={"owner": address(0)}),
                        lambda p: p.update(private_key="owned-test-secret-marker"),
                        lambda p: p.update(oracle_configurator="0x1"),
                        lambda p: p["operator_policy"]["settlement"].update(challenge_bond_wei=True)):
@@ -255,14 +250,44 @@ class ObserverTests(unittest.TestCase):
             with self.subTest(policy=self.policy.keys()):
                 self.blocked(before_rpc=True)
 
-    def test_audit_1116_sv1_an_owned_sp1_gateway_is_never_verified(self):
-        # The declared policy cannot bless an owner; a gateway reporting a live owner is refused.
-        self.policy["operator_policy"]["sp1_gateway"]["owner"] = address(106)
-        self.blocked(before_rpc=True)
-        self.policy = policy()
+    def test_audit_1116_sv1_an_adapter_routed_through_any_gateway_is_never_verified(self):
+        # A gateway whose owner is renounced still serves every route added before the
+        # renounce (e.g. an accept-everything verifier under another selector), and no
+        # getter can enumerate them. Only an adapter bound to the stateless verifier passes.
+        result = self.observe()
+        self.assertEqual(result["status"], "VERIFIED_AT_FINALIZED_BLOCK", result)
+        self.assertEqual(result["sp1_verifier_stateless"],
+                         {"verifier": self.public["addresses"]["sp1_verifier"],
+                          "selector": "0x" + identity.legacy.clock.target.VERIFIER_HASH[:8]})
+        self.assertNotIn("sp1_route", result)
+        probes = {mocked_selector(None, s) for s in ("owner()", "routes(bytes4)")}
+        self.assertFalse(any(method == "eth_call" and params[0]["data"][:10] in probes
+                             for method, params in self.rpc.calls))
+        renounced_gateway = address(106)
         self.rpc = FakeRPC(self)
-        self.rpc.values[("sp1_gateway", "owner()")] = address(106)
-        self.blocked()
+        self.rpc.values[("sp1_adapter", "gateway()")] = renounced_gateway
+        self.assertEqual(self.blocked()["blocker"], "target binding mismatch: sp1_adapter.gateway()")
+
+    def test_audit_1116_sv1_a_gateway_role_or_router_runtime_cannot_be_declared(self):
+        original = copy.deepcopy(self.public)
+        self.public["addresses"]["sp1_gateway"] = address(106)
+        self.public["expected_runtime_code_hashes"]["sp1_gateway"] = "0x" + "bb" * 32
+        self.blocked(before_rpc=True)
+        # A router declared in the verifier's place does not match the stateless template.
+        self.public = original
+        self.codes["sp1_verifier"] = bytes.fromhex("6003600055")
+        self.rebuild()
+        self.assertEqual(self.blocked()["blocker"], "compiler runtime template refused: sp1_verifier")
+        # A verifier template with constructor-set words is not a fully pinned runtime.
+        path, artifact = self.owned.artifacts["sp1_verifier"]
+        template = bytes.fromhex("60aa") + bytes(32)
+        path.write_text(json.dumps({**artifact, "deployedBytecode": {
+            **artifact["deployedBytecode"], "object": template.hex(),
+            "immutableReferences": {"1": [{"start": 2, "length": 32}]}}}))
+        self.codes["sp1_verifier"] = bytes.fromhex("60aa") + bytes(31) + b"\x01"
+        self.rebuild()
+        self.assertEqual(self.blocked()["blocker"], "SP1 verifier runtime is not fully pinned")
+        path.write_text(json.dumps(artifact))
 
     def test_wrong_schema_missing_roles_and_forged_manifest_hash_refuse_before_rpc(self):
         original = copy.deepcopy(self.manifest)
@@ -349,7 +374,7 @@ class ObserverTests(unittest.TestCase):
             artifact = copy.deepcopy(original)
             artifact["deployedBytecode"].update(object=template.hex(), immutableReferences=copy.deepcopy(reference))
             code = bytearray(template)
-            value = bytes.fromhex(word(self.public["addresses"]["sp1_gateway"])[2:])
+            value = bytes.fromhex(word(self.public["addresses"]["sp1_verifier"])[2:])
             code[2:34] = value
             code[36:68] = value
             if mutation == 0:
@@ -428,18 +453,7 @@ class ObserverTests(unittest.TestCase):
         with patch.object(observer, "selector", return_value="not-a-selector"):
             self.blocked()
 
-    def test_verifier_full_hash_route_target_freeze_bool_and_width_are_checked(self):
-        correct = self.rpc.route
-        for bad in (word(0) + "0" * 64,
-                    word(self.public["addresses"]["sp1_verifier"]) + format(1, "064x"),
-                    word(self.public["addresses"]["sp1_verifier"]) + format(2, "064x"),
-                    "0x" + "ff" * 12 + self.public["addresses"]["sp1_verifier"][2:] + "0" * 64,
-                    correct[:-2], correct + "00"):
-            self.rpc = FakeRPC(self)
-            self.rpc.route = bad
-            with self.subTest(route=bad[:24]):
-                self.blocked()
-        self.rpc = FakeRPC(self)
+    def test_verifier_full_hash_is_checked(self):
         full = self.rpc.values[("sp1_verifier", "VERIFIER_HASH()")]
         self.rpc.values[("sp1_verifier", "VERIFIER_HASH()")] = full[:10] + "ff" * 28
         self.blocked()
@@ -462,10 +476,6 @@ class ObserverTests(unittest.TestCase):
                 "0x" + "ff" * 32 if count == 2 and params[0] == {"to": target, "data": selector} else good
             with self.subTest(getter=(role, signature)):
                 self.blocked()
-        self.rpc = FakeRPC(self)
-        self.rpc.overrides["eth_call"] = lambda params, good, count: \
-            good[:-1] + "1" if count == 2 and params[0]["data"].startswith(self.rpc.route_selector) else good
-        self.blocked()
 
     def test_caller_input_snapshot_and_local_source_artifact_changes_are_never_accepted(self):
         original_manifest, original_public, original_policy = map(copy.deepcopy,
