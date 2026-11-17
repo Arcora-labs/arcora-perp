@@ -33,7 +33,9 @@
 //!   (a nullifier):
 //!   - at the soft cap (80% of a bound) no new permit is issued that would add to
 //!     the dimension at it (history always; position entries only for a permit that
-//!     opens one), and no account is registered while the state itself is at it;
+//!     may open one, against the state's own entries, see Position entries below),
+//!     and no account is registered while the state's history or unspent notes are
+//!     at it;
 //!   - a new permit is issued only while the state, the outstanding permits, the new
 //!     permit and the reserved exits fit within the history bound;
 //!   - a withdrawal that would need more room than the history bound leaves is
