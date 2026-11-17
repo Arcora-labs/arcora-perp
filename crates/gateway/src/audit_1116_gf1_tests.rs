@@ -334,6 +334,41 @@ mod audit_1116_gf1 {
         assert!(error.contains("does not hold"), "{error}");
     }
 
+    /// An order log from another history beside the snapshot is refused and left
+    /// as it is, even when it is longer than the snapshot's durable end: boot
+    /// checks the records the snapshot relies on, never cuts into someone else's
+    /// file as if it were a torn append.
+    #[tokio::test]
+    async fn audit_1116_gf1_an_order_log_of_another_history_is_refused_not_cut() {
+        let serial = Arc::new(Mutex::new(()));
+        let dir = TestDir::new();
+        let ours = dir.0.join("state");
+        let other = dir.0.join("other");
+        for (path, rounds, orders) in [(&ours, 2, 10), (&other, 1, 40)] {
+            let app = test_app();
+            let key = {
+                let mut gw = app.gw.lock().await;
+                gw.window_settle_mode = true;
+                gw.seq.set_retain_tick_snapshots(false);
+                funded_account(&mut gw)
+            };
+            // Ours: two appends of 10 orders. The other: one append of 40, so its
+            // file is longer and has no frame boundary where ours ends.
+            for _ in 0..rounds {
+                trade_and_settle(&mut *app.gw.lock().await, &key, orders);
+                assert!(write_snapshot(&app, path, SEED, serial.clone()).await);
+            }
+        }
+        let log = side_log::Kind::OrderLog.path(&ours);
+        let foreign = std::fs::read(side_log::Kind::OrderLog.path(&other)).unwrap();
+        assert!(foreign.len() as u64 > std::fs::metadata(&log).unwrap().len());
+        std::fs::write(&log, &foreign).unwrap();
+
+        let error = restore(&ours).err().expect("another history is refused");
+        assert!(error.contains("does not match"), "{error}");
+        assert_eq!(std::fs::read(&log).unwrap(), foreign, "nothing was cut");
+    }
+
     /// A snapshot the base commit wrote (the frozen v10 fixture, its order log
     /// inside) still loads; boot then moves its history out, and the next
     /// snapshot restores to the same log from the side log.
