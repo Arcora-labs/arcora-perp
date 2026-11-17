@@ -1174,7 +1174,13 @@ pub async fn route_legacy(
     }
     // Serialize with ingestion so an adopted route cannot be consumed before its
     // own durability barrier. A failed ACK leaves immutable routing, not a new guess.
+    // The scan holds this lock across its L1 reads, so the clock admission permit
+    // is taken only once it is held, for the adoption and its barrier (audit G2-1).
     let _serial = app.deposit_serial.lock().await;
+    let _admission = match app.clock_admission.enter_http() {
+        Ok(permit) => permit,
+        Err(closed) => return closed,
+    };
     // A newly adopted route gets the deadline a fresh permit would; an already
     // recorded one keeps its own. Identity never includes the deadline.
     let route = Route {
@@ -1218,8 +1224,13 @@ pub async fn confirm(
     if !app.gw.lock().await.accounts.contains_key(&key) {
         return err400("Unknown account.".into()).into_response();
     }
-    if let Err(e) = ingest_once(app).await {
-        return unavailable(e);
+    match ingest_once(app).await {
+        // Refused at admission: nothing was applied; retried like the gate's refusal.
+        Err(e) if e == crate::clock_admission::BUSY => {
+            return crate::clock_admission::closed_response(&e)
+        }
+        Err(e) => return unavailable(e),
+        Ok(_) => {}
     }
     let gw = app.gw.lock().await;
     confirmed_receipt(&gw, &key, &tx, market, purpose)

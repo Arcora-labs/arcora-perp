@@ -36,7 +36,6 @@ impl ClockAdmission {
         if !self.enabled {
             return Ok(None);
         }
-        const BUSY: &str = "clock settlement in progress; retry after finality";
         if self.closed.load(Ordering::Acquire) {
             return Err(BUSY);
         }
@@ -45,6 +44,13 @@ impl ClockAdmission {
             return Err(BUSY);
         }
         Ok(Some(permit))
+    }
+    /// `enter` for a handler the HTTP gate admits without a permit
+    /// (`admitted_without_permit`): a refusal is answered as the gate answers it.
+    pub(crate) fn enter_http(
+        &self,
+    ) -> Result<Option<OwnedRwLockReadGuard<()>>, axum::response::Response> {
+        self.enter().map_err(closed_response)
     }
     pub(crate) async fn pause(
         self: &Arc<Self>,
@@ -65,6 +71,21 @@ impl ClockAdmission {
             armed: was_closed,
         }))
     }
+}
+
+/// The refusal of every admission while a clock window owns the exclusive permit.
+pub(crate) const BUSY: &str = "clock settlement in progress; retry after finality";
+
+/// The answer to a request refused while admission is closed: 503 with
+/// `Retry-After`, a polling hint (a settlement takes as long as it takes).
+pub(crate) fn closed_response(error: &str) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    (
+        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        [(axum::http::header::RETRY_AFTER, "2")],
+        axum::Json(serde_json::json!({ "error": error })),
+    )
+        .into_response()
 }
 
 /// Prefix of the refusal of a timed operation while the open window is closing
@@ -127,12 +148,38 @@ impl Drop for Paused {
     }
 }
 
+/// Mutating routes the HTTP gate admits without holding the permit (audit G2-1).
+/// Each reads L1, or waits for a lock held across L1 reads, before it changes
+/// anything. The settle loop's pause closes admission and then waits for every
+/// permit, so a permit held across that wait would make the seal wait for a slow
+/// or rate-limited RPC while the open window's registration budget runs out.
+/// They are still refused while admission is closed, and each takes the permit
+/// itself after its L1 work, only for what it changes and makes durable, and
+/// answers 503 with `Retry-After` if admission closed meanwhile.
+fn admitted_without_permit(path: &str) -> bool {
+    matches!(
+        path,
+        // The deposit scan (`deposit_ingestion::ingest_once`).
+        "/v1/accounts/deposit/onchain"
+            | "/v1/admin/insurance/bootstrap"
+            // Waits for the deposit lock the scan holds across its reads.
+            | "/v1/accounts/deposit/route"
+            // Reads the settlement's deposit terms at the latest block.
+            | "/v1/accounts/deposit/authorize"
+            // Reads the L1 wind-down phase in close-only.
+            | "/v1/accounts/withdraw"
+            // Reads L1 close-only and, for the rebase, the finalized settled state.
+            | "/v1/admin/wind-down"
+            // Reads `slashCount()`; changes nothing a window holds.
+            | "/v1/admin/bond/acknowledge-slash"
+    )
+}
+
 pub(crate) async fn http_gate(
     axum::extract::State(app): axum::extract::State<crate::Shared>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    use axum::response::IntoResponse;
     let readonly = matches!(
         *request.method(),
         axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
@@ -144,29 +191,14 @@ pub(crate) async fn http_gate(
         request.uri().path(),
         "/v1/admin/settlement/resume" | "/v1/admin/settlement/cancel-anchor"
     );
-    // Deposit confirmations run the deposit scan, which reads L1 before it applies
-    // anything and takes the permit itself only to apply what it read
-    // (`deposit_ingestion::ingest_once`). Holding the permit here would hold it
-    // across those reads, and the settle loop's pause would wait for a slow RPC
-    // (audit G2-1). They are still refused while admission is closed.
-    let scan = matches!(
-        request.uri().path(),
-        "/v1/accounts/deposit/onchain" | "/v1/admin/insurance/bootstrap"
-    );
+    let late = admitted_without_permit(request.uri().path());
     let _permit = if readonly || recovery {
         None
     } else {
         match app.clock_admission.enter() {
-            Ok(_) if scan => None,
+            Ok(_) if late => None,
             Ok(p) => p,
-            Err(error) => {
-                return (
-                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                    [(axum::http::header::RETRY_AFTER, "2")],
-                    axum::Json(serde_json::json!({"error": error})),
-                )
-                    .into_response()
-            }
+            Err(error) => return closed_response(error),
         }
     };
     next.run(request).await

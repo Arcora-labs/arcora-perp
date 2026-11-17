@@ -8132,6 +8132,13 @@ async fn post_v1_admin_wind_down(
     } else {
         None
     };
+    // Audit G2-1: the clock admission permit is taken after the L1 reads, for
+    // the rebase, the queued SettleAll and their durability barrier. Everything
+    // read is checked again below against the state it is applied to.
+    let _admission = match app.clock_admission.enter_http() {
+        Ok(permit) => permit,
+        Err(closed) => return closed,
+    };
     let (sink, chain_id, vault) = {
         let mut gw = app.gw.lock().await;
         // The rebase and the queued SettleAll are persisted together below; a
@@ -8771,6 +8778,13 @@ async fn post_v1_deposit_authorize(
         None => None,
     };
     let now_s = now_ms() / 1000;
+    // Audit G2-1: the clock admission permit is taken after the L1 read, for the
+    // permit store and its durability barrier only. The terms are a latest-block
+    // reading either way; the vault enforces its own terms when the deposit lands.
+    let admission = match app.clock_admission.enter_http() {
+        Ok(permit) => permit,
+        Err(closed) => return closed,
+    };
     // Release the account lock before requesting durability. No signature may be
     // constructed or returned until the writer acknowledges the stored blind.
     let (commit, valid_until, reused) = {
@@ -8869,6 +8883,7 @@ async fn post_v1_deposit_authorize(
                 .into_response();
         }
     }
+    drop(admission);
     match app.gateway_signer.sign(&from, &commit, amount, valid_until) {
         Ok(sig) => Json(serde_json::json!({
             "ownerCommit": hex0x(&commit),
@@ -8944,6 +8959,12 @@ async fn post_v1_withdraw(
         }
     } else {
         None
+    };
+    // Audit G2-1: the clock admission permit is taken after the close-only L1
+    // read, for the withdrawal itself.
+    let _admission = match app.clock_admission.enter_http() {
+        Ok(permit) => permit,
+        Err(closed) => return closed,
     };
     let r = {
         let mut gw = app.gw.lock().await;
