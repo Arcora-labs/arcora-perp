@@ -418,7 +418,9 @@ fn take_permit(
     from: [u8; 20],
     amount: u128,
 ) -> Result<[u8; 32], String> {
-    if let Some(refusal) = gw.permit_cap_refusal(key, 0, deposit_ingestion::Purpose::Collateral) {
+    if let Some(refusal) =
+        gw.permit_cap_refusal(key, 0, deposit_ingestion::Purpose::Collateral, None)
+    {
         return Err(format!("{refusal:?}"));
     }
     gw.authorize_routed_deposit(

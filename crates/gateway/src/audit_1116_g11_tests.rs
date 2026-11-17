@@ -524,6 +524,7 @@ fn sweep(gw: &mut Gw, asker: &[u8; 32]) -> Vec<(u64, Withdrawal)> {
     };
     gw.sweep_dust_for_permit(
         &request,
+        None,
         now_ms() / 1000,
         PriceUse {
             archive: None,
@@ -565,7 +566,7 @@ fn audit_1116_g11_a_sweep_needs_a_fresh_oracle_and_leaves_the_account_nonce() {
     );
     // One sweep was enough: the permit is admitted now, and nothing more leaves.
     assert_eq!(
-        gw.permit_cap_refusal(&asker, 0, deposit_ingestion::Purpose::Collateral),
+        gw.permit_cap_refusal(&asker, 0, deposit_ingestion::Purpose::Collateral, None),
         None
     );
     assert!(sweep(&mut gw, &asker).is_empty());
@@ -677,11 +678,12 @@ async fn audit_1116_g11_a_refused_permit_sweeps_nothing() {
 }
 
 /// An outstanding permit never shields dust (round-1 bypass): every dust entry
-/// holds an unfunded top-up permit taken through the real route, and at the soft
-/// cap an honest permit still gets in by sweeping the smallest of them. A top-up of
-/// dust needs the entry minimum and counts as opening an entry from the moment it
-/// is issued, so the sweep frees the room at once; the swept holder's permit, if
-/// it is ever funded, opens an entry at the minimum, not dust.
+/// holds an unfunded top-up permit taken through the real route, and once the
+/// state and those permits fill the bound an honest permit still gets in by
+/// sweeping the smallest of them. A top-up of dust needs the entry minimum and
+/// counts as opening an entry from the moment it is issued, so the sweep frees the
+/// room at once; the swept holder's permit, if it is ever funded, opens an entry at
+/// the minimum, not dust.
 #[tokio::test]
 async fn audit_1116_g11_a_permit_held_on_dust_does_not_shield_it() {
     let mut gw = Gw::boot_with(GenesisMode::Production);
@@ -690,7 +692,8 @@ async fn audit_1116_g11_a_permit_held_on_dust_does_not_shield_it() {
         ..admission::measured_cap()
     };
     assert_eq!(positions_soft_cap(&gw), 4);
-    // Dust of 1 and 2 USDC (left from before the entry minimum, or by trading).
+    // Dust of 1 and 2 USDC (left from before the entry minimum, or by trading),
+    // and an entry at the minimum.
     let mut dust = Vec::new();
     for n in 0..2u32 {
         let (key, from) = bound_account(&mut gw, &signer(n, 0x47));
@@ -698,6 +701,8 @@ async fn audit_1116_g11_a_permit_held_on_dust_does_not_shield_it() {
             .unwrap();
         dust.push((key, from));
     }
+    let (at_minimum, _) = bound_account(&mut gw, &signer(8, 0x47));
+    gw.account_deposit(&at_minimum, 0, ENTRY_MINIMUM).unwrap();
     let (honest, honest_from) = bound_account(&mut gw, &signer(9, 0x47));
     refresh_oracles(&mut gw);
     let (app, writer) = app_with(gw).await;
@@ -718,8 +723,8 @@ async fn audit_1116_g11_a_permit_held_on_dust_does_not_shield_it() {
     }
     assert_eq!(
         app.gw.lock().await.admission_size().positions,
-        4,
-        "the dust entries and their permits hold the soft cap"
+        5,
+        "the entries and the dust entries' permits fill the bound"
     );
 
     let (status, body) = permit(&app, &honest, honest_from, 0, ENTRY_MINIMUM).await;
@@ -734,7 +739,7 @@ async fn audit_1116_g11_a_permit_held_on_dust_does_not_shield_it() {
     assert_eq!(w.amount, QUOTE_SCALE as u128);
     assert!(gw.dust_sweeps.contains(&w.leaf()));
     assert!(gw.deposits.routes.contains_key(&held[0]));
-    assert_eq!(gw.admission_size().positions, 4);
+    assert_eq!(gw.admission_size().positions, 5);
     // Every deposit lands: the swept holder's opens an entry at the minimum, and
     // the entries stay within the bound.
     for commit in [honest_commit, held[0], held[1]] {
@@ -747,17 +752,20 @@ async fn audit_1116_g11_a_permit_held_on_dust_does_not_shield_it() {
     );
     assert_eq!(entry(&gw, &honest, 0).unwrap().collateral, ENTRY_MINIMUM);
     let state = admission::HistorySize::of(&gw.seq.state);
-    assert_eq!(state.positions, 3);
+    assert_eq!(state.positions, 4);
     assert!(!gw.admission_cap.exceeded(state));
     drop(gw);
     writer.abort();
 }
 
 /// The round-1 PoC: every dust entry holds a 10 USDC top-up permit issued before
-/// the entry minimum, never funded, and the honest permit is refused. The shield
-/// cannot be renewed: a top-up of dust needs the entry minimum, and at the soft
-/// cap no new permit may keep an entry reserved. Once the old permits expire the
-/// dust is swept for the next honest permit.
+/// the entry minimum, never funded. The shield cannot be renewed: a top-up of dust
+/// needs the entry minimum, and with the state's entries at their soft cap no
+/// permit for an entry already reserved is issued. Nor does it shield the dust:
+/// such a permit counts as opening an entry, so the honest permit sweeps as many
+/// dust entries as keep every outstanding permit's deposit within the bound, here
+/// all four. A shield that lands afterwards opens flat dust that can open no
+/// position, and is swept again.
 #[tokio::test]
 async fn audit_1116_g11_top_up_permits_cannot_shield_dust_indefinitely() {
     let (mut gw, asker, dust) = small_cap_with_dust();
@@ -782,8 +790,6 @@ async fn audit_1116_g11_top_up_permits_cannot_shield_dust_indefinitely() {
     let entries = gw.seq.state.positions.clone();
     let (app, writer) = app_with(gw).await;
 
-    let (status, body) = permit(&app, &asker, asker_from, 0, ENTRY_MINIMUM).await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
     for key in &dust {
         let from = app.gw.lock().await.accounts[key].deposit_address.unwrap();
         let (status, body) = permit(&app, key, from, 0, DUST).await;
@@ -798,12 +804,20 @@ async fn audit_1116_g11_top_up_permits_cannot_shield_dust_indefinitely() {
         assert_eq!(gw.deposits.routes.len(), shields.len());
     }
 
-    expire(&mut *app.gw.lock().await, &shields);
     let (status, body) = permit(&app, &asker, asker_from, 0, ENTRY_MINIMUM).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let gw = app.gw.lock().await;
-    assert_eq!(gw.pending_withdrawals.len(), 1);
-    assert_eq!(gw.seq.state.positions.len(), entries.len() - 1);
+    let mut gw = app.gw.lock().await;
+    assert_eq!(gw.pending_withdrawals.len(), 4);
+    assert!(gw.seq.state.positions.is_empty());
+    let cap = gw.admission_cap.max_positions;
+    assert_eq!(gw.admission_size().positions, cap);
+    // The shields land as flat dust, within the bound, and open no position.
+    credit(&mut gw, shields[0]);
+    let state = admission::HistorySize::of(&gw.seq.state);
+    assert!(!gw.admission_cap.exceeded(state));
+    assert_eq!(entry(&gw, &dust[0], 0).unwrap().collateral, DUST);
+    let owner = gw.accounts[&dust[0]].wallet.owner;
+    assert!(gw.entry_order_refusal(&owner, 0).is_some());
     drop(gw);
     writer.abort();
 }
@@ -936,6 +950,7 @@ fn audit_1116_g11_a_sweep_is_not_charged_to_the_owners_rate_limits() {
             purpose: deposit_ingestion::Purpose::Collateral,
             valid_until: 0,
         },
+        None,
         t0 / 1000,
         PriceUse {
             archive: None,
@@ -985,7 +1000,7 @@ fn audit_1116_g11_a_failing_sweep_candidate_is_skipped() {
     assert_ne!(swept[0].1.owner, gw.accounts[&first].wallet.owner);
     assert!(entry(&gw, &first, 0).is_some());
     assert_eq!(
-        gw.permit_cap_refusal(&asker, 0, deposit_ingestion::Purpose::Collateral),
+        gw.permit_cap_refusal(&asker, 0, deposit_ingestion::Purpose::Collateral, None),
         None
     );
 }
@@ -1491,7 +1506,7 @@ fn audit_1116_g11_a_sweep_that_cannot_admit_the_permit_exits_nothing() {
     assert!(entry(&gw, &dust[2], 0).is_none());
     assert!(entry(&gw, &dust[3], 0).is_none());
     assert_eq!(
-        gw.permit_cap_refusal(&asker, 0, deposit_ingestion::Purpose::Collateral),
+        gw.permit_cap_refusal(&asker, 0, deposit_ingestion::Purpose::Collateral, None),
         None
     );
 }
@@ -1568,4 +1583,34 @@ fn audit_1116_g11_a_sweep_cancels_the_swept_accounts_orders_in_its_market() {
         o.execution.as_ref().unwrap().status,
         execution::Status::Cancelled
     );
+}
+
+/// The sweep finds a dust entry's account through the owner index, which follows a
+/// credential rotation: the forced exit is listed under the account's new key.
+#[test]
+fn audit_1116_g11_a_rotated_account_is_swept_under_its_new_key() {
+    let (mut gw, asker, dust) = small_cap_with_dust();
+    refresh_oracles(&mut gw);
+    // The first candidate: all hold 10 USDC, so the smallest owner.
+    let (owner, old) = dust
+        .iter()
+        .map(|k| (gw.accounts[k].wallet.owner, *k))
+        .min()
+        .unwrap();
+    let sk = signer_of(&gw, &old, 0x46);
+    let digest = account_recovery::digest(gw.chain_id, &gw.vault, &owner, 0);
+    let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let mut wire = [0u8; 65];
+    wire[..64].copy_from_slice(&sig.to_bytes());
+    wire[64] = 27 + recid.to_byte();
+    let new = gw.recover_account(owner, 0, &wire).unwrap();
+    let swept = sweep(&mut gw, &asker);
+    assert_eq!(swept.len(), 1);
+    assert_eq!(swept[0].1.owner, owner);
+    let view = gw.v1_withdrawals_json(&new).unwrap();
+    assert_eq!(view["withdrawals"][0]["forcedExit"], true);
+    // A restore rebuilds the index.
+    let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    assert_eq!(restored.owner_keys.get(&owner), Some(&new));
+    assert_eq!(restored.owner_keys.len(), restored.accounts.len());
 }

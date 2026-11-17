@@ -63,20 +63,39 @@
 //!   - a flat entry holding less than `MIN_ENTRY_BALANCE` is dust. A collateral
 //!     permit for a market where the account holds no entry or only dust may open
 //!     one (a sweep can remove dust before the deposit lands): it is issued for at
-//!     least `MIN_ENTRY_DEPOSIT`, counts as opening an entry from its issuance, and
-//!     at the soft cap no such permit is issued, a further one for the same market
-//!     included, unless a sweep makes room for it;
+//!     least `MIN_ENTRY_DEPOSIT` and counts as opening an entry from its issuance;
+//!   - the soft cap of `MAX_POSITIONS` bounds the state's own entries, not the
+//!     outstanding permits, so unfunded permits cannot hold it: a permit that may
+//!     open an entry is issued only while the state's entries are below the soft
+//!     cap (unless a sweep makes room), and while the state's entries, the entries
+//!     every outstanding permit may open and its own fit `MAX_POSITIONS`, so every
+//!     deposit can still be credited. Once those reach the soft cap, one client
+//!     group (an IPv4 address or an IPv6 /64) holds at most
+//!     `MAX_GROUP_OPENING_PERMITS` of them, a further permit for a market it
+//!     already reserves included;
+//!   - below `MIN_ENTRY_BALANCE` no order adds exposure (opens, grows or flips a
+//!     position), at intake and in the sequencer when a fill settles, so an entry
+//!     below the minimum that holds a position got there through a trading loss
+//!     after it opened at the minimum or above, and an entry below it that is flat
+//!     stays flat until it is topped up to the minimum;
 //!   - outside close-only a withdrawal leaves at least `MIN_ENTRY_BALANCE` in the
-//!     entry, open position or not, unless it is a full exit, so only trading makes
-//!     dust;
-//!   - when a permit that opens an entry is refused only because the entries are at
-//!     their soft cap, and exiting as many dust entries of other accounts as it
-//!     needs (at most `MAX_SWEEPS_PER_PERMIT`) admits it, the gateway sweeps them: a
-//!     forced full exit of each one's whole balance to its account's bound deposit
-//!     address, whatever permits that account holds, marked as such in its
-//!     withdrawals and announced on its event stream. Entries at the minimum and
-//!     entries holding an open position are never swept, and a sweep moves no
-//!     value: the whole balance is claimable on L1.
+//!     entry, open position or not, unless it is a full exit, and a full exit waits
+//!     while the account holds a permit below `MIN_ENTRY_DEPOSIT` for the market,
+//!     whose deposit would otherwise open a new entry below the minimum. So no
+//!     withdrawal of the account's own leaves dust: trading does, and so can a
+//!     sweep, a liquidation or an old permit (a legacy one, or one held when a sweep
+//!     or a liquidation removed its entry) landing in a missing entry, all flat and
+//!     swept again;
+//!   - when a permit that opens an entry is refused only by the position entries,
+//!     and exiting as many dust entries of other accounts as it needs (at most
+//!     `MAX_SWEEPS_PER_PERMIT`) admits it, the gateway sweeps them: a forced full
+//!     exit of each one's whole balance to its account's bound deposit address,
+//!     whatever permits that account holds, after cancelling that account's orders
+//!     in the market, marked as such in its withdrawals and announced on its event
+//!     stream once durable. Every exit is planned before the first is made, so a
+//!     sweep runs only when all of them can. Entries at the minimum and entries
+//!     holding an open position are never swept, and a sweep moves no value: the
+//!     whole balance is claimable on L1. It is not charged to the swept account.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -96,17 +115,39 @@ pub(crate) const MIN_ENTRY_BALANCE: i128 = 100 * QUOTE_SCALE;
 /// The smallest deposit permit that may open a position entry (a collateral permit
 /// for a market where the account holds no entry or only dust, outstanding permits
 /// or not, since whichever deposit is credited first opens it): `MIN_ENTRY_BALANCE`.
-/// No withdrawal takes an entry below that minimum but a full exit, so an entry the
-/// sweep leaves alone holds at least $100 unless trading lost it: filling the soft
-/// cap of `MAX_POSITIONS` with them locks about $106,300 instead of $10,600.
+/// An entry the sweep leaves alone holds at least this much or an open position;
+/// one below it with a position got there through a trading loss after it opened
+/// at the minimum, and no order adds exposure below it. One open at up to 10x and a
+/// partial close inside the 2% fill band leave about 65 USDC at a steady index; a
+/// move of the index against the position before the close leaves about 30 USDC
+/// at the edge of liquidation. So filling the soft cap of `MAX_POSITIONS` with
+/// entries the sweep never takes locks roughly $30,000 to $70,000 (about $10,600
+/// before), and needs 100 USDC passed through each entry to open it.
 pub(crate) const MIN_ENTRY_DEPOSIT: u128 = MIN_ENTRY_BALANCE as u128;
+
+/// Most outstanding permits that may open a position entry one client group (an
+/// IPv4 address or an IPv6 /64, `service_policy::client_share_key`) may hold once
+/// the state's entries and those every outstanding permit may open reach the soft
+/// cap of `MAX_POSITIONS`. Below the soft cap there is room for every request; past
+/// it, the room up to the bound is shared, so unfunded permits of one client cannot
+/// hold it. Holding all the room above the soft cap (a fifth of the bound, 265
+/// entries for the measured one) with unfunded permits takes 133 client groups.
+pub(crate) const MAX_GROUP_OPENING_PERMITS: usize = 2;
 
 /// Most dust entries one permit request sweeps. One is enough at the soft cap; more
 /// only once a lowered bound or a voided window left the entries above it.
 const MAX_SWEEPS_PER_PERMIT: u64 = 8;
 
-/// The `reason` of a forced exit by a dust sweep, in its account event.
+/// The `reason` of a forced exit by a dust sweep, in its account event, and of the
+/// cancellation of the swept account's orders in that market.
 pub(crate) const DUST_SWEEP: &str = "DUST_SWEEP";
+
+/// Returned for a full exit while the account holds a permit below the entry
+/// minimum for the market (audit G1-1).
+pub(crate) const TOP_UP_PERMIT_OUTSTANDING: &str = "TOP_UP_PERMIT_OUTSTANDING: this account \
+     holds an outstanding deposit permit for this market below the 100 USDC entry \
+     minimum, whose deposit would open a new entry below the minimum once this one is \
+     gone. Retry once that deposit is credited or the permit expires (validUntil)";
 
 /// Most withdrawals one account may make within a minute.
 pub(crate) const MAX_WITHDRAWALS_PER_MINUTE: u32 = 3;
@@ -224,23 +265,11 @@ impl WithdrawLimits {
         self.charge(owner);
     }
 
-    /// Count a dust sweep's forced exit of `owner`'s entry on the ledger only: the
-    /// gateway made it, so it is not one of the account's own withdrawals the rate
-    /// limits pace.
-    fn record_forced_exit(&mut self, owner: &[u8; 32]) {
-        self.charge(owner);
-    }
-
     /// Take back what a withdrawal that a voided window removed was charged.
     pub(crate) fn refund_withdrawal(&mut self, owner: &[u8; 32]) {
         if let Some(u) = self.by_owner.get_mut(owner) {
             u.minute_count = u.minute_count.saturating_sub(1);
         }
-        self.refund(owner);
-    }
-
-    /// Take back what a forced exit that a voided window removed was charged.
-    fn refund_forced_exit(&mut self, owner: &[u8; 32]) {
         self.refund(owner);
     }
 
@@ -277,6 +306,15 @@ impl DustSweeps {
     }
 }
 
+/// The client group each outstanding permit that may open a position entry was
+/// issued to (audit G1-1), for `MAX_GROUP_OPENING_PERMITS`. Runtime-only: after a
+/// restart the permits held then belong to no group, and still count toward the
+/// bound.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PermitGroups {
+    by_commit: BTreeMap<[u8; 32], std::net::IpAddr>,
+}
+
 /// A flat entry the sweep may exit, with what its forced exit needs.
 struct DustEntry {
     key: [u8; 32],
@@ -284,6 +322,15 @@ struct DustEntry {
     amount: i128,
     to: [u8; 20],
     oracle: OracleTranscript,
+}
+
+/// A planned forced exit of a dust entry: its withdrawal nonce and the unbind and
+/// burn that make it.
+struct DustExit {
+    dust: DustEntry,
+    owner: PubKey,
+    nonce: u64,
+    ops: [BatchOp; 2],
 }
 
 /// Whether `entry` is dust: flat and holding less than `MIN_ENTRY_BALANCE`.
@@ -573,6 +620,23 @@ impl Gw {
         })
     }
 
+    /// Whether `key` holds an outstanding collateral permit for `market` below
+    /// `MIN_ENTRY_DEPOSIT`: one issued while the entry held the minimum or an open
+    /// position, or before the entry minimum, whose deposit would open a new entry
+    /// below the minimum if it landed after the entry left.
+    fn holds_top_up_permit(&self, key: &[u8; 32], market: u64) -> bool {
+        self.accounts.get(key).is_some_and(|account| {
+            account.deposit_authorizations.keys().any(|commit| {
+                self.deposits.routes.get(commit).is_some_and(|route| {
+                    route.key == *key
+                        && route.market == market
+                        && route.purpose == deposit_ingestion::Purpose::Collateral
+                        && route.amount < MIN_ENTRY_DEPOSIT
+                })
+            })
+        })
+    }
+
     /// Whether `key`'s account holds a position entry in any market.
     fn holds_any_position(&self, key: &[u8; 32]) -> bool {
         self.accounts.get(key).is_some_and(|account| {
@@ -589,9 +653,9 @@ impl Gw {
     /// Whether a new permit for `key`, `market` and `purpose` may open a position
     /// entry once credited (audit G1-1): a collateral permit for a market where the
     /// account holds no entry or only dust (`deposit_may_open`). It needs the entry
-    /// minimum, and at the soft cap of the entries it is not issued unless a sweep
-    /// makes room, even when an outstanding permit already reserves that entry: a
-    /// new one would keep the reservation past the old one's deadline.
+    /// minimum, and the position entries may refuse it (`entries_refusal`) even when
+    /// an outstanding permit already reserves that entry: a new one would keep the
+    /// reservation past the old one's deadline.
     fn permit_reserves_entry(
         &self,
         key: &[u8; 32],
@@ -630,20 +694,88 @@ impl Gw {
         let mut opened = BTreeSet::new();
         for route in self.deposits.routes.values() {
             history = history.saturating_add(2);
-            if route.purpose != deposit_ingestion::Purpose::Collateral {
-                continue;
-            }
-            if let Some(account) = self.accounts.get(&route.key) {
-                let owner = account.wallet.owner;
-                if deposit_may_open(self.seq.state.position(&owner, route.market)) {
-                    opened.insert((owner, route.market));
-                }
+            if let Some(owner) = self.route_may_open(route) {
+                opened.insert((owner, route.market));
             }
         }
         HistorySize {
             history,
             positions: opened.len() as u64,
             notes: 0,
+        }
+    }
+
+    /// The owner whose entry the deposit of the outstanding permit `route` may open,
+    /// if it may open one: a collateral permit for a market where the owner holds
+    /// no entry or only dust (`deposit_may_open`).
+    fn route_may_open(&self, route: &deposit_ingestion::Route) -> Option<PubKey> {
+        if route.purpose != deposit_ingestion::Purpose::Collateral {
+            return None;
+        }
+        let owner = self.accounts.get(&route.key)?.wallet.owner;
+        deposit_may_open(self.seq.state.position(&owner, route.market)).then_some(owner)
+    }
+
+    /// How many outstanding permits that may open an entry the client `group` holds
+    /// (none without a group).
+    fn group_opening_permits(&self, group: Option<std::net::IpAddr>) -> usize {
+        let Some(group) = group else {
+            return 0;
+        };
+        self.permit_groups
+            .by_commit
+            .iter()
+            .filter(|(commit, g)| {
+                **g == group
+                    && self
+                        .deposits
+                        .routes
+                        .get(*commit)
+                        .is_some_and(|route| self.route_may_open(route).is_some())
+            })
+            .count()
+    }
+
+    /// Record that the new permit `commit` was issued to the client `group` (only
+    /// while it may open an entry does it count, `group_opening_permits`), and
+    /// forget the groups of permits no longer outstanding.
+    pub(crate) fn record_permit_group(
+        &mut self,
+        commit: [u8; 32],
+        group: Option<std::net::IpAddr>,
+    ) {
+        let routes = &self.deposits.routes;
+        self.permit_groups
+            .by_commit
+            .retain(|commit, _| routes.contains_key(commit));
+        if let Some(group) = group {
+            self.permit_groups.by_commit.insert(commit, group);
+        }
+    }
+
+    /// Why the position entries refuse a new permit that may open one, if they do
+    /// (audit G1-1), with `state` entries in the state, `permits` the outstanding
+    /// permits may open, `opens` whether this one adds to those, and `group_holds`
+    /// such permits held by the asking client group: the state's entries are at
+    /// their soft cap; or the state's entries and every outstanding permit's, this
+    /// one's included, would exceed the bound, so a deposit could not be credited;
+    /// or, with those at the soft cap, the group already holds
+    /// `MAX_GROUP_OPENING_PERMITS`.
+    fn entries_refusal(
+        &self,
+        state: u64,
+        permits: u64,
+        opens: bool,
+        group_holds: usize,
+    ) -> Option<PermitGateRefusal> {
+        let max = self.admission_cap.max_positions;
+        let held = state.saturating_add(permits);
+        if state >= soft(max) || held.saturating_add(u64::from(opens)) > max {
+            Some(PermitGateRefusal::AdmissionCap)
+        } else if held >= soft(max) && group_holds >= MAX_GROUP_OPENING_PERMITS {
+            Some(PermitGateRefusal::ClientOpeningPermits)
+        } else {
+            None
         }
     }
 
@@ -708,17 +840,19 @@ impl Gw {
             .then_some(PermitGateRefusal::BelowEntryMinimum)
     }
 
-    /// Why a new deposit permit for `key`, `market` and `purpose` may not be issued
-    /// under the admission cap, if it may not: an account with no position entry
-    /// already reserves an entry in another market; the soft cap is reached in a
-    /// dimension the permit adds to (for the position entries, a permit that
-    /// reserves one, `permit_reserves_entry`); or the permit would leave too little
-    /// history for the reserved exits.
+    /// Why a new deposit permit for `key`, `market` and `purpose`, asked by the
+    /// client `group`, may not be issued under the admission cap, if it may not: an
+    /// account with no position entry already reserves an entry in another market;
+    /// the history is at its soft cap; the permit would leave too little history
+    /// for the reserved exits; or, for a permit that may open an entry
+    /// (`permit_reserves_entry`), the position entries refuse it
+    /// (`entries_refusal`).
     pub(crate) fn permit_cap_refusal(
         &self,
         key: &[u8; 32],
         market: u64,
         purpose: deposit_ingestion::Purpose,
+        group: Option<std::net::IpAddr>,
     ) -> Option<PermitGateRefusal> {
         self.note_admission_cap();
         if purpose == deposit_ingestion::Purpose::Collateral
@@ -743,29 +877,44 @@ impl Gw {
                 return Some(PermitGateRefusal::OneMarketUntilFirstDeposit);
             }
         }
-        let reserves = self.permit_reserves_entry(key, market, purpose);
-        let size = self.admission_size();
+        let state = HistorySize::of(&self.seq.state);
+        let permits = self.outstanding_permit_size();
+        let size = state.plus(permits);
         let cap = &self.admission_cap;
-        let refused = size.history >= soft(cap.max_history)
-            || (reserves && size.positions >= soft(cap.max_positions))
-            || !cap.exits_fit(size.plus(credit_of(opens)));
-        refused.then_some(PermitGateRefusal::AdmissionCap)
+        if size.history >= soft(cap.max_history) || !cap.exits_fit(size.plus(credit_of(opens))) {
+            return Some(PermitGateRefusal::AdmissionCap);
+        }
+        if !self.permit_reserves_entry(key, market, purpose) {
+            return None;
+        }
+        self.entries_refusal(
+            state.positions,
+            permits.positions,
+            opens,
+            self.group_opening_permits(group),
+        )
     }
 
-    /// Make room for the new permit `request` asks for (audit G1-1): when it is
-    /// refused only because the position entries are at their soft cap, and
-    /// exiting `sweeps_needed` dust entries of other accounts admits it, sweep that
-    /// many (`dust_candidates`, smallest first; a candidate whose exit fails is
-    /// skipped). Nothing is swept for a permit refused for any other reason (its
-    /// route, the entry minimum or `admit_deposit_permit` included), nor when one
-    /// request may not sweep enough or there is not enough dust: a sweep only runs
-    /// for a permit it admits. Only a failure to make the permit durable afterwards
-    /// leaves the sweeps without it; they stand like any applied withdrawal, and
-    /// the room they made stays for the retry. Returns each forced exit with its
-    /// market, for the caller to announce (`forced_exit_event`).
+    /// Make room for the new permit `request` asks for, from the client `group`
+    /// (audit G1-1): when the position entries alone refuse it, and exiting dust
+    /// entries of other accounts admits it, sweep as few of them as admit it
+    /// (`sweeps_needed`, `dust_candidates`, smallest first). Every exit is planned
+    /// on a copy of the engine state before the first is made: a candidate whose
+    /// exit fails there is skipped, and unless enough can be exited, none is.
+    /// Nothing is swept for a permit refused for any other reason (its route, the
+    /// entry minimum or `admit_deposit_permit` included), nor when one request may
+    /// not sweep enough. The swept accounts' orders in those markets are cancelled
+    /// first. Only a failure to make the permit durable afterwards leaves the
+    /// sweeps without it; they stand like any applied withdrawal, and the room
+    /// they made stays for the retry. Returns each forced exit with its market, for
+    /// the caller to announce once a snapshot carries it (`forced_exit_event`).
+    ///
+    /// Each unbind is a timed engine operation, applied like a withdrawal's: a gate
+    /// on the open window's timed operations must cover this path too.
     pub(crate) fn sweep_dust_for_permit(
         &mut self,
         request: &deposit_ingestion::Route,
+        group: Option<std::net::IpAddr>,
         now_s: u64,
         price: PriceUse<'_>,
     ) -> Vec<(u64, Withdrawal)> {
@@ -778,69 +927,92 @@ impl Gw {
         {
             return Vec::new();
         }
-        let Some(needed) = self.sweeps_needed(key, market, purpose) else {
+        let Some(needed) = self.sweeps_needed(key, market, purpose, group) else {
             return Vec::new();
         };
         let candidates = self.dust_candidates(key, price);
         if (candidates.len() as u64) < needed {
             return Vec::new();
         }
+        let plan = self.plan_dust_exits(candidates, needed, price.now_ms);
+        if (plan.len() as u64) < needed {
+            return Vec::new();
+        }
+        for exit in &plan {
+            self.cancel_swept_orders(&exit.dust.key, exit.dust.market);
+        }
+        let ops: Vec<BatchOp> = plan.iter().flat_map(|exit| exit.ops.clone()).collect();
+        // The plan applied every op to a copy of this state in this order.
+        if let Err(e) = self.seq.apply_atomic(&ops) {
+            eprintln!("[admission] planned dust sweep refused: {e:?}");
+            return Vec::new();
+        }
         let mut swept = Vec::new();
-        for dust in candidates {
-            if swept.len() as u64 == needed {
-                break;
-            }
-            match self.force_dust_exit(&dust, price.now_ms) {
-                Ok(w) => swept.push((dust.market, w)),
-                Err(e) => eprintln!("[admission] dust sweep skipped an entry: {e}"),
-            }
+        for exit in plan {
+            self.next_withdraw_nonce = exit.nonce.saturating_add(1);
+            let w = Withdrawal {
+                owner: exit.owner,
+                to: exit.dust.to,
+                amount: exit.dust.amount as u128,
+                nonce: exit.nonce,
+            };
+            self.pending_withdrawals.push(w.clone());
+            self.window_withdrawals.push(w.clone());
+            self.dust_sweeps.leaves.insert(w.leaf());
+            swept.push((exit.dust.market, w));
         }
-        if !swept.is_empty() {
-            println!(
-                "[admission] swept {} dust position entries below {} USDC to make room for a new entry",
-                swept.len(),
-                MIN_ENTRY_BALANCE / QUOTE_SCALE
-            );
-        }
+        println!(
+            "[admission] swept {} dust position entries below {} USDC to make room for a new entry",
+            swept.len(),
+            MIN_ENTRY_BALANCE / QUOTE_SCALE
+        );
         swept
     }
 
-    /// How many dust entries must be exited for the permit to be issued, if a sweep
-    /// can admit it: the permit opens an entry (a further permit for an entry its
-    /// account already reserves never sweeps), it is refused for the position
-    /// entries at their soft cap, and with that many entries fewer, and the leaf and
-    /// nullifier each exit adds, no bound refuses it, within `MAX_SWEEPS_PER_PERMIT`.
-    /// Each exit frees exactly one entry: a permit for dust already counts as
-    /// opening one (`outstanding_permit_size`).
+    /// How many dust entries must be exited for the permit, asked by the client
+    /// `group`, to be issued, if a sweep can admit it: the permit opens an entry (a
+    /// further permit for an entry its account already reserves never sweeps), the
+    /// position entries refuse it, and with that many entries fewer, and the leaf
+    /// and nullifier each exit adds, nothing refuses it, within
+    /// `MAX_SWEEPS_PER_PERMIT`. An exit frees one entry of the state and changes
+    /// nothing the permits may open: a permit for dust already counts as opening
+    /// one (`outstanding_permit_size`).
     fn sweeps_needed(
         &self,
         key: &[u8; 32],
         market: u64,
         purpose: deposit_ingestion::Purpose,
+        group: Option<std::net::IpAddr>,
     ) -> Option<u64> {
-        if !self.permits_creditable()
-            || !self.permit_opens_entry(key, market, purpose)
-            || self.permit_cap_refusal(key, market, purpose)
-                != Some(PermitGateRefusal::AdmissionCap)
-        {
+        if !self.permits_creditable() || !self.permit_opens_entry(key, market, purpose) {
             return None;
         }
-        let size = self.admission_size();
+        if !matches!(
+            self.permit_cap_refusal(key, market, purpose, group),
+            Some(PermitGateRefusal::AdmissionCap | PermitGateRefusal::ClientOpeningPermits)
+        ) {
+            return None;
+        }
+        let state = HistorySize::of(&self.seq.state);
+        let permits = self.outstanding_permit_size();
+        let group_holds = self.group_opening_permits(group);
         let cap = &self.admission_cap;
-        let needed = size
-            .positions
-            .checked_sub(soft(cap.max_positions))?
-            .saturating_add(1);
-        if needed > MAX_SWEEPS_PER_PERMIT {
-            return None;
-        }
-        let after = HistorySize {
-            history: size.history.saturating_add(needed.saturating_mul(2)),
-            positions: size.positions - needed,
-            notes: size.notes,
-        };
-        (after.history < soft(cap.max_history) && cap.exits_fit(after.plus(credit_of(true))))
-            .then_some(needed)
+        (1..=MAX_SWEEPS_PER_PERMIT.min(state.positions)).find(|&n| {
+            let entries = state.positions - n;
+            let after = HistorySize {
+                history: state
+                    .history
+                    .saturating_add(permits.history)
+                    .saturating_add(n.saturating_mul(2)),
+                positions: entries.saturating_add(permits.positions),
+                notes: state.notes,
+            };
+            after.history < soft(cap.max_history)
+                && cap.exits_fit(after.plus(credit_of(true)))
+                && self
+                    .entries_refusal(entries, permits.positions, true, group_holds)
+                    .is_none()
+        })
     }
 
     /// The dust entries a sweep may exit, in the order it exits them: every flat
@@ -850,7 +1022,8 @@ impl Gw {
     /// market whose oracle report is usable at `price` (`sweep_oracle`). An
     /// outstanding permit of the account does not keep its dust: that permit
     /// already counts as opening an entry, and its deposit, if it lands, opens one
-    /// at the entry minimum.
+    /// at the entry minimum (or, for a permit from before the minimum, flat dust
+    /// that can open no position and is swept again).
     fn dust_candidates(&self, asker: &[u8; 32], price: PriceUse<'_>) -> Vec<DustEntry> {
         let dust: Vec<(&(PubKey, u64), &Position)> = self
             .seq
@@ -862,13 +1035,6 @@ impl Gw {
         if dust.is_empty() {
             return Vec::new();
         }
-        let owners: BTreeSet<PubKey> = dust.iter().map(|((owner, _), _)| *owner).collect();
-        let accounts: BTreeMap<PubKey, ([u8; 32], [u8; 20])> = self
-            .accounts
-            .iter()
-            .filter(|(key, a)| *key != asker && owners.contains(&a.wallet.owner))
-            .filter_map(|(key, a)| a.deposit_address.map(|to| (a.wallet.owner, (*key, to))))
-            .collect();
         let oracles: BTreeMap<u64, OracleTranscript> = self
             .mkts
             .iter()
@@ -877,8 +1043,9 @@ impl Gw {
         let mut candidates: Vec<DustEntry> = dust
             .into_iter()
             .filter_map(|((owner, market), entry)| {
-                let (key, to) = *accounts.get(owner)?;
-                Some(DustEntry {
+                let key = self.key_of_owner(owner)?;
+                let to = self.accounts[&key].deposit_address?;
+                (key != *asker).then_some(DustEntry {
                     key,
                     market: *market,
                     amount: entry.collateral,
@@ -906,15 +1073,56 @@ impl Gw {
         Some(oracle)
     }
 
-    /// Exit the dust entry `dust` in full at `now_ms`: the unbind and burn of the
-    /// account's own withdrawal of its whole balance, to its bound deposit address,
-    /// recorded as a forced exit. Like any full exit it removes the entry, needs no
-    /// history room, ignores the quota and is charged to the ledger; the account's
-    /// authorization nonce is not touched, and its withdrawal rate limits are not
-    /// charged (`withdrawal_rate_refusal` leaves forced exits out). The unbind is a
-    /// timed engine operation, applied like a withdrawal's: a gate on the open
-    /// window's timed operations must cover this path too.
-    fn force_dust_exit(&mut self, dust: &DustEntry, now_ms: u64) -> Result<Withdrawal, String> {
+    /// Plan the forced exits of the first `needed` of `candidates` that can be
+    /// exited at `now_ms`, in order: each one's unbind and burn are applied to a
+    /// copy of the engine state after the exits planned before it, and a candidate
+    /// whose exit fails there is skipped. Nothing is applied to the state itself.
+    fn plan_dust_exits(
+        &self,
+        candidates: Vec<DustEntry>,
+        needed: u64,
+        now_ms: u64,
+    ) -> Vec<DustExit> {
+        let Ok(mut nonce) = self.next_withdrawal_nonce() else {
+            return Vec::new();
+        };
+        let mut trial = self.seq.state.clone();
+        let mut plan = Vec::new();
+        for dust in candidates {
+            if plan.len() as u64 == needed {
+                break;
+            }
+            let exit = match self.dust_exit(dust, nonce, now_ms) {
+                Ok(exit) => exit,
+                Err(e) => {
+                    eprintln!("[admission] dust sweep skipped an entry: {e}");
+                    continue;
+                }
+            };
+            let mut next = trial.clone();
+            match exit
+                .ops
+                .iter()
+                .try_for_each(|op| next.apply_op(op).map(drop))
+            {
+                Ok(()) => {
+                    trial = next;
+                    plan.push(exit);
+                    nonce = nonce.saturating_add(1);
+                }
+                Err(e) => eprintln!("[admission] dust sweep skipped an entry: {e:?}"),
+            }
+        }
+        plan
+    }
+
+    /// The forced exit of the dust entry `dust` with the withdrawal `nonce` at
+    /// `now_ms`: the unbind and burn of the account's own withdrawal of its whole
+    /// balance, to its bound deposit address. Like any full exit it removes the
+    /// entry and needs no history room; it ignores the quota, and the account's
+    /// authorization nonce, withdrawal rate limits and history ledger are not
+    /// touched (`withdrawal_rate_refusal` leaves forced exits out).
+    fn dust_exit(&self, dust: DustEntry, nonce: u64, now_ms: u64) -> Result<DustExit, String> {
         let wallet = self
             .accounts
             .get(&dust.key)
@@ -928,40 +1136,72 @@ impl Gw {
         {
             return Err(refusal.into());
         }
-        let nonce = self.next_withdrawal_nonce()?;
         let mut blind = [0xD0u8; 32];
         blind[..8].copy_from_slice(&nonce.to_le_bytes());
         let note = Note::new(wallet.owner, 0, dust.amount, blind);
-        self.seq
-            .apply_atomic(&[
-                BatchOp::Unbind {
-                    owner: wallet.owner,
-                    market_id: dust.market,
-                    amount: dust.amount,
-                    blinding: blind,
-                    oracle: dust.oracle,
-                    now_ms,
-                },
-                BatchOp::Withdraw {
-                    note_commitment: note.commitment::<Keccak256>(),
-                    spend_key: wallet.spend_key,
-                    to: Some(dust.to),
-                    nonce,
-                },
-            ])
-            .map_err(|e| format!("dust sweep refused: {e:?}"))?;
-        self.next_withdraw_nonce = nonce.saturating_add(1);
-        self.withdraw_limits.record_forced_exit(&wallet.owner);
-        let w = Withdrawal {
+        let ops = [
+            BatchOp::Unbind {
+                owner: wallet.owner,
+                market_id: dust.market,
+                amount: dust.amount,
+                blinding: blind,
+                oracle: dust.oracle,
+                now_ms,
+            },
+            BatchOp::Withdraw {
+                note_commitment: note.commitment::<Keccak256>(),
+                spend_key: wallet.spend_key,
+                to: Some(dust.to),
+                nonce,
+            },
+        ];
+        Ok(DustExit {
+            dust,
             owner: wallet.owner,
-            to: dust.to,
-            amount: dust.amount as u128,
             nonce,
+            ops,
+        })
+    }
+
+    /// Cancel the live orders of `key`'s account in `market` before a sweep exits
+    /// its entry there: the entry is gone, and an order resting on it would only
+    /// fail to fill (or hold collateral the exit takes). Each is recorded as
+    /// cancelled for `DUST_SWEEP`.
+    fn cancel_swept_orders(&mut self, key: &[u8; 32], market: u64) {
+        let Some(account) = self.accounts.get_mut(key) else {
+            return;
         };
-        self.pending_withdrawals.push(w.clone());
-        self.window_withdrawals.push(w.clone());
-        self.dust_sweeps.leaves.insert(w.leaf());
-        Ok(w)
+        let owner = account.wallet.owner;
+        for o in account
+            .orders
+            .iter_mut()
+            .filter(|o| o.order.market_id == market)
+        {
+            if self
+                .seq
+                .cancellable_size(&owner, &o.order, o.sealed)
+                .is_none()
+                || execution::cancel(&mut self.seq, &owner, o).is_err()
+            {
+                continue;
+            }
+            if let Some(e) = o.execution.as_mut() {
+                e.reason = Some(DUST_SWEEP.into());
+            }
+            if !self.pending_rejected.contains(&o.order_hash) {
+                self.pending_rejected.push(o.order_hash);
+            }
+        }
+    }
+
+    /// The API key of the account whose owner is `owner`, from the owner index,
+    /// checked against the account it names.
+    fn key_of_owner(&self, owner: &PubKey) -> Option<[u8; 32]> {
+        let key = self.owner_keys.get(owner)?;
+        self.accounts
+            .get(key)
+            .is_some_and(|a| a.wallet.owner == *owner)
+            .then_some(*key)
     }
 
     /// Whether crediting the deposit of the held permit `commit` now would take the
@@ -1111,9 +1351,10 @@ impl Gw {
     /// below the entry minimum, if it would (audit G1-1): while deposits can be
     /// credited, a withdrawal is a full exit or leaves at least `MIN_ENTRY_BALANCE`
     /// in the entry, whether it holds an open position or not. So no withdrawal
-    /// makes dust, only trading does, and an entry holding a position the sweep
-    /// never exits keeps the minimum unless trading lost it. In close-only no entry
-    /// opens any more, and every exit is accepted.
+    /// leaves dust (`top_up_exit_refusal` keeps a top-up from landing after a full
+    /// exit), and an entry holding a position the sweep never exits keeps the
+    /// minimum unless trading lost it. In close-only no entry opens any more, and
+    /// every exit is accepted.
     pub(crate) fn entry_balance_refusal(
         &self,
         owner: &PubKey,
@@ -1138,13 +1379,54 @@ impl Gw {
         })
     }
 
+    /// Why a full exit of `amount` from `owner`'s (account `key`) entry in `market`
+    /// must wait, if it must (audit G1-1): while deposits can be credited, the
+    /// account holds an outstanding permit below `MIN_ENTRY_DEPOSIT` for the
+    /// market, issued for a top-up while the entry held the minimum or an open
+    /// position. Its deposit would land in the missing entry and open a new one
+    /// below the minimum, recycling the balance that left. It is accepted once that
+    /// deposit is credited (the whole balance then leaves with it) or the permit
+    /// has expired.
+    pub(crate) fn top_up_exit_refusal(
+        &self,
+        key: &[u8; 32],
+        owner: &PubKey,
+        market: u64,
+        amount: i128,
+    ) -> Option<&'static str> {
+        (self.permits_creditable()
+            && self.is_full_exit(owner, market, amount)
+            && self.holds_top_up_permit(key, market))
+        .then_some(TOP_UP_PERMIT_OUTSTANDING)
+    }
+
+    /// Why an order of `owner` that opens, grows or flips a position in `market`
+    /// is refused below the entry minimum, if it is (audit G1-1): its entry holds
+    /// less than `MIN_ENTRY_BALANCE`. The sequencer holds every fill that adds
+    /// exposure to the same rule (`Sequencer::set_min_entry_collateral`), so an
+    /// order that rests from when the entry held the minimum does not fill below
+    /// it either. Reductions are never refused.
+    pub(crate) fn entry_order_refusal(&self, owner: &PubKey, market: u64) -> Option<String> {
+        let collateral = self
+            .seq
+            .state
+            .position(owner, market)
+            .map_or(0, |p| p.collateral);
+        (collateral < MIN_ENTRY_BALANCE).then(|| {
+            format!(
+                "BELOW_ENTRY_BALANCE: an order that opens or increases a position needs at \
+                 least {} USDC in this market; deposit into it first. Orders that only \
+                 reduce the position are accepted",
+                MIN_ENTRY_BALANCE / QUOTE_SCALE
+            )
+        })
+    }
+
     /// Take back what the withdrawal `w`, which a voided window or the close-only
-    /// rebase removed, was charged: a forced exit only on the ledger, as it was
-    /// charged. Call it before the sweeps forget `w`.
+    /// rebase removed, was charged; a forced exit was charged nothing. Call it
+    /// before the sweeps forget `w`.
     pub(crate) fn refund_removed_withdrawal(&mut self, w: &Withdrawal) {
-        if self.dust_sweeps.contains(&w.leaf()) {
-            self.withdraw_limits.refund_forced_exit(&w.owner);
-        } else {
+        if !self.dust_sweeps.contains(&w.leaf()) {
             self.withdraw_limits.refund_withdrawal(&w.owner);
         }
     }
@@ -1843,7 +2125,7 @@ mod tests {
         let (key, _) = gw.register_account(None);
         gw.accounts.get_mut(&key).unwrap().deposit_address = Some(PAYER);
         assert_eq!(
-            gw.permit_cap_refusal(&key, 0, deposit_ingestion::Purpose::Collateral),
+            gw.permit_cap_refusal(&key, 0, deposit_ingestion::Purpose::Collateral, None),
             None
         );
         let commit = gw
@@ -1924,11 +2206,13 @@ mod tests {
     fn a_full_exit_that_a_held_permit_could_reopen_needs_room() {
         let (mut gw, key, sk, to) = funded_withdrawer();
         gw.accounts.get_mut(&key).unwrap().deposit_address = Some(PAYER);
+        // A permit at the entry minimum: one below it would hold any full exit
+        // (`top_up_exit_refusal`), whatever the history.
         let commit = gw
             .authorize_routed_deposit(
                 &key,
                 PAYER,
-                MIN_DEPOSIT_PERMIT,
+                MIN_ENTRY_DEPOSIT,
                 0,
                 deposit_ingestion::Purpose::Collateral,
                 u64::MAX,
@@ -2002,7 +2286,8 @@ mod tests {
     /// entry) reserves at most one entry: it holds permits for one market until
     /// its first deposit is credited. A permit that opens no entry (a top-up) is
     /// not refused for position headroom, and one that opens an entry is refused
-    /// once the reservations reach the positions soft cap.
+    /// once the entries and the reservations fill the bound (past the soft cap the
+    /// reservations share the room up to it, audit G1-1).
     #[test]
     fn fresh_permits_reserve_one_entry_each_and_never_close_registration() {
         use deposit_ingestion::Purpose::Collateral;
@@ -2030,26 +2315,30 @@ mod tests {
             .unwrap();
         };
         let first = fresh(&mut gw);
-        assert_eq!(gw.permit_cap_refusal(&first, 0, Collateral), None);
+        assert_eq!(gw.permit_cap_refusal(&first, 0, Collateral, None), None);
         issue(&mut gw, &first, 0);
         // Another market is refused until the first deposit is credited; the same
         // market reserves nothing new.
         assert_eq!(
-            gw.permit_cap_refusal(&first, 1, Collateral),
+            gw.permit_cap_refusal(&first, 1, Collateral, None),
             Some(PermitGateRefusal::OneMarketUntilFirstDeposit)
         );
-        assert_eq!(gw.permit_cap_refusal(&first, 0, Collateral), None);
+        assert_eq!(gw.permit_cap_refusal(&first, 0, Collateral, None), None);
         issue(&mut gw, &first, 0);
         assert_eq!(gw.outstanding_permit_size().positions, 1);
         for _ in 0..3 {
             let key = fresh(&mut gw);
-            assert_eq!(gw.permit_cap_refusal(&key, 0, Collateral), None);
+            assert_eq!(gw.permit_cap_refusal(&key, 0, Collateral, None), None);
             issue(&mut gw, &key, 0);
         }
         assert_eq!(gw.admission_size().positions, 4);
         let late = fresh(&mut gw);
+        assert_eq!(gw.permit_cap_refusal(&late, 0, Collateral, None), None);
+        issue(&mut gw, &late, 0);
+        assert_eq!(gw.admission_size().positions, 5);
+        let later = fresh(&mut gw);
         assert_eq!(
-            gw.permit_cap_refusal(&late, 0, Collateral),
+            gw.permit_cap_refusal(&later, 0, Collateral, None),
             Some(PermitGateRefusal::AdmissionCap)
         );
         // Registration reads the state alone.
@@ -2061,9 +2350,9 @@ mod tests {
         // A funded account tops up its entry, but opens no new one.
         let funded = fresh(&mut gw);
         gw.account_deposit(&funded, 0, 100 * QUOTE_SCALE).unwrap();
-        assert_eq!(gw.permit_cap_refusal(&funded, 0, Collateral), None);
+        assert_eq!(gw.permit_cap_refusal(&funded, 0, Collateral, None), None);
         assert_eq!(
-            gw.permit_cap_refusal(&funded, 1, Collateral),
+            gw.permit_cap_refusal(&funded, 1, Collateral, None),
             Some(PermitGateRefusal::AdmissionCap)
         );
     }

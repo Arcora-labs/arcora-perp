@@ -149,6 +149,7 @@ impl Gw {
         // Notify existing subscribers even after restore creates fresh controls.
         a.credential_control.changed.send_replace(next);
         self.accounts.insert(new_key, a);
+        self.owner_keys.insert(owner, new_key);
         // A01 stores account lookup credentials in permits, credited receipts, refund
         // records and the records of landed deposits that were not credited. Move
         // every one of those references under the same Gw lock as the account
