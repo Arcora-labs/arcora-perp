@@ -356,6 +356,12 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
      settlement for an order accepted before; § Orders). So an entry below the
      minimum that holds a position got there through a trading loss after it opened
      at 100 USDC or more, and a flat one stays flat until topped up to the minimum.
+   - Outside close-only, a withdrawal from an entry with an open position is
+     measured against the stored oracle report, never a re-signed copy of the last
+     price: while the feed is down (the report is stale or invalid) it is refused
+     with `oracle unavailable`, as an order is, and succeeds again once a fresh
+     report arrives. An entry with no open position needs no price and withdraws
+     through an outage.
    - Outside close-only, a withdrawal leaves at least **100 USDC** in its market's
      entry, whether it holds an open position or not, unless it is a full exit (the
      whole balance with no open position): `400` `BELOW_ENTRY_BALANCE` otherwise

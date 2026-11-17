@@ -3446,7 +3446,21 @@ impl Gw {
         } else {
             None
         };
-        let free = self.market_free_of(&wallet.owner, market);
+        // Audit OR-1: with an open position the withdrawal is measured against the
+        // stored, validated report, and so is the free balance.
+        let (verified, price) = if self.seq.state.mode == Mode::CloseOnly {
+            (None, self.px_of(market))
+        } else {
+            match normal_oracle {
+                Some(oracle) => (Some(oracle), oracle.price),
+                None => {
+                    let oracle =
+                        self.withdrawal_oracle(&wallet.owner, market, context.price.now_ms)?;
+                    (Some(oracle), oracle.price)
+                }
+            }
+        };
+        let free = self.market_free_at(&wallet.owner, market, price);
         if amount > free {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
@@ -3491,10 +3505,9 @@ impl Gw {
             }
         } else {
             let now = context.price.now_ms;
-            // Candidate uses the original admitted transcript, including its
-            // source publish time. Never turn a frozen report into a fresh one.
-            let oracle = normal_oracle
-                .unwrap_or_else(|| oracle_of(self.px_of(market), now, market, &self.oracle_signer));
+            // The verified transcript, with its original source publish time.
+            // Never turn a frozen report into a fresh one.
+            let oracle = verified.expect("normal mode resolved a transcript above");
             BatchOp::Unbind {
                 owner: wallet.owner,
                 market_id: market,
@@ -3856,6 +3869,11 @@ impl Gw {
 
     /// Per-owner free margin in a market (the multi-tenant analog of `market_free`).
     fn market_free_of(&self, owner: &PubKey, market: u64) -> i128 {
+        self.market_free_at(owner, market, self.px_of(market))
+    }
+
+    /// `market_free_of` with the position's margin priced at `price`.
+    fn market_free_at(&self, owner: &PubKey, market: u64, price: i128) -> i128 {
         let coll = self
             .seq
             .state
@@ -3863,10 +3881,51 @@ impl Gw {
             .map(|p| p.collateral)
             .unwrap_or(0);
         let locked = match self.seq.state.position(owner, market) {
-            Some(p) if p.size != 0 => required_margin(p.size.abs(), self.px_of(market)),
+            Some(p) if p.size != 0 => required_margin(p.size.abs(), price),
             _ => 0,
         };
         (coll - locked).max(0)
+    }
+
+    /// The oracle transcript a withdrawal from `owner`'s entry in `market` is
+    /// applied against at `now_ms` (audit OR-1). With an open position it is the
+    /// stored report as it is, valid or refused as "oracle unavailable", exactly as
+    /// an order is: a withdrawal must never sign the last price under a fresh
+    /// timestamp while the feed is down. A flat entry has no margin to check, so
+    /// it needs no price and withdraws through an outage.
+    fn withdrawal_oracle(
+        &self,
+        owner: &PubKey,
+        market: u64,
+        now_ms: u64,
+    ) -> Result<OracleTranscript, String> {
+        let open = self
+            .seq
+            .state
+            .position(owner, market)
+            .is_some_and(|p| p.size != 0);
+        if !open {
+            return Ok(oracle_of(
+                self.px_of(market),
+                now_ms,
+                market,
+                &self.oracle_signer,
+            ));
+        }
+        let unavailable = || {
+            "oracle unavailable: a withdrawal with an open position needs a fresh verified \
+             oracle report"
+                .to_string()
+        };
+        let policy = self
+            .seq
+            .state
+            .markets
+            .get(&market)
+            .ok_or("Unknown market.")?;
+        let oracle = *self.seq.oracle(market).ok_or_else(unavailable)?;
+        oracle.validate(policy, now_ms).map_err(|_| unavailable())?;
+        Ok(oracle)
     }
     /// Does this order open/increase the owner's position (vs reduce/close)?
     fn is_opening_of(&self, owner: &PubKey, market: u64, side: &str, size: i128) -> bool {
@@ -4776,11 +4835,11 @@ impl Gw {
         // anything: a production refusal must mutate NOTHING. The mint-site check
         // remains the backstop for every other caller.
         refuse_unbacked_mint(self.prod)?;
-        if value > self.market_free_of(&from.owner, 0) {
+        let now = now_ms();
+        let oracle = self.withdrawal_oracle(&from.owner, 0, now)?;
+        if value > self.market_free_at(&from.owner, 0, oracle.price) {
             return Err("Insufficient market-0 free balance.".into());
         }
-        let now = now_ms();
-        let oracle = oracle_of(self.px_of(0), now, 0, &self.oracle_signer);
         let c = self.lp_counter;
         self.lp_counter += 1;
         let mut db = [0xE0u8; 32];
@@ -5321,14 +5380,16 @@ impl Gw {
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
-        if amount > self.market_free(self.selected) {
+        let now = now_ms();
+        let owner = self.user.owner;
+        let oracle = self.withdrawal_oracle(&owner, self.selected, now)?;
+        let free = self.market_free_at(&owner, self.selected, oracle.price);
+        if amount > free {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
             );
         }
-        let now = now_ms();
-        let owner = self.user.owner;
-        if amount < MIN_WITHDRAWAL && amount != self.market_free(self.selected) {
+        if amount < MIN_WITHDRAWAL && amount != free {
             return Err(format!(
                 "BELOW_MINIMUM: a withdrawal must be at least {} USDC unless it withdraws the \
                  whole free balance in this market",
@@ -5344,12 +5405,6 @@ impl Gw {
         {
             return Err(refusal.into());
         }
-        let oracle = oracle_of(
-            self.px_of(self.selected),
-            now,
-            self.selected,
-            &self.oracle_signer,
-        );
         // SEC-026: same repeat hazard as the demo deposit — `op_unbind` MINTS a note,
         // so the old `0xC0 + tick % 60` blind made withdrawing the same amount 60 ticks
         // apart a historical DuplicateCommitment. Same fix: the tree leaf count never
