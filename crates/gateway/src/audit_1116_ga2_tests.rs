@@ -366,31 +366,55 @@ fn credit_page(gw: &Gw, commit: [u8; 32]) -> deposit_rpc::Page {
 /// A production gateway account that signs its own withdrawals and is bound to
 /// its own address, so it can hold deposit permits too.
 fn permit_account(gw: &mut Gw, seed: u8) -> ([u8; 32], k256::ecdsa::SigningKey, [u8; 20]) {
-    let sk = k256::ecdsa::SigningKey::from_slice(&[seed; 32]).unwrap();
+    permit_account_from(gw, [seed; 32])
+}
+
+fn permit_account_from(
+    gw: &mut Gw,
+    seed: [u8; 32],
+) -> ([u8; 32], k256::ecdsa::SigningKey, [u8; 20]) {
+    let sk = k256::ecdsa::SigningKey::from_slice(&seed).unwrap();
     let address = eth_address(&sk);
     let (key, _) = gw.register_account(Some(address));
     gw.accounts.get_mut(&key).unwrap().deposit_address = Some(address);
     (key, sk, address)
 }
 
-/// Issue a minimum collateral permit for market 0 and credit its deposit through
-/// the real ingestion path.
-fn deposit_through_permit(gw: &mut Gw, key: &[u8; 32], from: [u8; 20]) -> Result<(), String> {
+/// Issue a collateral permit of `amount` for market 0 through the permit gate,
+/// and leave it unfunded.
+fn take_permit(
+    gw: &mut Gw,
+    key: &[u8; 32],
+    from: [u8; 20],
+    amount: u128,
+) -> Result<[u8; 32], String> {
     if let Some(refusal) = gw.permit_cap_refusal(key, 0, deposit_ingestion::Purpose::Collateral) {
         return Err(format!("{refusal:?}"));
     }
-    let commit = gw.authorize_routed_deposit(
+    gw.authorize_routed_deposit(
         key,
         from,
-        admission::MIN_DEPOSIT_PERMIT,
+        amount,
         0,
         deposit_ingestion::Purpose::Collateral,
         u64::MAX,
-    )?;
+    )
+}
+
+/// Credit the deposit of the outstanding permit `commit` through the real
+/// ingestion path.
+fn fund_permit(gw: &mut Gw, commit: [u8; 32]) -> Result<(), String> {
     let page = credit_page(gw, commit);
     gw.apply_deposit_page(page)?;
     gw.deposits.dirty = false;
     Ok(())
+}
+
+/// Issue a minimum collateral permit for market 0 and credit its deposit through
+/// the real ingestion path.
+fn deposit_through_permit(gw: &mut Gw, key: &[u8; 32], from: [u8; 20]) -> Result<(), String> {
+    let commit = take_permit(gw, key, from, admission::MIN_DEPOSIT_PERMIT)?;
+    fund_permit(gw, commit)
 }
 
 #[test]
@@ -437,4 +461,133 @@ fn audit_1116_ga2_many_accounts_under_the_quota_cannot_close_registration() {
     assert_eq!(gw.registration_refusal(), None);
     let (late, _, late_address) = permit_account(&mut gw, 0x7f);
     assert!(deposit_through_permit(&mut gw, &late, late_address).is_ok());
+}
+
+/// Review round 2: outstanding permits cost nothing (no L1 transaction), so they
+/// must not count toward the exchange-wide partial-withdrawal reserve. Free
+/// accounts holding unfunded permits past it leave the state's history as it was
+/// and every honest partial withdrawal open.
+#[test]
+fn audit_1116_ga2_unfunded_permits_do_not_close_partial_withdrawals() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let (honest, honest_sk, honest_to) = account(&mut gw, 0x7d, 100 * QUOTE_SCALE);
+    let history = admission::HistorySize::of(&gw.seq.state).history;
+    let mut accounts = 0u8;
+    let mut permits = 0u64;
+    while gw.admission_size().history < PARTIAL_WITHDRAWAL_HISTORY_CEILING {
+        let mut seed = [0x5bu8; 32];
+        seed[0] = accounts;
+        accounts += 1;
+        let (key, _, address) = permit_account_from(&mut gw, seed);
+        while take_permit(&mut gw, &key, address, admission::MIN_DEPOSIT_PERMIT).is_ok() {
+            permits += 1;
+        }
+    }
+    assert!(accounts <= 81, "{accounts} accounts held {permits} permits");
+    assert_eq!(
+        admission::HistorySize::of(&gw.seq.state).history,
+        history,
+        "a permit adds no history until its deposit is credited"
+    );
+    withdraw_at(
+        &mut gw, &honest, &honest_sk, MIN_UNITS, honest_to, 1_000_000,
+    )
+    .unwrap();
+}
+
+/// Review round 2: the withdrawal quota counts the account's outstanding permits,
+/// as the permit gate does. Otherwise one account takes permits up to the quota,
+/// makes partial withdrawals up to it as well, then funds the permits, whose
+/// credits the quota never refuses: about twice its quota.
+#[test]
+fn audit_1116_ga2_outstanding_permits_count_against_the_withdrawal_quota() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let (key, sk, address) = permit_account(&mut gw, 0x7e);
+    let owner = gw.accounts[&key].wallet.owner;
+    let history = admission::HistorySize::of(&gw.seq.state).history;
+    // One real deposit, then permits up to the quota, left unfunded.
+    let commit = take_permit(&mut gw, &key, address, (1_000 * QUOTE_SCALE) as u128).unwrap();
+    fund_permit(&mut gw, commit).unwrap();
+    let mut permits = Vec::new();
+    while let Ok(commit) = take_permit(&mut gw, &key, address, admission::MIN_DEPOSIT_PERMIT) {
+        permits.push(commit);
+    }
+    assert_eq!(permits.len() as u64, ACCOUNT_HISTORY_QUOTA / 2 - 1);
+    // Partial withdrawals, outside the rate limits: none fits the quota.
+    let mut t = 1_000_000u64;
+    let mut partial = 0usize;
+    let mut last = String::new();
+    for _ in 0..permits.len() {
+        t += 60_000;
+        gw.window_withdrawals.clear();
+        match withdraw_at(&mut gw, &key, &sk, MIN_UNITS, address, t) {
+            Ok(_) => partial += 1,
+            Err(e) => last = e,
+        }
+    }
+    assert_eq!(partial, 0, "partial withdrawals past the committed quota");
+    assert_eq!(last, WITHDRAW_QUOTA_EXCEEDED);
+    // The permits are funded: the account stays within its quota.
+    for commit in permits {
+        fund_permit(&mut gw, commit).unwrap();
+    }
+    assert_eq!(gw.withdraw_limits.units(&owner), ACCOUNT_HISTORY_QUOTA);
+    let used = admission::HistorySize::of(&gw.seq.state).history - history;
+    assert!(
+        used <= ACCOUNT_HISTORY_QUOTA,
+        "one account used {used} units"
+    );
+}
+
+/// Review round 2: every visitor of the demo build shares one demo user, and the
+/// demo deposit routes are not metered, so a lifetime quota on that user protects
+/// nothing and closes `/api/withdraw` for everyone after 50 withdrawals in total.
+/// The demo withdrawal keeps the minimum, the rate limit and the reserve.
+#[test]
+fn audit_1116_ga2_the_shared_demo_user_has_no_lifetime_quota() {
+    let mut gw = Gw::boot();
+    gw.deposit(1_000 * QUOTE_SCALE).unwrap();
+    let owner = gw.user.owner;
+    for _ in 0..ACCOUNT_HISTORY_QUOTA / 2 {
+        gw.withdraw_limits.record_credit(&owner);
+    }
+    gw.withdraw(MIN_UNITS).unwrap();
+    assert_eq!(
+        gw.withdraw_limits.units(&owner),
+        ACCOUNT_HISTORY_QUOTA,
+        "the shared demo user is not charged"
+    );
+}
+
+/// Review round 2: the close-only rebase discards the open window's credits and
+/// withdrawals, as a live void does, so it takes back what they were charged.
+#[test]
+fn audit_1116_ga2_the_close_only_rebase_refunds_what_it_discards() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let (key, sk, address) = permit_account(&mut gw, 0x7c);
+    let owner = gw.accounts[&key].wallet.owner;
+    let commit = take_permit(&mut gw, &key, address, (100 * QUOTE_SCALE) as u128).unwrap();
+    fund_permit(&mut gw, commit).unwrap();
+    gw.seq.seal_genesis_baseline();
+    gw.last_settled_root = gw.seq.state.state_root();
+    let consumed = gw.seq.state.consumed_deposit_count;
+    // The open window credits a deposit and makes a withdrawal; it never settles.
+    deposit_through_permit(&mut gw, &key, address).unwrap();
+    withdraw_at(&mut gw, &key, &sk, MIN_UNITS, address, 1_000_000).unwrap();
+    assert_eq!(gw.withdraw_limits.units(&owner), 6);
+    let l1 = wind_down::SettledL1 {
+        block: 100,
+        close_only: true,
+        settled: false,
+        batch_count: gw.seq.current_window_id(),
+        root: gw.last_settled_root,
+        consumed_deposit_count: consumed,
+    };
+    gw.rebase_to_settled(&l1).unwrap();
+    assert!(gw.window_withdrawals.is_empty());
+    assert_eq!(
+        gw.withdraw_limits.units(&owner),
+        2,
+        "only the settled deposit stays charged"
+    );
 }
