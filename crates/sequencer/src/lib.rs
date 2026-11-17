@@ -2064,6 +2064,25 @@ impl Sequencer {
         self.window_ops.len()
     }
 
+    /// The time of the open window's first timed operation, or `None` while it
+    /// holds none. A clock-bound window registers only while its timed operations
+    /// span at most the verifier's `maxWindowMs` from it, so the gateway stops
+    /// admitting them as the window ages. Reads only up to that operation.
+    pub fn window_first_timed_ms(&self) -> Option<u64> {
+        self.window_ops.iter().find_map(|op| {
+            perp_core::clock::TimeBounds::derive(core::slice::from_ref(op))
+                .ok()
+                .filter(|b| b.count > 0)
+                .map(|b| b.first_ms)
+        })
+    }
+
+    /// The open window's clock bounds, as its registration will derive them once
+    /// it is sealed.
+    pub fn window_time_bounds(&self) -> Result<perp_core::clock::TimeBounds, EngineError> {
+        perp_core::clock::TimeBounds::derive(&self.window_ops)
+    }
+
     /// Close the current settle window: build the combined manifest over the window's
     /// accumulated ordered/rejected hashes, advance the batch counter once (mirroring
     /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh
