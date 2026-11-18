@@ -703,6 +703,24 @@ fn entry_collateral(state: &DefaultState, owner: &PubKey, market_id: MarketId) -
     state.position(owner, market_id).map_or(0, |p| p.collateral)
 }
 
+/// The PnL a fill of `delta` at `price` realizes on `position`, as
+/// `Position::apply_fill` books it: on the part of the fill that reduces the
+/// position, 0 for a fill that opens or grows it.
+fn realized_pnl(position: Option<&Position>, delta: i128, price: i128) -> i128 {
+    let Some(p) = position else {
+        return 0;
+    };
+    if p.size == 0 || (p.size > 0) == (delta > 0) {
+        return 0;
+    }
+    let closed = p.size.abs().min(delta.abs());
+    let signed_closed = if p.size > 0 { closed } else { -closed };
+    price
+        .checked_sub(p.entry_price)
+        .and_then(|price_move| notional_quote(signed_closed, price_move))
+        .unwrap_or(0)
+}
+
 /// The widest funding premium, in price units, that `AccrueFunding` accepts for
 /// `market` at the validated `index`: the market's mark band
 /// (`max_mark_deviation_ratio`), rounded down so a mark of `index ± band` always
@@ -947,6 +965,25 @@ struct FillSettlement {
     /// the same way with it, under that reason (audit 2026-11-16 SM-2), whatever
     /// reason the maker itself was first recorded with.
     side_bans: BTreeMap<(Digest, u8), SideBan>,
+    /// What the settled fills of this pass charged each entry besides the PnL
+    /// they realized: taker fees less maker rebates, and the funding they
+    /// settled. The entry floor measures an entry without them (audit G1-1), so
+    /// an opener at the minimum is not refused by its own earlier pieces' fees,
+    /// while a realized trading loss still takes the entry below the floor.
+    pass_charges: BTreeMap<(PubKey, MarketId), i128>,
+}
+
+impl FillSettlement {
+    /// The collateral of `owner`'s entry in `market_id` the entry floor measures:
+    /// what `state` holds, before this pass's fees, rebates and funding.
+    fn floor_collateral(&self, state: &DefaultState, owner: &PubKey, market_id: MarketId) -> i128 {
+        entry_collateral(state, owner, market_id).saturating_add(
+            self.pass_charges
+                .get(&(*owner, market_id))
+                .copied()
+                .unwrap_or(0),
+        )
+    }
 }
 
 /// A maker's failure that can take its owner's other orders on the same side
@@ -1074,7 +1111,10 @@ fn exposure_increases_in(
 /// ([`RejectReason::BelowMinimumSize`]); and no order may add exposure to an
 /// entry that holds less than the entry minimum `floor` when the fill settles
 /// ([`RejectReason::InsufficientMargin`]), so an order that rests from when its
-/// entry held the minimum does not fill once a loss took the entry below it.
+/// entry held the minimum does not fill once a loss took the entry below it. The
+/// entry is measured without the fees, rebates and funding the pass's earlier
+/// fills charged it ([`FillSettlement::pass_charges`]), so an opener at the
+/// minimum that fills in several pieces is not refused by its own fees.
 fn settle_fills(
     state: &mut DefaultState,
     oracles: &BTreeMap<MarketId, OracleTranscript>,
@@ -1163,7 +1203,7 @@ fn settle_fill(
             Some(RejectReason::MarketCloseOnly)
         } else if minimum_exempt.contains(hash) {
             Some(RejectReason::BelowMinimumSize)
-        } else if floor.refuses(owner, entry_collateral(state, owner, m.market_id)) {
+        } else if floor.refuses(owner, out.floor_collateral(state, owner, m.market_id)) {
             Some(RejectReason::InsufficientMargin)
         } else {
             None
@@ -1204,9 +1244,24 @@ fn settle_fill(
         oracle,
         now_ms,
     };
+    // Each leg's collateral before the fill and the PnL the fill realizes on it,
+    // to book what else it charges the leg (`FillSettlement::pass_charges`).
+    let legs = [(m.taker, taker_delta), (m.maker, -taker_delta)].map(|(owner, delta)| {
+        let before = state.position(&owner, m.market_id).copied();
+        let collateral = before.map_or(0, |p| p.collateral);
+        (
+            owner,
+            collateral.saturating_add(realized_pnl(before.as_ref(), delta, m.price)),
+        )
+    });
     match state.apply_op(&op) {
         // A Fill never yields a withdrawal output, so discard it.
         Ok(_) => {
+            for (owner, expected) in legs {
+                let charged = expected.saturating_sub(entry_collateral(state, &owner, m.market_id));
+                let total = out.pass_charges.entry((owner, m.market_id)).or_insert(0);
+                *total = total.saturating_add(charged);
+            }
             for oh in [m.taker_order_hash, m.maker_order_hash] {
                 if out.settled_seen.insert(oh) {
                     out.settled_order_hashes.push(oh);
@@ -1587,7 +1642,9 @@ impl Sequencer {
     /// owner's position entry in the order's market must hold at least that much
     /// collateral when the order is admitted, and when each of its fills settles,
     /// so an order that rests from when the entry held the minimum does not fill
-    /// once a trading loss took the entry below it. Reductions are never held to
+    /// once a trading loss took the entry below it. At settlement the entry is
+    /// measured without the fees, rebates and funding of that settlement pass.
+    /// Reductions are never held to
     /// it, and neither is the house market maker
     /// ([`Sequencer::set_minimum_exempt_owner`]). The gateway's admission policy
     /// keeps the position entries from filling with dust, which its sweep exits
