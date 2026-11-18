@@ -78,8 +78,13 @@ license (MIT OR Apache-2.0). The commit `3d0470e` has no blank line before its t
   which in 0.16 refused a malleated high-`s` twin; the four production recovery sites
   (`perp-core` oracle signatures in the guest, `committee`, the sequencer's receipts, the gateway's
   `recover_eth_address`) now verify against the recovered key themselves, and regression tests hold
-  the twin refused. The frozen `chainlink-oracle` lane keeps its own k256 0.13 lock, unaudited as
-  before. SP1 6.1.0 itself still carries crypto-bigint 0.5.5 (`sp1-lib`, `sp1-curves`), so the four
+  the twin refused. The frozen Chainlink candidate lane still typechecks and tests its frozen crate
+  against the current perp-core, so that crate's manifest (its k256 dev-dependency) and its two
+  locks follow perp-core to k256 0.14 and are pinned separately as checkout inputs
+  (`CANDIDATE_CHECKOUT_INPUTS` in `run_chainlink_replay.py`); the inputs the frozen ELF was measured
+  with (`CANDIDATE_SOURCES`, its `metadata.json`) and every Rust source of the lane are unchanged.
+  The `sp1-core-executor-runner` regeneration step in `ci.yml` now also cleans the release
+  profile, which the release host builds need after a partial cache restore. SP1 6.1.0 itself still carries crypto-bigint 0.5.5 (`sp1-lib`, `sp1-curves`), so the four
   SP1 locks skip that one advisory, only while `check_sp1_owned_advisories.py` proves no repository
   crate reaches it outside the reviewed SP1 release; it fails once SP1 drops it. The application and
   TEE capture locks are audited with no exception.

@@ -46,10 +46,32 @@ CANDIDATE_SOURCES = {
 }
 
 
+# CANDIDATE_SOURCES are the inputs the frozen ELF was measured with: they are its
+# history and are repeated in its metadata.json, so they never change. The lane still
+# typechecks and tests the frozen crate against the current perp-core, so the crate
+# manifest's k256 dev-dependency and the two locks follow perp-core's dependencies
+# (k256 0.14 since RUSTSEC-2026-0387). The checkout must hold these pinned inputs in
+# place of the measured ones; every other candidate source, every Rust source among
+# them, stays byte-identical to what the ELF was measured with.
+CANDIDATE_CHECKOUT_INPUTS = {
+    "crates/chainlink-oracle/Cargo.lock": "8444bc6dec468d58bfe8620716e294a35a88e7897735854b8ad8334fc6ef53b9",
+    "crates/chainlink-oracle/Cargo.toml": "32b5674592504ce57cf57a4f7beb87cf649eeb2107589807fb652e068ddfb363",
+    "crates/sp1-chainlink-guest/Cargo.lock": "a6a12962c5b34606bb5825c032c2f8524802fba3114a94720d0aa557b698080a",
+}
+assert set(CANDIDATE_CHECKOUT_INPUTS) <= set(CANDIDATE_SOURCES)
+assert all(name.endswith(("/Cargo.lock", "/Cargo.toml")) for name in CANDIDATE_CHECKOUT_INPUTS)
+
+
+def checkout_sources():
+    """The pins the checkout must match: the measured sources, with the checkout inputs."""
+    return {**CANDIDATE_SOURCES, **CANDIDATE_CHECKOUT_INPUTS}
+
+
 def candidate_sources():
-    for name, expected in CANDIDATE_SOURCES.items():
+    sources = checkout_sources()
+    for name, expected in sources.items():
         require(sha(read_regular(ROOT / name)) == expected, "candidate runtime source changed: " + name)
-    return dict(CANDIDATE_SOURCES)
+    return sources
 
 
 def require(condition, label):

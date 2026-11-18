@@ -98,8 +98,11 @@ jobs:
         # rust-cache restores the outer build-script output, but not that nested
         # binary. Invalidate only this package in each standalone target so the
         # upstream build script rebuilds the real helper before include_bytes!.
+        # `cargo clean -p` without a profile cleans only the dev profile, so the release
+        # build (replay-funds, vkey, clock-proof below) needs its own clean.
         run: |
           cargo clean --locked --manifest-path crates/sp1-host/Cargo.toml --package sp1-core-executor-runner
+          cargo clean --locked --release --manifest-path crates/sp1-host/Cargo.toml --package sp1-core-executor-runner
           cargo clean --locked --manifest-path crates/prover-service/Cargo.toml --package sp1-core-executor-runner
       - name: stub the guest ELF (guest build skipped; include_elf! needs the file)
         run: |
@@ -173,8 +176,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Require the patched coherent SP1 release
         run: python3 scripts/local-verification/check_sp1_release.py
+      # The hosts below are release builds, and `cargo clean -p` without a profile
+      # cleans only the dev profile.
       - name: Regenerate the real SP1 native runner after cache restore
-        run: cargo clean --locked --manifest-path crates/sp1-host/Cargo.toml --package sp1-core-executor-runner
+        run: cargo clean --locked --release --manifest-path crates/sp1-host/Cargo.toml --package sp1-core-executor-runner
       - name: stub the build-script guest ELF (vkey's include_elf! fallback; never executed here)
         run: |
           mkdir -p crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release

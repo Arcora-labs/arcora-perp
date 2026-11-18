@@ -102,6 +102,32 @@ class ReplayEvidenceTests(unittest.TestCase):
         with patch.dict(replay.CANDIDATE_SOURCES, {"crates/chainlink-oracle/src/binding.rs": "0" * 64}):
             with self.assertRaises(ValueError): replay.candidate_sources()
 
+    def test_measured_sources_stay_the_frozen_elfs_history(self):
+        # The measured pins are the ones the frozen ELF's metadata records, unchanged.
+        metadata = json.loads((replay.ROOT / "contracts/integration/fixtures/chainlink-candidate-v1/"
+                               "metadata.json").read_text())
+        self.assertEqual(metadata["candidate_runtime_sources_sha256"], replay.CANDIDATE_SOURCES)
+        self.assertEqual(metadata["elf_sha256"], replay.ELF_SHA)
+
+    def test_only_the_manifest_and_locks_follow_the_current_perp_core(self):
+        # The checkout may differ from the measured inputs only in the crate manifest and
+        # the two locks; every other candidate source, all the Rust ones, is byte-identical.
+        self.assertEqual(set(replay.CANDIDATE_CHECKOUT_INPUTS),
+                         {"crates/chainlink-oracle/Cargo.toml", "crates/chainlink-oracle/Cargo.lock",
+                          "crates/sp1-chainlink-guest/Cargo.lock"})
+        for name, digest in replay.CANDIDATE_CHECKOUT_INPUTS.items():
+            with self.subTest(input=name):
+                self.assertNotEqual(digest, replay.CANDIDATE_SOURCES[name], "a checkout input that did not change")
+        checkout = replay.candidate_sources()
+        for name, digest in replay.CANDIDATE_SOURCES.items():
+            if name not in replay.CANDIDATE_CHECKOUT_INPUTS:
+                with self.subTest(source=name):
+                    self.assertEqual(checkout[name], digest)
+        # The checkout inputs are checked too: a changed lock is refused.
+        with patch.dict(replay.CANDIDATE_CHECKOUT_INPUTS, {"crates/chainlink-oracle/Cargo.lock": "0" * 64}):
+            with self.assertRaisesRegex(ValueError, "candidate runtime source changed: crates/chainlink-oracle/Cargo.lock"):
+                replay.candidate_sources()
+
     def test_fixture_manifest_pin_is_not_self_selected(self):
         with patch.object(replay, "FIXTURE_MANIFEST_SHA", "0" * 64):
             with self.assertRaises(ValueError): replay.fixture_manifest()
