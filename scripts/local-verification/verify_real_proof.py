@@ -167,9 +167,9 @@ def main():
     selected = "SP1RealVerifierGuardTest" if args.guards_only else "SP1Real(VerifierGuard|Proof)Test"
     raw = run(["forge", "test", "--root", str(CONTRACTS), "--match-contract", selected, "--json"], output, "forge-tests", env)
     suites = json.loads(raw)
-    expected = {"SP1RealVerifierGuardTest": 8}
+    expected = {"SP1RealVerifierGuardTest": 10}
     if not args.guards_only:
-        expected["SP1RealProofTest"] = 10
+        expected["SP1RealProofTest"] = 11
     counts = {}
     for suite_name, suite in suites.items():
         name = suite_name.rsplit(":", 1)[-1]

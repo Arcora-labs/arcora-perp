@@ -49,6 +49,12 @@ use sequencer::{
 mod account_recovery;
 mod admission;
 mod answer_lane;
+#[cfg(test)]
+mod audit_1116_g11_tests;
+#[cfg(test)]
+mod audit_1116_ga2_tests;
+#[cfg(test)]
+mod audit_1116_or1_tests;
 mod bootstrap;
 #[cfg(test)]
 mod candidate_bridge;
@@ -1852,6 +1858,23 @@ struct Gw {
     /// only a canonical L1 read does that.
     #[serde(skip)]
     wind_down_started: bool,
+    /// Per-account withdrawal rate (runtime) and history-unit ledger (audit GA-2).
+    /// The ledger is persisted as its own snapshot section, outside the positional
+    /// Gw body.
+    #[serde(skip)]
+    withdraw_limits: admission::WithdrawLimits,
+    /// The withdrawals that dust sweeps made (audit G1-1), shown as forced exits.
+    /// Persisted as its own snapshot section, after the ledger.
+    #[serde(skip)]
+    dust_sweeps: admission::DustSweeps,
+    /// The client group each outstanding permit that may open a position entry
+    /// was issued to (audit G1-1). Runtime-only.
+    #[serde(skip)]
+    permit_groups: admission::PermitGroups,
+    /// The API key of each account by its owner, for the dust sweep. Runtime-only:
+    /// rebuilt on restore, kept on registration and on a credential rotation.
+    #[serde(skip)]
+    owner_keys: std::collections::BTreeMap<PubKey, [u8; 32]>,
 
     // Encoded beside the positional Gw body in the snapshot payload.
     #[serde(skip)]
@@ -2459,6 +2482,9 @@ impl Gw {
         // is held to the order minimum itself (off-chain boot configuration, set
         // again on restore).
         seq.set_minimum_exempt_owner(Some(mm.owner));
+        // Audit G1-1: below the entry minimum no order adds exposure, at intake or
+        // when it fills (off-chain boot configuration, set again on restore).
+        seq.set_min_entry_collateral(admission::MIN_ENTRY_BALANCE);
         let now = now_ms();
 
         // ZK-001: the single oracle-publisher key every market trusts. Its address is
@@ -2586,6 +2612,10 @@ impl Gw {
             unsettled_fill_ticks: None,
             user_adl_clawed: 0,
             accounts: std::collections::BTreeMap::new(),
+            withdraw_limits: Default::default(),
+            dust_sweeps: Default::default(),
+            permit_groups: Default::default(),
+            owner_keys: std::collections::BTreeMap::new(),
             pending_withdrawals: Vec::new(),
             next_withdraw_nonce: 1,
             withdraw_proofs: std::collections::BTreeMap::new(),
@@ -2664,6 +2694,8 @@ impl Gw {
         account_recovery::append(self, &mut bytes);
         order_history::append_snapshot(self, &mut bytes);
         challenge_rejections::append_snapshot(self, &mut bytes);
+        self.append_withdraw_ledger(&mut bytes);
+        self.append_dust_sweeps(&mut bytes);
         bytes
     }
 
@@ -2700,7 +2732,14 @@ impl Gw {
         let recovery = execution::restore_snapshot_prefix(&mut gw, rest)?;
         let history = account_recovery::restore_prefix(&mut gw, recovery)?;
         let challenges = order_history::restore_snapshot(&mut gw, history)?;
-        challenge_rejections::restore_snapshot(&mut gw, challenges)?;
+        let ledger = challenge_rejections::restore_snapshot(&mut gw, challenges)?;
+        let sweeps = gw.restore_withdraw_ledger(ledger)?;
+        gw.restore_dust_sweeps(sweeps)?;
+        gw.owner_keys = gw
+            .accounts
+            .iter()
+            .map(|(key, account)| (account.wallet.owner, *key))
+            .collect();
         // The flag is the terminal latch SettleAll sets; it never proves phase 1
         // settled, and a state that carries it must be in CloseOnly.
         gw.wind_down_started = wind_down_started;
@@ -2735,8 +2774,10 @@ impl Gw {
         let (enclave_seed, _) = enclave_seed_from_env().unwrap_or((DEMO_ENCLAVE_SEED, true));
         gw.seq
             .set_enclave(EnclaveIdentity::from_seed(enclave_seed, 1, measurement));
-        // Not persisted either; the same house exemption boot sets.
+        // Not persisted either; the same house exemption and entry minimum boot sets.
         gw.seq.set_minimum_exempt_owner(Some(gw.mm.owner));
+        gw.seq
+            .set_min_entry_collateral(admission::MIN_ENTRY_BALANCE);
         gw.attestation = attestation;
         // Re-derive the order-ingress epoch from ENCLAVE_SEED exactly as boot() does
         // (the snapshot serde-skips it — the epoch secret must never persist to disk).
@@ -2810,6 +2851,7 @@ impl Gw {
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
+        self.owner_keys.insert(owner, api_key);
         (api_key, owner)
     }
 
@@ -3511,7 +3553,21 @@ impl Gw {
         } else {
             None
         };
-        let free = self.market_free_of(&wallet.owner, market);
+        // Audit OR-1: with an open position the withdrawal is measured against the
+        // stored, validated report, and so is the free balance.
+        let (verified, price) = if self.seq.state.mode == Mode::CloseOnly {
+            (None, self.px_of(market))
+        } else {
+            match normal_oracle {
+                Some(oracle) => (Some(oracle), oracle.price),
+                None => {
+                    let oracle =
+                        self.withdrawal_oracle(&wallet.owner, market, context.price.now_ms)?;
+                    (Some(oracle), oracle.price)
+                }
+            }
+        };
+        let free = self.market_free_at(&wallet.owner, market, price);
         if amount > free {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
@@ -3533,7 +3589,23 @@ impl Gw {
         {
             return Err(PENDING_MARGIN_UNBIND.into());
         }
+        // Audit G1-1: no withdrawal leaves an entry as dust, or below the entry
+        // minimum under an open position.
+        if let Some(refusal) = self.entry_balance_refusal(&wallet.owner, market, amount) {
+            return Err(refusal);
+        }
+        // ...and no full exit leaves a top-up permit below the entry minimum to
+        // land in the missing entry.
+        if let Some(refusal) = self.top_up_exit_refusal(key, &wallet.owner, market, amount) {
+            return Err(refusal.into());
+        }
         if let Some(refusal) = self.exit_cap_refusal(key, &wallet.owner, market, amount) {
+            return Err(refusal.into());
+        }
+        let limit_now = context.price.now_ms;
+        if let Some(refusal) =
+            self.withdrawal_limit_refusal(key, &wallet.owner, market, amount, limit_now)
+        {
             return Err(refusal.into());
         }
         let nonce = self.next_withdrawal_nonce()?;
@@ -3549,10 +3621,9 @@ impl Gw {
             }
         } else {
             let now = context.price.now_ms;
-            // Candidate uses the original admitted transcript, including its
-            // source publish time. Never turn a frozen report into a fresh one.
-            let oracle = normal_oracle
-                .unwrap_or_else(|| oracle_of(self.px_of(market), now, market, &self.oracle_signer));
+            // The verified transcript, with its original source publish time.
+            // Never turn a frozen report into a fresh one.
+            let oracle = verified.expect("normal mode resolved a transcript above");
             BatchOp::Unbind {
                 owner: wallet.owner,
                 market_id: market,
@@ -3590,6 +3661,7 @@ impl Gw {
             }
         })?;
         self.next_withdraw_nonce = nonce.saturating_add(1);
+        self.withdraw_limits.record(&wallet.owner, limit_now);
         let w = Withdrawal {
             owner: wallet.owner,
             to,
@@ -3854,6 +3926,8 @@ impl Gw {
         for leaf in &cset {
             self.withdraw_proofs.remove(leaf);
         }
+        // A paid forced exit is no longer listed: nothing is left to mark.
+        self.dust_sweeps.forget(&cset);
     }
 
     /// Slice 3b-3: re-inject a failed window's drained withdrawals AHEAD of any accumulated
@@ -3895,6 +3969,8 @@ impl Gw {
                     // root in legacy); fall back to the last published root pre-publish.
                     "root": entry.map(|(r, _)| hex0x(r)).unwrap_or_else(|| current_root.clone()),
                     "claimable": entry.is_some(),
+                    // Made by a dust sweep (audit G1-1), not signed by the account.
+                    "forcedExit": self.dust_sweeps.contains(&leaf),
                     "proof": entry
                         .map(|(_, p)| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>())
                         .unwrap_or_default(),
@@ -3911,6 +3987,11 @@ impl Gw {
 
     /// Per-owner free margin in a market (the multi-tenant analog of `market_free`).
     fn market_free_of(&self, owner: &PubKey, market: u64) -> i128 {
+        self.market_free_at(owner, market, self.px_of(market))
+    }
+
+    /// `market_free_of` with the position's margin priced at `price`.
+    fn market_free_at(&self, owner: &PubKey, market: u64, price: i128) -> i128 {
         let coll = self
             .seq
             .state
@@ -3918,10 +3999,51 @@ impl Gw {
             .map(|p| p.collateral)
             .unwrap_or(0);
         let locked = match self.seq.state.position(owner, market) {
-            Some(p) if p.size != 0 => required_margin(p.size.abs(), self.px_of(market)),
+            Some(p) if p.size != 0 => required_margin(p.size.abs(), price),
             _ => 0,
         };
         (coll - locked).max(0)
+    }
+
+    /// The oracle transcript a withdrawal from `owner`'s entry in `market` is
+    /// applied against at `now_ms` (audit OR-1). With an open position it is the
+    /// stored report as it is, valid or refused as "oracle unavailable", exactly as
+    /// an order is: a withdrawal must never sign the last price under a fresh
+    /// timestamp while the feed is down. A flat entry has no margin to check, so
+    /// it needs no price and withdraws through an outage.
+    fn withdrawal_oracle(
+        &self,
+        owner: &PubKey,
+        market: u64,
+        now_ms: u64,
+    ) -> Result<OracleTranscript, String> {
+        let open = self
+            .seq
+            .state
+            .position(owner, market)
+            .is_some_and(|p| p.size != 0);
+        if !open {
+            return Ok(oracle_of(
+                self.px_of(market),
+                now_ms,
+                market,
+                &self.oracle_signer,
+            ));
+        }
+        let unavailable = || {
+            "oracle unavailable: a withdrawal with an open position needs a fresh verified \
+             oracle report"
+                .to_string()
+        };
+        let policy = self
+            .seq
+            .state
+            .markets
+            .get(&market)
+            .ok_or("Unknown market.")?;
+        let oracle = *self.seq.oracle(market).ok_or_else(unavailable)?;
+        oracle.validate(policy, now_ms).map_err(|_| unavailable())?;
+        Ok(oracle)
     }
     /// Does this order open/increase the owner's position (vs reduce/close)?
     fn is_opening_of(&self, owner: &PubKey, market: u64, side: &str, size: i128) -> bool {
@@ -4216,6 +4338,11 @@ impl Gw {
             let need = required_margin(size, px);
             if need > self.market_free_of(&owner, req.market_id) {
                 return Err("Insufficient free margin to open this position (§3).".into());
+            }
+            // Audit G1-1: below the entry minimum no order adds exposure (the
+            // sequencer holds each fill to the same rule).
+            if let Some(refusal) = self.entry_order_refusal(&owner, req.market_id) {
+                return Err(refusal);
             }
         }
         let tif = parse_tif_strict(&req.tif)?;
@@ -4969,6 +5096,8 @@ impl Gw {
     /// (debit one, credit the other) — the engine has no native transfer, so this is
     /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
     /// net-zero externally. `from` must have `value` free in market 0.
+    /// Demo only (refused in production): it takes none of the per-account withdrawal
+    /// limits, which protect the production provable-history budget.
     fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
         self.refuse_candidate_synthetic_price()?;
         self.refuse_if_wind_down_started()?;
@@ -4979,17 +5108,17 @@ impl Gw {
         // anything: a production refusal must mutate NOTHING. The mint-site check
         // remains the backstop for every other caller.
         refuse_unbacked_mint(self.prod)?;
-        if value > self.market_free_of(&from.owner, 0) {
-            return Err("Insufficient market-0 free balance.".into());
-        }
         let now = now_ms();
         self.refuse_if_clock_window_closing(now)?;
+        let oracle = self.withdrawal_oracle(&from.owner, 0, now)?;
+        if value > self.market_free_at(&from.owner, 0, oracle.price) {
+            return Err("Insufficient market-0 free balance.".into());
+        }
         // The debit leg is an unbind like a withdrawal's: it cannot take the margin
         // of `from`'s pending orders either (audit 2026-11-16 SM-1).
         if !self.seq.unbind_keeps_reserve(&from.owner, 0, value, now) {
             return Err(PENDING_MARGIN_UNBIND.into());
         }
-        let oracle = oracle_of(self.px_of(0), now, 0, &self.oracle_signer);
         let c = self.lp_counter;
         self.lp_counter += 1;
         let mut db = [0xE0u8; 32];
@@ -5541,24 +5670,37 @@ impl Gw {
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
-        if amount > self.market_free(self.selected) {
+        let now = now_ms();
+        let owner = self.user.owner;
+        let oracle = self.withdrawal_oracle(&owner, self.selected, now)?;
+        let free = self.market_free_at(&owner, self.selected, oracle.price);
+        if amount > free {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
             );
         }
-        let now = now_ms();
         if !self
             .seq
             .unbind_keeps_reserve(&self.user.owner, self.selected, amount, now)
         {
             return Err(PENDING_MARGIN_UNBIND.into());
         }
-        let oracle = oracle_of(
-            self.px_of(self.selected),
-            now,
-            self.selected,
-            &self.oracle_signer,
-        );
+        if amount < MIN_WITHDRAWAL && amount != free {
+            return Err(format!(
+                "BELOW_MINIMUM: a withdrawal must be at least {} USDC unless it withdraws the \
+                 whole free balance in this market",
+                MIN_WITHDRAWAL / QUOTE_SCALE
+            ));
+        }
+        if let Some(refusal) = self.exit_cap_refusal(&owner, &owner, self.selected, amount) {
+            return Err(refusal.into());
+        }
+        // The shared demo user has the rate limits and the reserve, not the quota.
+        if let Some(refusal) =
+            self.demo_withdrawal_limit_refusal(&owner, self.selected, amount, now)
+        {
+            return Err(refusal.into());
+        }
         // SEC-026: same repeat hazard as the demo deposit — `op_unbind` MINTS a note,
         // so the old `0xC0 + tick % 60` blind made withdrawing the same amount 60 ticks
         // apart a historical DuplicateCommitment. Same fix: the tree leaf count never
@@ -5587,6 +5729,7 @@ impl Gw {
                 nonce: 0,
             })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
+        self.withdraw_limits.record_rate(&owner, now);
         Ok(())
     }
 
@@ -8836,6 +8979,10 @@ pub(crate) enum PermitGateRefusal {
     EngineCloseOnly,
     /// The provable-history admission cap is reached for this permit.
     AdmissionCap,
+    /// The position entries and the permits that may open one are at their soft
+    /// cap, and the asking client group already holds
+    /// `admission::MAX_GROUP_OPENING_PERMITS` of those permits (audit G1-1).
+    ClientOpeningPermits,
     /// The state is beyond a provable-history bound: the deposit of a held permit
     /// would not be credited, so the permit is not re-signed.
     AdmissionHardCap,
@@ -8843,8 +8990,14 @@ pub(crate) enum PermitGateRefusal {
     /// another market: it holds permits for one market until its first deposit is
     /// credited.
     OneMarketUntilFirstDeposit,
+    /// The account spent its history quota (`admission::ACCOUNT_HISTORY_QUOTA`):
+    /// no further deposit permit; it can still exit in full.
+    AccountQuota,
     /// The amount is below `admission::MIN_DEPOSIT_PERMIT`.
     BelowMinimum,
+    /// The permit may open a position entry and is below
+    /// `admission::MIN_ENTRY_DEPOSIT` (audit G1-1).
+    BelowEntryMinimum,
     /// The settlement accepts no deposits (no paired vault).
     NotAccepting,
     /// The deposit would exceed what the posted bond covers.
@@ -8881,6 +9034,27 @@ pub(crate) fn permit_gate(
     Ok(())
 }
 
+/// Send the account events of dust sweeps (`admission::forced_exit_event`) once a
+/// snapshot carries the sweeps (audit G1-1), as a void's are sent once it is
+/// durable. Without that acknowledgement no one is told: a sweep a crash loses
+/// never happened, and one a later snapshot carries shows in its owner's
+/// withdrawals as a forced exit.
+async fn announce_once_durable(app: &Shared, events: Vec<String>) {
+    if events.is_empty() {
+        return;
+    }
+    match snapshot_now(&app.snapshot_req).await {
+        Ok(()) => {
+            for event in events {
+                let _ = app.events_tx.send(event);
+            }
+        }
+        Err(e) => {
+            eprintln!("[admission] dust sweep not yet durable ({e}); its owners are not told")
+        }
+    }
+}
+
 fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Response {
     match refusal {
         PermitGateRefusal::CloseOnly => (
@@ -8901,6 +9075,15 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
                 "error": "the provable-history admission cap is reached; no new deposit permit is issued. Withdrawals keep working"
             })),
         ),
+        PermitGateRefusal::ClientOpeningPermits => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({
+                "error": format!(
+                    "OPENING_PERMIT_LIMIT: the position entries are near their admission cap, and this client already holds {} outstanding deposit permits that may open a position entry; retry once one of those deposits is credited or its permit expires",
+                    admission::MAX_GROUP_OPENING_PERMITS
+                )
+            })),
+        ),
         PermitGateRefusal::AdmissionHardCap => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
@@ -8913,11 +9096,29 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
                 "error": "an account with no position yet holds deposit permits for one market at a time; complete the deposit for the market of its outstanding permit first, or let that permit expire"
             })),
         ),
+        PermitGateRefusal::AccountQuota => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": "ACCOUNT_HISTORY_QUOTA: this account used its quota of provable history and gets no further deposit permit. It can still withdraw its balance in full"
+            })),
+        ),
         PermitGateRefusal::BelowMinimum => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
                 "error": format!("BELOW_MINIMUM: a deposit permit is issued for at least {} USDC", admission::MIN_DEPOSIT_PERMIT / QUOTE_SCALE as u128),
                 "minimum": admission::MIN_DEPOSIT_PERMIT.to_string(),
+            })),
+        ),
+        PermitGateRefusal::BelowEntryMinimum => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "BELOW_ENTRY_MINIMUM: this account holds no position entry in this market, or only a flat one below {} USDC, so the deposit may open one and its permit is issued for at least {} USDC (a top-up of any other entry needs {} USDC)",
+                    admission::MIN_ENTRY_DEPOSIT / QUOTE_SCALE as u128,
+                    admission::MIN_ENTRY_DEPOSIT / QUOTE_SCALE as u128,
+                    admission::MIN_DEPOSIT_PERMIT / QUOTE_SCALE as u128
+                ),
+                "minimum": admission::MIN_ENTRY_DEPOSIT.to_string(),
             })),
         ),
         PermitGateRefusal::NotAccepting => (
@@ -8951,6 +9152,7 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
 /// spec §1b). The SECRET blind is never returned, only `ownerCommit`.
 async fn post_v1_deposit_authorize(
     State(app): State<Shared>,
+    connect: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(req): Json<DepositAuthorizeReq>,
 ) -> impl IntoResponse {
@@ -9020,9 +9222,17 @@ async fn post_v1_deposit_authorize(
         Ok(permit) => permit,
         Err(error) => return clock_admission::closed_response(error),
     };
+    // The client group a permit that may open a position entry counts toward
+    // (audit G1-1): the registration limiter's client, IPv6 by /64. An in-process
+    // request without connection info has none.
+    let group = connect
+        .map(|ConnectInfo(peer)| service_policy::client_share_key(client_ip(peer, &headers)));
+    // The account events of this request's dust sweeps, sent once a snapshot
+    // carries the sweeps.
+    let mut forced_exits: Vec<String> = Vec::new();
     // Release the account lock before requesting durability. No signature may be
     // constructed or returned until the writer acknowledges the stored blind.
-    let (commit, valid_until, reused) = {
+    let issued: Result<([u8; 32], u64, bool), axum::response::Response> = {
         let mut gw = app.gw.lock().await;
         if let Err(error) = gw.deposits.check_ready() {
             if gw.deposits.halt.is_some() {
@@ -9078,25 +9288,84 @@ async fn post_v1_deposit_authorize(
             if gw.held_permit_beyond_cap(&commit) {
                 return permit_refusal_response(PermitGateRefusal::AdmissionHardCap);
             }
-            (commit, until, true)
+            Ok((commit, until, true))
         } else {
-            // Re-signing a held permit issues nothing new; a fresh one stops at the
-            // soft admission cap, which counts the permits already outstanding.
-            if let Some(refusal) = gw.permit_cap_refusal(&key, req.market_id, req.purpose) {
+            // A permit that may open a position entry needs the entry minimum.
+            if let Some(refusal) =
+                gw.entry_minimum_refusal(&key, req.market_id, req.purpose, amount)
+            {
                 return permit_refusal_response(refusal);
             }
-            if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
-                return (status, Json(serde_json::json!({ "error": error }))).into_response();
-            }
-            let until = now_s.saturating_add(app.permit_ttl_secs);
-            match gw.authorize_routed_deposit(&key, from, amount, req.market_id, req.purpose, until)
-            {
-                Ok(c) => {
-                    gw.charge_deposit_permit(&key, req.purpose, now_s);
-                    (c, until, false)
+            // Dust never holds the position entries against a new one (audit G1-1):
+            // when they alone refuse this permit and exiting dust entries admits it,
+            // sweep as many as it needs (whatever permits their accounts hold); their
+            // owners are told once a snapshot carries the sweeps. Like a withdrawal,
+            // a sweep applies timed engine operations.
+            let price_now = now_ms();
+            let swept = match archive_slot(app.archive.as_ref()) {
+                ArchiveSlot::Guard(binding) => gw.sweep_dust_for_permit(
+                    &request,
+                    group,
+                    now_s,
+                    PriceUse {
+                        archive: Some(&binding),
+                        now_ms: price_now,
+                    },
+                ),
+                ArchiveSlot::NotConfigured => gw.sweep_dust_for_permit(
+                    &request,
+                    group,
+                    now_s,
+                    PriceUse {
+                        archive: None,
+                        now_ms: price_now,
+                    },
+                ),
+                ArchiveSlot::Poisoned => Vec::new(),
+            };
+            forced_exits = swept
+                .iter()
+                .map(|(market, w)| admission::forced_exit_event(*market, w))
+                .collect();
+            'issue: {
+                // Re-signing a held permit issues nothing new; a fresh one stops at
+                // the admission cap, which counts the permits already outstanding.
+                if let Some(refusal) =
+                    gw.permit_cap_refusal(&key, req.market_id, req.purpose, group)
+                {
+                    break 'issue Err(permit_refusal_response(refusal));
                 }
-                Err(e) => return err400(e).into_response(),
+                if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
+                    break 'issue Err(
+                        (status, Json(serde_json::json!({ "error": error }))).into_response()
+                    );
+                }
+                let until = now_s.saturating_add(app.permit_ttl_secs);
+                match gw.authorize_routed_deposit(
+                    &key,
+                    from,
+                    amount,
+                    req.market_id,
+                    req.purpose,
+                    until,
+                ) {
+                    Ok(c) => {
+                        gw.charge_deposit_permit(&key, req.purpose, now_s);
+                        gw.record_permit_group(c, group);
+                        Ok((c, until, false))
+                    }
+                    Err(e) => Err(err400(e).into_response()),
+                }
             }
+        }
+    };
+    let (commit, valid_until, reused) = match issued {
+        Ok(issued) => issued,
+        Err(refusal) => {
+            // The sweep plans for this permit, so it is refused after one only if
+            // something changed in between; the sweeps stand all the same.
+            announce_once_durable(&app, forced_exits).await;
+            return refusal;
         }
     };
     // A re-signed permit is already durable; a new one is not until the writer ACKs.
@@ -9119,6 +9388,10 @@ async fn post_v1_deposit_authorize(
         }
     }
     drop(admission);
+    // The snapshot just acknowledged carries this request's sweeps.
+    for event in forced_exits {
+        let _ = app.events_tx.send(event);
+    }
     match app.gateway_signer.sign(&from, &commit, amount, valid_until) {
         Ok(sig) => Json(serde_json::json!({
             "ownerCommit": hex0x(&commit),
@@ -9266,6 +9539,11 @@ async fn post_v1_withdraw(
             "status": "recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof",
         }))
         .into_response(),
+        Err(e) if admission::is_withdraw_rate_limit(&e) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
         Err(e) => err400_or_window_closing(e),
     }
 }
@@ -9771,7 +10049,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
-            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": { "200": { "description": "apiKey + owner + callerSigned + recoveryNonce + chainId + vault" }, "503": { "description": "the account capacity is reached, or the state itself is at the soft admission cap (outstanding deposit permits never close registration)" } } } },
+            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": { "200": { "description": "apiKey + owner + callerSigned + recoveryNonce + chainId + vault" }, "503": { "description": "the account capacity is reached, or the state's own history or unspent notes are at their soft admission cap (position entries and outstanding deposit permits never close registration)" } } } },
             "/v1/accounts/me": { "get": { "summary": "Own account (balance: settledBalance account-wide and marketFree [{ marketId, free }] per market, the balance a withdrawal from that market takes from and the minimum's exception; positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode; after close-only, refundableDeposits lists { id, from, ownerCommit, amount } for vault.refundDeposit)", "responses": ok("account"), "security": auth["security"] } },
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
@@ -9780,7 +10058,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
-            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, (409) in close-only (the settlement's, or the engine's while the settlement is not yet), above depositCapacity() (the body carries `capacity`), or for an account with no position yet that already holds a permit for another market, and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached for a new permit (a held one is re-signed unless the state is beyond a bound)", "security": auth["security"],
+            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, or below the 100 USDC entry minimum (`BELOW_ENTRY_MINIMUM`, the body carries `minimum`) for a market where the account holds no position entry or only a flat one below 100 USDC, (409) in close-only (the settlement's, or the engine's while the settlement is not yet), above depositCapacity() (the body carries `capacity`), or for an account with no position yet that already holds a permit for another market, and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached for a new permit (a held one is re-signed unless the state is beyond a bound): a permit that may open a position entry is issued only while the state's own entries are below their soft cap and the state's entries plus those every outstanding permit may open fit the bound; past the soft cap one client (IPv4 address or IPv6 /64) holds at most 2 such permits (429 OPENING_PERMIT_LIMIT). When the position entries alone refuse a permit that opens one and exiting flat entries of other accounts below 100 USDC (at most 8) admits it, those are first swept to their bound deposit addresses (forced exits, whatever permits their accounts hold; their orders in that market are cancelled); at the position soft cap a further permit for an entry the account already reserves is refused", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
                 "responses": ok("ownerCommit + sig + validUntil (unix seconds)") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
@@ -9790,10 +10068,10 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
-                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "400": { "description": "refused, including a withdrawal that would take collateral the account's pending orders in that market hold as initial margin (`PENDING_MARGIN: ...`) until they fill, are cancelled or expire" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; or, in close-only, the L1 wind-down phase could not be read. Nothing was recorded and the nonce is not used; retry later" } } } },
-            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
+                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 10 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "400": { "description": "BELOW_MINIMUM; BELOW_ENTRY_BALANCE (outside close-only a withdrawal leaves at least 100 USDC in its market's position entry, open position or not, unless it is a full exit); TOP_UP_PERMIT_OUTSTANDING (a full exit waits while the account holds an outstanding deposit permit below 100 USDC for that market, until that deposit is credited or the permit expires); WITHDRAW_QUOTA_EXCEEDED (the account spent its lifetime 100-unit provable-history quota, outstanding deposit permits included; it never resets); WITHDRAW_RESERVE_REACHED (the exchange-wide partial-withdrawal reserve is used up); HISTORY_CAP; PENDING_MARGIN (the withdrawal would take collateral the account's pending orders in that market hold as initial margin, until they fill, are cancelled or expire); or another refusal. A full exit is exempt from the quota and the reserve" }, "429": { "description": "WITHDRAW_RATE_LIMIT_MINUTE (3 per minute) or WITHDRAW_RATE_LIMIT_WINDOW (10 in the open settlement window); retry later" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; or, in close-only, the L1 wind-down phase could not be read. Nothing was recorded and the nonce is not used; retry later" } } } },
+            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] (each with `forcedExit`: true for a dust sweep's forced exit, not signed by the account) + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature, unless `forcedExit` is true: a voided dust sweep, whose entry is back)") } },
             "/v1/orders": {
-                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt, including `l1Challenge`, sent once a durable state snapshot holds the order" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt), and an order whose initial margin together with the account's pending orders on the same side exceeds its collateral in the market (`PENDING_MARGIN: ...`)" }, "409": { "description": "the account already has 64 open orders in the market or 128 across all markets (`OPEN_ORDER_LIMIT: ...`); cancel one first" }, "429": { "description": "rate limit (10/s per account; per client address, 40 at once then 20/s by default)" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; nothing was recorded, retry later. With `durability: \"unknown\"` and the `orderHash`: the order was accepted, but the snapshot write it waited for failed or timed out, so no receipt or `l1Challenge` was issued; it may still execute, and GET /v1/orders serves its receipt once a durable snapshot holds it. CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; nothing was recorded, retry in a few seconds" } } },
+                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt, including `l1Challenge`, sent once a durable state snapshot holds the order" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price or in a market whose position entry holds less than 100 USDC (BELOW_ENTRY_BALANCE; reduce-only orders and reductions are exempt from both), and an order whose initial margin together with the account's pending orders on the same side exceeds its collateral in the market (`PENDING_MARGIN: ...`)" }, "409": { "description": "the account already has 64 open orders in the market or 128 across all markets (`OPEN_ORDER_LIMIT: ...`); cancel one first" }, "429": { "description": "rate limit (10/s per account; per client address, 40 at once then 20/s by default)" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; nothing was recorded, retry later. With `durability: \"unknown\"` and the `orderHash`: the order was accepted, but the snapshot write it waited for failed or timed out, so no receipt or `l1Challenge` was issued; it may still execute, and GET /v1/orders serves its receipt once a durable snapshot holds it. CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; nothing was recorded, retry in a few seconds" } } },
                 "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null). An order's `receipt` is null until a durable state snapshot holds it", "security": auth["security"], "responses": ok("orders") }
             },
             "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a pending order or live maker remainder. Prior fills are unchanged, including settled partial fills. Retains the original receipt and execution history; retries are idempotent. Production success requires a durable snapshot; cancellation is recorded in the open window manifest", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: unknown order or no cancellable remainder" }, "503": { "description": "persistence unavailable or durable cancellation outcome unknown" } } } },
@@ -11764,18 +12042,28 @@ async fn main() {
                     recipient,
                 )?;
                 let p = l1c.boot_posture()?;
-                l1::check_boot_posture(&p, &e).map(|()| p)
+                l1::check_boot_posture(&p, &e)?;
+                // The SP1 route (audit SV-1); mock proofs verify nothing, so pin nothing.
+                let sp1 = l1c.sp1_boot_gate(
+                    allow_mock_proof,
+                    std::env::var(l1::SP1_ROUTER_TRUST_VAR).ok().as_deref(),
+                )?;
+                Ok((p, sp1))
             })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
         };
         match verdict {
-            Ok(p) => {
+            Ok((p, sp1)) => {
+                if let Some(warning) = sp1.warning() {
+                    eprintln!("[l1] WARN: {warning}");
+                }
                 println!(
-                    "[l1] boot handshake OK (ABI_VERSION {}, anchorTimeoutMs {}, consumedDepositCount {}, permit TTL {permit_ttl_secs} s)",
+                    "[l1] boot handshake OK (ABI_VERSION {}, anchorTimeoutMs {}, consumedDepositCount {}, permit TTL {permit_ttl_secs} s, {})",
                     p.abi_version,
                     p.anchor_timeout_ms.unwrap_or_default(),
-                    p.consumed_deposit_count
+                    p.consumed_deposit_count,
+                    sp1.describe()
                 );
                 // With matching roots the settled state consumed exactly this
                 // many deposits; credits at or above it are not settled yet.
@@ -17642,8 +17930,9 @@ mod tests {
         // One REAL authorized withdrawal: the served nonce must track
         // `last_withdraw_nonce` (the withdrawal-auth counter) — not any other
         // per-account counter, which all still read 0 here.
-        fund_test_account(&mut gw, &key, 10_000_000);
-        signed_withdraw(&mut gw, &key, &sk, 0, 5_000_000, eoa).expect("authorized withdrawal");
+        // Enough that the withdrawal leaves the 100 USDC entry minimum (audit G1-1).
+        fund_test_account(&mut gw, &key, 120_000_000);
+        signed_withdraw(&mut gw, &key, &sk, 0, 10_000_000, eoa).expect("authorized withdrawal");
         let v = gw.v1_account(&key).unwrap();
         assert_eq!(
             v["nextWithdrawNonce"], 2,
@@ -17719,16 +18008,16 @@ mod tests {
         );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
-        fund_test_account(&mut gw, &key, 10_000_000);
+        fund_test_account(&mut gw, &key, 120_000_000);
 
         // Wrong destination, even with a valid signature over that destination.
         let elsewhere = [0x66u8; 20];
         let sig_elsewhere = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &elsewhere, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &elsewhere, 1),
         );
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, elsewhere, 1, &sig_elsewhere)
+            .account_withdraw(&key, 0, 10_000_000, elsewhere, 1, &sig_elsewhere)
             .expect_err("server-custody withdrawal to a non-bound address must be refused");
         assert!(
             err.contains("bound deposit address"),
@@ -17738,17 +18027,17 @@ mod tests {
         // Correct destination + signature.
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1),
         );
         let w = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect("accepted");
         assert_eq!(w.to, eoa);
         assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
 
         // Replay of the same signed request.
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect_err("replay must be refused");
         assert!(err.contains("nonce"), "unexpected error: {err}");
     }
@@ -17773,10 +18062,10 @@ mod tests {
 
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1),
         );
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect_err("over-balance withdrawal fails");
         assert!(err.contains("Not withdrawable"), "unexpected error: {err}");
         assert_eq!(
@@ -17785,9 +18074,10 @@ mod tests {
             "nonce must survive a post-verification failure"
         );
 
-        // Fund and retry the SAME signed request — it must now succeed.
-        fund_test_account(&mut gw, &key, 10_000_000);
-        gw.account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+        // Fund and retry the SAME signed request — it must now succeed (and leave
+        // the 100 USDC entry minimum, audit G1-1).
+        fund_test_account(&mut gw, &key, 120_000_000);
+        gw.account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect("the unchanged signed request is still valid on retry");
     }
 
@@ -17809,19 +18099,19 @@ mod tests {
         );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
-        fund_test_account(&mut gw, &key, 10_000_000);
+        fund_test_account(&mut gw, &key, 120_000_000);
 
-        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1);
+        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1);
         // The bound address signs — must be refused, the account registered a signer.
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
             .expect_err("bound-address signature must not authorize a caller-signed account");
         assert!(err.contains("signature"), "unexpected error: {err}");
         // The registered signer signs — accepted, and `to` is free for caller-signed.
         gw.account_withdraw(
             &key,
             0,
-            5_000_000,
+            10_000_000,
             eoa,
             1,
             &sign_digest(&signer_sk, &digest),
@@ -17862,12 +18152,12 @@ mod tests {
         let mut gw = Gw::boot();
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let (key, owner) = gw.register_account(Some(eth_addr(&sk)));
-        fund_test_account(&mut gw, &key, 100_000_000);
+        fund_test_account(&mut gw, &key, 200_000_000);
 
         let to = [0x66u8; 20];
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &to, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &to, 1),
         );
         // Amount tampered.
         assert!(gw
@@ -17875,16 +18165,16 @@ mod tests {
             .is_err());
         // Destination tampered.
         assert!(gw
-            .account_withdraw(&key, 0, 5_000_000, [0x77u8; 20], 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, [0x77u8; 20], 1, &sig)
             .is_err());
         // Nonce tampered.
         assert!(gw
-            .account_withdraw(&key, 0, 5_000_000, to, 2, &sig)
+            .account_withdraw(&key, 0, 10_000_000, to, 2, &sig)
             .is_err());
         // Nothing was applied by any of the three.
         assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 0);
         // The untampered request still works.
-        gw.account_withdraw(&key, 0, 5_000_000, to, 1, &sig)
+        gw.account_withdraw(&key, 0, 10_000_000, to, 1, &sig)
             .expect("untampered request is valid");
     }
 
@@ -17900,11 +18190,12 @@ mod tests {
         for shape in 0..3 {
             let mut gw = Gw::boot();
             let (key, owner) = gw.register_account(Some(addr));
-            fund_test_account(&mut gw, &key, 10_000_000);
-            let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &to, 1);
+            fund_test_account(&mut gw, &key, 120_000_000);
+            let digest =
+                withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &to, 1);
             let prehash = eip191_prehash_candidates(&digest)[shape];
             let sig = sign_digest(&sk, &prehash);
-            gw.account_withdraw(&key, 0, 5_000_000, to, 1, &sig)
+            gw.account_withdraw(&key, 0, 10_000_000, to, 1, &sig)
                 .unwrap_or_else(|e| panic!("prehash shape {shape} must be accepted: {e}"));
         }
     }

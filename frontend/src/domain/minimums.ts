@@ -24,9 +24,19 @@ export const MIN_ORDER_NOTIONAL = 10n * QUOTE_SCALE;
 /// Smallest deposit the gateway issues a permit for: 10 USDC.
 export const MIN_DEPOSIT = 10n * QUOTE_SCALE;
 
-/// Smallest withdrawal: 1 USDC, unless it takes the entire free balance in its
+/// Smallest balance of a market's position entry (audit G1-1): 100 USDC. A market
+/// held flat (no open position) with less is dust, which the gateway may exit to
+/// your bound address to make room for a new entry; a withdrawal leaves at least
+/// this much unless it takes the market's entire balance.
+export const MIN_ENTRY_BALANCE = 100n * QUOTE_SCALE;
+
+/// Smallest deposit into a market where you hold no balance, or less than
+/// `MIN_ENTRY_BALANCE` with no open position: 100 USDC (it may open an entry).
+export const MIN_ENTRY_DEPOSIT = MIN_ENTRY_BALANCE;
+
+/// Smallest withdrawal: 10 USDC, unless it takes the entire free balance in its
 /// market.
-export const MIN_WITHDRAWAL = QUOTE_SCALE;
+export const MIN_WITHDRAWAL = 10n * QUOTE_SCALE;
 
 /// Does an order of `side`/`size` against a current signed position `positionSize`
 /// add exposure: open from flat, grow the position, or flip it (even to a smaller
@@ -49,17 +59,40 @@ export function orderMinimumError(notional: bigint, reduceOnly: boolean, addsExp
   return "Minimum order size is $10 of notional for an order that opens or increases a position. Reduce-only orders are exempt.";
 }
 
-/// The deposit-minimum refusal, or null when `amount` meets it.
-export function depositMinimumError(amount: bigint): string | null {
+/// Whether a deposit into `marketId` may open a position entry, so needs
+/// `MIN_ENTRY_DEPOSIT`: the account holds no open position there and the market's
+/// free balance (a flat market's whole balance) is below `MIN_ENTRY_BALANCE`.
+/// Mirrors the gateway's `BELOW_ENTRY_MINIMUM` rule.
+export function depositOpensEntry(account: AccountState, marketId: number): boolean {
+  const open = account.positions.some((p) => p.marketId === marketId && p.size !== 0n);
+  return !open && marketFreeBalance(account, marketId) < MIN_ENTRY_BALANCE;
+}
+
+/// The deposit-minimum refusal, or null when `amount` meets it. `opensEntry`
+/// (`depositOpensEntry`) raises the minimum to the entry minimum.
+export function depositMinimumError(amount: bigint, opensEntry = false): string | null {
+  if (opensEntry && amount < MIN_ENTRY_DEPOSIT) {
+    return "Minimum deposit into this market is 100 USDC: you hold no balance in it, or less than 100 USDC with no open position. A top-up of a market holding at least 100 USDC or an open position needs 10 USDC.";
+  }
   return amount < MIN_DEPOSIT ? "Minimum deposit is 10 USDC." : null;
 }
 
-/// The withdrawal-minimum refusal, or null. A withdrawal below 1 USDC is allowed
+/// The withdrawal-minimum refusal, or null. A withdrawal below 10 USDC is allowed
 /// only when it takes the entire free balance of the market it withdraws from:
 /// pass that market's free balance (`marketFreeBalance`), not the account-wide one.
 export function withdrawalMinimumError(amount: bigint, marketFree: bigint): string | null {
   if (amount >= MIN_WITHDRAWAL || amount === marketFree) return null;
-  return "Minimum withdrawal is 1 USDC, unless you withdraw your entire free balance in the selected market.";
+  return "Minimum withdrawal is 10 USDC, unless you withdraw your entire free balance in the selected market.";
+}
+
+/// The entry-balance refusal for a withdrawal from a market held flat, or null: the
+/// gateway accepts it only when it leaves at least `MIN_ENTRY_BALANCE` there or
+/// takes the market's whole balance (`marketFree`, a flat market's whole balance).
+/// With an open position (`openPosition`) the gateway alone judges it, against the
+/// position's collateral, and its answer is shown as is.
+export function withdrawalEntryBalanceError(amount: bigint, marketFree: bigint, openPosition: boolean): string | null {
+  if (openPosition || amount === marketFree || marketFree - amount >= MIN_ENTRY_BALANCE) return null;
+  return "A withdrawal must leave at least 100 USDC in the selected market, unless you withdraw its entire balance.";
 }
 
 /// The free balance a withdrawal from `marketId` takes from, which the gateway

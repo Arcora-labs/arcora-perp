@@ -827,6 +827,7 @@ async fn a_never_broadcast_register_is_voided_by_the_chain_clock_without_restart
             "amount": withdrawal.amount.to_string(),
             "nonce": withdrawal.nonce,
             "batchId": window,
+            "forcedExit": false,
         })]
     );
     let mut restored: Vec<(String, serde_json::Value)> = of("depositRestored")
@@ -876,6 +877,7 @@ async fn a_never_broadcast_register_is_voided_by_the_chain_clock_without_restart
                 "nonce": withdrawal.nonce,
                 "leaf": crate::hex0x(&withdrawal.leaf()),
                 "batchId": window,
+                "forcedExit": false,
             }])
         );
         assert_eq!(

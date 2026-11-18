@@ -87,10 +87,15 @@ yüzdesi veya süre tahmini değildir.
 
 ## Operatör kararı bekleyen girdiler
 
-- **Hedef:** 11 Temmuz stack'i main ile uyumsuz. Öneri, kendi SP1 verifier ve
-  gateway'imizle yeni bir Base Sepolia dağıtımı
-  ([runbook](REDEPLOY-CC-RUNBOOK.md)). Succinct gateway'ini kullanmak,
-  manifest'e onların bytecode'unu ekleyen ayrı bir karar gerektirir.
+- **Hedef:** 11 Temmuz stack'i main ile uyumsuz. Öneri, adaptörü doğrudan kendi
+  durumsuz (stateless) SP1 v6.1.0 verifier'ımıza bağlayan yeni bir Base Sepolia
+  dağıtımı; arada gateway (router) yok ([runbook](REDEPLOY-CC-RUNBOOK.md)). Bir
+  router'ın sahibi kanıt doğrulamayı atlatabilir veya durdurabilir (SV-1). Succinct
+  gateway'ini (ya da herhangi bir router'ı) kullanmak, sahibine güvenmeyi kabul eden
+  ayrı ve açık bir karar gerektirir (`--accept-sp1-router-owner-trust`,
+  `L1_ACCEPT_SP1_ROUTER_OWNER_TRUST=1`); böyle bir stack `observe-target`'ta
+  VERIFIED olmaz. SP1 verifier sürümü değişirse (yeni selector) adaptör, clock
+  verifier ve settlement yeniden dağıtılır.
 - **Makineler:** Gateway ve prover host'ları; CC/TEE donanımı.
 - **Chainlink stream erişimi:** 10 Ekim'de kullanıcı kararıyla ertelendi; G2 bunu
   bekler. Ertelenme sürdükçe discovery veya credential denemesi yapılmaz;

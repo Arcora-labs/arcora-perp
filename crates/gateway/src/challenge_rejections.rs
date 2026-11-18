@@ -125,22 +125,19 @@ pub(super) fn append_snapshot(gw: &Gw, bytes: &mut Vec<u8>) {
     );
 }
 
-/// Restore the extension: the rest of the payload after the history extension.
-pub(super) fn restore_snapshot(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
-    if trailer.is_empty() {
-        return Ok(());
-    }
-    let payload = trailer
-        .strip_prefix(EXT)
-        .ok_or("unknown snapshot extension")?;
+/// Restore the extension, which may follow the history extension, returning
+/// what follows it: the withdrawal ledger and dust sweep sections (audit GA-2,
+/// G1-1), which refuse anything they do not know. A payload without it restores
+/// no declaration.
+pub(super) fn restore_snapshot<'a>(gw: &mut Gw, trailer: &'a [u8]) -> Result<&'a [u8], String> {
+    let Some(payload) = trailer.strip_prefix(EXT) else {
+        return Ok(trailer);
+    };
     let (declarations, rest): (Declarations, _) = postcard::take_from_bytes(payload)
         .map_err(|e| format!("challenge snapshot decode: {e}"))?;
-    if !rest.is_empty() {
-        return Err("trailing challenge snapshot bytes".into());
-    }
     if declarations.is_empty() {
         return Err("challenge snapshot extension records nothing".into());
     }
     gw.challenge_rejections = declarations;
-    Ok(())
+    Ok(rest)
 }

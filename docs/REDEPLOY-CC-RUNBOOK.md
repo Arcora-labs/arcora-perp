@@ -281,8 +281,8 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
      then boots against exactly the bytes you meant to wipe.
 2. Deploy with `deploy_clock_stack.py --allow-public-chain` and your own
    signer flags after `--` (`--account NAME` or `--ledger`; the tool never
-   handles keys). It deploys, in order: our own SP1 verifier + gateway +
-   `addRoute`, `SP1ZkVerifier` (reviewed program key, not configurable),
+   handles keys). It deploys, in order: our own stateless SP1 verifier (no gateway or
+   router, audit SV-1), `SP1ZkVerifier` bound directly to it (reviewed program key, not configurable),
    `ClockBoundVerifier` (four words: inner verifier, `max_window_ms`,
    `clock_skew_ms`, `anchor_timeout_ms`), `DarkPerpSettlement` (the twelve-word
    `Config`, with `GENESIS_ROOT` from 0d, the fresh enclave signer and governance),
@@ -293,15 +293,32 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
    carries `deposit_permit_ttl_secs`, which becomes the public
    `DEPOSIT_PERMIT_TTL_SECS`. Do **not** use `Deploy.s.sol`: it
    wires only `MockZkVerifier`, and `observe-target` checks only this tool's
-   artifacts. Do **not** reuse Succinct's Base Sepolia gateway `0x397A…`: its
-   runtime code differs from the vendored artifact the release manifest pins, so
-   `observe-target` reports BLOCKED (2026-10-16 fork dry run). Then run
+   artifacts. Do **not** reuse Succinct's Base Sepolia gateway `0x397A…`: it is an
+   ownable router whose owner can bypass or halt proof verification, so the deploy
+   tool refuses it (only `--accept-sp1-router-owner-trust` overrides, and
+   `<output>.deployment.json` then records `sp1_router_owner_trust_accepted: true`
+   and the router in `sp1_trusted_router`) and `observe-target` reports BLOCKED.
+   The production gateway likewise refuses to boot unless the clock verifier, an
+   optional oracle wrapper and `SP1ZkVerifier` run their pinned compiled runtimes
+   and the code at the adapter's `gateway()` is the pinned stateless verifier.
+   `L1_ACCEPT_SP1_ROUTER_OWNER_TRUST=1` is the explicit opt-in to trust a router
+   owner: it waives only the last check, prints a `WARN` naming the router and its
+   `owner()`, and the boot-handshake line says `SP1 ROUTER`. `release_manifest.py
+   validate --check-process-env` refuses that variable unless it is unset, empty or `0`.
+   This includes the registered stack, which must be redeployed this way.
+   Then run
    `release_manifest.py observe-target` against the public chain; it must report
    `VERIFIED_AT_FINALIZED_BLOCK`, including `ABI_VERSION() == 3`.
    - **Start the gateway and prover right after the deploy** (step 3 follows
      immediately). The liveness window runs from the deploy block. If the stack is
      not launched at once, deploy no more than `livenessTimeoutBlocks / 2` before
      launch.
+   - **SP1 verifier upgrades need a redeploy.** Bound directly, the adapter accepts
+     only the one verifier version it names: a new SP1 verifier (new
+     `VERIFIER_HASH()` selector) means a new verifier, `SP1ZkVerifier`,
+     `ClockBoundVerifier`, settlement and vault, i.e. this whole runbook again.
+     A gateway would avoid that only by trusting its owner (audit SV-1); see
+     PROVING-RUNBOOK §5.
 3. Repoint the gateway env (addresses, `ORACLE_SIGNER_KEY`, `WIND_DOWN_RECIPIENT`
    (the value printed with `GENESIS_ROOT` in 0d),
    `GATEWAY_SIGNER_KEY`, the fresh `ENCLAVE_SEED`, `PROVER_URL`, seal-root

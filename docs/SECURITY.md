@@ -132,6 +132,7 @@ no single failure is catastrophic.
 | **Sequencer liveness** (halts) | no new batches | anyone can trigger close-only after the timeout; deposits no settled batch consumed become refundable at principal from the vault; existing published withdrawal claims remain available with Merkle data; new exits still require operator/prover and final wind-down governance |
 | **Sequencer withholds a landed deposit** (keeps settling without consuming it) | the deposit is never credited | anyone can trigger close-only once the oldest unconsumed deposit is older than `livenessTimeoutBlocks`; that deposit and every later one then become refundable from the vault |
 | **Sequencer censors an order** | a user's order is withheld | each receipt carries an enclave-signed L1 challenge authorization; an unanswered challenge pays a capped fine from the bond to the account's beneficiary once later batches settle, and settlement continues. Rejected-root membership does not prove a truthful rejection reason; fairness remains an explicit limitation |
+| **SP1 verifier-gateway owner** (any `SP1VerifierGateway` between the adapter and the verifier, including Succinct's shared gateway that the registered Base Sepolia stack uses; audit SV-1) | the owner can `addRoute` an accept-everything verifier, so a fabricated batch with proof `0xdeadbeef` settles and the vault pays the published root, or `freezeRoute` + `renounceOwnership()` so no proof verifies and settlement halts permanently. The owner needs no other key | the adapter must be bound directly to the stateless v6.1.0 verifier, which has no owner and no routes. The deploy tool matches a reused target's whole runtime against the compiled stateless verifier, `observe-target` does the same for the deployed stack, and the production gateway refuses to boot unless the clock verifier, an optional oracle wrapper and the adapter run their pinned compiled runtimes (each immutable's occurrences must agree, so a getter cannot name the verifier while `verify` calls something else) and the code at `adapter.gateway()` hashes to the pinned verifier; trusting a router owner needs the explicit `--accept-sp1-router-owner-trust` (deploy, recorded in the deployment record) or `L1_ACCEPT_SP1_ROUTER_OWNER_TRUST=1` (gateway, a boot `WARN` naming the router and its owner; the release environment check refuses it) opt-in, and `observe-target` never reports such a stack VERIFIED. Liveness cost: an SP1 verifier upgrade (new selector) now needs a new adapter, clock verifier and settlement (PROVING-RUNBOOK §5). The Chainlink candidate graph binds its adapter directly to the stateless verifier too: its observer refuses any graph whose adapter targets a gateway. A renounced owner (`owner() == 0`) is not enough, because every route added before the renounce (for example an accept-everything verifier under another selector) stays forever and no getter lists them. The registered Base Sepolia stack must be redeployed with the direct verifier; until then it is trusted on Succinct's gateway owner |
 | **Gateway custody-key compromise** | unauthorized guest-valid operations can affect funds | vault roots constrain direct payout; guest validity alone does not authenticate user intent independently of server-held keys |
 | **Prover sees the witness** (bare prover farm, §10b) | positions/fills/margins leak to the prover | the intended boundary is attestation-gated key release; the development prover is inside the current privacy trust boundary. Hardware deployment and full witness-copy cleanup remain unverified |
 | **Oracle manipulation** (§8) | bad liquidations / funding / wind-down settlement price | signature, freshness, confidence and backup-deviation checks run in-guest, but one publisher signs both price and backup and can lie consistently; external price truth is still trusted. `SettleAll` closes open positions at the last price recorded in the settled state, which that same key signed |
@@ -429,6 +430,24 @@ snapshots and rollback journals) are refused by their format magic, not migrated
     `MerkleLeaf`-domain tagged: second-preimage safety here comes from hashing the
     claimed fields, the same way `inclusionLeaf` does — so the off-chain side likewise
     does NOT domain-tag it.)
+- **The provable-history budget is global and lifetime, so partial withdrawals can
+  close for everyone (audit GA-2).** Every credited deposit and every withdrawal adds
+  a leaf and a nullifier that every later proof re-derives, and nothing removes them
+  (`MAX_PROVABLE_HISTORY` = 13,280 units). The gateway limits withdrawals per account
+  (3 per minute, 10 per settlement window, a 10 USDC minimum unless the whole free
+  balance of the market leaves), charges each account a lifetime quota of 100 units
+  (its outstanding deposit permits included), and refuses every partial withdrawal
+  once the state's own history reaches 7,968 units, so registration, deposit permits
+  and full exits keep the room above it. That reserve can still be reached on
+  purpose: about 80 accounts, each making one deposit and partial withdrawals up to
+  its quota, push the state past it, and the capital comes back to them (MockUSDC is
+  free on testnet). From then on, for the life of the deployment, only full exits
+  leave; deposits, registration and trading keep working. The `withdraw_reserve_near`
+  alert fires from 7,164 units on. Not addressed: a per-account partial-withdrawal
+  allowance that survives the reserve (each account it admits would take room from
+  registration and deposits instead), an operator-tunable reserve, and an operator
+  allowlist for honest heavy users who outgrow the lifetime quota (they register a
+  new account).
 
 ## Public-testnet posture (Base Sepolia, 2026-07) — what the ZK caveat means
 
@@ -439,6 +458,17 @@ the engine is proven to Groth16 and verified on-chain by `SP1ZkVerifier`
 (`0x8012F3b3…`, live on Base Sepolia since 2026-07-09, replacing the earlier
 `MockZkVerifier`). So on the testnet specifically:
 
+- **SP1 gateway owner (audit SV-1).** The registered Base Sepolia stack's adapter
+  points at Succinct's shared SP1 verifier gateway, not at the verifier. Succinct (the
+  gateway owner) is therefore a key that can bypass proof verification (add an
+  accept-everything route) or halt settlement (freeze the route) on that stack, alone
+  and without any Arcora key. That stack must be redeployed with the adapter bound
+  directly to the stateless v6.1.0 verifier (`deploy_clock_stack.py` now does this);
+  until then the proof guarantees below hold only if that owner is trusted.
+  The `SP1ZkVerifier` NatSpec says it "targets the SP1VerifierGateway"; that is
+  superseded here. The contract source stays byte-identical (its code hash is pinned in
+  frozen candidate fixtures) and keeps its ABI, including the `gateway()` getter, which
+  now returns the stateless verifier.
 - The "advance the state root without a valid proof / steal from a settled
   withdrawals root" guarantees ARE now enforced on-chain — an invalid state or
   withdrawals root fails `settleBatch` at the real verifier. Funds remain **test

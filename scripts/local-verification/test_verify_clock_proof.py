@@ -15,7 +15,7 @@ import verify_clock_proof as clock
 # produces a value that differs from the committed proof.
 DUMMY_GUEST = {"elf": "cd" * 32, "vkey": "0x" + "ab" * 32}
 DUMMY_FIXTURE = {"witness_sha256": "ef" * 32, "commitment": "0x" + "12" * 32}
-SUITES = {"SP1RealVerifierGuardTest": 8, "SP1RealProofTest": 10, "ClockBoundRealProofTest": 6}
+SUITES = {"SP1RealVerifierGuardTest": 10, "SP1RealProofTest": 11, "ClockBoundRealProofTest": 6}
 # The evidence keys and scope text each gate wrote before the identity split. The
 # split only adds keys next to these; a rename belongs to a change that intends it.
 PROOF_REPORT_KEYS = {

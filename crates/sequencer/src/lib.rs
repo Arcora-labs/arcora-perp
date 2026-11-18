@@ -679,6 +679,30 @@ fn under_minimum_notional(order: &Order, mark: i128) -> bool {
         && notional_quote(order.size, mark).is_some_and(|notional| notional < MIN_ORDER_NOTIONAL)
 }
 
+/// The entry minimum an order that adds exposure is held to
+/// ([`Sequencer::set_min_entry_collateral`]): the position entry it would open,
+/// grow or flip must hold at least `min_collateral` of collateral when the order
+/// is admitted and when each of its fills settles. `exempt` (the house market
+/// maker) is not held to it, and a `min_collateral` of 0 holds no one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct EntryFloor {
+    min_collateral: i128,
+    exempt: Option<PubKey>,
+}
+
+impl EntryFloor {
+    /// Whether `owner`, whose entry holds `collateral` (0 without an entry), may
+    /// not add exposure.
+    fn refuses(&self, owner: &PubKey, collateral: i128) -> bool {
+        self.min_collateral > 0 && self.exempt != Some(*owner) && collateral < self.min_collateral
+    }
+}
+
+/// The collateral of `owner`'s entry in `market_id`, 0 without one.
+fn entry_collateral(state: &DefaultState, owner: &PubKey, market_id: MarketId) -> i128 {
+    state.position(owner, market_id).map_or(0, |p| p.collateral)
+}
+
 /// The widest funding premium, in price units, that `AccrueFunding` accepts for
 /// `market` at the validated `index`: the market's mark band
 /// (`max_mark_deviation_ratio`), rounded down so a mark of `index ± band` always
@@ -729,7 +753,9 @@ fn within_fill_band(market: &Market, index: i128, price: i128) -> bool {
 /// `position` after a resting maker's fill of `delta` at the `quote`'s price, if
 /// the engine could settle that fill for the maker at the validated `index`: a reduce-only
 /// maker, a maker whose order was admitted below the minimum because it reduced
-/// (`minimum_exempt`, which [`settle_fills`] holds to reducing) and, in close-only
+/// (`minimum_exempt`, which [`settle_fills`] holds to reducing), a maker whose
+/// entry is below the entry minimum (`below_entry_floor`, which [`settle_fills`]
+/// holds to reducing too) and, in close-only
 /// mode, any maker may only reduce; a fill that adds exposure must leave initial
 /// margin; and the position must stay maintenance-compliant while open, or end
 /// with no debt. This mirrors the maker leg of `op_fill` without its fee rebate,
@@ -745,9 +771,10 @@ fn maker_fill_settles(
     funding_index: i128,
     close_only: bool,
     minimum_exempt: bool,
+    below_entry_floor: bool,
 ) -> Option<Position> {
     let increasing = position.increases_exposure(delta);
-    if increasing && (quote.reduce_only || close_only || minimum_exempt) {
+    if increasing && (quote.reduce_only || close_only || minimum_exempt || below_entry_floor) {
         return None;
     }
     let mut after = *position;
@@ -1024,8 +1051,8 @@ fn exposure_increases_in(
 /// per-market oracle. Extracted from `seal_batch` for SEC-022 §6's probe
 /// dry-run (Task 7); a clean probe is ADOPTED as the committed settlement
 /// (review I4), so the probe and the commit are one run by construction.
-/// Deterministic in exactly `(state, oracles, fills, now_ms, minimum_exempt)` —
-/// the adoption relies on that.
+/// Deterministic in exactly `(state, oracles, fills, now_ms, minimum_exempt,
+/// floor)` — the adoption relies on that.
 ///
 /// The pre-trade gate covers the *taker* against current state, but a *resting
 /// maker* admitted in an earlier batch can have drifted below initial margin
@@ -1042,19 +1069,23 @@ fn exposure_increases_in(
 /// change, in this order: a reduce-only order may not add exposure
 /// ([`RejectReason::ReduceOnlyViolation`]); in close-only mode no order may add
 /// exposure ([`RejectReason::MarketCloseOnly`], the engine's own rule, named per
-/// leg); and an order in `minimum_exempt` (admitted below [`MIN_ORDER_NOTIONAL`]
+/// leg); an order in `minimum_exempt` (admitted below [`MIN_ORDER_NOTIONAL`]
 /// because it reduced) may not add exposure either
-/// ([`RejectReason::BelowMinimumSize`]).
+/// ([`RejectReason::BelowMinimumSize`]); and no order may add exposure to an
+/// entry that holds less than the entry minimum `floor` when the fill settles
+/// ([`RejectReason::InsufficientMargin`]), so an order that rests from when its
+/// entry held the minimum does not fill once a loss took the entry below it.
 fn settle_fills(
     state: &mut DefaultState,
     oracles: &BTreeMap<MarketId, OracleTranscript>,
     fills: &[Match],
     now_ms: u64,
     minimum_exempt: &BTreeSet<Digest>,
+    floor: EntryFloor,
 ) -> FillSettlement {
     let mut out = FillSettlement::default();
     for m in fills {
-        settle_fill(state, oracles, m, now_ms, minimum_exempt, &mut out);
+        settle_fill(state, oracles, m, now_ms, minimum_exempt, floor, &mut out);
     }
     out
 }
@@ -1071,6 +1102,7 @@ fn settle_fill(
     m: &Match,
     now_ms: u64,
     minimum_exempt: &BTreeSet<Digest>,
+    floor: EntryFloor,
     out: &mut FillSettlement,
 ) -> TradeCheck {
     let maker_side = match m.taker_side {
@@ -1131,6 +1163,8 @@ fn settle_fill(
             Some(RejectReason::MarketCloseOnly)
         } else if minimum_exempt.contains(hash) {
             Some(RejectReason::BelowMinimumSize)
+        } else if floor.refuses(owner, entry_collateral(state, owner, m.market_id)) {
+            Some(RejectReason::InsufficientMargin)
         } else {
             None
         }
@@ -1397,6 +1431,12 @@ pub struct Sequencer {
     /// [`Self::intake`] tallied per account.
     #[serde(skip)]
     intake_tally: PendingTally,
+    /// The entry minimum (audit G1-1, [`Sequencer::set_min_entry_collateral`]): no
+    /// order adds exposure to a position entry holding less collateral, at
+    /// admission or when its fill settles; 0 holds no one. Boot configuration,
+    /// not persisted: the gateway sets it after every boot or restore.
+    #[serde(skip)]
+    min_entry_collateral: i128,
 }
 
 impl Sequencer {
@@ -1431,6 +1471,7 @@ impl Sequencer {
             open_orders: None,
             intake: BTreeMap::new(),
             intake_tally: PendingTally::default(),
+            min_entry_collateral: 0,
         }
     }
 
@@ -1539,6 +1580,30 @@ impl Sequencer {
     /// answers a taker the batch refuses.
     pub fn set_minimum_exempt_owner(&mut self, owner: Option<PubKey>) {
         self.minimum_exempt_owner = owner;
+    }
+
+    /// Hold every order that adds exposure (opens, grows or flips a position) to
+    /// the entry minimum `min_collateral`, or hold none with 0 (audit G1-1): the
+    /// owner's position entry in the order's market must hold at least that much
+    /// collateral when the order is admitted, and when each of its fills settles,
+    /// so an order that rests from when the entry held the minimum does not fill
+    /// once a trading loss took the entry below it. Reductions are never held to
+    /// it, and neither is the house market maker
+    /// ([`Sequencer::set_minimum_exempt_owner`]). The gateway's admission policy
+    /// keeps the position entries from filling with dust, which its sweep exits
+    /// only while flat; it is not an engine rule, so it can change without a new
+    /// program key. A refusal is recorded as [`RejectReason::InsufficientMargin`].
+    /// Boot configuration, not persisted.
+    pub fn set_min_entry_collateral(&mut self, min_collateral: i128) {
+        self.min_entry_collateral = min_collateral.max(0);
+    }
+
+    /// The entry minimum orders are held to.
+    fn entry_floor(&self) -> EntryFloor {
+        EntryFloor {
+            min_collateral: self.min_entry_collateral,
+            exempt: self.minimum_exempt_owner,
+        }
     }
 
     /// Set / refresh the oracle transcript a market settles against (§8).
@@ -1980,7 +2045,9 @@ impl Sequencer {
     /// ([`below_minimum_order_notional`]); otherwise it is refused with
     /// [`RejectReason::BelowMinimumSize`]. While the engine is close-only, an order
     /// that adds exposure is refused with [`RejectReason::MarketCloseOnly`], the
-    /// engine's own rule.
+    /// engine's own rule. An order that adds exposure to an entry below the entry
+    /// minimum ([`Sequencer::set_min_entry_collateral`]) is refused with
+    /// [`RejectReason::InsufficientMargin`].
     ///
     /// This is the check for an order on its own, against its owner's committed
     /// position. [`Sequencer::seal_batch`] applies the same check to each order of a
@@ -2031,6 +2098,10 @@ impl Sequencer {
                 || below_minimum_order_notional(&projected, order, mark))
         {
             return Err(RejectReason::BelowMinimumSize);
+        }
+        // Audit G1-1: below the entry minimum nothing adds exposure.
+        if adds_exposure && self.entry_floor().refuses(&order.owner, base.collateral) {
+            return Err(RejectReason::InsufficientMargin);
         }
         if !base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
             return Err(RejectReason::InsufficientMargin);
@@ -2123,6 +2194,7 @@ impl Sequencer {
         };
         let funding_index = self.funding_index_at(market.id, index, now_ms);
         let close_only = self.state.mode == Mode::CloseOnly;
+        let floor = self.entry_floor();
         // each maker's position after the fills of its orders counted so far
         let mut staged: BTreeMap<PubKey, Position> = BTreeMap::new();
         book.impact_price_within(side, FUNDING_IMPACT_NOTIONAL, now_ms, window, |quote| {
@@ -2149,6 +2221,7 @@ impl Sequencer {
                 funding_index,
                 close_only,
                 self.minimum_exempt.contains(&quote.order_hash),
+                floor.refuses(&quote.owner, position.collateral),
             ) {
                 Some(after) => {
                     staged.insert(quote.owner, after);
@@ -2518,10 +2591,19 @@ impl Sequencer {
                 let mut probe = self.state.clone();
                 let mut probed = FillSettlement::default();
                 let oracles = &self.oracles;
+                let floor = self.entry_floor();
                 let stream = self
                     .matcher
                     .process_stream_checked(&live, now_ms, &mut |m| {
-                        settle_fill(&mut probe, oracles, m, now_ms, &minimum_exempt, &mut probed)
+                        settle_fill(
+                            &mut probe,
+                            oracles,
+                            m,
+                            now_ms,
+                            &minimum_exempt,
+                            floor,
+                            &mut probed,
+                        )
                     });
                 break (stream, Some((probe, probed)));
             }
@@ -2540,6 +2622,7 @@ impl Sequencer {
                 &stream.fills,
                 now_ms,
                 &minimum_exempt,
+                self.entry_floor(),
             );
             if probed.offenders.is_empty() {
                 // Clean: carry the probe state + its settlement out of the loop;
@@ -4666,7 +4749,14 @@ mod tests {
             fill(0, 2, 1, 90_000 * PRICE_SCALE, t2_h, x_h),
         ];
         let mut probe = sq.state.clone();
-        let out = settle_fills(&mut probe, &sq.oracles, &fills, now(), &BTreeSet::new());
+        let out = settle_fills(
+            &mut probe,
+            &sq.oracles,
+            &fills,
+            now(),
+            &BTreeSet::new(),
+            EntryFloor::default(),
+        );
         assert_eq!(
             out.rejected,
             vec![
@@ -5834,6 +5924,7 @@ mod tests {
             &[fill(110_000), fill(100_000)],
             now(),
             &BTreeSet::new(),
+            EntryFloor::default(),
         );
         assert_eq!(
             out.offenders,

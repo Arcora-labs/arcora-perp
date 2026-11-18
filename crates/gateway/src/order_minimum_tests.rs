@@ -535,7 +535,8 @@ fn intake_margin_admission_agrees_with_the_engine_for_openings() {
     let mut refused_count = 0;
     for _ in 0..400 {
         let (key, owner) = gw.register_account(None);
-        let deposit = (10 + rng.below(5_000) as i128) * QUOTE_SCALE + rng.below(1_000_000) as i128;
+        // From the 100 USDC entry minimum, below which no order opens (audit G1-1).
+        let deposit = (100 + rng.below(5_000) as i128) * QUOTE_SCALE + rng.below(1_000_000) as i128;
         gw.account_deposit(&key, 0, deposit).unwrap();
         let collateral = gw.seq.state.position(&owner, 0).unwrap().collateral;
         // A size whose initial margin lies within about 0.1% of the collateral.

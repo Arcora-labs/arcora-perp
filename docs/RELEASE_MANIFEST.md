@@ -66,8 +66,7 @@ prover observation.
     "token": "0x0000000000000000000000000000000000000003",
     "clock_verifier": "0x0000000000000000000000000000000000000004",
     "sp1_adapter": "0x0000000000000000000000000000000000000005",
-    "sp1_gateway": "0x0000000000000000000000000000000000000006",
-    "sp1_verifier": "0x0000000000000000000000000000000000000007"
+    "sp1_verifier": "0x0000000000000000000000000000000000000006"
   },
   "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
   "clock": {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3600000},
@@ -184,7 +183,7 @@ chain ID are checked again after the observation. Redirects, malformed envelopes
 RPC errors and oversized responses fail closed. Provider error text and URL paths
 are not written to the evidence. Existing output files are never overwritten.
 
-For each of the six compiled contracts, it checks the full runtime, including
+For each of the five compiled contracts, it checks the full runtime, including
 metadata. Only the compiler's immutable reference words may differ from the
 template. Each repeated occurrence of one immutable must contain the same value;
 out-of-bounds, overlapping, non-word and nonzero-placeholder references are
@@ -193,23 +192,25 @@ this is reconstruction of the actual deployed template, not blanket masking of
 all constructor-dependent bytes. An altered opcode or metadata byte fails.
 
 At that same block it checks settlement ↔ vault, settlement ↔ clock verifier,
-clock → SP1 adapter → SP1 gateway, vault → token, the settlement's
+clock → SP1 adapter → SP1 verifier (bound directly; no gateway or router), vault → token, the settlement's
 `ABI_VERSION() == 3`, the reviewed guest key, the clock bounds and
-`anchorTimeoutMs()`, proof version 2, the SP1 verifier hash, and the selector's
-active, unfrozen route to the configured verifier. While the settlement's
+`anchorTimeoutMs()`, proof version 2, and the SP1 verifier hash. The verifier's
+runtime must be the compiled stateless v6.1.0 verifier and it must not answer
+`owner()` or `routes(bytes4)`, so no router owner can add or freeze a route (audit
+SV-1). A stack whose adapter points at a gateway is never reported VERIFIED. While the settlement's
 `batchCount()` is 0 it also requires `currentStateRoot()` to equal `genesis.root`
 and records `genesis_root_verified`; after the first batch the root is recorded
 as not observed. A wind-down recipient or oracle signer equal to an operator
 address the target reports fails, with or without `operator_policy`. Zero/unbound or old direct-adapter
 configurations fail. The token must have code; its implementation is not among
-the six compiled artifacts.
+the five compiled artifacts.
 
 A successful report says `VERIFIED_AT_FINALIZED_BLOCK`, with runtime and target
 observation fields set true. It still records `release_gate: HOLD`. RPC responses
 are trusted; this is not a light-client check or independent RPC consensus. The
-sequencer, enclave signer, governance, gateway signer, SP1 gateway owner and
+sequencer, enclave signer, governance, gateway signer and
 settlement timing/bond parameters are recorded for review. An optional, complete
-`operator_policy` in the public configuration pins all thirteen expected values;
+`operator_policy` in the public configuration pins all twelve expected values;
 any mismatch fails closed. `operator_and_settlement_policy_matches` is true only
 after every runtime, getter, finality and source recheck passes. This is matching
 a declaration, not a security/economic review: `operator_and_settlement_policy_approved`
@@ -217,10 +218,11 @@ always remains false, even when explicit zero values match. The token's runtime,
 proxy/admin/issuance policy, service config/identity, real proof generation,
 capacity, custody loss and state migration remain separate acceptance gates.
 
-The opt-in integration test owns a new disposable Anvil, deploys the real six
-compiled contracts and a mock token through their actual constructors, binds the
-stack, and obtains a successful hash-pinned observation. It then freezes the
-actual SP1 route and requires the next finalized observation to fail. No existing
+The opt-in integration test owns a new disposable Anvil, deploys the real five
+compiled contracts and a mock token through their actual constructors (the adapter
+bound directly to the stateless verifier), binds the stack, and obtains a
+successful hash-pinned observation. It then requires every wrong governance,
+bond, batch-count, payout-cap and genesis declaration to fail. No existing
 node, supplied RPC, credentials or public network can be selected by this test.
 
 ```sh
@@ -263,15 +265,14 @@ Add this section to a separately reviewed public release configuration:
     "slash_payout_cap_usdc": 1000000000
   },
   "vault": {"gateway_signer": "0x0000000000000000000000000000000000000014"},
-  "clock_verifier": {"configurator": "0x0000000000000000000000000000000000000015"},
-  "sp1_gateway": {"owner": "0x0000000000000000000000000000000000000016"}
+  "clock_verifier": {"configurator": "0x0000000000000000000000000000000000000015"}
 }
 ```
 
 Pass `observe-target --require-operator-policy` to reject a missing policy before
 any chain reads. Without that flag, old configs still support observation, but
 cannot claim a policy match. With a policy supplied, comparisons are mandatory
-regardless of the flag. All thirteen getters use the same finalized block hash as
+regardless of the flag. All twelve getters use the same finalized block hash as
 the runtime checks. A late chain/source change prevents the policy match flag
 from becoming true. The report also records the canonical policy SHA-256.
 

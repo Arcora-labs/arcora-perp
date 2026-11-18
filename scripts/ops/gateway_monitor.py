@@ -17,7 +17,8 @@ condition is reported once when it starts and once when it clears:
   liveness_low, permit_gc_stalled, engine_close_only, admission_cap_reached,
   withdraw_nonce_repaired, deposit_blocked_at_cap, window_voided,
   clock_recovery_blocked, snapshot_size_high, clock_registration_refused,
-  deposit_reads_dropped), while `opsAlerts` lists them. Other names are ignored.
+  deposit_reads_dropped, withdraw_reserve_near), while `opsAlerts` lists them.
+  Other names are ignored.
 
 With DARKPERP_L1_RPC and DARKPERP_SETTLEMENT set (both or neither), it also
 reads the settlement contract directly with read-only Foundry `cast` calls,

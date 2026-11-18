@@ -30,7 +30,10 @@ LINKS = (
     ("oracle_wrapper", "streamsVerifier()", "verifier_proxy"),
     ("oracle_wrapper", "clockVerifier()", "clock_verifier"),
     ("oracle_wrapper", "sequencerUptimeFeed()", "uptime_feed"),
-    ("sp1_adapter", "gateway()", "sp1_gateway"),
+    # Bound directly to the stateless verifier, never to an SP1 gateway (router): a router
+    # keeps every route added before its owner renounced, including an accept-everything
+    # verifier under another selector, and no getter can enumerate them (audit SV-1).
+    ("sp1_adapter", "gateway()", "sp1_verifier"),
 )
 
 
@@ -162,7 +165,7 @@ def observe_target(root, manifest, config, policy, rpc):
               "contracts": {}, "bindings": [], "scope": scope,
               "limitations": [
                   "RPC code, storage and parent hashes are trusted responses; no light client or independent consensus.",
-                  "Seven compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
+                  "Six compiler runtimes are matched; token, DON proxy and uptime feed have declaration-only code hashes.",
                   "Operator/policy values are matched, not approved; no uptime health or real DON verification.",
                   "No service attestation, fresh build/setup/proof, transaction, custody or production acceptance."]}
     try:
@@ -270,12 +273,11 @@ def observe_target(root, manifest, config, policy, rpc):
         getter("oracle_wrapper", "configurator()", declared["oracle_configurator"])
         verifier_hash = "0x" + legacy.clock.target.VERIFIER_HASH
         getter("sp1_verifier", "VERIFIER_HASH()", verifier_hash, "bytes32")
-        route = call("sp1_gateway", "routes(bytes4)", verifier_hash[2:10] + "0" * 56, 64)
-        require(route[:12] == bytes(12) and route[32:] in (bytes(32), bytes(31) + b"\x01"),
-                "noncanonical SP1 route ABI")
-        require("0x" + route[12:32].hex() == addresses["sp1_verifier"] and route[32:] == bytes(32),
-                "SP1 route is wrong or frozen")
-        result["sp1_route"] = {"selector": verifier_hash[:10], "verifier": addresses["sp1_verifier"], "frozen": False}
+        # The verifier's whole runtime matched the compiled stateless v6.1.0 template above
+        # (it has no immutables), so it has no owner and no routes to change.
+        require(result["contracts"]["sp1_verifier"]["immutable_words_by_compiler_id"] == {},
+                "SP1 verifier runtime is not fully pinned")
+        result["sp1_verifier_stateless"] = {"verifier": addresses["sp1_verifier"], "selector": verifier_hash[:10]}
         operators = declared["operator_policy"]
         for role, fields in legacy.OPERATOR_ADDRESSES.items():
             for name, signature in fields.items():

@@ -23,7 +23,7 @@ import release_manifest as legacy
 @unittest.skipUnless(os.environ.get("ARCORA_RUN_CANDIDATE_TARGET_ANVIL") == "1",
                      "opt-in owned candidate Anvil integration")
 class CandidateTargetAnvilTests(unittest.TestCase):
-    def test_seven_real_contracts_and_safe_candidate_refusals(self):
+    def test_six_real_contracts_and_safe_candidate_refusals(self):
         evidence = os.environ.get("ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE")
         evidence_path = Path(evidence) if evidence else None
         if evidence_path is not None:
@@ -123,6 +123,8 @@ class CandidateTargetAnvilTests(unittest.TestCase):
             "token": "out/MockUSDC.sol/MockUSDC.json",
             "verifier_proxy": "out/ChainlinkOracleVerifier.t.sol/MockStreamsForCandidate.json",
             "uptime_feed": "out/MockSequencerUptime.sol/MockSequencerUptime.json",
+            # Not a candidate role (audit SV-1): only the router-bound refusals below deploy it.
+            "sp1_router": "out/sp1-upstream/SP1VerifierGateway.sol/SP1VerifierGateway.json",
         }
 
         def deploy(role, *args):
@@ -149,10 +151,11 @@ class CandidateTargetAnvilTests(unittest.TestCase):
             self.assertNotEqual(code, "0x", "owned deployed contract has empty runtime")
             return identity.source_keccak(identity.ROOT, bytes.fromhex(code[2:]))
 
-        # Seven REAL compiler artifacts: verifier, gateway, adapter, wrapper,
-        # clock, settlement and collateral vault. The three additional mocks
-        # are token/proxy/uptime only; #50's mock prefix vault/gateway are unused.
-        self.assertEqual(len(identity.CONTRACTS), 7)
+        # Six REAL compiler artifacts: verifier, adapter, wrapper, clock,
+        # settlement and collateral vault. The adapter is bound directly to the
+        # stateless verifier (audit SV-1). The three additional mocks are
+        # token/proxy/uptime only; #50's mock prefix vault/gateway are unused.
+        self.assertEqual(len(identity.CONTRACTS), 6)
         key = identity.candidate.VKEY
         policy_hash = "0x" + "31" * 32
         grace = 10
@@ -163,9 +166,7 @@ class CandidateTargetAnvilTests(unittest.TestCase):
         settlement_tail = (0, 100, 50, 1000, 600, owner, 10, 2, 1_000_000_000)
         addresses = {}
         addresses["sp1_verifier"] = deploy("sp1_verifier")
-        addresses["sp1_gateway"] = deploy("sp1_gateway", owner)
-        call_transaction("addRoute(address)", addresses["sp1_gateway"], addresses["sp1_verifier"])
-        addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_gateway"], key)
+        addresses["sp1_adapter"] = deploy("sp1_adapter", addresses["sp1_verifier"], key)
         addresses["verifier_proxy"] = deploy("verifier_proxy")
         addresses["uptime_feed"] = deploy("uptime_feed")
         addresses["oracle_wrapper"] = deploy("oracle_wrapper", addresses["sp1_adapter"],
@@ -183,7 +184,7 @@ class CandidateTargetAnvilTests(unittest.TestCase):
         call_transaction("bindClock(address)", addresses["oracle_wrapper"], addresses["clock_verifier"])
         mine_finalized()
         self.assertEqual(set(addresses), identity.ADDRESS_ROLES)
-        self.assertEqual(len(set(addresses.values())), 10)
+        self.assertEqual(len(set(addresses.values())), 9)
         public = {
             "chain_id": 84532, "network": 0, "addresses": addresses,
             "expected_runtime_code_hashes": {role: runtime_hash(address) for role, address in addresses.items()},
@@ -203,7 +204,6 @@ class CandidateTargetAnvilTests(unittest.TestCase):
                                "slash_payout_cap_usdc": 1_000_000_000},
                 "vault": {"gateway_signer": accounts[2]},
                 "clock_verifier": {"configurator": owner},
-                "sp1_gateway": {"owner": owner},
             },
             "oracle_configurator": owner,
         }
@@ -321,22 +321,84 @@ class CandidateTargetAnvilTests(unittest.TestCase):
                               ("settlement", wrong_settlement), ("vault", wrong_vault)):
             bad_clock["addresses"][role] = address
             bad_clock["expected_runtime_code_hashes"][role] = runtime_hash(address)
-        self.assertEqual(len(set(bad_clock["addresses"].values())), 10)
+        self.assertEqual(len(set(bad_clock["addresses"].values())), 9)
         rejected("direct_sp1_clock_instead_of_wrapper", bad_clock)
         self.assertEqual(
             rejections["direct_sp1_clock_instead_of_wrapper"]["blocker"],
             "target binding mismatch: clock_verifier.innerVerifier()")
 
-        # Actual mutation of OUR gateway, then a newly finalized observation.
-        # The test never registers reports, submits proofs or invokes settlement.
-        freeze = (legacy.deployment_reader.selector("freezeRoute(bytes4)")
-                  + legacy.clock.target.VERIFIER_HASH[:8] + "0" * 56)
-        transact(freeze, addresses["sp1_gateway"])
+        # audit SV-1: an otherwise complete graph whose adapter verifies through a REAL
+        # SP1VerifierGateway is never VERIFIED, whatever its owner or routes. Each router
+        # graph keeps the real verifier, token, proxy and uptime feed; only the adapter
+        # target differs. The test never registers reports, submits proofs or settles.
+        def router_graph(router):
+            adapter = deploy("sp1_adapter", router, key)
+            wrapper = deploy("oracle_wrapper", adapter, addresses["verifier_proxy"], policy_hash,
+                             addresses["uptime_feed"], grace)
+            clock = deploy("clock_verifier", wrapper, max_window_ms, clock_skew_ms, anchor_timeout_ms)
+            settlement = deploy("settlement", owner, accounts[1], clock, *settlement_tail)
+            vault = deploy("vault", settlement, addresses["token"], accounts[2])
+            call_transaction("setVault(address)", settlement, vault)
+            call_transaction("bindSettlement(address)", clock, settlement)
+            call_transaction("bindClock(address)", wrapper, clock)
+            mine_finalized()
+            graph = copy.deepcopy(public)
+            for role, address in (("sp1_adapter", adapter), ("oracle_wrapper", wrapper),
+                                  ("clock_verifier", clock), ("settlement", settlement), ("vault", vault)):
+                graph["addresses"][role] = address
+                graph["expected_runtime_code_hashes"][role] = runtime_hash(address)
+            return graph
+
+        def view(target, signature, argument=""):
+            return local_rpc("eth_call", [{"to": target, "data": legacy.deployment_reader.selector(signature)
+                                           + argument}, "latest"])
+
+        pinned_selector = legacy.clock.target.VERIFIER_HASH[:8]
+        # The reviewer's state: owner() == 0 and the pinned route is the real, unfrozen
+        # verifier, but an accept-everything verifier was routed under 0xdeadbeef first.
+        accept_all = "0x60298060" + "0b" + "6000" + "39" + "6000f3" + "7f" + "deadbeef" + "00" * 28 + "60005260206000f3"  # returns 0xdeadbeef.. for every call
+        evil = transact(accept_all)["contractAddress"].lower()
+        renounced = deploy("sp1_router", owner)
+        call_transaction("addRoute(address)", renounced, addresses["sp1_verifier"])
+        call_transaction("addRoute(address)", renounced, evil)
+        call_transaction("renounceOwnership()", renounced)
         mine_finalized()
-        rejected("actual_frozen_sp1_route")
+        self.assertEqual(int(view(renounced, "owner()"), 16), 0)
+        self.assertEqual(view(renounced, "routes(bytes4)", pinned_selector + "0" * 56),
+                         "0x" + word(addresses["sp1_verifier"]) + word(0))
+        bypassed = router_graph(renounced)
+        # The bypass is real: any commitment "verifies" with the 4-byte proof 0xdeadbeef.
+        verify = (legacy.deployment_reader.selector("verify(bytes32,bytes)") + word("ab" * 32)
+                  + word(64) + word(4) + "deadbeef" + "00" * 28)
+        self.assertEqual(local_rpc("eth_call", [{"to": bypassed["addresses"]["sp1_adapter"], "data": verify},
+                                                "latest"]), "0x" + word(1))
+        rejected("renounced_router_with_accept_all_route", bypassed)
+        self.assertEqual(rejections["renounced_router_with_accept_all_route"]["blocker"],
+                         "target binding mismatch: sp1_adapter.gateway()")
+        # Declaring the router itself as the verifier fails the stateless runtime match.
+        declared = copy.deepcopy(bypassed)
+        declared["addresses"]["sp1_verifier"] = renounced
+        declared["expected_runtime_code_hashes"]["sp1_verifier"] = runtime_hash(renounced)
+        rejected("router_declared_as_sp1_verifier", declared)
+        self.assertEqual(rejections["router_declared_as_sp1_verifier"]["blocker"],
+                         "compiler runtime template refused: sp1_verifier")
+        # Actual frozen route of a live-owner router, then a newly finalized observation.
+        frozen = deploy("sp1_router", owner)
+        call_transaction("addRoute(address)", frozen, addresses["sp1_verifier"])
+        call_transaction("freezeRoute(bytes4)", frozen, pinned_selector + "0" * 56)  # bytes4 is left-aligned
+        mine_finalized()
+        self.assertEqual(view(frozen, "routes(bytes4)", pinned_selector + "0" * 56),
+                         "0x" + word(addresses["sp1_verifier"]) + word(1))
+        rejected("actual_frozen_sp1_route", router_graph(frozen))
+        self.assertEqual(rejections["actual_frozen_sp1_route"]["blocker"],
+                         "target binding mismatch: sp1_adapter.gateway()")
+        # No router owner can reach the directly bound graph: it is still VERIFIED.
+        after, _ = observe()
+        self.assertEqual(after["status"], "VERIFIED_AT_FINALIZED_BLOCK", after)
+
         if evidence_path is not None:
             payload = {
-                "scope": "Owned disposable Anvil chain84532, seven real compiled contracts and mock token/streams/uptime; no public target, DON, service, proof or release acceptance.",
+                "scope": "Owned disposable Anvil chain84532, six real compiled contracts (adapter bound directly to the stateless SP1 verifier) and mock token/streams/uptime; real SP1VerifierGateway graphs only as refusals; no public target, DON, service, proof or release acceptance.",
                 "public_config": public,
                 "expected_policy": policy,
                 "manifest_sha256": identity.digest(identity.canonical(manifest)),

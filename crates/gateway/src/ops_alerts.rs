@@ -79,12 +79,17 @@ pub enum AlertKind {
     /// `livenessTimeoutBlocks` runs. The L1 RPC is probably slow or rate-limited.
     /// Recovered once a read is applied.
     DepositReadsDropped,
+    /// The state's provable history is within a tenth of the exchange-wide
+    /// partial-withdrawal reserve (`admission::PARTIAL_WITHDRAWAL_HISTORY_CEILING`)
+    /// or past it. Past it only full exits leave, for every account. History never
+    /// shrinks, so it stays active, unless a voided window takes the history back.
+    WithdrawReserveNear,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 19] = [
+    pub const ALL: [AlertKind; 20] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -104,6 +109,7 @@ impl AlertKind {
         AlertKind::SnapshotSizeHigh,
         AlertKind::ClockRegistrationRefused,
         AlertKind::DepositReadsDropped,
+        AlertKind::WithdrawReserveNear,
     ];
 }
 

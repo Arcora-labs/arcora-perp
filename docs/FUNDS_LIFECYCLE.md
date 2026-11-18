@@ -242,7 +242,7 @@ change to that read-out updates the file by hand.
 ## Amounts and nonces a wallet sees
 
 - **Deposit permits** are issued for at least 10 USDC (10,000,000 base units).
-- **Withdrawals** are at least 1 USDC, unless they take the entire free balance in
+- **Withdrawals** are at least 10 USDC, unless they take the entire free balance in
   that market (`marketFree` in `GET /v1/accounts/me`), which the account panel checks
   for the selected market.
 - **Orders** that open, grow or flip a position need at least $10 of notional;

@@ -375,7 +375,7 @@ def main():
         results = suite["test_results"]
         target.require(all(t["status"] == "Success" for t in results.values()), f"failed/skipped suite: {name}")
         counts[name] = len(results)
-    target.require(counts == {"SP1RealVerifierGuardTest": 8, "SP1RealProofTest": 10, "ClockBoundRealProofTest": 6}, "missing actual target suites")
+    target.require(counts == {"SP1RealVerifierGuardTest": 10, "SP1RealProofTest": 11, "ClockBoundRealProofTest": 6}, "missing actual target suites")
     compiled = {
         "upstream_verifier": target.compiled_identity(Path("out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json")),
         "upstream_gateway": target.compiled_identity(Path("out/sp1-upstream/SP1VerifierGateway.sol/SP1VerifierGateway.json")),

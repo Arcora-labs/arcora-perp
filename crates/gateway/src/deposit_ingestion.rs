@@ -292,7 +292,7 @@ impl Gw {
         Ok(())
     }
     /// Issuance-time check: the route terms plus the account's bound payer.
-    fn validate_route(&self, route: &Route) -> Result<(), String> {
+    pub(super) fn validate_route(&self, route: &Route) -> Result<(), String> {
         self.validate_route_terms(route)?;
         if self.accounts[&route.key].deposit_address != Some(route.from) {
             return Err("route payer differs from bound address".into());
@@ -717,6 +717,7 @@ impl Gw {
             self.deposits.routes.remove(&credit.event.commit);
             self.processed_deposit_txs.insert(hex0x(&credit.event.tx)); // legacy read compatibility, NOT the new dedup key
             self.deposits.uncredited.remove(&credit.event.id);
+            self.charge_credited_deposit(&credit.route);
             self.deposits.credits.insert(credit.event.id, credit);
         }
         // Before completion an insurance deposit records the window that carries it
@@ -1184,6 +1185,12 @@ pub struct LegacyRouteReq {
     #[serde(flatten)]
     permit: DepositAuthorizeReq,
 }
+/// Adopt the route of a blind-only permit an older gateway signed before routing
+/// existed. It applies neither the entry minimum nor the admission cap (audit
+/// G1-1): the permit is already signed and its deposit may already be on L1, so
+/// refusing its route would only leave that deposit uncreditable. A sub-minimum
+/// one that lands in a missing entry opens flat dust, which can open no position
+/// (`Gw::entry_order_refusal`) and is swept like any other.
 pub async fn route_legacy(
     State(app): State<Shared>,
     headers: HeaderMap,

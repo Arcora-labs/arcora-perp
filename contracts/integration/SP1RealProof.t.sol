@@ -89,4 +89,14 @@ contract SP1RealProofTest is RealSP1TestBase {
         unconfigured.verifyProof(vkey, abi.encodePacked(commitment), proof);
         assertFalse(other.verify(commitment, proof), "missing route");
     }
+
+    function test_direct_adapter_accepts_arcora_proof() public {
+        SP1ZkVerifier direct = _directAdapter(vkey);
+        assertEq(address(direct.gateway()), address(realVerifier), "bound to the stateless verifier");
+        assertTrue(direct.verify(commitment, proof), "actual Arcora proof must pass the direct adapter");
+        bytes memory changed = proof;
+        changed[changed.length - 1] ^= bytes1(uint8(1));
+        assertFalse(direct.verify(commitment, changed), "changed proof");
+        assertFalse(direct.verify(bytes32(uint256(commitment) ^ 1), proof), "wrong public commitment");
+    }
 }

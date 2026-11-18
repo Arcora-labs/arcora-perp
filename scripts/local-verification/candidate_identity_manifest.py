@@ -28,6 +28,8 @@ AUXILIARY_TEST_SOURCES = {
 MAX_JSON = 2 * 1024 * 1024
 MAX_JSON_DEPTH = 64
 MAX_SOURCE_FILES = 8192
+# Like the clock release stack, the candidate graph binds its SP1 adapter directly to the
+# stateless verifier: no SP1 gateway (router) role exists (audit SV-1).
 CONTRACTS = {**legacy.CONTRACTS,
     "oracle_wrapper": ("out/ChainlinkOracleVerifier.sol/ChainlinkOracleVerifier.json",
                        "ChainlinkOracleVerifier", "0.8.24+commit.e11b9ed9")}
@@ -246,7 +248,7 @@ def compiled_contract(root, role):
     require(list(settings["compilationTarget"].values()) == [name], "wrong compilation target: " + role)
     require(canonical(settings["optimizer"]) == canonical({"enabled": True, "runs": 200}),
             "wrong optimizer profile: " + role)
-    compiler_root = root / ("contracts/vendor/sp1-contracts" if role in {"sp1_gateway", "sp1_verifier"} else "contracts")
+    compiler_root = root / ("contracts/vendor/sp1-contracts" if role == "sp1_verifier" else "contracts")
     sources = metadata["sources"]
     require(isinstance(sources, dict) and sources, "missing compiler source bindings")
     for source, expected in sources.items():
