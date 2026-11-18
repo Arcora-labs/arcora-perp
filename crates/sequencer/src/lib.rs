@@ -696,6 +696,32 @@ impl EntryFloor {
     fn refuses(&self, owner: &PubKey, collateral: i128) -> bool {
         self.min_collateral > 0 && self.exempt != Some(*owner) && collateral < self.min_collateral
     }
+
+    /// Whether a fill in `market` may not add exposure to `owner`'s entry, which
+    /// holds `collateral` as the floor measures it at settlement. The floor there
+    /// is lower than at admission by [`EntryFloor::settle_allowance`], so an
+    /// opener admitted at the minimum is not refused by the fees and funding its
+    /// own earlier pieces charged in an earlier pass (audit G1-1 round 4).
+    fn refuses_settling(&self, owner: &PubKey, collateral: i128, market: Option<&Market>) -> bool {
+        let allowance = market.map_or(0, |market| self.settle_allowance(market));
+        self.refuses(owner, collateral.saturating_add(allowance))
+    }
+
+    /// What the entry floor allows an entry at settlement in `market` besides
+    /// the minimum: twice the taker fee of the largest position the minimum
+    /// margins (`min_collateral / initial_margin_ratio` of notional), which
+    /// covers an opening at the minimum filled in pieces at the edge of the fill
+    /// band and a little funding while its remainder rests. 2 USDC under the
+    /// production market (10x, 10 bps) and a 100 USDC minimum.
+    fn settle_allowance(&self, market: &Market) -> i128 {
+        if market.initial_margin_ratio <= 0 {
+            return 0;
+        }
+        self.min_collateral
+            .saturating_mul(market.taker_fee_ratio.max(0))
+            .saturating_mul(2)
+            / market.initial_margin_ratio
+    }
 }
 
 /// The collateral of `owner`'s entry in `market_id`, 0 without one.
@@ -1113,8 +1139,10 @@ fn exposure_increases_in(
 /// ([`RejectReason::InsufficientMargin`]), so an order that rests from when its
 /// entry held the minimum does not fill once a loss took the entry below it. The
 /// entry is measured without the fees, rebates and funding the pass's earlier
-/// fills charged it ([`FillSettlement::pass_charges`]), so an opener at the
-/// minimum that fills in several pieces is not refused by its own fees.
+/// fills charged it ([`FillSettlement::pass_charges`]), and is allowed
+/// [`EntryFloor::settle_allowance`] below the minimum for those an earlier pass
+/// charged, so an opener at the minimum that fills in several pieces, in one pass
+/// or while its remainder rests, is not refused by its own fees.
 fn settle_fills(
     state: &mut DefaultState,
     oracles: &BTreeMap<MarketId, OracleTranscript>,
@@ -1203,7 +1231,11 @@ fn settle_fill(
             Some(RejectReason::MarketCloseOnly)
         } else if minimum_exempt.contains(hash) {
             Some(RejectReason::BelowMinimumSize)
-        } else if floor.refuses(owner, out.floor_collateral(state, owner, m.market_id)) {
+        } else if floor.refuses_settling(
+            owner,
+            out.floor_collateral(state, owner, m.market_id),
+            state.markets.get(&m.market_id),
+        ) {
             Some(RejectReason::InsufficientMargin)
         } else {
             None
@@ -1643,7 +1675,9 @@ impl Sequencer {
     /// collateral when the order is admitted, and when each of its fills settles,
     /// so an order that rests from when the entry held the minimum does not fill
     /// once a trading loss took the entry below it. At settlement the entry is
-    /// measured without the fees, rebates and funding of that settlement pass.
+    /// measured without the fees, rebates and funding of that settlement pass, and
+    /// may hold up to twice the taker fee of the largest position `min_collateral`
+    /// margins less than it, for those of earlier passes.
     /// Reductions are never held to
     /// it, and neither is the house market maker
     /// ([`Sequencer::set_minimum_exempt_owner`]). The gateway's admission policy
@@ -2278,7 +2312,7 @@ impl Sequencer {
                 funding_index,
                 close_only,
                 self.minimum_exempt.contains(&quote.order_hash),
-                floor.refuses(&quote.owner, position.collateral),
+                floor.refuses_settling(&quote.owner, position.collateral, Some(market)),
             ) {
                 Some(after) => {
                     staged.insert(quote.owner, after);
