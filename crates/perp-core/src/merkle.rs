@@ -220,6 +220,9 @@ impl<H: Hasher> MerkleTree<H> {
 
     /// Current root. Computed bottom-up over the dense leaves, padding each level
     /// with the precomputed empty-subtree root for that height.
+    // `h` is the tree height and only the padding branch reads `empty[h]`. Keeping the
+    // indexed loop leaves the proven code as it is; clippy 1.100 started flagging it.
+    #[allow(clippy::needless_range_loop)]
     pub fn root(&self) -> Digest {
         if self.leaves.is_empty() {
             return self.empty[self.depth as usize];
@@ -244,6 +247,9 @@ impl<H: Hasher> MerkleTree<H> {
     }
 
     /// Produce a membership proof for the leaf at `index`.
+    // `h` is the tree height and only the padding branch reads `empty[h]`. Keeping the
+    // indexed loop leaves the proven code as it is; clippy 1.100 started flagging it.
+    #[allow(clippy::needless_range_loop)]
     pub fn prove(&self, index: u64) -> Result<MerkleProof, MerkleError> {
         if index >= self.len() {
             return Err(MerkleError::OutOfRange);
