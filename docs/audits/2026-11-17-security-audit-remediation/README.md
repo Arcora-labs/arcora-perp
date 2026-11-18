@@ -59,12 +59,15 @@ license (MIT OR Apache-2.0). The commit `3d0470e` has no blank line before its t
   code can settle on L1 a cold reviewed guest rebuild, a new verifier key (vkey) and a redeploy are required,
   and `REVIEWED_GUEST` has to be re-pinned. Until then `guest.elf`, `program-vkey.bin`, `execution.json`,
   three case witnesses, one negative and `clock-pkg3-verified` are stale
-  (see `contracts/integration/fixtures/clock-pkg3-reviewed/README.md`), and three local-verification
-  Python suites fail for that reason.
+  (see `contracts/integration/fixtures/clock-pkg3-reviewed/README.md`), and five local-verification
+  Python suites fail with `guest source changed; rebuild and reprove: crates/perp-core/src/engine.rs`:
+  `test_verify_clock_proof`, `test_candidate_identity_manifest`, `test_candidate_target_observer`,
+  `test_rebuild_reviewed_guest` and `test_cold_rebuild_reviewed_guest`. CI stays red on those until
+  the guest is rebuilt and re-pinned.
 - **Snapshot format.** The base snapshot (`DPSNAP10`) and rollback journal (`DPRBJL7`) magics are
   unchanged and everything `bb16693` wrote still loads. Additions: side logs beside the snapshot
   (migrated at boot when `DARKPERP_STATE` is set) and the optional trailing sections `DPHIST1`,
-  `DPCHRJ1` and `DPWLIM01`. A snapshot that uses side logs or declarations is refused by the old
+  `DPCHRJ1`, `DPWLIM01` and `DPSWEEP1` (in that order). A snapshot that uses side logs or declarations is refused by the old
   binary, so there is no downgrade. Back up and restore the side logs with the snapshot, and move
   leftover side logs aside before a fresh genesis. Accounts with withdrawals from before the upgrade start the lifetime
   quota at zero.
@@ -90,9 +93,15 @@ license (MIT OR Apache-2.0). The commit `3d0470e` has no blank line before its t
 - No SP1 guest build, no vkey, no regenerated fixture, no proof of any kind.
 - No real L1, TEE or live-RPC run. The challenge-watcher loop in `main()` and the real feed poller and
   HTTP route for OR-1 were not exercised end to end; tests call the helpers directly.
-- The test suites were not run for this note. Earlier lane runs were done as root, so chmod-based
-  denial does not work: `clock_recovery::tests::a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_next_step`
-  fails for that reason and is a known pre-existing failure. Any other failure is real.
+- The full suite was run once on the merged branch (2026-11-18, as root, no SP1 toolchain):
+  `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --locked -- -D warnings` clean;
+  `cargo test --workspace --locked --no-fail-fast` 1777 passed, 1 failed, 135 ignored; `forge test`
+  433 passed; `scripts/ops` 111 passed, 2 skipped; `scripts/claim` and `scripts/challenge` passed;
+  frontend `pnpm test` 719 passed, 1 skipped; `scripts/local-verification` 16 suites passed and the
+  five guest-pinned suites named above failed. The one Rust failure is
+  `clock_recovery::tests::a_failed_void_snapshot_or_journal_delete_waits_and_completes_on_the_next_step`:
+  chmod-based denial does not work as root, and it fails the same way on `bb16693`. The release-profile
+  run (`cargo test --workspace --locked --release`), `cargo audit` and `pnpm build` were not run.
 - The interaction of the SM-1 reserve with the entry minimum was not reviewed end to end.
 - Proving cost of the liquidation change was reduced by construction and not measured in cycles.
 
