@@ -1496,6 +1496,39 @@ fn audit_1116_g11_an_opener_at_the_minimum_fills_in_pieces_under_production_fees
     );
 }
 
+/// Round 4 review: the fees of the pieces an opener filled in EARLIER passes
+/// still counted. An opener at exactly the minimum that partly crossed as taker
+/// (collateral 99.8 after its fee) and rested the remainder could not fill the
+/// remainder in a later tick: the maker leg was measured at 99.8 < 100 and
+/// refused. The settlement floor allows the fees an opening at the minimum can
+/// pay, so the remainder fills; a realized trading loss still trips it (PoC C).
+#[test]
+fn audit_1116_g11_a_resting_remainder_at_the_minimum_fills_in_a_later_pass() {
+    let (mut gw, px) = trading_gw();
+    let (victim, _) = custody_account(&mut gw, &signer(0, 0x5B));
+    let (bank, _) = custody_account(&mut gw, &signer(1, 0x5B));
+    gw.account_deposit(&victim, 0, ENTRY_MINIMUM).unwrap();
+    gw.account_deposit(&bank, 0, 100 * ENTRY_MINIMUM).unwrap();
+    let piece = size_of(200, px);
+    place(&mut gw, &bank, "Sell", piece, px).unwrap();
+    gw.tick();
+    place(&mut gw, &victim, "Buy", 2 * piece, px).unwrap();
+    gw.tick();
+    let partial = entry(&gw, &victim, 0).unwrap();
+    assert_eq!(partial.size, piece, "one piece crossed, the rest rests");
+    assert!(
+        partial.collateral < ENTRY_MINIMUM,
+        "the taker fee was charged"
+    );
+    place(&mut gw, &bank, "Sell", piece, px).unwrap();
+    gw.tick();
+    assert_eq!(
+        entry(&gw, &victim, 0).unwrap().size,
+        2 * piece,
+        "the resting remainder filled in the later pass"
+    );
+}
+
 /// The outstanding opening permits share the room up to the bound: one client
 /// group (an IPv4 address or an IPv6 /48) holds at most two of them at every
 /// level, and none is issued once the state and every outstanding permit fill
