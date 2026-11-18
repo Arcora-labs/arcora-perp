@@ -531,6 +531,7 @@ fn sweep(gw: &mut Gw, asker: &[u8; 32]) -> Vec<(u64, Withdrawal)> {
             now_ms: now_ms(),
         },
     )
+    .unwrap()
 }
 
 /// The sweep never signs a stale price again: without a usable oracle report for
@@ -941,22 +942,24 @@ fn audit_1116_g11_a_sweep_is_not_charged_to_the_owners_rate_limits() {
     let (mut gw, asker, _) = small_cap_with_dust();
     refresh_oracles(&mut gw);
     let t0 = now_ms();
-    let swept = gw.sweep_dust_for_permit(
-        &deposit_ingestion::Route {
-            key: asker,
-            from: gw.accounts[&asker].deposit_address.unwrap(),
-            amount: ENTRY_MINIMUM as u128,
-            market: 0,
-            purpose: deposit_ingestion::Purpose::Collateral,
-            valid_until: 0,
-        },
-        None,
-        t0 / 1000,
-        PriceUse {
-            archive: None,
-            now_ms: t0,
-        },
-    );
+    let swept = gw
+        .sweep_dust_for_permit(
+            &deposit_ingestion::Route {
+                key: asker,
+                from: gw.accounts[&asker].deposit_address.unwrap(),
+                amount: ENTRY_MINIMUM as u128,
+                market: 0,
+                purpose: deposit_ingestion::Purpose::Collateral,
+                valid_until: 0,
+            },
+            None,
+            t0 / 1000,
+            PriceUse {
+                archive: None,
+                now_ms: t0,
+            },
+        )
+        .unwrap();
     let owner = swept[0].1.owner;
     let key = *gw
         .accounts
@@ -1613,4 +1616,60 @@ fn audit_1116_g11_a_rotated_account_is_swept_under_its_new_key() {
     let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
     assert_eq!(restored.owner_keys.get(&owner), Some(&new));
     assert_eq!(restored.owner_keys.len(), restored.accounts.len());
+}
+
+/// Merge of lane-a (G2-2) and lane-c (G1-1): a dust sweep's unbinds are timed
+/// engine operations, so the open clock window's closing gate covers them like a
+/// withdrawal's. While the window is closing, a permit that needs a sweep is
+/// refused with `CLOCK_WINDOW_CLOSING` (503, Retry-After) and nothing is swept;
+/// once the window is sealed the same permit sweeps and is issued.
+#[tokio::test]
+async fn audit_1116_merge_a_sweep_waits_while_the_clock_window_is_closing() {
+    let (mut gw, asker, _) = small_cap_with_dust();
+    let timing = crate::l1::ClockTiming {
+        max_window_ms: 30_000,
+        clock_skew_ms: 30_000,
+    };
+    gw.clock_window = Some(clock_admission::WindowBound::new(
+        timing,
+        timing.seal_period().unwrap(),
+    ));
+    // The open window's first timed operation is a minute old: a tick's funding.
+    let t0 = now_ms() - 60_000;
+    for market in 0..3u64 {
+        let oracle = oracle_of(gw.px_of(market), t0, market, &gw.oracle_signer);
+        gw.seq.set_oracle(market, oracle);
+    }
+    gw.tick_checked(PriceUse {
+        archive: None,
+        now_ms: t0,
+    })
+    .unwrap();
+    assert_eq!(gw.seq.window_first_timed_ms(), Some(t0));
+    refresh_oracles(&mut gw);
+    let from = gw.accounts[&asker].deposit_address.unwrap();
+    let entries = gw.seq.state.positions.clone();
+    let (app, writer) = app_with(gw).await;
+
+    let (status, body) = permit(&app, &asker, from, 0, ENTRY_MINIMUM).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|e| e.starts_with(clock_admission::WINDOW_CLOSING)),
+        "{body}"
+    );
+    {
+        let gw = app.gw.lock().await;
+        assert_eq!(gw.seq.state.positions, entries, "nothing was swept");
+        assert!(gw.pending_withdrawals.is_empty());
+        assert!(gw.window_withdrawals.is_empty());
+    }
+
+    // Once the window is sealed, the same permit sweeps one dust entry.
+    app.gw.lock().await.seq.seal_window();
+    let (status, body) = permit(&app, &asker, from, 0, ENTRY_MINIMUM).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(app.gw.lock().await.pending_withdrawals.len(), 1);
+    writer.abort();
 }

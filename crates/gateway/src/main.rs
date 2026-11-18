@@ -9321,7 +9321,12 @@ async fn post_v1_deposit_authorize(
                         now_ms: price_now,
                     },
                 ),
-                ArchiveSlot::Poisoned => Vec::new(),
+                ArchiveSlot::Poisoned => Ok(Vec::new()),
+            };
+            // Audit G2-2: the sweep the permit needs waits for the closing window.
+            let swept = match swept {
+                Ok(swept) => swept,
+                Err(e) => return clock_admission::closed_response(&e),
             };
             forced_exits = swept
                 .iter()

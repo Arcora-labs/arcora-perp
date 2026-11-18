@@ -137,7 +137,10 @@ trade or move funds) answer `503` with `Retry-After: 2` and
 `{ "error": "CLOCK_WINDOW_CLOSING: ..." }` and change nothing, and the matching
 tick (fills, funding, liquidations) waits. Orders already accepted wait in the
 book or the queue. Everything resumes in the next window, as soon as this one is
-sealed. Cancellation, deposits and reads are not affected. A window that holds
+sealed. A deposit permit that needs a dust sweep to be issued (§ Admission cap)
+gets the same answer, since a sweep's forced exits are withdrawals: nothing is
+swept and no permit is issued until the window is sealed. Cancellation, deposits
+and reads are not affected otherwise. A window that holds
 nothing but idle funding steps is not held: it is dropped, as at a seal. Demo and
 legacy modes (no clock verifier) refuse nothing.
 

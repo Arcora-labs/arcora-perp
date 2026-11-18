@@ -911,15 +911,18 @@ impl Gw {
     /// they made stays for the retry. Returns each forced exit with its market, for
     /// the caller to announce once a snapshot carries it (`forced_exit_event`).
     ///
-    /// Each unbind is a timed engine operation, applied like a withdrawal's: a gate
-    /// on the open window's timed operations must cover this path too.
+    /// Each unbind is a timed engine operation, applied like a withdrawal's, so a
+    /// sweep the permit needs is refused with `CLOCK_WINDOW_CLOSING` while the open
+    /// clock window admits no timed operation (audit G2-2), and nothing is swept;
+    /// the caller answers it like a withdrawal's refusal. Callers hold the clock
+    /// admission permit (audit G2-1).
     pub(crate) fn sweep_dust_for_permit(
         &mut self,
         request: &deposit_ingestion::Route,
         group: Option<std::net::IpAddr>,
         now_s: u64,
         price: PriceUse<'_>,
-    ) -> Vec<(u64, Withdrawal)> {
+    ) -> Result<Vec<(u64, Withdrawal)>, String> {
         let (key, market, purpose) = (&request.key, request.market, request.purpose);
         if self.validate_route(request).is_err()
             || self
@@ -927,18 +930,19 @@ impl Gw {
                 .is_some()
             || self.admit_deposit_permit(key, purpose, now_s).is_err()
         {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let Some(needed) = self.sweeps_needed(key, market, purpose, group) else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
+        self.refuse_if_clock_window_closing(price.now_ms)?;
         let candidates = self.dust_candidates(key, price);
         if (candidates.len() as u64) < needed {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let plan = self.plan_dust_exits(candidates, needed, price.now_ms);
         if (plan.len() as u64) < needed {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         for exit in &plan {
             self.cancel_swept_orders(&exit.dust.key, exit.dust.market);
@@ -947,7 +951,7 @@ impl Gw {
         // The plan applied every op to a copy of this state in this order.
         if let Err(e) = self.seq.apply_atomic(&ops) {
             eprintln!("[admission] planned dust sweep refused: {e:?}");
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let mut swept = Vec::new();
         for exit in plan {
@@ -968,7 +972,7 @@ impl Gw {
             swept.len(),
             MIN_ENTRY_BALANCE / QUOTE_SCALE
         );
-        swept
+        Ok(swept)
     }
 
     /// How many dust entries must be exited for the permit, asked by the client
