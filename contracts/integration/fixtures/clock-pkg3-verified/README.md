@@ -11,7 +11,7 @@ reviewed fixture under the reviewed guest, so `proof_status()` reads `PROVEN`.
 
 | File | Content |
 | --- | --- |
-| `proof.bin` | The 356-byte Groth16 proof (verifier selector `4388a21c`), SHA-256 `0ff6c29fdc0390c6dbfafeb6af5a17000ce19fa394c52f186fc5873e1f398fca` |
+| `proof.bin` | The 356-byte Groth16 proof (verifier selector `4388a21c`), SHA-256 `81239e2e80fdba37ceea96eee67155b7cb7e8d1590ebea2bd3a03af68e97e2c7` |
 | `public-values.bin` | The proof's public value, the bound commitment `0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab` |
 | `proof.sdk.json` | The SP1 SDK proof object |
 | `proof-evidence.json` | The `clock-proof --prove` record: identity, cycles, the 22 negatives, the prover backend and wall times |
@@ -23,15 +23,15 @@ The run also wrote the case and negative witnesses; they are byte-identical to
 
 This proof replaces the proof of the earlier reviewed guest (proof `28d68049…`,
 2026-10-21), which the audit 2026-11-16 PC-1 and PC-2 fixes to `crates/perp-core`
-superseded. The normal fixture's witness and bound commitment did not change; the
-guest ELF and its setup key did.
+and the k256 0.14 upgrade (RUSTSEC-2026-0387) superseded. The normal fixture's
+witness and bound commitment did not change; the guest ELF and its setup key did.
 
 ## How it was produced
 
-On 2026-11-18, on a Google Colab VM with a single NVIDIA L4 (23,034 MiB, driver
-580.82.07, CUDA 13.0 host; 12 vCPU, 52 GB), from commit `361b1ea` with this
-change's re-pin of `REVIEWED_GUEST` and of the `sp1-host` `REVIEWED_ELF` constants
-applied:
+On 2026-11-18, on a Google Colab VM with a single NVIDIA A100 (40,960 MiB, driver
+580.82.07, CUDA 13.0 host; 12 vCPU, 83 GB), from commit `8b569ec` with this change's
+k256 0.14 upgrade and its re-pin of `REVIEWED_GUEST` and of the `sp1-host`
+`REVIEWED_ELF` constants applied:
 
 ```sh
 SP1_SKIP_PROGRAM_BUILD=true cargo build --release --locked \
@@ -50,13 +50,14 @@ crates/sp1-host/target/release/clock-proof \
   `nvidia-cuda-runtime-cu12` 12.9.79 wheel preinstalled on it, prepended to
   `LD_LIBRARY_PATH` ahead of the driver directory.
 - The Groth16 wrap used the pinned circuit files that `download_clock_circuit.py`
-  verifies (verifying key `4388a21c…`).
+  verifies (verifying key `4388a21c…`); the archive was fetched over parallel
+  connections and checked by that script's own verification.
 - `clock-proof` first checked native == guest on the fixture, the nine cases and
   the 22 negatives. It then generated the proof and verified it with the SP1 SDK
   verifier (`local_sdk_verified` true).
-- The Groth16 proof took 110.6 s of wall time, including about 32 s of one-time
-  circuit loading (R1CS 27.4 s, proving key 4.2 s); the gnark prover itself took
-  48.2 s.
+- The Groth16 proof took 102.4 s of wall time, including about 32 s of one-time
+  circuit loading (R1CS 27.8 s, proving key 4.2 s); the gnark prover itself took
+  48.1 s.
 
 The run record is `docs/audits/2026-11-18-guest-reproof/reproof.json`.
 

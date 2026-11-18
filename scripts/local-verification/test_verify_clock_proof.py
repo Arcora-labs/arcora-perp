@@ -36,14 +36,16 @@ FIXTURE_REPORT_KEYS = {
 FIXTURE_REPORT_SCOPE = ("Actual SP1 verifier, clock adapter, settlement and synthetic vault withdrawal; "
                         "not full HTTP/order/production lifecycle.")
 # The guest inputs the reviewed guest changed since the clock-v2 guest: the guest
-# entry point, its manifest and lockfile (the Keccak precompile patch), and thirteen
-# perp-core sources (hash since the 2026-11-16 audit's ForcedClose domain). The root
-# and perp-core manifests, market, note and oracle are unchanged.
+# entry point, its manifest and lockfile (the Keccak precompile patch), the perp-core
+# manifest and fourteen perp-core sources (hash since the 2026-11-16 audit's ForcedClose
+# domain; the manifest and oracle since the k256 0.14 upgrade). The root manifest,
+# market and note are unchanged.
 CHANGED_SINCE_CLOCK_V2 = {
     "crates/sp1-guest/src/main.rs", "crates/sp1-guest/Cargo.toml", "crates/sp1-guest/Cargo.lock",
+    "crates/perp-core/Cargo.toml",
     *("crates/perp-core/src/" + name + ".rs" for name in (
         "clock", "commitment", "engine", "error", "fixed", "funding", "hash", "lib", "merkle", "nullifier",
-        "order", "position", "state")),
+        "oracle", "order", "position", "state")),
 }
 
 
@@ -207,7 +209,10 @@ class ProofFixtureAndStatus(unittest.TestCase):
         directory = root / clock.PROOF_FIXTURE["dir"]
         evidence = json.loads((directory / "proof-evidence.json").read_text())
         mutations = {
-            "proof.bin": lambda d: (d / "proof.bin").write_bytes((d / "proof.bin").read_bytes()[:-1] + b"\x00"),
+            # Flip the last byte: overwriting it with a constant is a no-op when the
+            # proof already ends in that byte (the k256 0.14 proof ends in 0x00).
+            "proof.bin": lambda d: (d / "proof.bin").write_bytes(
+                (d / "proof.bin").read_bytes()[:-1] + bytes([(d / "proof.bin").read_bytes()[-1] ^ 0x01])),
             "guest.elf": lambda d: (d / "guest.elf").write_bytes((d / "guest.elf").read_bytes() + b"\x00"),
             "public-values.bin": lambda d: (d / "public-values.bin").write_bytes(bytes(32)),
             "missing": lambda d: (d / "program-vkey.bin").unlink(),

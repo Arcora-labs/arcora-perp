@@ -36,12 +36,12 @@ CLOCK_ARTIFACTS = ("proof-evidence.json", "clock.witness.bin", "guest.elf", "pro
 # source inputs mean a supplied proof manifest cannot choose a different program
 # and still pass. `identity_dir` holds that program's ELF and setup key.
 REVIEWED_GUEST = {
-    "elf": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028",
-    "vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
+    "elf": "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7",
+    "vkey": "0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a",
     "identity_dir": "contracts/integration/fixtures/clock-pkg3-reviewed",
     "sources": {
         "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
-        "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+        "crates/perp-core/Cargo.toml": "f40f55af6587da870d79b77a672fdcbf4d9f1eca557b79b40485cdda8618f20a",
         "crates/perp-core/src/clock.rs": "1d936a79121040bb6415cff2aa0e0459734222bfbf8c7f4452d52452389f85a2",
         "crates/perp-core/src/commitment.rs": "02ccf0ead5b545fc6b06948df5f5cd31c4126b417bf5097c972f725e412fa801",
         "crates/perp-core/src/engine.rs": "24a553ebe38e5c050e95c4a68bc4b0ddac446a4eb50160310b33b9e2e46b8d86",
@@ -54,11 +54,11 @@ REVIEWED_GUEST = {
         "crates/perp-core/src/merkle.rs": "d3ac11f8ed5b7f29852cb899059b186d19ee352dce07529fce5b830939748f08",
         "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
         "crates/perp-core/src/nullifier.rs": "c396e40e5d757849e507d60be6b0fbab34443f1fb0d6e091feff047fad3544a8",
-        "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+        "crates/perp-core/src/oracle.rs": "accd2d96cba50d838d3e0eebe90e79df0d7df3ffea027dc567300bd9c66cf90b",
         "crates/perp-core/src/order.rs": "38f1321b773e5ca2f7978059381059340e67011750faac253af4fb21382c712f",
         "crates/perp-core/src/position.rs": "db2467757516fcbb061588add2c052c42158303fa811790c8005fb8c683c3827",
         "crates/perp-core/src/state.rs": "42609a12725e5639e6b3c409ac73d3556bffbde440f4c923de7a4a485e509af6",
-        "crates/sp1-guest/Cargo.lock": "6352cf76bf63ed1a0dfd44e54aa9832cfc1c67b9facb6ce3396270f2d15fff33",
+        "crates/sp1-guest/Cargo.lock": "872bbc183a50735c18cff2b705f60631b36c4a64e66b6ea903462ffc2090916a",
         "crates/sp1-guest/Cargo.toml": "c4310424be580e30f351f98644e47211dc286c2c020f6d81c1967cd6343a2bd6",
         "crates/sp1-guest/src/main.rs": "8dc8437f4f3938fa430efc43e27b7ffcdd0ab4447462db036a08afef92d2fa9a",
     },
@@ -146,11 +146,12 @@ HISTORICAL_V2_GUEST_SOURCES = MappingProxyType({
 
 
 # The guest source pins the package-3 proof was generated under (the reviewed pins
-# when it was proven, 2026-11-18, after the 2026-11-16 audit fixes). Provenance only:
+# when it was proven, 2026-11-18, after the 2026-11-16 audit fixes and the k256 0.14
+# upgrade). Provenance only:
 # never compared with the checkout.
 PKG3_PROOF_GUEST_SOURCES = MappingProxyType({
     "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
-    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/Cargo.toml": "f40f55af6587da870d79b77a672fdcbf4d9f1eca557b79b40485cdda8618f20a",
     "crates/perp-core/src/clock.rs": "1d936a79121040bb6415cff2aa0e0459734222bfbf8c7f4452d52452389f85a2",
     "crates/perp-core/src/commitment.rs": "02ccf0ead5b545fc6b06948df5f5cd31c4126b417bf5097c972f725e412fa801",
     "crates/perp-core/src/engine.rs": "24a553ebe38e5c050e95c4a68bc4b0ddac446a4eb50160310b33b9e2e46b8d86",
@@ -163,11 +164,11 @@ PKG3_PROOF_GUEST_SOURCES = MappingProxyType({
     "crates/perp-core/src/merkle.rs": "d3ac11f8ed5b7f29852cb899059b186d19ee352dce07529fce5b830939748f08",
     "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
     "crates/perp-core/src/nullifier.rs": "c396e40e5d757849e507d60be6b0fbab34443f1fb0d6e091feff047fad3544a8",
-    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/oracle.rs": "accd2d96cba50d838d3e0eebe90e79df0d7df3ffea027dc567300bd9c66cf90b",
     "crates/perp-core/src/order.rs": "38f1321b773e5ca2f7978059381059340e67011750faac253af4fb21382c712f",
     "crates/perp-core/src/position.rs": "db2467757516fcbb061588add2c052c42158303fa811790c8005fb8c683c3827",
     "crates/perp-core/src/state.rs": "42609a12725e5639e6b3c409ac73d3556bffbde440f4c923de7a4a485e509af6",
-    "crates/sp1-guest/Cargo.lock": "6352cf76bf63ed1a0dfd44e54aa9832cfc1c67b9facb6ce3396270f2d15fff33",
+    "crates/sp1-guest/Cargo.lock": "872bbc183a50735c18cff2b705f60631b36c4a64e66b6ea903462ffc2090916a",
     "crates/sp1-guest/Cargo.toml": "c4310424be580e30f351f98644e47211dc286c2c020f6d81c1967cd6343a2bd6",
     "crates/sp1-guest/src/main.rs": "8dc8437f4f3938fa430efc43e27b7ffcdd0ab4447462db036a08afef92d2fa9a",
 })
@@ -180,11 +181,11 @@ PKG3_PROOF_GUEST_SOURCES = MappingProxyType({
 PROOF_FIXTURE = {
     "dir": "contracts/integration/fixtures/clock-pkg3-verified",
     "kind": "clock-pkg3-native-guest",
-    "elf": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028",
-    "vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
+    "elf": "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7",
+    "vkey": "0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a",
     "witness_sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a",
     "commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab",
-    "proof_sha256": "0ff6c29fdc0390c6dbfafeb6af5a17000ce19fa394c52f186fc5873e1f398fca",
+    "proof_sha256": "81239e2e80fdba37ceea96eee67155b7cb7e8d1590ebea2bd3a03af68e97e2c7",
     "negatives": {
         "wrong-bounds": "cb9174c67eccb190aa94f952e62ac767acfa1bd51356923eddbefac2cd57fd6b",
         "wrong-count": "c0e211d721459f6076a68fb94044eccad767a52dcb87283604a3a27ae374e81e",

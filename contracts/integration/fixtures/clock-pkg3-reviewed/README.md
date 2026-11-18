@@ -26,10 +26,20 @@ witnesses `cases/bad-debt-treasury-adl.witness.bin`,
 `negatives/deposit-in-close-only.witness.bin` changed with the liquidation rule
 (`crates/sp1-host/src/cases.rs`), and every cycle count moved.
 
+The same branch then moved `perp-core` from k256 0.13 to k256 0.14 (RUSTSEC-2026-0387:
+k256 0.13 rests on crypto-bigint 0.5, whose constant-time operations could branch
+on secret data). That changed `crates/perp-core/Cargo.toml`, `crates/perp-core/src/oracle.rs`
+(the recovered oracle key must now verify the signature itself, which keeps the
+high-`s` refusal ecdsa 0.16's recovery performed) and `crates/sp1-guest/Cargo.lock`,
+so the program and its setup key changed once more. Every witness, commitment, case
+and negative is the same as for the intermediate guest (ELF `3c0bbb2a…`); only the
+ELF, the setup key and the cycle counts moved, and the guest is cheaper: the normal
+fixture fell from 5,751,985 to 3,812,229 cycles.
+
 | File | Content |
 | --- | --- |
-| `guest.elf` | The reviewed guest ELF, 566368 bytes, SHA-256 `3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028` |
-| `program-vkey.bin` | Its 32-byte setup key, `0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861` |
+| `guest.elf` | The reviewed guest ELF, 544920 bytes, SHA-256 `151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7` |
+| `program-vkey.bin` | Its 32-byte setup key, `0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a` |
 | `clock.witness.bin` | The normal fixture witness (`DPCLK4` framing), SHA-256 `70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a` |
 | `execution.json` | The `clock-proof --no-prove` record: hashes, commitments and cycle counts of the fixture, every case and every negative |
 | `cases/` | The nine case witnesses, `NAME.witness.bin` |
@@ -62,18 +72,18 @@ note stays unspent.
 
 The bound commitment (the guest's public value) is
 `0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab`. The guest
-executes the fixture in 5,751,985 cycles.
+executes the fixture in 3,812,229 cycles.
 
 ## Cases and negatives
 
 | Case | Wind-down phase | Cycles |
 | --- | --- | --- |
-| `epoch-price-refresh` | 0 | 2,971,810 |
-| `pause-reopen-fill` | 0 | 5,740,101 |
-| `bad-debt-treasury-adl` | 0 | 2,991,189 |
+| `epoch-price-refresh` | 0 | 1,996,328 |
+| `pause-reopen-fill` | 0 | 3,790,647 |
+| `bad-debt-treasury-adl` | 0 | 2,030,387 |
 | `debt-top-up-prune` | 0 | 261,418 |
-| `debt-top-up-next-batch` | 0 | 2,984,966 |
-| `full-exit-prune` | 0 | 5,755,976 |
+| `debt-top-up-next-batch` | 0 | 2,019,758 |
+| `full-exit-prune` | 0 | 3,803,803 |
 | `empty-keepalive` | 0 | 251,767 |
 | `settle-all-two-markets` | 1 | 290,952 |
 | `phase-two-exit` | 2 | 319,044 |
@@ -86,9 +96,9 @@ case-derived and fresh batches, and six framings the guest does not accept.
 
 ## Provenance
 
-Built on 2026-11-18 from commit `361b1ea` (the audit-remediation branch) with only
-the re-pin of `REVIEWED_GUEST["sources"]` applied, so the guest inputs of the build
-are the 21 `REVIEWED_GUEST["sources"]` pins. The host was macOS on aarch64 (Apple M4).
+Built on 2026-11-18 from commit `8b569ec` (the audit-remediation branch) with the
+k256 0.14 change and the re-pin of `REVIEWED_GUEST["sources"]` applied, so the guest
+inputs of the build are the 21 `REVIEWED_GUEST["sources"]` pins. The host was macOS on aarch64 (Apple M4).
 
 1. `cold_rebuild_reviewed_guest.py` with the SHA-256-pinned official
    `succinct-1.93.0-64bit` compiler archive and Cargo 1.99.0, each time into a

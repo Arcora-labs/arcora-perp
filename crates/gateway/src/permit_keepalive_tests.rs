@@ -261,7 +261,7 @@ mod permit_keepalive {
         let new_key = SigningKey::from_slice(&[0x32; 32]).unwrap();
         let (old, new) = (eth_address(&old_key), eth_address(&new_key));
         let sign = |k: &SigningKey, d: &[u8; 32]| {
-            let (sig, recid) = k.sign_prehash_recoverable(d).unwrap();
+            let (sig, recid) = k.sign_prehash_recoverable(d);
             let mut out = [0u8; 65];
             out[..64].copy_from_slice(&sig.to_bytes());
             out[64] = 27 + recid.to_byte();

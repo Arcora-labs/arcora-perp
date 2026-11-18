@@ -11,7 +11,7 @@ use std::{fs, path::PathBuf};
 /// REVIEWED_GUEST["elf"] in scripts/local-verification/verify_clock_proof.py. The
 /// execution directory's guest must be that ELF, whatever ELF a build script put
 /// into this binary (a skipped guest build embeds an empty stub).
-const REVIEWED_ELF: &str = "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028";
+const REVIEWED_ELF: &str = "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7";
 
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
@@ -76,7 +76,7 @@ fn main() {
     let vkey_hex = format!("0x{}", hex(&vkey));
     assert_eq!(
         vkey_hex,
-        "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861"
+        "0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a"
     );
     assert_eq!(record["program_vkey"], vkey_hex);
     let embedded_vk: &[u8] = &sp1_verifier::GROTH16_VK_BYTES;

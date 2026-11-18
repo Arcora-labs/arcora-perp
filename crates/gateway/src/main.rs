@@ -7518,10 +7518,11 @@ fn parse_hex65(s: &str) -> Option<[u8; 65]> {
 /// accepts 0..3 as well as 27..30, whereas `CollateralVault`/`DarkPerpSettlement`
 /// accept only 27/28. That is safe for gateway-local authorization (these signatures
 /// never reach a contract), but it is NOT byte-identical to on-chain `ecrecover`.
-/// High-`s` (malleable) signatures are rejected inside k256's recovery primitive
-/// (`recover_from_prehash` ends by re-verifying, and secp256k1's `verify_prehashed`
-/// refuses a high-`s` signature).
+/// High-`s` (malleable) signatures are rejected: the recovered key must verify the
+/// signature, and secp256k1's `verify_prehash` refuses a high-`s` signature. (ecdsa
+/// 0.16's `recover_from_prehash` re-verified itself; 0.17's does not, so it is explicit.)
 fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
+    use k256::ecdsa::signature::hazmat::PrehashVerifier;
     use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
     use sha3::{Digest as _, Keccak256 as RawKeccak};
     let s = Signature::from_slice(&sig[..64]).ok()?;
@@ -7529,7 +7530,8 @@ fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
     let recid_byte = if v >= 27 { v - 27 } else { v };
     let recid = RecoveryId::from_byte(recid_byte)?;
     let vk = VerifyingKey::recover_from_prehash(prehash, &s, recid).ok()?;
-    let point = vk.to_encoded_point(false);
+    vk.verify_prehash(prehash, &s).ok()?;
+    let point = vk.to_sec1_point(false);
     let hash = RawKeccak::digest(&point.as_bytes()[1..]);
     let mut a = [0u8; 20];
     a.copy_from_slice(&hash[12..]);
@@ -7598,7 +7600,7 @@ const PUBLIC_DEV_ADDRESSES: [&str; 10] = [
 /// keccak256 of its uncompressed public key.
 fn eth_address(key: &k256::ecdsa::SigningKey) -> [u8; 20] {
     use sha3::{Digest as _, Keccak256 as RawKeccak};
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     let hash = RawKeccak::digest(&point.as_bytes()[1..]);
     let mut a = [0u8; 20];
     a.copy_from_slice(&hash[12..]);
@@ -7735,10 +7737,7 @@ impl GatewaySigner {
         valid_until: u64,
     ) -> Result<[u8; 65], String> {
         let digest = self.digest(from, owner_commit, amount, valid_until);
-        let (sig, recid) = self
-            .key
-            .sign_prehash_recoverable(&digest)
-            .map_err(|e| format!("gateway sign failed: {e}"))?;
+        let (sig, recid) = self.key.sign_prehash_recoverable(&digest);
         let mut out = [0u8; 65];
         out[..64].copy_from_slice(&sig.to_bytes());
         out[64] = 27 + recid.to_byte();
@@ -17262,14 +17261,14 @@ mod tests {
         use sha3::{Digest as _, Keccak256 as RawKeccak};
 
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, oh: &Digest) -> String {
-            let (sig, recid) = sk.sign_prehash_recoverable(oh).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(oh);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();
@@ -17445,14 +17444,14 @@ mod tests {
         use k256::ecdsa::SigningKey;
         use sha3::{Digest as _, Keccak256 as RawKeccak};
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-            let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(digest);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();
@@ -17512,14 +17511,14 @@ mod tests {
         use k256::ecdsa::SigningKey;
         use sha3::{Digest as _, Keccak256 as RawKeccak};
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, prehash: &[u8; 32]) -> [u8; 65] {
-            let (sig, recid) = sk.sign_prehash_recoverable(prehash).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(prehash);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();
@@ -17597,7 +17596,7 @@ mod tests {
     /// Shared by the SEC-021b rebind tests below: sign a 32-byte digest directly
     /// (the raw-digest shape (a) of `eip191_prehash_candidates`).
     fn sign_digest(sk: &k256::ecdsa::SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(digest);
         let mut s = [0u8; 65];
         s[..64].copy_from_slice(&sig.to_bytes());
         s[64] = 27 + recid.to_byte();
@@ -17606,7 +17605,7 @@ mod tests {
     /// The Ethereum address of a secp256k1 key (keccak of the uncompressed point).
     fn eth_addr(sk: &k256::ecdsa::SigningKey) -> [u8; 20] {
         use sha3::{Digest as _, Keccak256 as RawKeccak};
-        let point = sk.verifying_key().to_encoded_point(false);
+        let point = sk.verifying_key().to_sec1_point(false);
         let hash = RawKeccak::digest(&point.as_bytes()[1..]);
         let mut a = [0u8; 20];
         a.copy_from_slice(&hash[12..]);
@@ -18756,14 +18755,14 @@ mod tests {
         use sha3::{Digest as _, Keccak256 as RawKeccak};
 
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, oh: &Digest) -> String {
-            let (sig, recid) = sk.sign_prehash_recoverable(oh).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(oh);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();

@@ -98,7 +98,7 @@ impl Fixture {
         gw.window_settle_mode = true;
         gw.seq.set_retain_tick_snapshots(false);
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x73; 32]).unwrap();
-        let public = sk.verifying_key().to_encoded_point(false);
+        let public = sk.verifying_key().to_sec1_point(false);
         let hash = <sha3::Keccak256 as sha3::Digest>::digest(&public.as_bytes()[1..]);
         let signer = hash[12..].try_into().unwrap();
         let (key, owner) = gw.register_account(Some(signer));
@@ -106,7 +106,7 @@ impl Fixture {
         let amount = 5_000 * QUOTE_SCALE;
         let to = [7; 20];
         let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, 1);
-        let (sig, recovery) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (sig, recovery) = sk.sign_prehash_recoverable(&digest);
         let mut signature = [0; 65];
         signature[..64].copy_from_slice(&sig.to_bytes());
         signature[64] = 27 + recovery.to_byte();

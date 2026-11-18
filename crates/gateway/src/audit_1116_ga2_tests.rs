@@ -38,7 +38,7 @@ fn withdraw_at(
         (a.wallet.owner, a.last_withdraw_nonce + 1)
     };
     let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, auth_nonce);
-    let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let (sig, recid) = sk.sign_prehash_recoverable(&digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = 27 + recid.to_byte();
@@ -292,7 +292,7 @@ async fn audit_1116_ga2_the_withdraw_route_answers_429_and_400_with_typed_errors
     };
     let call = |amount: i128, nonce: u64| {
         let digest = withdraw_auth_digest(chain_id, &vault, &owner, 0, amount, &to, nonce);
-        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest);
         let mut wire = [0u8; 65];
         wire[..64].copy_from_slice(&sig.to_bytes());
         wire[64] = 27 + recid.to_byte();
@@ -350,7 +350,7 @@ fn audit_1116_ga2_a_full_balance_below_the_minimum_may_leave() {
     };
     let amount = 3 * QUOTE_SCALE;
     let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 1, amount, &to, auth_nonce);
-    let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let (sig, recid) = sk.sign_prehash_recoverable(&digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = 27 + recid.to_byte();

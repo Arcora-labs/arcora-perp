@@ -218,6 +218,26 @@ fn receipt_is_signed_and_verifies() {
 }
 
 #[test]
+fn a_receipts_high_s_twin_does_not_verify() {
+    // (r, n − s, v ⊕ 1) recovers the same enclave key, so ecdsa 0.17's
+    // `recover_from_prehash` alone would accept it; `verify` re-verifies the
+    // signature against the recovered key and refuses the high-s twin.
+    use k256::elliptic_curve::ff::PrimeField;
+    let mut s = setup();
+    let r = s.accept_order(
+        &order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+        1_000,
+    );
+    assert!(r.verify());
+    let scalar = k256::Scalar::from_repr(r.s.into()).unwrap();
+    let mut twin = r.clone();
+    twin.s = (-scalar).to_bytes().into();
+    twin.v = if r.v == 27 { 28 } else { 27 };
+    assert_ne!(twin.s, r.s);
+    assert!(!twin.verify(), "high-s twin must not verify");
+}
+
+#[test]
 fn match_settles_and_advances_finality() {
     let mut s = setup();
     let maker = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);

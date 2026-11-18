@@ -30,7 +30,7 @@ pub(crate) const PROGRAM_WITNESS_DOMAINS: &[(&str, &str)] = &[
     // The reviewed guest (REVIEWED_GUEST in verify_clock_proof.py): it accepts
     // exactly the clock-bound framing `/prove` admits.
     (
-        "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028",
+        "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7",
         "DPCLK4",
     ),
 ];

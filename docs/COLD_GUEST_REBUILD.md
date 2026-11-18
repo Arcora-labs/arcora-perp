@@ -8,8 +8,8 @@ kullanmaz: resmi `succinct-1.93.0-64bit` arşivini bağımsız SHA-256 piniyle a
 Tüm guest kaynakları, ELF ve program key `REVIEWED_GUEST` pinlerinde kalır.
 
 Başarı ölçütü derlenen ELF'in SHA-256 değerinin
-`3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028`
-olmasıdır. Beklenen boyut 566368 bayttır. Başarıya ulaşmak için ELF, kaynak,
+`151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7`
+olmasıdır. Beklenen boyut 544920 bayttır. Başarıya ulaşmak için ELF, kaynak,
 program key veya pin değiştirilmez. Derleme çıktısı fixture'dan kopyalanmaz.
 
 ## Araçlar ve bağımlılıklar

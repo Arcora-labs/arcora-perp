@@ -246,14 +246,14 @@ fn s3_historical_writers_are_refused() {
 /// The Ethereum address of a fixture signing key.
 fn signer_address(key: &k256::ecdsa::SigningKey) -> [u8; 20] {
     use sha3::Digest as _;
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     let hash = sha3::Keccak256::digest(&point.as_bytes()[1..]);
     hash[12..].try_into().unwrap()
 }
 
 /// A 65-byte `r ‖ s ‖ v` signature over a prehashed digest.
 fn sign_prehash(key: &k256::ecdsa::SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-    let (signature, recovery) = key.sign_prehash_recoverable(digest).unwrap();
+    let (signature, recovery) = key.sign_prehash_recoverable(digest);
     let mut wire = [0; 65];
     wire[..64].copy_from_slice(&signature.to_bytes());
     wire[64] = recovery.to_byte() + 27;

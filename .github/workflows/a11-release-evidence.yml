@@ -24,6 +24,7 @@ jobs:
           python3 -m unittest discover -s scripts/local-verification -p test_pin_coherence.py
           python3 -m unittest discover -s scripts/local-verification -p test_check_reviewed_guest_execution.py
           python3 -m unittest discover -s scripts/local-verification -p test_verify_funds_replay.py
+          python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_owned_advisories.py
       - name: Release manifest and repository protection policy guards
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
@@ -48,14 +49,23 @@ jobs:
         run: |
           set -o pipefail
           cargo audit --deny unsound --json | tee cargo-audit.json
-          cargo audit --deny unsound --file crates/sp1-host/Cargo.lock --json | tee cargo-audit-host.json
-          cargo audit --deny unsound --file crates/sp1-guest/Cargo.lock --json | tee cargo-audit-guest.json
           # cargo audit matches crates.io packages only: audit the guest lock once more
           # with the commit-pinned tiny-keccak patch under its upstream identity.
           mkdir "$RUNNER_TEMP/guest-upstream"
           python3 scripts/local-verification/check_sp1_release.py --upstream-audit-lock "$RUNNER_TEMP/guest-upstream/Cargo.lock"
-          cargo audit --deny unsound --file "$RUNNER_TEMP/guest-upstream/Cargo.lock" --json | tee cargo-audit-guest-upstream.json
-          cargo audit --deny unsound --file crates/prover-service/Cargo.lock --json | tee cargo-audit-prover.json
+          # RUSTSEC-2026-0387 (crypto-bigint < 0.7.6) is fixed in this repository's
+          # code (k256 0.14), but SP1 6.1.0 itself still carries crypto-bigint 0.5.5
+          # (sp1-lib, sp1-curves). Only the four SP1 locks skip that one advisory, and
+          # only while this check proves no repository crate reaches it outside the
+          # reviewed SP1 release; the check fails once SP1 drops it. The application
+          # and TEE capture locks get no exception.
+          sp1_locks="crates/sp1-host/Cargo.lock crates/sp1-guest/Cargo.lock $RUNNER_TEMP/guest-upstream/Cargo.lock crates/prover-service/Cargo.lock"
+          python3 scripts/local-verification/check_sp1_owned_advisories.py --advisory RUSTSEC-2026-0387 $sp1_locks
+          sp1_owned="--ignore RUSTSEC-2026-0387"
+          cargo audit --deny unsound --file crates/sp1-host/Cargo.lock $sp1_owned --json | tee cargo-audit-host.json
+          cargo audit --deny unsound --file crates/sp1-guest/Cargo.lock $sp1_owned --json | tee cargo-audit-guest.json
+          cargo audit --deny unsound --file "$RUNNER_TEMP/guest-upstream/Cargo.lock" $sp1_owned --json | tee cargo-audit-guest-upstream.json
+          cargo audit --deny unsound --file crates/prover-service/Cargo.lock $sp1_owned --json | tee cargo-audit-prover.json
           cargo audit --deny unsound --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json
       - uses: pnpm/action-setup@v4
         with: { version: 10 }

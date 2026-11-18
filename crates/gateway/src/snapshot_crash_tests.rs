@@ -215,7 +215,7 @@ fn write_state(path: &Path, gw: &Gw) -> Vec<u8> {
 fn funded_fixture() -> Gw {
     let mut gw = Gw::boot();
     let sk = k256::ecdsa::SigningKey::from_slice(&[0x51; 32]).unwrap();
-    let point = sk.verifying_key().to_encoded_point(false);
+    let point = sk.verifying_key().to_sec1_point(false);
     let digest = Keccak256::digest(&point.as_bytes()[1..]);
     let mut signer = [0; 20];
     signer.copy_from_slice(&digest[12..]);
@@ -223,7 +223,7 @@ fn funded_fixture() -> Gw {
     gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
     let (amount, to, nonce) = (5_000 * QUOTE_SCALE, [7; 20], 1);
     let digest = crate::withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, nonce);
-    let (signature, recovery) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let (signature, recovery) = sk.sign_prehash_recoverable(&digest);
     let mut signature_bytes = [0; 65];
     signature_bytes[..64].copy_from_slice(&signature.to_bytes());
     signature_bytes[64] = 27 + recovery.to_byte();

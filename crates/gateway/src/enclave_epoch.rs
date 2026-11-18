@@ -211,7 +211,7 @@ mod tests {
     // point (drop the 0x04 tag), last 20 bytes — matches `sequencer::eth_address`.
     fn eth_address(vk: &k256::ecdsa::VerifyingKey) -> [u8; 20] {
         use sha3::Digest as _;
-        let enc = vk.to_encoded_point(false);
+        let enc = vk.to_sec1_point(false);
         let hash = sha3::Keccak256::digest(&enc.as_bytes()[1..]);
         let mut addr = [0u8; 20];
         addr.copy_from_slice(&hash[12..]);

@@ -2,7 +2,7 @@
   "cases": [
     {
       "commitment": "0xd1d933cad0323ca4b7a0dca2017da7b7a6007f4bfc4e6e4fd57f8be72c9f15d2",
-      "cycles": 2971810,
+      "cycles": 1996328,
       "guest_exit": 0,
       "name": "epoch-price-refresh",
       "native_guest_equal": true,
@@ -11,7 +11,7 @@
     },
     {
       "commitment": "0x6bec4bfbe9e7d2dd917f402502556d6e3d854105cdd293dbde2b46cbc2501cea",
-      "cycles": 5740101,
+      "cycles": 3790647,
       "guest_exit": 0,
       "name": "pause-reopen-fill",
       "native_guest_equal": true,
@@ -20,7 +20,7 @@
     },
     {
       "commitment": "0x7015c5ea4e76dcb6e08e89bb0ffb9b3e15f4c2ec0a8b980f39687d799caf52a3",
-      "cycles": 2991189,
+      "cycles": 2030387,
       "guest_exit": 0,
       "name": "bad-debt-treasury-adl",
       "native_guest_equal": true,
@@ -38,7 +38,7 @@
     },
     {
       "commitment": "0xa0d8648b1a453ef92a61ff650d89b7682a6395102d1e5e9f0afa31250d8df60a",
-      "cycles": 2984966,
+      "cycles": 2019758,
       "guest_exit": 0,
       "name": "debt-top-up-next-batch",
       "native_guest_equal": true,
@@ -47,7 +47,7 @@
     },
     {
       "commitment": "0x6fb83abf2a8f2e17f3785ed6b11ab978848fe53e22e32ece14f30782cfe0ab12",
-      "cycles": 5755976,
+      "cycles": 3803803,
       "guest_exit": 0,
       "name": "full-exit-prune",
       "native_guest_equal": true,
@@ -83,9 +83,9 @@
     }
   ],
   "commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab",
-  "cycles": 5751985,
-  "elf_sha256": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028",
-  "groth16_prove_wall_s": 110.56205784,
+  "cycles": 3812229,
+  "elf_sha256": "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7",
+  "groth16_prove_wall_s": 102.393747101,
   "kind": "clock-pkg3-native-guest",
   "local_sdk_verified": true,
   "native_guest_equal": true,
@@ -245,11 +245,11 @@
       "witness_sha256": "2f46c18bd27c21be3342c047f455cba2278272ac3b28b1ede0bbb18d1045d552"
     }
   ],
-  "program_vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
+  "program_vkey": "0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a",
   "proof_generated": true,
   "prover_backend": "cuda",
   "sdk_version": "6.1.0",
-  "setup_wall_s": 5.541126315,
+  "setup_wall_s": 7.674411701,
   "target_contract_verified": false,
   "witness_sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a"
 }

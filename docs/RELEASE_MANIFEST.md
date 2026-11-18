@@ -68,7 +68,7 @@ prover observation.
     "sp1_adapter": "0x0000000000000000000000000000000000000005",
     "sp1_verifier": "0x0000000000000000000000000000000000000006"
   },
-  "program_vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
+  "program_vkey": "0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a",
   "clock": {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3600000},
   "gateway": {
     "L1_CHAIN_ID": "31337",
@@ -79,11 +79,11 @@ prover observation.
     "L1_ALLOW_MOCK_PROOF": "0",
     "DEPOSIT_PERMIT_TTL_SECS": "1800",
     "WIND_DOWN_RECIPIENT": "0x0000000000000000000000000000000000000009",
-    "PROVER_EXPECTED_ELF_SHA256": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028"
+    "PROVER_EXPECTED_ELF_SHA256": "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7"
   },
   "prover": {
-    "program_vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
-    "guest_elf_sha256": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028"
+    "program_vkey": "0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a",
+    "guest_elf_sha256": "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7"
   },
   "genesis": {
     "root": "<GENESIS_ROOT printed by --print-genesis-root>",

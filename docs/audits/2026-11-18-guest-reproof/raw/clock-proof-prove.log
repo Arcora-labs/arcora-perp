@@ -1,18 +1,18 @@
 Running sp1-gpu-server 6.1.0 with device 0
-CLOCK_NATIVE_GUEST_PARITY_PASS cycles=5751985
+CLOCK_NATIVE_GUEST_PARITY_PASS cycles=3812229
 CLOCK_GROTH16_START cuda
-Setting environment variables took 174µs
-Reading R1CS took 27.43205722s
-Reading proving key took 4.205664667s
-Reading witness file took 921.891µs
-Deserializing JSON data took 31.31268ms
-Generating witness took 756.280053ms
-11:24:43 DBG constraint system solver done nbConstraints=15972262 took=5255.741832
-11:25:31 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=48159.017112
-Generating proof took 53.415094303s
-11:25:31 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
-11:25:31 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
-11:25:31 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
-11:25:31 DBG verifier done backend=groth16 curve=bn254 took=0.994631
-CLOCK_GROTH16_VERIFIED cuda prove_wall_s=110.6
+Setting environment variables took 15.056µs
+Reading R1CS took 27.766673921s
+Reading proving key took 4.176503312s
+Reading witness file took 922.007µs
+Deserializing JSON data took 31.090775ms
+Generating witness took 678.951276ms
+17:07:04 DBG constraint system solver done nbConstraints=15972262 took=5699.39885
+17:07:52 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=15972262 took=48055.566405
+Generating proof took 53.755331705s
+17:07:52 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:07:52 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:07:52 WRN ignoring uninitialized slice slice name=Vars slice type=[]frontend.Variable
+17:07:52 DBG verifier done backend=groth16 curve=bn254 took=0.990672
+CLOCK_GROTH16_VERIFIED cuda prove_wall_s=102.4
 PROVE_EXIT=0

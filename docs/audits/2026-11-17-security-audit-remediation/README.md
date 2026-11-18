@@ -56,15 +56,33 @@ license (MIT OR Apache-2.0). The commit `3d0470e` has no blank line before its t
 
 - **The SP1 guest program key changed.** `crates/perp-core` changed (`engine.rs`, `error.rs`,
   `funding.rs`, `hash.rs` with the new `Domain::ForcedClose = 33` appended last, `merkle.rs`,
-  `position.rs`, `state.rs`). On 2026-11-18 the guest was rebuilt with the cold reviewed recipe
-  (byte-exact twice: ELF `3c0bbb2a…`, 566,368 bytes; setup key `0x001dba0f…`), `REVIEWED_GUEST` and
+  `position.rs`, `state.rs`, and with the k256 0.14 upgrade below `Cargo.toml` and `oracle.rs`, plus
+  the guest lock). On 2026-11-18 the guest was rebuilt with the cold reviewed recipe (byte-exact
+  twice: ELF `151afdba…`, 544,920 bytes; setup key `0x00a64436…`), `REVIEWED_GUEST` and
   `REVIEWED_FIXTURE` were re-pinned, and the reviewed fixture was regenerated with
   `clock-proof --no-prove` (the normal fixture's witness and commitment are unchanged; three case
   witnesses and one negative changed with the liquidation rule). The normal fixture was then proven
   for real on one GPU and `PROOF_FIXTURE` now names that proof, so `proof_status()` reads `PROVEN`;
   27 real-verifier Solidity checks pass on it. The prover service's program table and the `sp1-host`
-  binaries name the new ELF. Records: `docs/audits/2026-11-18-guest-reproof/`. Before this code can
-  settle on L1 the stack still has to be redeployed with the new verifier key (see SV-1 below).
+  binaries name the new ELF. Records: `docs/audits/2026-11-18-guest-reproof/`. An intermediate
+  rebuild of the same day (ELF `3c0bbb2a…`, before the k256 upgrade) was superseded on this branch
+  and never merged. Before this code can settle on L1 the stack still has to be redeployed with the
+  new verifier key (see SV-1 below).
+- **Dependency advisories (RustSec, 2026-11-18).** New advisories failed the dependency audit.
+  Lock updates within semver: tokio 1.54.1 (RUSTSEC-2026-0386, unsound), quinn-proto 0.11.19,
+  quinn-udp 0.5.16, rustix 1.1.6 (RUSTSEC-2026-0523/0524/0538/0486) and hickory-* 0.26.3
+  (RUSTSEC-2026-0487..0558, TEE capture). RUSTSEC-2026-0387 (crypto-bigint < 0.7.6: operations meant
+  to be constant-time could branch on secret data) reached the gateway's ECDSA signing with its
+  custody and oracle keys through k256 0.13, so every crate moved to k256 0.14 (ecdsa 0.17,
+  crypto-bigint 0.7.11). ecdsa 0.17's `recover_from_prehash` no longer re-verifies the signature,
+  which in 0.16 refused a malleated high-`s` twin; the four production recovery sites
+  (`perp-core` oracle signatures in the guest, `committee`, the sequencer's receipts, the gateway's
+  `recover_eth_address`) now verify against the recovered key themselves, and regression tests hold
+  the twin refused. The frozen `chainlink-oracle` lane keeps its own k256 0.13 lock, unaudited as
+  before. SP1 6.1.0 itself still carries crypto-bigint 0.5.5 (`sp1-lib`, `sp1-curves`), so the four
+  SP1 locks skip that one advisory, only while `check_sp1_owned_advisories.py` proves no repository
+  crate reaches it outside the reviewed SP1 release; it fails once SP1 drops it. The application and
+  TEE capture locks are audited with no exception.
 - **`crates/perp-core/src/merkle.rs` changed too.** The stable toolchain on CI (1.100) flags
   `clippy::needless_range_loop` in `root` and `prove`. Both functions now carry an `allow` for it and
   their code is unchanged, but the file is pinned guest source. This went in before the guest rebuild

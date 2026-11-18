@@ -99,7 +99,7 @@ fn withdraw_at(
         )
     };
     let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, market, amount, &to, nonce);
-    let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let (sig, recid) = sk.sign_prehash_recoverable(&digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = 27 + recid.to_byte();
@@ -1719,7 +1719,7 @@ fn audit_1116_g11_a_rotated_account_is_swept_under_its_new_key() {
         .unwrap();
     let sk = signer_of(&gw, &old, 0x46);
     let digest = account_recovery::digest(gw.chain_id, &gw.vault, &owner, 0);
-    let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let (sig, recid) = sk.sign_prehash_recoverable(&digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = 27 + recid.to_byte();

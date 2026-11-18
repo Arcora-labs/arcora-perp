@@ -1,6 +1,6 @@
 //! Native order lifecycle, separate from proof finality. No ledger/witness changes.
 use super::*;
-use k256::elliptic_curve::bigint::{Encoding, U256};
+use k256::elliptic_curve::bigint::{Encoding, NonZero, U256};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
@@ -61,9 +61,10 @@ impl Execution {
             return false;
         }
         let value = U256::from_u128(size as u128).wrapping_mul(&U256::from_u128(price as u128));
-        self.numerator = U256::from_be_bytes(self.numerator)
+        self.numerator = U256::from_be_bytes(self.numerator.into())
             .wrapping_add(&value)
-            .to_be_bytes();
+            .to_be_bytes()
+            .into();
         self.filled = total;
         // total <= original <= i128::MAX also bounds every subset's sum.
         *self.pending.entry(tick).or_default() += size;
@@ -73,9 +74,12 @@ impl Execution {
         if self.filled <= 0 {
             return 0;
         }
-        let q = U256::from_be_bytes(self.numerator)
-            .wrapping_div(&U256::from_u128(self.filled as u128))
-            .to_be_bytes();
+        // filled > 0 here; a zero divisor panics, as wrapping_div did before.
+        let divisor = NonZero::<U256>::new_unwrap(U256::from_u128(self.filled as u128));
+        let q: [u8; 32] = U256::from_be_bytes(self.numerator.into())
+            .wrapping_div(&divisor)
+            .to_be_bytes()
+            .into();
         i128::from_be_bytes(q[16..].try_into().expect("16 bytes"))
     }
     /// Undo the fills of the voided ticks `ticks` and end the order: a void
@@ -164,7 +168,7 @@ impl Execution {
         }
         let max =
             U256::from_u128(self.filled as u128).wrapping_mul(&U256::from_u128(i128::MAX as u128));
-        if U256::from_be_bytes(self.numerator) > max {
+        if U256::from_be_bytes(self.numerator.into()) > max {
             return false;
         }
         let pending =

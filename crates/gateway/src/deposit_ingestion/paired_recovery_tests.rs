@@ -90,7 +90,7 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     let state = directory.join("state.snapshot");
     let mut gw = Gw::boot_with(GenesisMode::Production);
     let sk = k256::ecdsa::SigningKey::from_slice(&[0x63; 32]).unwrap();
-    let point = sk.verifying_key().to_encoded_point(false);
+    let point = sk.verifying_key().to_sec1_point(false);
     let hash = sha3::Keccak256::digest(&point.as_bytes()[1..]);
     let mut signer = [0; 20];
     signer.copy_from_slice(&hash[12..]);
@@ -112,7 +112,7 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
         &[0x71; 20],
         1,
     );
-    let (signature, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let (signature, recid) = sk.sign_prehash_recoverable(&digest);
     let mut wire = [0; 65];
     wire[..64].copy_from_slice(&signature.to_bytes());
     wire[64] = 27 + recid.to_byte();

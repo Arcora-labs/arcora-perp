@@ -859,7 +859,7 @@ fn restored_landed_routes_survive_permit_gc() {
 fn landed_routes_free_rebind_capacity_and_are_not_resigned() {
     use k256::ecdsa::SigningKey;
     let sign = |sk: &SigningKey, digest: &[u8; 32]| {
-        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(digest);
         let mut wire = [0u8; 65];
         wire[..64].copy_from_slice(&sig.to_bytes());
         wire[64] = 27 + recid.to_byte();
@@ -1404,7 +1404,7 @@ async fn a_state_beyond_a_bound_holds_a_landed_deposit_with_its_own_alert_while_
                 &address,
                 auth_nonce,
             );
-            let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(&digest);
             let mut wire = [0u8; 65];
             wire[..64].copy_from_slice(&sig.to_bytes());
             wire[64] = 27 + recid.to_byte();

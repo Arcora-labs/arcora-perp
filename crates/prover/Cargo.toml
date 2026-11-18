@@ -18,4 +18,4 @@ serde = { version = "1", features = ["derive"] }
 zeroize = { version = "1", default-features = false }
 
 [dev-dependencies]
-k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+k256 = { version = "0.14", default-features = false, features = ["ecdsa"] }

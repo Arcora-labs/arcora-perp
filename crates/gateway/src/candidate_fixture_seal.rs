@@ -65,7 +65,7 @@ impl FixtureKeys {
     pub(crate) fn from_seed(signing: [u8; 32], x25519: [u8; 32]) -> Result<Self, SealError> {
         let signing = SigningKey::from_slice(&signing).map_err(|_| SealError::Key)?;
         let (x25519, public) = ephemeral_keypair(&x25519);
-        let encoded = signing.verifying_key().to_encoded_point(true);
+        let encoded = signing.verifying_key().to_sec1_point(true);
         Ok(Self {
             signing,
             x25519,
@@ -165,7 +165,7 @@ fn verifying_key(key: &[u8; 33]) -> Result<VerifyingKey, SealError> {
         return Err(SealError::Key);
     }
     let parsed = VerifyingKey::from_sec1_bytes(key).map_err(|_| SealError::Key)?;
-    if parsed.to_encoded_point(true).as_bytes() != key {
+    if parsed.to_sec1_point(true).as_bytes() != key {
         return Err(SealError::Key);
     }
     Ok(parsed)
@@ -287,7 +287,7 @@ pub(crate) fn seal_frame(
         .signing
         .sign_prehash(&signature_digest(&header, &sealed))
         .map_err(|_| SealError::Signature)?;
-    let signature = signature.normalize_s().unwrap_or(signature);
+    let signature = signature.normalize_s();
     let mut bytes = Vec::with_capacity(sealed_wire_bound(inner.len())?);
     bytes.extend_from_slice(&header);
     bytes.extend_from_slice(&sealed);
@@ -386,7 +386,8 @@ pub(crate) fn open_frame(
         return Err(SealError::Context);
     }
     let signature = Signature::from_slice(parsed.signature).map_err(|_| SealError::Signature)?;
-    if signature.normalize_s().is_some() {
+    // A high-`s` signature is refused: normalizing it would change it.
+    if signature.normalize_s() != signature {
         return Err(SealError::Signature);
     }
     verifying_key(&pins.remote.signing)?

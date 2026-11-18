@@ -41,7 +41,7 @@ use perp_core::{DefaultState, EngineError, FillLeg, Mode};
 /// `keccak256(uncompressed_pubkey[1..])[12..]` — exactly what L1 `ecrecover`
 /// yields, so a receipt verifies identically off-chain and on-chain.
 fn eth_address(vk: &VerifyingKey) -> [u8; 20] {
-    let point = vk.to_encoded_point(false); // 0x04 || X || Y (65 bytes)
+    let point = vk.to_sec1_point(false); // 0x04 || X || Y (65 bytes)
     let hash = RawKeccak::digest(&point.as_bytes()[1..]);
     let mut addr = [0u8; 20];
     addr.copy_from_slice(&hash[12..]);
@@ -84,7 +84,7 @@ impl EnclaveIdentity {
     /// reused so any off-chain artifact signed here (e.g. the published order-ingress
     /// epoch key) recovers to the enclave's attested L1 signer — no separate key.
     pub fn sign_prehash(&self, digest: &[u8; 32]) -> ([u8; 32], [u8; 32], u8) {
-        let (signature, recid) = self.signing.sign_prehash_recoverable(digest).expect("sign");
+        let (signature, recid) = self.signing.sign_prehash_recoverable(digest);
         let sig_bytes = signature.to_bytes();
         let mut r = [0u8; 32];
         let mut s = [0u8; 32];
@@ -129,8 +129,13 @@ impl SignedReceipt {
         let Some(recid) = self.v.checked_sub(27).and_then(RecoveryId::from_byte) else {
             return false;
         };
+        // The recovered key must verify the signature, which also refuses a high-`s`
+        // twin (ecdsa 0.16's `recover_from_prehash` re-verified itself; 0.17's does not).
         match VerifyingKey::recover_from_prehash(&digest, &sig, recid) {
-            Ok(vk) => eth_address(&vk) == self.enclave_address,
+            Ok(vk) => {
+                use k256::ecdsa::signature::hazmat::PrehashVerifier;
+                vk.verify_prehash(&digest, &sig).is_ok() && eth_address(&vk) == self.enclave_address
+            }
             Err(_) => false,
         }
     }
@@ -1870,11 +1875,7 @@ impl Sequencer {
             window_id: self.state.next_batch_id,
         };
         let digest = receipt.signing_digest::<Keccak256>();
-        let (signature, recid) = self
-            .enclave
-            .signing
-            .sign_prehash_recoverable(&digest)
-            .expect("sign");
+        let (signature, recid) = self.enclave.signing.sign_prehash_recoverable(&digest);
         let sig_bytes = signature.to_bytes();
         let mut r = [0u8; 32];
         let mut s = [0u8; 32];

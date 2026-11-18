@@ -237,7 +237,7 @@ mod audit_remediation {
     }
 
     fn sign(sk: &k256::ecdsa::SigningKey, digest: &Digest) -> [u8; 65] {
-        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(digest);
         let mut bytes = [0u8; 65];
         bytes[..64].copy_from_slice(&sig.to_bytes());
         bytes[64] = 27 + recid.to_byte();
@@ -725,5 +725,27 @@ mod audit_remediation {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(app.reg_limit.lock().await.len(), 1);
+    }
+
+    #[test]
+    fn recover_eth_address_refuses_a_high_s_twin() {
+        // (r, n − s, v ⊕ 1) recovers the same key, so ecdsa 0.17's
+        // `recover_from_prehash` alone would accept it; `recover_eth_address`
+        // re-verifies against the recovered key and refuses the high-s twin.
+        use k256::elliptic_curve::ff::PrimeField;
+        let key = k256::ecdsa::SigningKey::from_slice(&[0x2b; 32]).unwrap();
+        let digest = [0x61u8; 32];
+        let (signature, recid) = key.sign_prehash_recoverable(&digest);
+        let mut sig = [0u8; 65];
+        sig[..64].copy_from_slice(&signature.to_bytes());
+        sig[64] = 27 + recid.to_byte();
+        let signer = recover_eth_address(&digest, &sig).expect("the low-s signature recovers");
+        let s = k256::Scalar::from_repr(signature.to_bytes()[32..].try_into().unwrap()).unwrap();
+        let mut twin = sig;
+        twin[32..64].copy_from_slice(&<[u8; 32]>::from((-s).to_bytes()));
+        twin[64] = if sig[64] == 27 { 28 } else { 27 };
+        assert_ne!(twin, sig);
+        assert_eq!(recover_eth_address(&digest, &twin), None, "high-s twin must not recover");
+        assert_eq!(recover_eth_address(&digest, &sig), Some(signer));
     }
 }

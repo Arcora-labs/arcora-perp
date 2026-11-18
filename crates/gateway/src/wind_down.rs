@@ -398,7 +398,7 @@ mod tests {
         std::env::set_var("FIN_ADMIN_KEY", "local-wind-down-test");
         let mut gw = Gw::boot_with(GenesisMode::Production);
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x51; 32]).unwrap();
-        let public = sk.verifying_key().to_encoded_point(false);
+        let public = sk.verifying_key().to_sec1_point(false);
         let address: [u8; 20] = RawKeccak::digest(&public.as_bytes()[1..])[12..]
             .try_into()
             .unwrap();
@@ -550,7 +550,7 @@ mod tests {
                 1,
             )
         };
-        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest);
         let mut wire = [0; 65];
         wire[..64].copy_from_slice(&sig.to_bytes());
         wire[64] = recid.to_byte() + 27;
@@ -765,7 +765,7 @@ mod tests {
         };
         let digest =
             withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, auth_nonce);
-        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest);
         let mut wire = [0u8; 65];
         wire[..64].copy_from_slice(&sig.to_bytes());
         wire[64] = 27 + recid.to_byte();
@@ -786,7 +786,7 @@ mod tests {
         // The demo genesis seeds the insurance fund, so phase 1 pays a reserve leaf.
         let mut gw = Gw::boot_genesis(GenesisMode::Demo, recipient);
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x52; 32]).unwrap();
-        let public = sk.verifying_key().to_encoded_point(false);
+        let public = sk.verifying_key().to_sec1_point(false);
         let address: [u8; 20] = RawKeccak::digest(&public.as_bytes()[1..])[12..]
             .try_into()
             .unwrap();

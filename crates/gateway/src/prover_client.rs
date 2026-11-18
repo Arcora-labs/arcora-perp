@@ -1280,7 +1280,7 @@ pub(crate) mod tests_support {
     fn signer_key() -> (k256::ecdsa::SigningKey, [u8; 20]) {
         use sha3::{Digest as _, Keccak256};
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x51u8; 32]).unwrap();
-        let point = sk.verifying_key().to_encoded_point(false);
+        let point = sk.verifying_key().to_sec1_point(false);
         let hash = Keccak256::digest(&point.as_bytes()[1..]);
         let mut signer = [0u8; 20];
         signer.copy_from_slice(&hash[12..]);
@@ -1301,7 +1301,7 @@ pub(crate) mod tests_support {
         let to = [7u8; 20];
         let digest =
             crate::withdraw_auth_digest(gw.chain_id, &gw.vault, owner, 0, amount, &to, auth_nonce);
-        let (s, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (s, recid) = sk.sign_prehash_recoverable(&digest);
         let mut sig = [0u8; 65];
         sig[..64].copy_from_slice(&s.to_bytes());
         sig[64] = 27 + recid.to_byte();

@@ -214,7 +214,7 @@ impl Fixture {
             &self.to,
             nonce,
         );
-        let (s, r) = self.signer.sign_prehash_recoverable(&digest).unwrap();
+        let (s, r) = self.signer.sign_prehash_recoverable(&digest);
         let mut sig = [0; 65];
         sig[..64].copy_from_slice(&s.to_bytes());
         sig[64] = 27 + r.to_byte();

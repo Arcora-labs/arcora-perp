@@ -317,14 +317,14 @@ mod audit_1116_g2 {
         let (mut gw, key) = trading_window(t0, Some(bound()));
         // A caller-signed account, so its withdrawal is authorized.
         let signing = k256::ecdsa::SigningKey::from_slice(&[0x51; 32]).unwrap();
-        let point = signing.verifying_key().to_encoded_point(false);
+        let point = signing.verifying_key().to_sec1_point(false);
         let mut signer = [0u8; 20];
         signer.copy_from_slice(&sha3::Keccak256::digest(&point.as_bytes()[1..])[12..]);
         let (signed, owner) = gw.register_account(Some(signer));
         let to = [7u8; 20];
         let amount = 5 * QUOTE_SCALE;
         let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, 1);
-        let (signature, recid) = signing.sign_prehash_recoverable(&digest).unwrap();
+        let (signature, recid) = signing.sign_prehash_recoverable(&digest);
         let mut sig = [0u8; 65];
         sig[..64].copy_from_slice(&signature.to_bytes());
         sig[64] = 27 + recid.to_byte();

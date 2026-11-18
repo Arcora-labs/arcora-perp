@@ -1232,7 +1232,7 @@ fn resign(outer: &mut [u8], signer: &SigningKey) {
     digest.update(signing_domain(&outer[..SEALED_HEADER_BYTES]));
     digest.update(&outer[SEALED_HEADER_BYTES..end]);
     let signature: Signature = signer.sign_prehash(&digest.finalize()).unwrap();
-    let signature = signature.normalize_s().unwrap_or(signature);
+    let signature = signature.normalize_s();
     outer[end..].copy_from_slice(&signature.to_bytes());
 }
 fn authenticated_box(
@@ -1391,7 +1391,8 @@ fn candidate_fixture_sealed_authenticated_invalid_box_and_inner_bindings_refuse_
         );
     }
     let low = Signature::from_slice(&outer[outer.len() - 64..]).unwrap();
-    assert!(low.normalize_s().is_none());
+    // Already low-`s`: normalizing leaves it unchanged.
+    assert_eq!(low.normalize_s(), low);
     let order = [
         0xffu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xfe, 0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36,
@@ -1408,7 +1409,9 @@ fn candidate_fixture_sealed_authenticated_invalid_box_and_inner_bindings_refuse_
     }
     assert_eq!(borrow, 0);
     let high = Signature::from_slice(&high_outer[high_outer.len() - 64..]).unwrap();
-    assert_eq!(high.normalize_s().unwrap(), low);
+    // High-`s`: normalizing changes it, into the low twin.
+    assert_ne!(high.normalize_s(), high);
+    assert_eq!(high.normalize_s(), low);
     assert_eq!(
         open_frame(
             &server,
