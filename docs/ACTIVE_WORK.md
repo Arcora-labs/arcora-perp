@@ -68,6 +68,7 @@ throughput, servis gecikmesi veya kapasite garantisi değildir.
 | #75 | `--print-genesis-root`, release artifact'larıyla deploy aracı, env tabanlı frontend adresleri, Linux release binary workflow'u | [clock-stack-deploy-kit](audits/2026-10-16-clock-stack-deploy-kit/README.md) |
 | #76 | Restore/alarm tatbikatı; `RestartMode=direct` düzeltmesi | [g5-restore-alarm-drill](audits/2026-10-16-g5-restore-alarm-drill/README.md) |
 | #91 | Settle edilemeyecek clock penceresi restart gerektirmeden çözülür: settle döngüsünde kurtarma, faz-0 pencerenin canlı void'i, kullanıcı olayları ve `/api/state` `clockRecovery`/`settlementVoid`; kimlik rotasyonu ve sigorta bootstrap düzeltmeleri | [PROVING-RUNBOOK](PROVING-RUNBOOK.md) (§ Dead clock window) |
+| — | 16 Kasım güvenlik denetiminin doğrulanmış bulguları düzeltildi (`bb16693..HEAD`); `perp-core` değiştiği için SP1 guest program anahtarı değişir, guest burada yeniden derlenmedi; snapshot yan günlükleri, yeni API limitleri | [security-audit-remediation](audits/2026-11-17-security-audit-remediation/README.md) |
 
 ## Açık kabul kapıları
 
