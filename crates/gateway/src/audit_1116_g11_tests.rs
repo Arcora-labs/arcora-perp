@@ -1673,3 +1673,43 @@ async fn audit_1116_merge_a_sweep_waits_while_the_clock_window_is_closing() {
     assert_eq!(app.gw.lock().await.pending_withdrawals.len(), 1);
     writer.abort();
 }
+
+/// Merge of the three lanes' snapshot sections: after the recovery extension a
+/// snapshot carries the optional sections DPHIST1 (lane-a), DPCHRJ1 (lane-a),
+/// DPWLIM01 (lane-c) and DPSWEEP1 (lane-c), in that order, each written only
+/// when it holds something. One that holds the last three restores to the same
+/// bytes, and the bytes after the last section are still refused.
+#[test]
+fn audit_1116_merge_every_optional_snapshot_section_restores_in_one_payload() {
+    let (mut gw, asker, _) = small_cap_with_dust();
+    refresh_oracles(&mut gw);
+    assert_eq!(sweep(&mut gw, &asker).len(), 1);
+    gw.challenge_rejections.insert([0x57; 32], 3);
+    let plain = gw.snapshot_plain();
+    let at = |magic: &[u8; 8]| {
+        plain
+            .windows(8)
+            .rposition(|w| w == magic)
+            .unwrap_or_else(|| panic!("{} missing", String::from_utf8_lossy(magic)))
+    };
+    let (challenges, ledger, sweeps) = (at(b"DPCHRJ1\0"), at(b"DPWLIM01"), at(b"DPSWEEP1"));
+    assert!(challenges < ledger && ledger < sweeps, "section order");
+    let restored = Gw::boot_restored(&plain).unwrap();
+    assert_eq!(restored.snapshot_plain(), plain);
+    assert_eq!(restored.challenge_rejections.get(&[0x57; 32]), Some(&3));
+    assert_eq!(
+        restored
+            .withdraw_limits
+            .units(&gw.accounts[&asker].wallet.owner),
+        gw.withdraw_limits.units(&gw.accounts[&asker].wallet.owner)
+    );
+    let mut bad = plain.clone();
+    bad.push(0);
+    assert!(Gw::boot_restored(&bad).is_err(), "trailing bytes");
+    // A section out of order is refused, not skipped.
+    let mut swapped = plain[..challenges].to_vec();
+    swapped.extend_from_slice(&plain[ledger..sweeps]);
+    swapped.extend_from_slice(&plain[challenges..ledger]);
+    swapped.extend_from_slice(&plain[sweeps..]);
+    assert!(Gw::boot_restored(&swapped).is_err(), "out of order");
+}

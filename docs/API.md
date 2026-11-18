@@ -728,6 +728,14 @@ recorded, rolling the binary back fails at boot unless a snapshot written before
 upgrade is restored with it, which discards everything since. Treat the upgrade as
 one-way.
 
+**Order of the optional snapshot sections.** After the recovery section a snapshot
+carries, each only when it holds something and always in this order: the order
+history section (`DPHIST1`, side-log positions), the challenge declarations
+(`DPCHRJ1`), the withdrawal ledger (`DPWLIM01`) and the dust sweeps (`DPSWEEP1`).
+Snapshots written before any of them, or by a build that wrote only some of them,
+load unchanged; a binary that does not know a section refuses a snapshot that
+carries it.
+
 ## Trading is gated until launch (SEC-025-D)
 
 On a fresh production deployment, **order submission is refused** until the deployment has
