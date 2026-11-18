@@ -1514,12 +1514,11 @@ async fn audit_1116_g11_opening_permits_share_the_room_up_to_the_bound() {
     let (app, writer) = app_with(gw).await;
     let mut commits = Vec::new();
     // Two per client: an IPv6 /48 is one client.
-    for n in 0..18 {
+    for (n, (key, from)) in accounts.iter().enumerate().take(18) {
         let ip = match n {
             0..=7 => format!("10.66.0.{}", n / 2),
             _ => format!("[2001:db8:{}:{n:x}::1]", n / 2),
         };
-        let (key, from) = &accounts[n];
         let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, &ip).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         commits.push(commit_of(&body));

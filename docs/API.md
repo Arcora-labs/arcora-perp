@@ -256,7 +256,10 @@ submission with `400` `{ error }` starting `BELOW_ENTRY_BALANCE` and is never
 recorded. Orders that only reduce the position are exempt. The sequencer holds every
 fill to the same rule when it settles, so an order accepted while the entry held 100
 USDC or more does not fill once a trading loss took the entry below that: it is
-rejected with `InsufficientMargin` and leaves the book. Deposit into the market to
+rejected with `InsufficientMargin` and leaves the book. At settlement the entry is
+measured without the trading fees, rebates and funding of that settlement pass, so
+an opener at exactly 100 USDC that fills in several pieces fills them all; the
+entry then holds less than 100 USDC, and a further opening order needs a top-up. Deposit into the market to
 trade it again (§ Admission cap, Position entries and dust).
 
 **Margin.** Initial and maintenance margin are computed on the notional rounded up,
@@ -408,8 +411,9 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    | the settlement is in close-only | `409` `{ error }`; no further deposits are possible (§ Refunds after close-only) |
    | the engine is close-only (a liquidation's shortfall exceeded insurance, treasury and auto-deleverage) while the settlement is not yet | `409` `{ error }`; the gateway alerts governance to call `enterCloseOnly()` |
    | the settlement accepts no deposits (no paired vault) | `409` `{ error }` |
-   | a new permit while the soft admission cap is reached in a dimension the permit adds to, the position entries and outstanding permits fill their bound, or the permit would leave too little room for the reserved exits (§ Admission cap) | `503` `{ error }`; a held permit is still re-signed |
-   | a permit that may open a position entry while the entries and the permits that may open one are past their soft cap, and this client (an IPv4 address or an IPv6 /64) already holds 2 such permits | `429` `{ error }`, `error` starting `OPENING_PERMIT_LIMIT`; retry once one of those deposits is credited or its permit expires (§ Position entries and dust) |
+   | a new permit while the soft admission cap is reached in a dimension the permit adds to, or the permit would leave too little room for the reserved exits (§ Admission cap) | `503` `{ error }`; a held permit is still re-signed |
+   | a permit that may open a position entry while the state's entries are at their soft cap and no sweep makes room, or the state's entries and those the outstanding permits may open fill their bound | `503` `{ error }`, `error` starting `POSITION_ENTRIES_FULL` (§ Position entries and dust) |
+   | a permit that may open a position entry (a further one for an entry the account already reserves included) while this client (an IPv4 address or an IPv6 /48) already holds 2 outstanding such permits | `429` `{ error }`, `error` starting `OPENING_PERMIT_LIMIT`; retry once one of those deposits is credited or its permit expires (§ Position entries and dust) |
    | the account holds no position yet and already holds a permit for another market | `409` `{ error }`; it holds permits for one market until its first deposit is credited |
    | a held permit (`reuseOwnerCommit`) while the state is beyond an admission bound | `503` `{ error }`; its deposit would not be credited, so the permit is not re-signed |
    | the gateway's settles (keepalives included) are failing and less than two permit lifetimes of liveness remain | `503` `{ error }`, until settlement recovers |
@@ -429,8 +433,8 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
      entry or only dust, a further one for an entry its outstanding permit already
      reserves included) while the state's own position entries are at their soft
      cap, or while the state's entries and those every outstanding permit may open
-     fill the 1,328 bound; past the soft cap such permits share the room up to the
-     bound, two per client (§ Position entries and dust). A top-up of any other entry
+     fill the 1,328 bound (`POSITION_ENTRIES_FULL`); one client holds at most two
+     such permits at a time (§ Position entries and dust). A top-up of any other entry
      is not refused for position headroom. It registers no new account while the
      state's own history or unspent notes are at their soft cap (`503`); the position
      entries never close registration (an account adds no entry until a deposit is
@@ -497,17 +501,21 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
      outstanding permits: such a permit is issued only while the state's entries
      are below it (unless a sweep makes room, below), and while the state's
      entries, the entries every outstanding permit may open and its own fit the
-     1,328 bound, so every permitted deposit can be credited (`503` otherwise). Once
-     those reach the soft cap, a client (an IPv4 address, or an IPv6 /64) holds at
-     most **2** such permits at a time, a further permit for an entry it already
-     reserves included (`429` `OPENING_PERMIT_LIMIT`). So unfunded permits from one
-     client cannot hold the cap: below the soft cap there is room for every
-     request, and above it the room is shared.
+     1,328 bound, so every permitted deposit can be credited (`503`
+     `POSITION_ENTRIES_FULL` otherwise). At every level a client (an IPv4 address,
+     or an IPv6 /48) holds at most **2** such permits at a time, a further permit
+     for an entry its account already reserves included, which counts against the
+     client asking for it (`429` `OPENING_PERMIT_LIMIT`). So unfunded permits from
+     one client, or from one IPv6 /48 however many /64s it uses, hold at most two
+     entries.
    - Below **100 USDC** in a market's entry no order opens, grows or flips a
      position (`400` `BELOW_ENTRY_BALANCE` at submission, `InsufficientMargin` at
-     settlement for an order accepted before; § Orders). So an entry below the
-     minimum that holds a position got there through a trading loss after it opened
-     at 100 USDC or more, and a flat one stays flat until topped up to the minimum.
+     settlement for an order accepted before; § Orders). Settlement measures the
+     entry without that pass's trading fees, rebates and funding, so an opener at
+     the minimum is not refused by its own fees. So an entry below the minimum that
+     holds a position got there through trading (a realized loss, fees or funding)
+     after it opened at 100 USDC or more, and a flat one stays flat until topped up
+     to the minimum.
    - Outside close-only, a withdrawal from an entry with an open position is
      measured against the stored oracle report, never a re-signed copy of the last
      price: while the feed is down (the report is stale or invalid) it is refused
@@ -537,7 +545,8 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
      is made, so the sweep runs only when all of them can; nothing is swept for a
      permit refused for any other reason, or when one request may not sweep enough
      or there is not enough dust. The swept account's orders in that market are
-     cancelled first (`execution.reason` `DUST_SWEEP`, § Orders). The withdrawal is
+     cancelled once the exits are made (`execution.reason` `DUST_SWEEP`, § Orders);
+     a voided window that brings the entry back does not restore them. The withdrawal is
      recorded like the account's own (claimable on L1 the same way, not charged to
      its history ledger nor counted against its withdrawal rate limits; its
      authorization nonce is not used), is listed in `GET /v1/accounts/withdrawals`
@@ -562,10 +571,14 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
      liquidates it, and the flat entry is swept). So the 1,063 entries of the soft
      cap lock roughly $30,000 (an attacker who holds both sides and waits for a ~5%
      move) to $70,000, plus 100 USDC passed through each entry to open it, where 10
-     USDC each ($10,600) was enough before. Holding the room above the soft cap with
-     unfunded permits takes about 133 clients (2 each), not capital; an attacker
-     with that many IPv4 addresses or IPv6 /64s can still delay new entries while
-     the state's own entries are near the soft cap.
+     USDC each ($10,600) was enough before. Unfunded permits cost nothing but are
+     bounded per client: holding the whole 1,328 bound with them takes 664
+     independent IPv4 addresses or IPv6 /48s (2 each), renewing every permit before
+     it expires. An attacker with that much address diversity can still keep new
+     entries out; that is a known residual. A gateway restart forgets which client
+     holds which outstanding permit, so for up to one permit lifetime (30 minutes)
+     after it the permits issued before it count toward the bound but toward no
+     client's two.
 
    The gateway reserves no capacity for a permit. The vault's bond-capacity gate
    decides when the deposit lands, first come first served, so a permitted deposit can
@@ -734,7 +747,15 @@ history section (`DPHIST1`, side-log positions), the challenge declarations
 (`DPCHRJ1`), the withdrawal ledger (`DPWLIM01`) and the dust sweeps (`DPSWEEP1`).
 Snapshots written before any of them, or by a build that wrote only some of them,
 load unchanged; a binary that does not know a section refuses a snapshot that
-carries it.
+carries it. In particular a binary from before the dust sweep (audit G1-1) refuses a
+snapshot written after the first sweep, so roll back before the first sweep, or
+together with a snapshot written before it.
+
+**Upgrade to the entry minimum (audit G1-1).** Entries that are flat and hold 10 to
+99.99 USDC when the gateway is upgraded become dust at once: they open no position
+(their resting opening orders are rejected when they would fill) and may be swept to
+their bound deposit addresses when a new entry needs room. Announce this to users
+before the upgrade.
 
 ## Trading is gated until launch (SEC-025-D)
 

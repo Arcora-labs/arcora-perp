@@ -71,10 +71,10 @@
 //!     open an entry is issued only while the state's entries are below the soft
 //!     cap (unless a sweep makes room), and while the state's entries, the entries
 //!     every outstanding permit may open and its own fit `MAX_POSITIONS`, so every
-//!     deposit can still be credited. Once those reach the soft cap, one client
-//!     group (an IPv4 address or an IPv6 /64) holds at most
-//!     `MAX_GROUP_OPENING_PERMITS` of them, a further permit for a market it
-//!     already reserves included;
+//!     deposit can still be credited. One client group (an IPv4 address or an
+//!     IPv6 /48) holds at most `MAX_GROUP_OPENING_PERMITS` of them at any level,
+//!     a further permit for an entry its account already reserves included, so
+//!     one client cannot take the room with unfunded permits;
 //!   - below `MIN_ENTRY_BALANCE` no order adds exposure (opens, grows or flips a
 //!     position), at intake and in the sequencer when a fill settles, so an entry
 //!     below the minimum that holds a position got there through a trading loss
@@ -92,8 +92,8 @@
 //!     and exiting as many dust entries of other accounts as it needs (at most
 //!     `MAX_SWEEPS_PER_PERMIT`) admits it, the gateway sweeps them: a forced full
 //!     exit of each one's whole balance to its account's bound deposit address,
-//!     whatever permits that account holds, after cancelling that account's orders
-//!     in the market, marked as such in its withdrawals and announced on its event
+//!     whatever permits that account holds, cancelling that account's orders in
+//!     the market (a void that brings the entry back does not restore them), marked as such in its withdrawals and announced on its event
 //!     stream once durable. Every exit is planned before the first is made, so a
 //!     sweep runs only when all of them can. Entries at the minimum and entries
 //!     holding an open position are never swept, and a sweep moves no value: the
@@ -128,12 +128,14 @@ pub(crate) const MIN_ENTRY_BALANCE: i128 = 100 * QUOTE_SCALE;
 pub(crate) const MIN_ENTRY_DEPOSIT: u128 = MIN_ENTRY_BALANCE as u128;
 
 /// Most outstanding permits that may open a position entry one client group (an
-/// IPv4 address or an IPv6 /64, `service_policy::client_share_key`) may hold once
-/// the state's entries and those every outstanding permit may open reach the soft
-/// cap of `MAX_POSITIONS`. Below the soft cap there is room for every request; past
-/// it, the room up to the bound is shared, so unfunded permits of one client cannot
-/// hold it. Holding all the room above the soft cap (a fifth of the bound, 265
-/// entries for the measured one) with unfunded permits takes 133 client groups.
+/// IPv4 address or an IPv6 /48, `service_policy::client_group_key`) may hold, at
+/// every level of the position entries, a further permit for an entry its account
+/// already reserves included. An unfunded permit costs nothing, so this is what
+/// bounds the room they take: holding all of `MAX_POSITIONS` (1,328 entries for the
+/// measured bound) with unfunded permits takes 664 independent IPv4 addresses or
+/// IPv6 /48s, renewing each permit before it expires. An attacker with that much
+/// address diversity is a documented residual; a reservation backed by a credited
+/// deposit is an entry of at least `MIN_ENTRY_DEPOSIT`.
 pub(crate) const MAX_GROUP_OPENING_PERMITS: usize = 2;
 
 /// Most dust entries one permit request sweeps. One is enough at the soft cap; more
@@ -758,11 +760,12 @@ impl Gw {
     /// Why the position entries refuse a new permit that may open one, if they do
     /// (audit G1-1), with `state` entries in the state, `permits` the outstanding
     /// permits may open, `opens` whether this one adds to those, and `group_holds`
-    /// such permits held by the asking client group: the state's entries are at
-    /// their soft cap; or the state's entries and every outstanding permit's, this
-    /// one's included, would exceed the bound, so a deposit could not be credited;
-    /// or, with those at the soft cap, the group already holds
-    /// `MAX_GROUP_OPENING_PERMITS`.
+    /// such permits held by the asking client group: the group already holds
+    /// `MAX_GROUP_OPENING_PERMITS`, whatever the level and whether or not this
+    /// permit renews an entry its account already reserves; the state's entries
+    /// are at their soft cap; or the state's entries and every outstanding
+    /// permit's, this one's included, would exceed the bound, so a deposit could
+    /// not be credited.
     fn entries_refusal(
         &self,
         state: u64,
@@ -772,10 +775,10 @@ impl Gw {
     ) -> Option<PermitGateRefusal> {
         let max = self.admission_cap.max_positions;
         let held = state.saturating_add(permits);
-        if state >= soft(max) || held.saturating_add(u64::from(opens)) > max {
-            Some(PermitGateRefusal::AdmissionCap)
-        } else if held >= soft(max) && group_holds >= MAX_GROUP_OPENING_PERMITS {
+        if group_holds >= MAX_GROUP_OPENING_PERMITS {
             Some(PermitGateRefusal::ClientOpeningPermits)
+        } else if state >= soft(max) || held.saturating_add(u64::from(opens)) > max {
+            Some(PermitGateRefusal::PositionEntries)
         } else {
             None
         }
@@ -905,8 +908,9 @@ impl Gw {
     /// exit fails there is skipped, and unless enough can be exited, none is.
     /// Nothing is swept for a permit refused for any other reason (its route, the
     /// entry minimum or `admit_deposit_permit` included), nor when one request may
-    /// not sweep enough. The swept accounts' orders in those markets are cancelled
-    /// first. Only a failure to make the permit durable afterwards leaves the
+    /// not sweep enough. Once the exits are applied, the swept accounts' orders in
+    /// those markets are cancelled; a voided window or the close-only rebase that
+    /// brings a swept entry back does not restore them. Only a failure to make the permit durable afterwards leaves the
     /// sweeps without it; they stand like any applied withdrawal, and the room
     /// they made stays for the retry. Returns each forced exit with its market, for
     /// the caller to announce once a snapshot carries it (`forced_exit_event`).
@@ -944,14 +948,15 @@ impl Gw {
         if (plan.len() as u64) < needed {
             return Ok(Vec::new());
         }
-        for exit in &plan {
-            self.cancel_swept_orders(&exit.dust.key, exit.dust.market);
-        }
         let ops: Vec<BatchOp> = plan.iter().flat_map(|exit| exit.ops.clone()).collect();
         // The plan applied every op to a copy of this state in this order.
         if let Err(e) = self.seq.apply_atomic(&ops) {
             eprintln!("[admission] planned dust sweep refused: {e:?}");
             return Ok(Vec::new());
+        }
+        // Only exits that were made cancel their accounts' orders.
+        for exit in &plan {
+            self.cancel_swept_orders(&exit.dust.key, exit.dust.market);
         }
         let mut swept = Vec::new();
         for exit in plan {
@@ -995,7 +1000,7 @@ impl Gw {
         }
         if !matches!(
             self.permit_cap_refusal(key, market, purpose, group),
-            Some(PermitGateRefusal::AdmissionCap | PermitGateRefusal::ClientOpeningPermits)
+            Some(PermitGateRefusal::AdmissionCap | PermitGateRefusal::PositionEntries)
         ) {
             return None;
         }
@@ -1082,7 +1087,8 @@ impl Gw {
     /// Plan the forced exits of the first `needed` of `candidates` that can be
     /// exited at `now_ms`, in order: each one's unbind and burn are applied to a
     /// copy of the engine state after the exits planned before it, and a candidate
-    /// whose exit fails there is skipped. Nothing is applied to the state itself.
+    /// whose exit fails there is skipped, and at most `MAX_SWEEPS_PER_PERMIT` are
+    /// skipped. Nothing is applied to the state itself.
     fn plan_dust_exits(
         &self,
         candidates: Vec<DustEntry>,
@@ -1094,7 +1100,11 @@ impl Gw {
         };
         let mut trial = self.seq.state.clone();
         let mut plan = Vec::new();
-        for dust in candidates {
+        // Each candidate tried clones the engine state once under the lock, so
+        // only a bounded number are tried: as many as needed, and as many again
+        // in case some fail.
+        let tries = needed.saturating_add(MAX_SWEEPS_PER_PERMIT) as usize;
+        for dust in candidates.into_iter().take(tries) {
             if plan.len() as u64 == needed {
                 break;
             }
@@ -2345,7 +2355,7 @@ mod tests {
         let later = fresh(&mut gw);
         assert_eq!(
             gw.permit_cap_refusal(&later, 0, Collateral, None),
-            Some(PermitGateRefusal::AdmissionCap)
+            Some(PermitGateRefusal::PositionEntries)
         );
         // Registration reads the state alone.
         assert_eq!(gw.registration_refusal(), None);
@@ -2359,7 +2369,7 @@ mod tests {
         assert_eq!(gw.permit_cap_refusal(&funded, 0, Collateral, None), None);
         assert_eq!(
             gw.permit_cap_refusal(&funded, 1, Collateral, None),
-            Some(PermitGateRefusal::AdmissionCap)
+            Some(PermitGateRefusal::PositionEntries)
         );
     }
 

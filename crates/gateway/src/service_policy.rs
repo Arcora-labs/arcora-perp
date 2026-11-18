@@ -376,6 +376,18 @@ pub(crate) fn client_share_key(ip: IpAddr) -> IpAddr {
     }
 }
 
+/// The client group key of a client address for quotas a client keeps holding,
+/// such as outstanding deposit permits that may open a position entry (audit
+/// G1-1): IPv4 by address, IPv6 by its /48. A single subscriber is routinely
+/// delegated a whole /48, so keying a held quota by /64 would hand one client
+/// 65,536 shares of it.
+pub(crate) fn client_group_key(ip: IpAddr) -> IpAddr {
+    match client_share_key(ip) {
+        IpAddr::V6(v6) => IpAddr::V6((u128::from(v6) & !((1u128 << 80) - 1)).into()),
+        v4 => v4,
+    }
+}
+
 /// Reject an unapproved browser origin before a handler can mutate state; CORS
 /// response headers alone would only prevent the browser from reading its reply.
 pub(crate) async fn enforce_origin(
@@ -602,6 +614,23 @@ mod tests {
         );
         assert_eq!(client_share_key(a), client_share_key(b));
         assert_ne!(client_share_key(a), client_share_key(other));
+    }
+
+    #[test]
+    fn audit_1116_g11_client_group_key_groups_ipv6_by_slash_48() {
+        let v4: IpAddr = "198.51.100.7".parse().unwrap();
+        assert_eq!(client_group_key(v4), v4);
+        let mapped: IpAddr = "::ffff:198.51.100.7".parse().unwrap();
+        assert_eq!(client_group_key(mapped), v4);
+        let a: IpAddr = "2001:db8:66:1::1".parse().unwrap();
+        let b: IpAddr = "2001:db8:66:ffff:ffff::1".parse().unwrap();
+        let other: IpAddr = "2001:db8:67::1".parse().unwrap();
+        assert_eq!(
+            client_group_key(a),
+            "2001:db8:66::".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(client_group_key(a), client_group_key(b));
+        assert_ne!(client_group_key(a), client_group_key(other));
     }
 
     /// One source holding slow requests (e.g. slow bodies) used to be able to take

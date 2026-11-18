@@ -8979,10 +8979,14 @@ pub(crate) enum PermitGateRefusal {
     EngineCloseOnly,
     /// The provable-history admission cap is reached for this permit.
     AdmissionCap,
-    /// The position entries and the permits that may open one are at their soft
-    /// cap, and the asking client group already holds
-    /// `admission::MAX_GROUP_OPENING_PERMITS` of those permits (audit G1-1).
+    /// The asking client group already holds
+    /// `admission::MAX_GROUP_OPENING_PERMITS` outstanding permits that may open a
+    /// position entry (audit G1-1).
     ClientOpeningPermits,
+    /// The position entries refuse a permit that may open one (audit G1-1): the
+    /// state's entries are at their soft cap and no sweep made room, or the
+    /// state's entries and those the outstanding permits may open fill the bound.
+    PositionEntries,
     /// The state is beyond a provable-history bound: the deposit of a held permit
     /// would not be credited, so the permit is not re-signed.
     AdmissionHardCap,
@@ -9079,9 +9083,15 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
             StatusCode::TOO_MANY_REQUESTS,
             Json(serde_json::json!({
                 "error": format!(
-                    "OPENING_PERMIT_LIMIT: the position entries are near their admission cap, and this client already holds {} outstanding deposit permits that may open a position entry; retry once one of those deposits is credited or its permit expires",
+                    "OPENING_PERMIT_LIMIT: this client (an IPv4 address or an IPv6 /48) already holds {} outstanding deposit permits that may open a position entry; retry once one of those deposits is credited or its permit expires",
                     admission::MAX_GROUP_OPENING_PERMITS
                 )
+            })),
+        ),
+        PermitGateRefusal::PositionEntries => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "POSITION_ENTRIES_FULL: the position entries and the deposit permits that may open one are at their admission cap; no permit that may open a new position entry is issued now. Top-ups of existing entries and withdrawals keep working"
             })),
         ),
         PermitGateRefusal::AdmissionHardCap => (
@@ -9223,10 +9233,10 @@ async fn post_v1_deposit_authorize(
         Err(error) => return clock_admission::closed_response(error),
     };
     // The client group a permit that may open a position entry counts toward
-    // (audit G1-1): the registration limiter's client, IPv6 by /64. An in-process
-    // request without connection info has none.
+    // (audit G1-1): IPv4 by address, IPv6 by /48. An in-process request without
+    // connection info has none.
     let group = connect
-        .map(|ConnectInfo(peer)| service_policy::client_share_key(client_ip(peer, &headers)));
+        .map(|ConnectInfo(peer)| service_policy::client_group_key(client_ip(peer, &headers)));
     // The account events of this request's dust sweeps, sent once a snapshot
     // carries the sweeps.
     let mut forced_exits: Vec<String> = Vec::new();
@@ -10063,7 +10073,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
-            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, or below the 100 USDC entry minimum (`BELOW_ENTRY_MINIMUM`, the body carries `minimum`) for a market where the account holds no position entry or only a flat one below 100 USDC, (409) in close-only (the settlement's, or the engine's while the settlement is not yet), above depositCapacity() (the body carries `capacity`), or for an account with no position yet that already holds a permit for another market, and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached for a new permit (a held one is re-signed unless the state is beyond a bound): a permit that may open a position entry is issued only while the state's own entries are below their soft cap and the state's entries plus those every outstanding permit may open fit the bound; past the soft cap one client (IPv4 address or IPv6 /64) holds at most 2 such permits (429 OPENING_PERMIT_LIMIT). When the position entries alone refuse a permit that opens one and exiting flat entries of other accounts below 100 USDC (at most 8) admits it, those are first swept to their bound deposit addresses (forced exits, whatever permits their accounts hold; their orders in that market are cancelled); at the position soft cap a further permit for an entry the account already reserves is refused", "security": auth["security"],
+            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, or below the 100 USDC entry minimum (`BELOW_ENTRY_MINIMUM`, the body carries `minimum`) for a market where the account holds no position entry or only a flat one below 100 USDC, (409) in close-only (the settlement's, or the engine's while the settlement is not yet), above depositCapacity() (the body carries `capacity`), or for an account with no position yet that already holds a permit for another market, and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached for a new permit (a held one is re-signed unless the state is beyond a bound): a permit that may open a position entry is issued only while the state's own entries are below their soft cap and the state's entries plus those every outstanding permit may open fit the bound (503 POSITION_ENTRIES_FULL otherwise); one client (IPv4 address or IPv6 /48) holds at most 2 such permits at any level, a renewal of an entry its account already reserves included (429 OPENING_PERMIT_LIMIT). When the position entries alone refuse a permit that opens one and exiting flat entries of other accounts below 100 USDC (at most 8) admits it, those are first swept to their bound deposit addresses (forced exits, whatever permits their accounts hold; their orders in that market are cancelled); at the position soft cap a further permit for an entry the account already reserves is refused", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
                 "responses": ok("ownerCommit + sig + validUntil (unix seconds)") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
