@@ -249,6 +249,7 @@ mod observation {
     use super::*;
     use std::{hint::black_box, time::Instant};
 
+    #[allow(unsafe_code)]
     unsafe extern "C" {
         fn clock_gettime_nsec_np(clock_id: std::os::raw::c_int) -> u64;
     }
@@ -256,6 +257,7 @@ mod observation {
     fn thread_cpu_ns() -> u64 {
         // macOS SDK _time.h: CLOCK_THREAD_CPUTIME_ID = 16. This test-only call
         // accepts a scalar clock id and returns a scalar; no pointers are passed.
+        #[allow(unsafe_code)]
         let time = unsafe { clock_gettime_nsec_np(16) };
         assert!(
             time > 0,

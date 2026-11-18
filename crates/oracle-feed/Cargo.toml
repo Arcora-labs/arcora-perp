@@ -26,3 +26,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 [[bin]]
 name = "probe"
 required-features = ["http"]
+
+[lints]
+workspace = true

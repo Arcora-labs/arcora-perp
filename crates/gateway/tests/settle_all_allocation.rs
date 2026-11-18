@@ -15,6 +15,8 @@
 //!
 //!     cargo test -p gateway --release --test settle_all_allocation -- --ignored
 
+#![allow(unsafe_code)]
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

@@ -418,11 +418,13 @@ fn finite_committed_withdrawal_mutations_refused_before_callbacks() {
 mod observation {
     use super::*;
     use std::{hint::black_box, time::Instant};
+    #[allow(unsafe_code)]
     unsafe extern "C" {
         fn clock_gettime_nsec_np(clock_id: std::os::raw::c_int) -> u64;
     }
     fn thread_cpu_ns() -> u64 {
         // Same scalar-only Darwin thread CPU clock as PR67, not elapsed wall time.
+        #[allow(unsafe_code)]
         let value = unsafe { clock_gettime_nsec_np(16) };
         assert!(value > 0, "thread CPU clock unavailable");
         value
