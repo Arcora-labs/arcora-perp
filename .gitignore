@@ -30,3 +30,23 @@ crates/prover-service/target/
 # Local UI verification artifacts
 **/.playwright-cli/
 frontend/output/playwright/
+
+# Secrets: private keys and keystores (public test fixtures are re-included).
+*.pem
+*.key
+keystore/
+*.keystore
+UTC--*
+!crates/attestation/tests/fixtures/**/*.pem
+
+# Gateway runtime state: snapshot, rollback journal, side logs, temp siblings.
+# Committed test fixtures under testdata/ and tests/fixtures/ are re-included.
+*.snapshot
+*.snapshot.rollback
+*.snapshot.tmp
+*.rollback
+*.rollback.tmp
+*.orderlog
+*.batches
+!crates/gateway/testdata/**
+!crates/gateway/tests/fixtures/**
