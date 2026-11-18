@@ -1373,45 +1373,133 @@ async fn audit_1116_g11_poc_d_a_landed_dust_entry_cannot_open_a_position() {
     writer.abort();
 }
 
-/// PoC A (round 2): about 1,063 fresh bound accounts, each with one unfunded 100
-/// USDC permit, held the position soft cap with no entry in the state, so every
-/// honest opening permit got 503 and the slot an expired permit freed went to the
-/// attacker's poller first. Opening permits no longer hold the soft cap: it bounds
-/// the state's own entries, and the permits share the room up to the bound.
+/// Whether `body` is the refusal of a client group at its opening-permit limit.
+fn opening_permit_limit(status: StatusCode, body: &serde_json::Value) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS
+        && body["error"]
+            .as_str()
+            .is_some_and(|e| e.starts_with("OPENING_PERMIT_LIMIT"))
+}
+
+/// PoC A (rounds 2 and 3): unfunded 100 USDC permits held the position entries
+/// with no entry in the state. Round 3 limited a client group only past the soft
+/// cap, so one IPv4 address took the 1,063 entries below it and one IPv6 /48
+/// (as 133 /64s) the 265 above it, and every honest opening permit got 503. A
+/// client group (an IPv4 address or an IPv6 /48) holds at most two outstanding
+/// opening permits at every level, so neither takes the room.
 #[tokio::test]
 async fn audit_1116_g11_poc_a_unfunded_permits_do_not_hold_the_position_cap() {
     let mut gw = Gw::boot_with(GenesisMode::Production);
-    let soft = positions_soft_cap(&gw);
-    let attackers: Vec<_> = (0..soft as u32 + 1)
+    let attackers: Vec<_> = (0..150u32)
         .map(|n| bound_account(&mut gw, &signer(n, 0x54)))
         .collect();
     let (honest, honest_from) = bound_account(&mut gw, &signer(0, 0x55));
     let (app, writer) = app_with(gw).await;
-    for (key, from) in &attackers[..soft as usize] {
+    let mut issued = 0;
+    for (key, from) in &attackers[..10] {
         let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, "10.66.0.1").await;
-        assert_eq!(status, StatusCode::OK, "{body}");
+        if status == StatusCode::OK {
+            issued += 1;
+        } else {
+            assert!(opening_permit_limit(status, &body), "{status} {body}");
+        }
     }
-    {
-        let gw = app.gw.lock().await;
-        assert_eq!(gw.seq.state.positions.len(), 0);
-        assert_eq!(gw.admission_size().positions, soft);
+    assert_eq!(issued, 2, "one IPv4 address");
+    for (i, (key, from)) in attackers[10..].iter().enumerate() {
+        let ip = format!("[2001:db8:66:{i:x}::1]");
+        let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, &ip).await;
+        if status == StatusCode::OK {
+            issued += 1;
+        } else {
+            assert!(opening_permit_limit(status, &body), "{status} {body}");
+        }
     }
-    let (key, from) = &attackers[soft as usize];
-    let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, "10.66.0.1").await;
-    assert_ne!(status, StatusCode::OK, "{body}");
+    assert_eq!(issued, 4, "one IPv6 /48, whatever its /64s");
+    assert_eq!(app.gw.lock().await.admission_size().positions, 4);
     let (status, body) = permit_via(&app, &honest, honest_from, ENTRY_MINIMUM, "10.77.0.1").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let gw = app.gw.lock().await;
-    let size = gw.admission_size();
-    assert!(size.positions <= gw.admission_cap.max_positions);
-    drop(gw);
     writer.abort();
 }
 
-/// Past the soft cap the outstanding opening permits share the room up to the
-/// bound: one client group (an IPv4 address or an IPv6 /64) holds at most two of
-/// them, and none is issued once the state and every outstanding permit fill the
-/// bound, so every deposit can still be credited within it.
+/// PoC A, renewal (round 3): an account whose reservation was issued to one
+/// client group took a fresh permit for the same entry from another group, which
+/// held nothing yet, and kept the reservation past the first permit's deadline
+/// outside every group's limit. A further permit for an entry the account already
+/// reserves counts against the group that asks for it like a first one, so every
+/// outstanding opening permit, renewals included, belongs to a group at its
+/// limit, and two groups hold at most four reservations.
+#[tokio::test]
+async fn audit_1116_g11_a_renewed_opening_permit_counts_against_its_group() {
+    let mut gw = Gw::boot_with(GenesisMode::Production);
+    let accounts: Vec<_> = (0..6)
+        .map(|n| bound_account(&mut gw, &signer(n, 0x5B)))
+        .collect();
+    let (app, writer) = app_with(gw).await;
+    let ask = |n: usize, ip: &'static str| {
+        let app = app.clone();
+        let (key, from) = accounts[n];
+        async move { permit_via(&app, &key, from, ENTRY_MINIMUM, ip).await }
+    };
+    let (status, body) = ask(0, "10.66.0.1").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let first = commit_of(&body);
+    let (status, body) = ask(1, "10.66.0.1").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // A renewal from the same group is a third permit of that group...
+    let (status, body) = ask(0, "10.66.0.1").await;
+    assert!(opening_permit_limit(status, &body), "{status} {body}");
+    // ...and one from a fresh group counts against that group.
+    let (status, body) = ask(0, "10.66.0.2").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    expire(&mut *app.gw.lock().await, &[first]);
+    for (n, ip, ok) in [
+        (2, "10.66.0.1", true),
+        (3, "10.66.0.1", false),
+        (4, "10.66.0.2", true),
+        (5, "10.66.0.2", false),
+    ] {
+        let (status, body) = ask(n, ip).await;
+        if ok {
+            assert_eq!(status, StatusCode::OK, "{body}");
+        } else {
+            assert!(opening_permit_limit(status, &body), "{status} {body}");
+        }
+    }
+    assert_eq!(app.gw.lock().await.admission_size().positions, 4);
+    writer.abort();
+}
+
+/// Round 3 review: an opener of an entry holding exactly the minimum that fills in
+/// several pieces was banned under production fees. The sequencer measured each
+/// later piece against collateral the earlier pieces' taker fees had debited in
+/// the same settlement pass, so the whole order was rejected (InsufficientMargin,
+/// nothing filled) although intake had accepted it. Fees and funding do not trip
+/// the entry floor; a realized trading loss still does (PoC C).
+#[test]
+fn audit_1116_g11_an_opener_at_the_minimum_fills_in_pieces_under_production_fees() {
+    let (mut gw, px) = trading_gw();
+    let (victim, _) = custody_account(&mut gw, &signer(0, 0x5A));
+    let (bank, _) = custody_account(&mut gw, &signer(1, 0x5A));
+    gw.account_deposit(&victim, 0, ENTRY_MINIMUM).unwrap();
+    gw.account_deposit(&bank, 0, 100 * ENTRY_MINIMUM).unwrap();
+    let piece = size_of(200, px);
+    place(&mut gw, &bank, "Sell", piece, px).unwrap();
+    place(&mut gw, &bank, "Sell", piece, px).unwrap();
+    gw.tick();
+    place(&mut gw, &victim, "Buy", 2 * piece, px).unwrap();
+    gw.tick();
+    let after = entry(&gw, &victim, 0).unwrap();
+    assert_eq!(after.size, 2 * piece, "the opener filled in both pieces");
+    assert!(
+        after.collateral < ENTRY_MINIMUM,
+        "the taker fees were charged"
+    );
+}
+
+/// The outstanding opening permits share the room up to the bound: one client
+/// group (an IPv4 address or an IPv6 /48) holds at most two of them at every
+/// level, and none is issued once the state and every outstanding permit fill
+/// the bound, so every deposit can still be credited within it.
 #[tokio::test]
 async fn audit_1116_g11_opening_permits_share_the_room_up_to_the_bound() {
     let mut gw = Gw::boot_with(GenesisMode::Production);
@@ -1425,29 +1513,20 @@ async fn audit_1116_g11_opening_permits_share_the_room_up_to_the_bound() {
         .collect();
     let (app, writer) = app_with(gw).await;
     let mut commits = Vec::new();
-    // Below the soft cap one client takes as many as it likes.
-    for (key, from) in &accounts[..16] {
-        let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, "10.66.0.1").await;
-        assert_eq!(status, StatusCode::OK, "{body}");
-        commits.push(commit_of(&body));
-    }
-    let (key, from) = &accounts[16];
-    let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, "10.66.0.1").await;
-    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
-    assert!(body["error"]
-        .as_str()
-        .unwrap()
-        .starts_with("OPENING_PERMIT_LIMIT"));
-    // Past it, two per client: an IPv6 /64 is one client.
-    for (n, ip) in [(16, "[2001:db8:1:2::1]"), (17, "[2001:db8:1:2::ff]")] {
+    // Two per client: an IPv6 /48 is one client.
+    for n in 0..18 {
+        let ip = match n {
+            0..=7 => format!("10.66.0.{}", n / 2),
+            _ => format!("[2001:db8:{}:{n:x}::1]", n / 2),
+        };
         let (key, from) = &accounts[n];
-        let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, ip).await;
+        let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, &ip).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         commits.push(commit_of(&body));
     }
     let (key, from) = &accounts[18];
-    let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, "[2001:db8:1:2::7]").await;
-    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, "[2001:db8:8:ff::7]").await;
+    assert!(opening_permit_limit(status, &body), "{status} {body}");
     for (n, ip) in [(18, "10.77.0.1"), (19, "10.77.0.1")] {
         let (key, from) = &accounts[n];
         let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, ip).await;
@@ -1458,6 +1537,12 @@ async fn audit_1116_g11_opening_permits_share_the_room_up_to_the_bound() {
     let (key, from) = &accounts[20];
     let (status, body) = permit_via(&app, key, *from, ENTRY_MINIMUM, "10.88.0.1").await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|e| e.starts_with("POSITION_ENTRIES_FULL")),
+        "{body}"
+    );
     // Every deposit lands within the bound.
     let mut gw = app.gw.lock().await;
     for commit in commits {
