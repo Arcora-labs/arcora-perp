@@ -341,9 +341,25 @@ fn thin_long(t0: u64) -> Ledger {
 /// could not cover: trader 1's closed entry carries debt `X`, the engine is
 /// close-only, and trader 1 holds a note of exactly `X`, credited before the
 /// trip. Returns the ledger, the note and `X`.
+///
+/// A liquidation closes the other side with the liquidated position, and the
+/// gain that close realizes is within reach of auto-deleverage. So before it,
+/// trader 2 closes its short at $510 against trader 3, whose new short faces the
+/// liquidation having gained only $10.
 fn parked_debt() -> (Ledger, Digest, i128) {
     const T0: u64 = 70_000_000;
     let mut l = thin_long(T0);
+    l.fund(3, 0, usd(200));
+    let handover = l.fill(
+        2,
+        3,
+        0,
+        Side::Buy,
+        SIZE_SCALE,
+        price(0) * 51 / 100,
+        T0 + 2_000,
+    );
+    l.apply(&[handover]);
     let liquidation = l.liquidate(1, 0, price(0) / 2, T0 + 5_000);
     let debt = {
         let mut dry = l.state.clone();
@@ -443,8 +459,9 @@ fn pause_reopen_fill() -> CaseWitness {
     l.case("pause-reopen-fill", ops)
 }
 
-/// A liquidation whose close leaves debt: the insurance fund and the treasury
-/// are drawn in full, and auto-deleverage of the winner covers the rest.
+/// A liquidation whose close leaves debt: the winner is closed with the loser,
+/// the insurance fund and the treasury are drawn in full, and auto-deleverage of
+/// the winner's realized gain covers the rest.
 fn bad_debt_treasury_adl() -> CaseWitness {
     const T0: u64 = 60_000_000;
     let l = thin_long(T0);
@@ -757,8 +774,12 @@ mod tests {
         assert!(pre.insurance_fund > 0 && pre.treasury > 0);
         assert_eq!((after.insurance_fund, after.treasury), (0, 0));
         let winner_before = pre.position(&owner(2), 0).unwrap().collateral;
-        let winner_after = after.position(&owner(2), 0).unwrap().collateral;
-        assert!(winner_after < winner_before, "the winner is clawed");
+        let winner = *after.position(&owner(2), 0).unwrap();
+        assert_eq!(winner.size, 0, "the winner is closed with the loser");
+        assert!(
+            winner.collateral < winner_before + usd(150),
+            "the winner is clawed out of its $150 gain"
+        );
         assert!(after.position(&owner(1), 0).is_none(), "covered in full");
         assert_eq!(after.mode, Mode::Normal);
     }

@@ -827,6 +827,7 @@ async fn a_never_broadcast_register_is_voided_by_the_chain_clock_without_restart
             "amount": withdrawal.amount.to_string(),
             "nonce": withdrawal.nonce,
             "batchId": window,
+            "forcedExit": false,
         })]
     );
     let mut restored: Vec<(String, serde_json::Value)> = of("depositRestored")
@@ -876,6 +877,7 @@ async fn a_never_broadcast_register_is_voided_by_the_chain_clock_without_restart
                 "nonce": withdrawal.nonce,
                 "leaf": crate::hex0x(&withdrawal.leaf()),
                 "batchId": window,
+                "forcedExit": false,
             }])
         );
         assert_eq!(
@@ -2181,5 +2183,94 @@ async fn only_a_settled_timed_window_resets_the_void_breaker() {
             assert_eq!(step, Step::Stop, "two voids without a settled timed window");
             assert_eq!(rec.operator_action, Some(operator::VOID_BREAKER));
         }
+    }
+}
+
+/// Audit 2026-11-16 G2-2 (round 2): the settle loop hands a sealed window whose
+/// operation times can never register to the recovery as it is: not rolled
+/// back (a re-seal would carry the same times), with `clock_registration_refused`
+/// raised, the cause kept, and the recovery published before its first step.
+#[tokio::test]
+async fn audit_1116_g2_2_an_unregistrable_window_goes_to_the_recovery_as_sealed() {
+    let Voidable { gw, journal, .. } = voidable(false);
+    let h = harness(gw, journal.clone(), chain_at(&journal));
+    let window = journal.batch_id;
+    let last_ms = ClockIntent::of(&journal).unwrap().last_ms.unwrap();
+    let before = {
+        let gw = h.app.gw.lock().await;
+        assert!(!h.alert(&gw, AlertKind::ClockRegistrationRefused));
+        (gw.seq.state.state_root(), gw.seq.current_window_id())
+    };
+    let why =
+        format!("window {window}: its timed operations span 30001 ms, more than maxWindowMs 30000");
+    let (rec, delay) = crate::start_unregistrable_recovery(
+        &h.app,
+        window,
+        &journal.witness,
+        0,
+        why.clone(),
+        vec![[3; 32]],
+        false,
+        Ceiling::Nonce(7),
+    )
+    .await;
+    assert_eq!(
+        (rec.batch_id, rec.phase, rec.last_ms),
+        (window, 0, Some(last_ms))
+    );
+    assert_eq!(rec.cause, why);
+    assert!(
+        delay > Duration::ZERO,
+        "the failure counts toward the backoff"
+    );
+    let gw = h.app.gw.lock().await;
+    assert!(h.alert(&gw, AlertKind::ClockRegistrationRefused));
+    assert_eq!(
+        (gw.seq.state.state_root(), gw.seq.current_window_id()),
+        before,
+        "the sealed window is not rolled back"
+    );
+    let status = serde_json::to_value(h.app.snapshot(&gw)).unwrap()["clockRecovery"].clone();
+    assert_eq!(status["batchId"], window);
+    assert_eq!(status["steps"], 0);
+    assert_eq!(status["basis"], "chainClock");
+}
+
+/// Audit 2026-11-16 G2-2 (round 2): a clock failure that says the registration
+/// was refused (the verifier reverted it, or it was too late to send) raises
+/// `clock_registration_refused` at once; a failure with an unknown outcome
+/// does not.
+#[tokio::test]
+async fn audit_1116_g2_2_a_refused_registration_raises_the_alert() {
+    for (error, refused) in [
+        (
+            format!(
+                "clock preparation: {} (InvalidTime); nothing was registered: execution reverted",
+                crate::l1::REGISTRATION_REVERTED
+            ),
+            true,
+        ),
+        (
+            format!(
+                "clock preparation: {}; nothing sent",
+                crate::l1::PAST_REGISTRATION_SKEW
+            ),
+            true,
+        ),
+        (
+            "clock preparation: cast timed out after 90s".to_string(),
+            false,
+        ),
+    ] {
+        let app = crate::tests::test_app();
+        crate::note_registration_refusal(&app, &error).await;
+        let active = app
+            .gw
+            .lock()
+            .await
+            .ops_alerts
+            .active()
+            .contains(&AlertKind::ClockRegistrationRefused);
+        assert_eq!(active, refused, "{error}");
     }
 }

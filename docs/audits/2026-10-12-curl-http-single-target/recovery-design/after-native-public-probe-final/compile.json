@@ -1,16 +1,16 @@
 {
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "--edition=2021",
     "--crate-name",
     "owned_request_admission_after",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/recovery-design/after-native-public-probe-final/probe.rs",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/recovery-design/after-native-public-probe-final/probe.rs",
     "-L",
-    "dependency=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps",
+    "dependency=/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps",
     "--extern",
-    "serde_json=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libserde_json-1f00db33053c319f.rlib",
+    "serde_json=/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libserde_json-1f00db33053c319f.rlib",
     "-o",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/recovery-design/after-native-public-probe-final/probe"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/recovery-design/after-native-public-probe-final/probe"
   ],
   "exit_code": 0,
   "seconds": 2.873012791038491,

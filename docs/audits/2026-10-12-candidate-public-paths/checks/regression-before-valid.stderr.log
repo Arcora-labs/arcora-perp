@@ -88,7 +88,7 @@ test_successful_envelopes_have_monotonic_ids_and_total_time_budget_is_enforced (
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='prohibited-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(opened, [])
 AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[88 chars]on')] != []
 
@@ -103,7 +103,7 @@ PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candi
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='private-key-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(opened, [])
 AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[88 chars]on')] != []
 
@@ -118,7 +118,7 @@ PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candi
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='prohibited-leaf')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(opened, [])
 AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[100 chars]on')] != []
 
@@ -133,7 +133,7 @@ PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candi
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(opened, [])
 AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[113 chars]on')] != []
 
@@ -148,7 +148,7 @@ PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candi
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='prohibited-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(code, 1, text)
 AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
 
@@ -157,7 +157,7 @@ AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOL
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='private-key-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(code, 1, text)
 AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
 
@@ -166,7 +166,7 @@ AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOL
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='prohibited-leaf')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(code, 1, text)
 AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
 
@@ -175,7 +175,7 @@ AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOL
 FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
     self.assertEqual(code, 1, text)
 AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
 
@@ -184,13 +184,13 @@ AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOL
 FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='prohibited-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
     code, text = self.identity_cli(["create", "--config", str(regular_config),
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
     code = identity.main()
            ^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
     config = read_json(args.config)
              ^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -207,13 +207,13 @@ AssertionError: late input read
 FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='private-key-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
     code, text = self.identity_cli(["create", "--config", str(regular_config),
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
     code = identity.main()
            ^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
     config = read_json(args.config)
              ^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -230,13 +230,13 @@ AssertionError: late input read
 FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='prohibited-leaf')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
     code, text = self.identity_cli(["create", "--config", str(regular_config),
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
     code = identity.main()
            ^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
     config = read_json(args.config)
              ^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -253,13 +253,13 @@ AssertionError: late input read
 FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='leaf-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
     code, text = self.identity_cli(["create", "--config", str(regular_config),
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
     code = identity.main()
            ^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
     config = read_json(args.config)
              ^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -276,13 +276,13 @@ AssertionError: late input read
 FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
     code, text = self.identity_cli(["create", "--config", str(regular_config),
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
     code = identity.main()
            ^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
     config = read_json(args.config)
              ^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -299,13 +299,13 @@ AssertionError: late input read
 FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='existing-regular')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
     code, text = self.identity_cli(["create", "--config", str(regular_config),
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
     code = identity.main()
            ^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
     config = read_json(args.config)
              ^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -322,9 +322,9 @@ AssertionError: late input read
 FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='prohibited-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
     identity.read_json(path)
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
     with path.open("rb") as stream:
          ^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -341,9 +341,9 @@ AssertionError: forbidden input opened
 FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='private-key-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
     identity.read_json(path)
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
     with path.open("rb") as stream:
          ^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -360,9 +360,9 @@ AssertionError: forbidden input opened
 FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='prohibited-leaf')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
     identity.read_json(path)
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
     with path.open("rb") as stream:
          ^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -379,9 +379,9 @@ AssertionError: forbidden input opened
 FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
     identity.read_json(path)
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
     with path.open("rb") as stream:
          ^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -398,9 +398,9 @@ AssertionError: forbidden input opened
 FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='prohibited-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
     identity.create_output(path, {"owned_public_fixture": True})
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
     with Path(path).open("x") as stream:
          ^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -417,9 +417,9 @@ AssertionError: forbidden output opened
 FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='private-key-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
     identity.create_output(path, {"owned_public_fixture": True})
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
     with Path(path).open("x") as stream:
          ^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -436,9 +436,9 @@ AssertionError: forbidden output opened
 FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='prohibited-leaf')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
     identity.create_output(path, {"owned_public_fixture": True})
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
     with Path(path).open("x") as stream:
          ^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -455,9 +455,9 @@ AssertionError: forbidden output opened
 FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='leaf-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
     identity.create_output(path, {"owned_public_fixture": True})
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
     with Path(path).open("x") as stream:
          ^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -474,9 +474,9 @@ AssertionError: forbidden output opened
 FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
     identity.create_output(path, {"owned_public_fixture": True})
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
     with Path(path).open("x") as stream:
          ^^^^^^^^^^^^^^^^^^^^
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
@@ -493,7 +493,7 @@ AssertionError: forbidden output opened
 FAIL: test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='manifest', path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 636, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 636, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
     self.assertEqual(opened, [])
 AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[127 chars]on')] != []
 
@@ -508,7 +508,7 @@ PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candi
 FAIL: test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='config', path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 636, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 636, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
     self.assertEqual(opened, [])
 AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[123 chars]on')] != []
 
@@ -523,7 +523,7 @@ PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candi
 FAIL: test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='policy', path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 636, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 636, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
     self.assertEqual(opened, [])
 AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[123 chars]on')] != []
 
@@ -538,7 +538,7 @@ PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candi
 FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='prohibited-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
     read.assert_not_called()
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
     raise AssertionError(msg)
@@ -549,7 +549,7 @@ Calls: [call('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-ca
 FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='private-key-parent')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
     read.assert_not_called()
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
     raise AssertionError(msg)
@@ -560,7 +560,7 @@ Calls: [call('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-ca
 FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='prohibited-leaf')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
     read.assert_not_called()
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
     raise AssertionError(msg)
@@ -571,7 +571,7 @@ Calls: [call('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-ca
 FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='ancestor-symlink')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 658, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
     read.assert_not_called()
   File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
     raise AssertionError(msg)

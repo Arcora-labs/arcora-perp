@@ -62,7 +62,7 @@
     Checking webpki-roots v0.26.11
     Checking url v2.5.8
     Checking rustls v0.23.46
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
+    Checking perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
     Checking postcard v1.1.3
     Checking zmij v1.0.21
     Checking base64 v0.22.1
@@ -70,6 +70,6 @@
     Checking memchr v2.8.2
     Checking ureq v2.12.1
     Checking serde_json v1.0.150
-    Checking chainlink-oracle v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle)
-    Checking chainlink-streams-client v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client)
+    Checking chainlink-oracle v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle)
+    Checking chainlink-streams-client v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.05s

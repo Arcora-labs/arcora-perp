@@ -16,7 +16,7 @@ import verify_real_proof as target
 # The committed real proof's calldata; its hash is PROOF_FIXTURE["proof_sha256"]. The
 # clock-v2 calldata copy in integration/fixtures/clock-v2/verified-calldata/ is history.
 CALLDATA = "integration/fixtures/clock-pkg3-verified/proof.bin"
-EXPECTED_TESTS = {"SP1RealVerifierGuardTest": 8, "SP1RealProofTest": 10, "ClockBoundRealProofTest": 6}
+EXPECTED_TESTS = {"SP1RealVerifierGuardTest": 10, "SP1RealProofTest": 11, "ClockBoundRealProofTest": 6}
 
 
 def main():

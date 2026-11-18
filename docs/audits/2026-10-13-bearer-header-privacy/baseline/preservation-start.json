@@ -24,12 +24,12 @@
   "files": {
     "baseline": {
       "bytes": 910352,
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/baseline.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/baseline.json",
       "sha256": "38388df7efdb3a2af721537dcbe90b05bed2fadfee024f1b157326a10b8685f5"
     },
     "github_start": {
       "bytes": 73781,
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/start-github-verification.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/start-github-verification.json",
       "sha256": "b171e2a50d335005d0615eb8c6b0e47676be4c5bc7568a3bd0826fe0d5d72b5f"
     }
   },

@@ -10,14 +10,16 @@
 
 use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
-use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
+use perp_core::fixed::{apply_rate, notional_quote, PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
-use perp_core::note::owner_from_spend_key;
+use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
+use perp_core::position::Position;
 use perp_core::state::Mode;
 use perp_core::{DefaultState, EngineError, Note};
+use std::collections::BTreeMap;
 
 struct Rng(u64);
 impl Rng {
@@ -104,6 +106,9 @@ struct Counts {
     fill: u64,
     accrue: u64,
     liquidate: u64,
+    /// Rare here (both sides under maintenance at once), so it has no floor; the
+    /// case is pinned by `pool_exposure.rs`.
+    counterparty_penalty: u64,
     adl_haircut: u64,
     parked_debt: u64,
     deposit: u64,
@@ -392,8 +397,10 @@ impl Session {
             )),
             _ => None,
         };
+        // half of the liquidations go through the sequencer's entry point, whose
+        // report is checked against what the liquidation did
+        let mut report = None;
         let result = match op {
-            // half of the liquidations go through the sequencer's entry point
             BatchOp::Liquidate {
                 owner,
                 market_id,
@@ -401,8 +408,11 @@ impl Session {
                 now_ms,
             } if self.rng.below(2) == 0 => self
                 .s
-                .liquidate(owner, *market_id, oracle, *now_ms)
-                .map(|_| perp_core::engine::OpOutput::default()),
+                .liquidate_reported(owner, *market_id, oracle, *now_ms)
+                .map(|r| {
+                    report = Some(r);
+                    perp_core::engine::OpOutput::default()
+                }),
             _ => self.s.apply_op(op),
         };
 
@@ -462,31 +472,125 @@ impl Session {
                             counts.parked_debt += 1;
                         }
                         let (px, idx) = index.unwrap();
+                        let loser = positions[&(*owner, 0)];
+                        // audit PC-1: the clearing pool's position never grows, and
+                        // the opposite side gives up the liquidated size (less what
+                        // reduces a pool position the state already held)
+                        let net = |ps: &BTreeMap<(PubKey, u64), Position>| -> i128 {
+                            ps.values().map(|p| p.size).sum()
+                        };
+                        let (net_before, net_after) = (net(&positions), net(&self.s.positions));
+                        let to_pool = if net_before.signum() == loser.size.signum() {
+                            net_before.abs().min(loser.size.abs())
+                        } else {
+                            0
+                        };
+                        assert_eq!(
+                            net_after,
+                            net_before - loser.size.signum() * to_pool,
+                            "the pool's position never grows: {ctx}"
+                        );
+                        let mut closed = 0;
+                        // (owner, size, realized, penalty) of each forced close and
+                        // (owner, clawed) of each haircut, in key order
+                        let mut forced = Vec::new();
+                        let mut haircuts = Vec::new();
                         for (key, before) in &positions {
                             if key.0 == *owner || !before.is_open() {
                                 continue;
                             }
-                            let after = self.s.positions[key];
+                            let after = self.s.positions.get(key).copied();
+                            let after_size = after.map_or(0, |p| p.size);
+                            // the position as the liquidation's close left it,
+                            // before any haircut
+                            let mut reduced = *before;
+                            let was_liquidatable = before.is_liquidatable(&m, px, idx);
+                            if before.size.signum() == loser.size.signum() {
+                                assert_eq!(after_size, before.size, "same side: {ctx}");
+                            } else {
+                                assert!(
+                                    after_size.signum() != -before.size.signum()
+                                        && after_size.abs() <= before.size.abs(),
+                                    "the other side is only reduced: {ctx}"
+                                );
+                                closed += before.size.abs() - after_size.abs();
+                                if after_size != before.size {
+                                    let delta = after_size - before.size;
+                                    let (realized, _) = reduced.apply_fill(delta, px, idx).unwrap();
+                                    let collateral = reduced.collateral;
+                                    // a counterparty that was itself liquidatable
+                                    // pays the penalty on what the close took
+                                    if was_liquidatable {
+                                        let due = apply_rate(
+                                            notional_quote(delta.abs(), px).unwrap(),
+                                            m.liquidation_fee_ratio,
+                                        )
+                                        .unwrap();
+                                        let charged = due.min(reduced.collateral.max(0));
+                                        reduced.collateral -= charged;
+                                        if charged > 0 {
+                                            counts.counterparty_penalty += 1;
+                                        }
+                                    }
+                                    forced.push((
+                                        key.0,
+                                        delta,
+                                        realized,
+                                        collateral - reduced.collateral,
+                                    ));
+                                }
+                            }
+                            let after = after.unwrap_or(Position {
+                                collateral: 0,
+                                ..reduced
+                            });
                             assert_eq!(
                                 (after.size, after.entry_price, after.funding_entry),
-                                (before.size, before.entry_price, before.funding_entry),
+                                (reduced.size, reduced.entry_price, reduced.funding_entry),
                                 "{ctx}"
                             );
-                            let clawed = before.collateral - after.collateral;
-                            let clawable = before.adl_clawable(&m, px, idx).unwrap_or(0);
+                            if !reduced.is_open() && reduced.collateral < 0 {
+                                // left flat under water: it shares the waterfall
+                                assert!(
+                                    (reduced.collateral..=0).contains(&after.collateral),
+                                    "{ctx}"
+                                );
+                                continue;
+                            }
+                            let clawed = reduced.collateral - after.collateral;
+                            let clawable = before
+                                .adl_clawable_after(&reduced, &m, px, idx)
+                                .unwrap_or(0);
                             assert!(
                                 (0..=clawable).contains(&clawed),
                                 "a haircut of {clawed} exceeds the clawable {clawable}: {ctx}"
                             );
                             if clawed > 0 {
                                 counts.adl_haircut += 1;
+                                haircuts.push((key.0, clawed));
                             }
-                            if !before.is_liquidatable(&m, px, idx) {
+                            // neither the close nor a haircut makes a healthy
+                            // position liquidatable, reduced or not
+                            if !was_liquidatable {
                                 assert!(
                                     !after.is_liquidatable(&m, px, idx),
-                                    "auto-deleverage made a position liquidatable: {ctx}"
+                                    "the liquidation made a position liquidatable: {ctx}"
                                 );
                             }
+                        }
+                        assert_eq!(closed, loser.size.abs() - to_pool, "{ctx}");
+                        if let Some(r) = &report {
+                            let reported: Vec<_> = r
+                                .forced_closes
+                                .iter()
+                                .map(|f| (f.owner, f.size, f.realized, f.penalty))
+                                .collect();
+                            assert_eq!(reported, forced, "every forced close is reported: {ctx}");
+                            let mut clawed: Vec<_> =
+                                r.haircuts.iter().map(|h| (h.owner, h.clawed)).collect();
+                            clawed.sort();
+                            haircuts.sort();
+                            assert_eq!(clawed, haircuts, "every haircut is reported: {ctx}");
                         }
                     }
                     BatchOp::Withdraw { .. } => counts.withdraw += 1,
@@ -655,8 +759,10 @@ fn run_session(seed: u64, steps: usize, market: Market, counts: &mut Counts) -> 
 /// the shape check; no empty position entry; no deposit credited in
 /// close-only; every op that carries an oracle stores the index settled to its
 /// own time, and an unbind keeps initial margin at that index; a liquidation's
-/// haircuts stay within each winner's clawable amount and make no position
-/// liquidatable; withdrawal leaves carry strictly increasing nonces. At the end
+/// haircuts stay within each winner's clawable amount, neither its close of the
+/// other side nor a haircut makes a healthy position liquidatable, and the
+/// sequencer entry reports exactly the forced closes and haircuts it applied;
+/// withdrawal leaves carry strictly increasing nonces. At the end
 /// of each session the settlement leaves no reserve and creates no value (or,
 /// when the value inside is negative, is refused and changes nothing), and the
 /// phase-2 exits drain the vault exactly.

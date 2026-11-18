@@ -62,12 +62,34 @@ pub enum AlertKind {
     /// voids stopped the loop, or the recovery has lasted long or used up half of
     /// the close-only budget. Recovered when the recovery resolves.
     ClockRecoveryBlocked,
+    /// The sealed snapshot payload is at or above three quarters of its 64 MiB
+    /// cap. Writes still succeed; at the cap they fail and order intake stops.
+    /// Recovered once a captured payload is below the threshold again.
+    SnapshotSizeHigh,
+    /// A clock window cannot register: its timed operations span more than the
+    /// verifier's `maxWindowMs` or its last one is past the registration skew
+    /// (seen when the settle loop pauses, or by the post-seal preflight), or the
+    /// verifier reverted its registration (the log names the reason). Nothing
+    /// is registered: the recovery decides the window, and a timed window is
+    /// voided. Recovered once a window settles.
+    ClockRegistrationRefused,
+    /// Deposit reads keep finishing after clock admission closed, so they are
+    /// dropped and read again (`DROPPED_READS_ALERT` in a row): nothing is
+    /// credited meanwhile, while the oldest unconsumed deposit's
+    /// `livenessTimeoutBlocks` runs. The L1 RPC is probably slow or rate-limited.
+    /// Recovered once a read is applied.
+    DepositReadsDropped,
+    /// The state's provable history is within a tenth of the exchange-wide
+    /// partial-withdrawal reserve (`admission::PARTIAL_WITHDRAWAL_HISTORY_CEILING`)
+    /// or past it. Past it only full exits leave, for every account. History never
+    /// shrinks, so it stays active, unless a voided window takes the history back.
+    WithdrawReserveNear,
 }
 
 #[cfg(test)]
 impl AlertKind {
     /// Every kind, in declaration order.
-    pub const ALL: [AlertKind; 16] = [
+    pub const ALL: [AlertKind; 20] = [
         AlertKind::SettlementHeld,
         AlertKind::PersistenceFailed,
         AlertKind::DepositHalted,
@@ -84,6 +106,10 @@ impl AlertKind {
         AlertKind::DepositBlockedAtCap,
         AlertKind::WindowVoided,
         AlertKind::ClockRecoveryBlocked,
+        AlertKind::SnapshotSizeHigh,
+        AlertKind::ClockRegistrationRefused,
+        AlertKind::DepositReadsDropped,
+        AlertKind::WithdrawReserveNear,
     ];
 }
 

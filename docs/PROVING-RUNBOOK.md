@@ -75,6 +75,10 @@ an NVIDIA GPU when built with `--features cuda` (off by default and in CI). Exec
 the native twin and every check are the same; only setup and proving move to SP1
 6.1.0's native `sp1-gpu-server`, which also runs the Groth16 wrap. No Docker is needed.
 It needs Linux x86_64, an NVIDIA GPU with at least 24 GB, and a CUDA 12 driver.
+The server links `libcudart.so.12`: on an image that ships only CUDA 13, prepend a
+CUDA 12 runtime (for example NVIDIA's `nvidia-cuda-runtime-cu12` wheel) to
+`LD_LIBRARY_PATH` and keep the driver directory on it
+(`docs/audits/2026-11-18-guest-reproof/`).
 
 ```bash
 # Pin the server the SDK would otherwise fetch unchecked from the SP1 release.
@@ -90,9 +94,22 @@ An attested prover ships that server binary in its measured image instead of
 fetching it. Measured times on one H100 are in `docs/audits/2026-10-21-gpu-day/`.
 
 ## 5. Deploy the on-chain verifier
-- Find the Base Sepolia **SP1VerifierGateway** address in
-  `github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments`.
-- Deploy `SP1ZkVerifier(gateway, vkey)` (from this repo's `contracts/src/SP1ZkVerifier.sol`).
+- Deploy the stateless **SP1 v6.1.0 verifier** (this repo's compiled `SP1Verifier`), then
+  `SP1ZkVerifier(verifier, vkey)` (from `contracts/src/SP1ZkVerifier.sol`) bound DIRECTLY to
+  it. Do not point the adapter at Succinct's shared `SP1VerifierGateway`: a gateway owner
+  can add an accept-everything route or freeze the route (docs/SECURITY.md, audit SV-1).
+  `deploy_clock_stack.py` does both steps.
+- **Liveness trade-off of the direct binding.** The `SP1ZkVerifier` NatSpec says it
+  "stays valid across SP1 verifier versions"; that held only behind a gateway, whose
+  owner could add the new version's route. Bound directly, the adapter accepts only
+  proofs for the one verifier it names. An SP1 verifier upgrade (a new
+  `VERIFIER_HASH()` selector, e.g. a new SP1 release or a security fix in the
+  verifier) therefore means deploying the new verifier, a new `SP1ZkVerifier`, a new
+  `ClockBoundVerifier` and a new `DarkPerpSettlement` + vault (all bind their inner
+  verifier immutably), i.e. a full redeploy and migration per
+  [REDEPLOY-CC-RUNBOOK.md](REDEPLOY-CC-RUNBOOK.md). Proofs from the new prover do not
+  verify on the old stack in the meantime, so keep the prover on the pinned SP1
+  version until the new stack is live.
 
 ## 6. Redeploy the settlement pointing at it
 `DarkPerpSettlement.verifier` is immutable, so swapping the verifier is a redeploy. The
@@ -100,7 +117,7 @@ settlement no longer accepts `SP1ZkVerifier` directly: its constructor refuses a
 verifier that is not a fresh, unbound clock verifier (`proofVersion() == 2`,
 `settlement() == 0`). The chain is:
 ```
-SP1ZkVerifier(gateway, vkey)
+SP1ZkVerifier(verifier, vkey)
   → ClockBoundVerifier(SP1ZkVerifier, maxWindowMs, clockSkewMs, anchorTimeoutMs)
   → DarkPerpSettlement(Config{ sequencer, enclaveSigner, verifier = clock, genesisRoot,
         livenessTimeoutBlocks, challengeGraceBlocks, challengeBond, inclusionDeadlineSecs,
@@ -124,11 +141,17 @@ settleBatch(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejec
 `publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot,
 rejectedRoot, depositsRoot)` is the base commitment. `ClockBoundVerifier` binds it to the
 receipt registered for the window, and that bound value must equal the 32-byte
-`public_values` from step 4; the SP1 gateway must accept `proof_bytes` under the pinned
+`public_values` from step 4; the SP1 verifier must accept `proof_bytes` under the pinned
 `vkey`. On success the derived commitment is now enforced on-chain by real ZK.
 
 ## Notes / gotchas
 - Proving latency + resources set the L1 settle cadence.
+- **Engine rule changes.** A build that changes what an op means (the audit 2026-11-16
+  PC-1/PC-2 fixes do) also changes the program key, and a window the earlier build
+  has not settled would be proven under the new meaning. Settle every window with the
+  earlier build before switching (`docs/FINAL_SETTLE_RUNBOOK.md`, § Upgrading across
+  an engine rule change); the gateway refuses to restore a snapshot whose open window
+  does not replay under its own rules.
 - **Slice 2 (not done):** the gateway still publishes the CUMULATIVE `withdrawalsRoot`
   over `pending_withdrawals` and aggregates multiple engine batches per L1 settle, while
   the circuit derives a PER-ENGINE-BATCH incremental root. For the on-chain
@@ -241,8 +264,64 @@ stake-refund sweep, the batch count, the clock binding, the settlement's batch
 count and phase, the prover's identity and, in production, the adapter's
 `programVKey()` (read once; the route is immutable). Between the seal and the
 register only local work remains: the body-size check against the limit read
-before the pause, and the sealed window's batch and phase against the settlement's.
-The register's own read and send are the only L1 round trips left in that budget.
+before the pause, the sealed window's batch and phase against the settlement's,
+and its operation times against the verifier's `maxWindowMs` and `clockSkewMs`
+(read once at boot). The register's own read and send are the only L1 round trips
+left in that budget. This holds while the open window is inside its cutoff (below).
+Past it no timed operation is admitted, so its last one stays put and the work
+before the pause is spent from the budget too: within one seal period of the
+cutoff the bond top-up and the stake-refund sweep, which wait for their receipts,
+are left to a later tick (`[l1] the open clock window is near its cutoff`); the
+reads the seal needs still run.
+
+**Keeping the window registrable.** A window registers only while its timed
+operations span at most `maxWindowMs` and its last one is within `clockSkewMs` of
+the block time. A slow or rate-limited L1 RPC must not break either bound:
+
+- The deposit scan reads L1 without the admission permit, so the pause never
+  waits for an RPC call; it takes the permit only to apply what it read, and drops
+  the read if admission closed meanwhile. It finds the next deposit block with
+  the vault's `depositBlock(id)`, one read instead of a search over blocks. A
+  dropped read is read again once admission reopens; three in a row with none
+  applied between them raise `deposit_reads_dropped`: the reads outlast the time
+  admission is open, nothing is credited meanwhile, and the oldest unconsumed
+  deposit's `livenessTimeoutBlocks` keeps running. Fix the RPC (a faster or
+  dedicated endpoint) before that budget runs low.
+- No HTTP request holds the permit across an L1 call, or across the deposit
+  scan's lock, either. The deposit permit, legacy route and confirmation
+  requests, the close-only withdrawal, the wind-down and the slash
+  acknowledgement do that work first and take the permit only to apply and
+  persist what they change; one whose L1 work finished after admission closed
+  answers `503` with `Retry-After` and changes nothing.
+- The open window stops admitting timed operations (ticks, orders, withdrawals)
+  once its first one is `maxWindowMs` less one seal period old, so a window whose
+  seals are skipped (a failed batch-count read, a stale challenge read, a failed
+  snapshot) stays inside `maxWindowMs`. Clients get `503 CLOCK_WINDOW_CLOSING`
+  meanwhile (`docs/API.md`); everything resumes in the next window. A window
+  whose seal is still skipped about `clockSkewMs` after the cutoff is past its
+  registration skew instead and is voided; no gateway setting avoids that.
+- After the pause, a window that can no longer register is logged
+  (`[clock] window N can no longer register when sealed`) and raises
+  `clock_registration_refused`. The post-seal preflight refuses such a window
+  as unregistrable: it is not rolled back (it would seal the same times again)
+  but journaled and handed to the recovery with nothing sent (§ Dead clock
+  window).
+- A `register` the verifier reverts is not waited for. Both a reverted gas
+  estimate (nothing was broadcast) and a mined transaction that reverted (cast
+  reports it as a success with `status` `0x0`; the gateway reads the receipt)
+  are logged with the verifier's error decoded (`InvalidTime`, `BadContext`,
+  `ReplacementForbidden`, `Unauthorized`, ...), raise
+  `clock_registration_refused`, and hand the window to the recovery at once.
+  An estimate that reverted with `BadContext`, which a load-balanced RPC whose
+  backend has not seen the previous settlement yet can answer, is first sent
+  again up to twice, 2 s apart, while the window can still register. The
+  recovery never sends a registration: it voids a timed window once a finalized
+  block's time is past the window's last operation plus `clockSkewMs`. On Base
+  the finalized head lags the latest block by many minutes, so admission stays
+  closed about that long; what the surfaced revert buys is the alert and its
+  reason at once, not a faster void. A send whose outcome is unknown (a timeout,
+  a lost receipt, a transport error) is logged and still waits for its finalized
+  anchor.
 
 ## Stale clock anchor: cancel
 
@@ -312,7 +391,11 @@ block time at one finalized block, then:
 
 **When a window can never settle.** Our anchor is not in the slot (it was
 cancelled, or none exists), and no transaction of ours can still put it there.
-One of these shows it:
+Besides a cancelled anchor and gateway clock drift, the usual cause is a window
+that could not register in time: its timed operations span more than
+`maxWindowMs`, it was sealed or sent more than `clockSkewMs` after its last one (a
+slow RPC or disk), or the verifier reverted its registration; the log and
+`clock_registration_refused` say which. One of these shows it:
 
 | Basis | Applies to | Rule at the finalized block |
 |---|---|---|

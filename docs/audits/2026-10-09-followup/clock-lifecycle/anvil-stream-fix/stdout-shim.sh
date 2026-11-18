@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /Users/huseyinarslan/.foundry/bin/anvil "$@" 2>&1
+exec /Users/<dev>/.foundry/bin/anvil "$@" 2>&1

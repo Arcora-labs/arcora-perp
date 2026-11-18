@@ -2,7 +2,7 @@ Vercel CLI 59.16.0 (Node.js 24.12.0)
 WARNING! Build output contains no "functions", "static", or "services" directory; the build may not have produced any deployable output.
 {
   "status": "ok",
-  "outputDir": "/Users/huseyinarslan/.codex/worktrees/arcora-warm-ui-20261007/arcora-perp/apps/labs-site/.vercel/output",
+  "outputDir": "/Users/<dev>/.codex/worktrees/arcora-warm-ui-20261007/arcora-perp/apps/labs-site/.vercel/output",
   "outputDirRelative": ".vercel/output",
   "target": "production",
   "message": "Build completed successfully.",

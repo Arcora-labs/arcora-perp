@@ -650,7 +650,7 @@ failures:
 
 test result: FAILED. 601 passed; 1 failed; 20 ignored; 0 measured; 0 filtered out; finished in 710.65s
 
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 36.28s
      Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
 error: test failed, to rerun pass `-p gateway --bin gateway`

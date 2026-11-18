@@ -1,5 +1,5 @@
 {
-  "actual_run": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/old_export/result.json",
+  "actual_run": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/local/old_export/result.json",
   "actual_stdout_sha256": "6ae8180f57b62a586d9cac49c60486fe99c7f666d783d81ddcc8f5acbb0eb2da",
   "file_count": 21,
   "files": {

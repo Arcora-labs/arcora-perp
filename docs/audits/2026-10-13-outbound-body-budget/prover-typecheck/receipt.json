@@ -3,7 +3,7 @@
   "captured_at": "2026-10-13T18:30:14.132242+00:00",
   "passed": true,
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "check",
     "--offline",
     "--locked",
@@ -18,44 +18,44 @@
   "timeout_seconds": 1800,
   "expected_source_sha256": "927f59e24220da93a52a21b7b3e1d1472859c885a33323d5891e9e23ef38fd9d",
   "root_source_freeze": {
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/source-freeze-final.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/source-freeze-final.json",
     "sha256": "be27b1ae971e095d59d92fae575951ff3677865cf286377ef318daa5bea0dc92",
     "bytes": 48062,
     "unchanged": true
   },
   "runner_sha256": "34f620d0a8d6032d3b8382695e7e57658742389b9c079c6392f72f1d1588bf99",
   "runner_adapted_from": {
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/run_prover_typecheck.py",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/run_prover_typecheck.py",
     "sha256": "a1bb3cf65651074bd874800642b81698fef128b2f96231352d77665c2aa56a1e"
   },
   "exact_toolchain_binary_no_rustup_sync": true,
   "prior_evidence_before": {
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/run_prover_typecheck.py": "be7fb3f867c6e9eb2ac5a5fd73b4a3d0933378ec6624a06621599ed4676319ec",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/receipt.json": "57f357f55fccb569a740592f04992a57c72688f2c180cb647df3e3d1de658475",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stderr.log": "a6141132aadeb0854e1f159b70cc240ef12f3d6048591d570ffd297a1f01cfef",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/run_prover_typecheck_v3.py": "03f98e8aedf8b03199667be072ba12b5731274ef2937409a3b521d69f5b5dc43",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/receipt.json": "18fca940d0a4ea24abff9a6eb2c020714f657ccfb890a681b9b374cd00c4527e",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stderr.log": "4b148e1df2d13435378939e6a0b9b960ca271c559984a66b68b65b9edfb52bd3",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/run_prover_typecheck.py": "a1bb3cf65651074bd874800642b81698fef128b2f96231352d77665c2aa56a1e",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/receipt.json": "b8f187facf65e535d8fcf4dca63501f9bb08a3713a9c81d7f8facc695761b2d1",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stderr.log": "9df5abe8ebd629de49ec3aa56035a41e9c4894bca63979a50e4137f69bff3d55"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/run_prover_typecheck.py": "be7fb3f867c6e9eb2ac5a5fd73b4a3d0933378ec6624a06621599ed4676319ec",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/receipt.json": "57f357f55fccb569a740592f04992a57c72688f2c180cb647df3e3d1de658475",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stderr.log": "a6141132aadeb0854e1f159b70cc240ef12f3d6048591d570ffd297a1f01cfef",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/run_prover_typecheck_v3.py": "03f98e8aedf8b03199667be072ba12b5731274ef2937409a3b521d69f5b5dc43",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/receipt.json": "18fca940d0a4ea24abff9a6eb2c020714f657ccfb890a681b9b374cd00c4527e",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stderr.log": "4b148e1df2d13435378939e6a0b9b960ca271c559984a66b68b65b9edfb52bd3",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/run_prover_typecheck.py": "a1bb3cf65651074bd874800642b81698fef128b2f96231352d77665c2aa56a1e",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/receipt.json": "b8f187facf65e535d8fcf4dca63501f9bb08a3713a9c81d7f8facc695761b2d1",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stderr.log": "9df5abe8ebd629de49ec3aa56035a41e9c4894bca63979a50e4137f69bff3d55"
   },
   "prior_evidence_after": {
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/run_prover_typecheck.py": "be7fb3f867c6e9eb2ac5a5fd73b4a3d0933378ec6624a06621599ed4676319ec",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/receipt.json": "57f357f55fccb569a740592f04992a57c72688f2c180cb647df3e3d1de658475",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stderr.log": "a6141132aadeb0854e1f159b70cc240ef12f3d6048591d570ffd297a1f01cfef",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/run_prover_typecheck_v3.py": "03f98e8aedf8b03199667be072ba12b5731274ef2937409a3b521d69f5b5dc43",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/receipt.json": "18fca940d0a4ea24abff9a6eb2c020714f657ccfb890a681b9b374cd00c4527e",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stderr.log": "4b148e1df2d13435378939e6a0b9b960ca271c559984a66b68b65b9edfb52bd3",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/run_prover_typecheck.py": "a1bb3cf65651074bd874800642b81698fef128b2f96231352d77665c2aa56a1e",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/receipt.json": "b8f187facf65e535d8fcf4dca63501f9bb08a3713a9c81d7f8facc695761b2d1",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stderr.log": "9df5abe8ebd629de49ec3aa56035a41e9c4894bca63979a50e4137f69bff3d55"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/run_prover_typecheck.py": "be7fb3f867c6e9eb2ac5a5fd73b4a3d0933378ec6624a06621599ed4676319ec",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/receipt.json": "57f357f55fccb569a740592f04992a57c72688f2c180cb647df3e3d1de658475",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/stderr.log": "a6141132aadeb0854e1f159b70cc240ef12f3d6048591d570ffd297a1f01cfef",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/run_prover_typecheck_v3.py": "03f98e8aedf8b03199667be072ba12b5731274ef2937409a3b521d69f5b5dc43",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/receipt.json": "18fca940d0a4ea24abff9a6eb2c020714f657ccfb890a681b9b374cd00c4527e",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/stderr.log": "4b148e1df2d13435378939e6a0b9b960ca271c559984a66b68b65b9edfb52bd3",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/run_prover_typecheck.py": "a1bb3cf65651074bd874800642b81698fef128b2f96231352d77665c2aa56a1e",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/receipt.json": "b8f187facf65e535d8fcf4dca63501f9bb08a3713a9c81d7f8facc695761b2d1",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/service-base-validation-20261013/prover-typecheck-final/stderr.log": "9df5abe8ebd629de49ec3aa56035a41e9c4894bca63979a50e4137f69bff3d55"
   },
   "prior_evidence_unchanged": true,
   "toolchain": {
@@ -65,23 +65,23 @@
     "protoc": "libprotoc 29.3"
   },
   "explicit_env_whitelist": {
-    "RUSTC": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "RUSTC": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "RUSTUP_TOOLCHAIN": "1.99.0",
-    "CARGO_HOME": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-home",
-    "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target",
+    "CARGO_HOME": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-home",
+    "CARGO_TARGET_DIR": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target",
     "CARGO_BUILD_JOBS": "2",
     "CARGO_INCREMENTAL": "0",
     "CARGO_NET_OFFLINE": "true",
     "SP1_SKIP_PROGRAM_BUILD": "true",
-    "SP1_CORE_RUNNER_OVERRIDE_BINARY": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/sp1-native-runner-existing",
-    "PROTOC": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/protoc",
-    "PROTOC_INCLUDE": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/include",
+    "SP1_CORE_RUNNER_OVERRIDE_BINARY": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/sp1-native-runner-existing",
+    "PROTOC": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/protoc",
+    "PROTOC_INCLUDE": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/include",
     "PYTHONDONTWRITEBYTECODE": "1"
   },
   "path_prefix_only": [
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/python-bin",
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/python-bin",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools"
   ],
   "source_before": {
     "covered_source_files": 378,
@@ -557,7 +557,7 @@
     "candidate_vkey_metadata_only": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
     "reviewed_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
     "skipped_build_include_elf": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
       "bytes": 525824,
       "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
     }
@@ -1036,7 +1036,7 @@
     "candidate_vkey_metadata_only": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
     "reviewed_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
     "skipped_build_include_elf": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
       "bytes": 525824,
       "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
     }

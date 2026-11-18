@@ -73,8 +73,9 @@ impl ProverClient for ClockProverClient {
             .map(Some)
     }
     /// After the seal only local work remains: the prover's request-size check,
-    /// with the limit read before the seal, and the sealed window's batch and
-    /// phase against the settlement's. A timed window must register within
+    /// with the limit read before the seal, the sealed window's batch and phase
+    /// against the settlement's, and its operation times against the verifier's
+    /// timing policy (audit G2-2). A timed window must register within
     /// `clockSkewMs` of its last operation, so no L1 or prover read happens here.
     fn preflight(
         &self,
@@ -88,7 +89,8 @@ impl ProverClient for ClockProverClient {
             )
         })?;
         self.inner.preflight(w, phase, Some(pre))?;
-        pre.admit(w.batch_id, phase)
+        pre.admit(w.batch_id, phase)?;
+        pre.admit_times(w, crate::now_ms())
     }
 }
 
@@ -133,10 +135,13 @@ impl ClockProverClient {
             .l1
             .clock_register_state()
             .map_err(PreflightRefusal::Refused)?;
+        // Read at boot and kept: no further read here.
+        let timing = self.l1.clock_timing().map_err(PreflightRefusal::Refused)?;
         Ok(RegisterPreconditions {
             batch_count,
             phase,
             prover_body_bytes: identity.map(|i| i.body_bytes),
+            timing,
         })
     }
 }
@@ -434,6 +439,10 @@ mod tests {
             batch_count,
             phase,
             prover_body_bytes: None,
+            timing: crate::l1::ClockTiming {
+                max_window_ms: 30_000,
+                clock_skew_ms: 30_000,
+            },
         };
         client.preflight(&w, 0, Some(&pre(w.batch_id, 0))).unwrap();
         assert!(matches!(

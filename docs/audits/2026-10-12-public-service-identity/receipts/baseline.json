@@ -2800,7 +2800,7 @@
   "external": [
     {
       "name": "primary",
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "path": "/Users/<dev>/Desktop/arcora-perp/repo",
       "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
       "status": " M crates/chainlink-streams-client/src/lib.rs\n M crates/chainlink-streams-client/src/transport_tests.rs\n M docs/ACTIVE_WORK.md\n M docs/CHAINLINK_STREAMS_CLIENT.md\n?? crates/chainlink-streams-client/src/report_archive.rs\n?? crates/chainlink-streams-client/src/report_archive_tests.rs\n?? crates/chainlink-streams-client/src/report_pair.rs\n?? docs/CHAINLINK_REPORT_ARCHIVE.md\n?? docs/audits/2026-10-10-chainlink-report-archive/README.md\n?? docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt\n?? docs/audits/2026-10-10-chainlink-report-archive/client-release.txt\n?? docs/audits/2026-10-10-chainlink-report-archive/publication-state.json\n?? docs/audits/2026-10-10-chainlink-report-archive/verification.json\n",
       "dirty_count": 13,
@@ -2823,7 +2823,7 @@
     },
     {
       "name": "kimi",
-      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "path": "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
       "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
       "status": "M  docs/ACTIVE_WORK.md\nM  docs/CHAINLINK_REPORT_ARCHIVE.md\nM  docs/CHAINLINK_STREAMS_CLIENT.md\nM  docs/audits/2026-10-11-chainlink-archive-gateway-binding/README.md\nA  docs/audits/2026-10-11-chainlink-archive-gateway-binding/evidence-recheck.json\nA  docs/audits/2026-10-11-chainlink-archive-gateway-binding/final-verification.json\nA  docs/audits/2026-10-11-chainlink-archive-gateway-binding/historical-notes.md\n",
       "dirty_count": 7,
@@ -2840,7 +2840,7 @@
     },
     {
       "name": "dark",
-      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "path": "/Users/<dev>/Desktop/Projeler/Dark Perp/dark-perp",
       "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
       "status": " M crates/gateway/src/deposit_ingestion.rs\n M crates/gateway/src/deposit_ingestion/tests.rs\n M crates/gateway/src/execution_regression_tests.rs\n M crates/gateway/src/l1.rs\n M crates/gateway/src/main.rs\n M crates/gateway/src/snapshot.rs\n M crates/perp-core/tests/lifecycle.rs\n M frontend/src/api/client.ts\n M frontend/src/api/realClient.test.ts\n M frontend/src/api/realClient.ts\n M frontend/src/components/RecoveryPanel.test.tsx\n M frontend/src/components/RecoveryPanel.tsx\n?? RobinX-Game-v0.1.zip\n?? codex-session-01a0b067-e313-72b1-98be-46f653d0344c.md\n?? crates/gateway/src/wind_down.rs\n?? docs/audits/2026-09-24-evidence/a01-loopback.log\n?? docs/audits/2026-09-24-evidence/build.log\n?? docs/audits/2026-09-24-evidence/checks.json\n?? docs/audits/2026-09-24-evidence/ci-pipeline.txt\n?? docs/audits/2026-09-24-evidence/clippy.log\n?? docs/audits/2026-09-24-evidence/forge.log\n?? docs/audits/2026-09-24-evidence/frontend-repro.log\n?? docs/audits/2026-09-24-evidence/frontend-repro.test.ts.txt\n?? docs/audits/2026-09-24-evidence/frontend.log\n?? docs/audits/2026-09-24-evidence/gateway-repro.log\n?? docs/audits/2026-09-24-evidence/gateway-repros.patch\n?? docs/audits/2026-09-24-evidence/graph-check.txt\n?? docs/audits/2026-09-24-evidence/graph-contract.json\n?? docs/audits/2026-09-24-evidence/graph-release-report.json\n?? docs/audits/2026-09-24-evidence/main-ci-jobs.json\n?? docs/audits/2026-09-24-evidence/main-ci.json\n?? docs/audits/2026-09-24-evidence/manifest.json\n?? docs/audits/2026-09-24-evidence/npm-audit.json\n?? docs/audits/2026-09-24-evidence/npm-prod-audit.json\n?? docs/audits/2026-09-24-evidence/pr18-ci.json\n?? docs/audits/2026-09-24-evidence/profile-probe.log\n?? docs/audits/2026-09-24-evidence/profile-probe.rs.txt\n?? docs/audits/2026-09-24-evidence/public-smoke.json\n?? docs/audits/2026-09-24-evidence/remaining-test-discovery.json\n?? docs/audits/2026-09-24-evidence/rust-audit.json\n?? docs/audits/2026-09-24-evidence/rust.log\n?? docs/audits/2026-09-24-fresh-audit.md\n?? docs/audits/2026-09-24-remediation-evidence/build.log\n?? docs/audits/2026-09-24-remediation-evidence/clippy-final.log\n?? docs/audits/2026-09-24-remediation-evidence/clippy.log\n?? docs/audits/2026-09-24-remediation-evidence/contracts-emergency.log\n?? docs/audits/2026-09-24-remediation-evidence/fmt.log\n?? docs/audits/2026-09-24-remediation-evidence/format-result.json\n?? docs/audits/2026-09-24-remediation-evidence/frontend.log\n?? docs/audits/2026-09-24-remediation-evidence/gateway-final.log\n?? docs/audits/2026-09-24-remediation-evidence/gateway.log\n?? docs/audits/2026-09-24-remediation-evidence/graph-check.txt\n?? docs/audits/2026-09-24-remediation-evidence/graph-contract.json\n?? docs/audits/2026-09-24-remediation-evidence/graph-report.json\n?? docs/audits/2026-09-24-remediation-evidence/insolvency.log\n?? docs/audits/2026-09-24-remediation-evidence/manifest.json\n?? docs/audits/2026-09-24-remediation-evidence/review.txt\n?? docs/audits/2026-09-24-remediation-evidence/source-identity.json\n?? docs/audits/2026-09-24-remediation-evidence/wind-down.log\n?? docs/audits/2026-09-24-remediation.md\n?? frontend/src/api/accountLifecycle.test.ts\n?? kimi-seeklogo-small.png\n",
       "dirty_count": 62,

@@ -4,7 +4,7 @@ from hashlib import sha256
 import os,sys,json,subprocess,time,re
 repo=Path(__file__).resolve().parents[2];out=Path(__file__).resolve().parent
 name=sys.argv[1]
-toolchain=Path('/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin')
+toolchain=Path('/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin')
 commands={'client':['test','--locked','--offline','-p','gateway','--bin','gateway','prover_client::','--','--nocapture'],'http':['test','--locked','--offline','-p','gateway','--bin','gateway','http_transport_tests::','--','--nocapture'],'clippy':['clippy','--locked','--offline','-p','gateway','--bin','gateway','--all-targets','--','-D','warnings'],'format':['fmt','--all','--check'],'cpu':['test','--locked','--offline','-p','gateway','--bin','gateway','prover_client::request_body_tests::real_small_witness_paired_encoding_cpu_observation','--','--exact','--nocapture','--test-threads=1']}
 command=[str(toolchain/'cargo'),*commands[name]]
 env=os.environ.copy();env.update(PATH=str(out/'python-bin')+':'+str(toolchain)+':'+env['PATH'],RUSTC=str(toolchain/'rustc'),CARGO_BUILD_JOBS='2')

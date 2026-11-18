@@ -6,7 +6,8 @@
 //! The settle loop refuses to seal while this tick's read failed (or no read is
 //! fresh), so the gateway never makes progress while blind to challenges. An
 //! open hash that no settled batch can prove does not hold settlement; it raises
-//! an operator alert instead.
+//! an operator alert instead. One the gateway does not know at all is declared
+//! rejected in the open window (`challenge_rejections`, audit GF-2).
 use crate::l1::{ChallengeAnswer, OpenChallenge, OpenSetRead};
 use perp_core::hash::Digest;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -113,6 +114,12 @@ pub(crate) struct AnswerPlan {
     /// Open hashes whose including batch has not settled yet (or whose stored
     /// details have not been read yet).
     pub awaiting: usize,
+    /// Every open hash no retained settled batch holds: the unanswerable and the
+    /// awaiting ones, in open-set order.
+    pub unlocated: Vec<Digest>,
+    /// The unlocated hashes the gateway declared rejected this round, because it
+    /// does not know them (`Gw::plan_challenge_round`, audit GF-2).
+    pub declared: Vec<Digest>,
 }
 
 /// Watcher state kept across ticks. Only derived data: a restart rebuilds it.
@@ -121,12 +128,23 @@ pub(crate) struct Watcher {
     index: AnswerIndex,
     details: BTreeMap<Digest, OpenChallenge>,
     open: Vec<Digest>,
+    batch_count: u64,
 }
 
 impl Watcher {
     /// Hashes whose stored details are already known.
     pub(crate) fn known(&self) -> BTreeSet<Digest> {
         self.details.keys().copied().collect()
+    }
+
+    /// The open set of the latest read.
+    pub(crate) fn open(&self) -> &[Digest] {
+        &self.open
+    }
+
+    /// The settlement's `batchCount` at the block of the latest read.
+    pub(crate) fn batch_count(&self) -> u64 {
+        self.batch_count
     }
 
     /// Fold one open-set read in. Details of hashes that left the set are dropped.
@@ -139,6 +157,7 @@ impl Watcher {
             }
         }
         self.open = read.hashes;
+        self.batch_count = read.batch_count;
     }
 
     /// Plan the answers for the current open set from the retained batches.
@@ -157,6 +176,7 @@ impl Watcher {
                     .push((*hash, by_rejection, index));
                 continue;
             }
+            plan.unlocated.push(*hash);
             let settled_past = self
                 .details
                 .get(hash)
@@ -336,6 +356,7 @@ mod tests {
         let plan = w.plan(&orders);
         assert!(plan.unanswerable.is_empty());
         assert_eq!(plan.awaiting, 0);
+        assert!(plan.unlocated.is_empty());
         assert_eq!(plan.sends.len(), 2);
         let (batch, answers) = &plan.sends[0];
         assert_eq!(*batch, 4);
@@ -384,6 +405,9 @@ mod tests {
         assert!(plan.sends.is_empty());
         assert_eq!(plan.unanswerable, vec![h(9)]);
         assert_eq!(plan.awaiting, 2);
+        assert_eq!(plan.unlocated, vec![h(9), h(8), h(7)]);
+        assert_eq!(w.open(), &[h(9), h(8), h(7)]);
+        assert_eq!(w.batch_count(), 3);
         // Batch 1 settles without hash 8, so it is unanswerable too.
         orders.insert(1, (vec![h(2)], vec![]));
         let plan = w.plan(&orders);

@@ -19,15 +19,15 @@ test_semantic_input_change_during_comparison_refuses (test_service_identity_pref
 ERROR: test_file_change_before_publication_writes_blocked (test_service_identity_preflight.PreflightTests.test_file_change_before_publication_writes_blocked)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_service_identity_preflight.py", line 197, in test_file_change_before_publication_writes_blocked
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_service_identity_preflight.py", line 197, in test_file_change_before_publication_writes_blocked
     self.assertEqual(preflight.run_files(*paths, output)['status'], 'BLOCKED')
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 194, in run_files
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 194, in run_files
     output = public_path(output)
              ^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 172, in public_path
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 172, in public_path
     require(not any(item.is_symlink() for item in (path, *path.parents)))
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 26, in require
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 26, in require
     raise ValueError("public service declarations refused")
 ValueError: public service declarations refused
 
@@ -35,15 +35,15 @@ ValueError: public service declarations refused
 ERROR: test_offline_public_files_match_and_output_never_clobbered (test_service_identity_preflight.PreflightTests.test_offline_public_files_match_and_output_never_clobbered)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_service_identity_preflight.py", line 182, in test_offline_public_files_match_and_output_never_clobbered
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_service_identity_preflight.py", line 182, in test_offline_public_files_match_and_output_never_clobbered
     self.assertEqual(preflight.run_files(*paths, output)["status"], "DECLARATIONS_MATCH")
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 194, in run_files
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 194, in run_files
     output = public_path(output)
              ^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 172, in public_path
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 172, in public_path
     require(not any(item.is_symlink() for item in (path, *path.parents)))
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 26, in require
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service_identity_preflight.py", line 26, in require
     raise ValueError("public service declarations refused")
 ValueError: public service declarations refused
 

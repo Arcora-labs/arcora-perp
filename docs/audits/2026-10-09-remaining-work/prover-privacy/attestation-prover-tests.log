@@ -19,14 +19,14 @@
    Compiling postcard v1.1.3
    Compiling elliptic-curve v0.13.8
    Compiling ecdsa v0.16.9
-   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/vendor/dcap-qvl-webpki)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/<dev>/Desktop/arcora-perp/repo/vendor/dcap-qvl-webpki)
    Compiling k256 v0.13.4
    Compiling js-sys v0.3.103
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
-   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+   Compiling perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/perp-core)
+   Compiling prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/prover)
    Compiling wasm-bindgen-futures v0.4.76
    Compiling dcap-qvl v0.5.2
-   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/attestation)
+   Compiling dark-perp-attestation v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/attestation)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 21.40s
      Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-c79ffe16c4a0d7a5)
 

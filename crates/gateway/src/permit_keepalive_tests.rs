@@ -119,7 +119,7 @@ mod permit_keepalive {
         .unwrap()
     }
     fn permit_request(key: &[u8; 32], reuse: Option<&str>) -> Request<Body> {
-        let mut body = serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "10000000",
+        let mut body = serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "100000000",
             "marketId": 0, "purpose": "collateral"});
         if let Some(reuse) = reuse {
             body["reuseOwnerCommit"] = serde_json::json!(reuse);
@@ -174,7 +174,7 @@ mod permit_keepalive {
         assert_eq!(
             recover_eth_address(
                 &app.gateway_signer
-                    .digest(&[0x42; 20], &commit, 10_000_000, until),
+                    .digest(&[0x42; 20], &commit, 100_000_000, until),
                 &sig
             ),
             Some(app.gateway_signer.address())
@@ -261,7 +261,7 @@ mod permit_keepalive {
         let new_key = SigningKey::from_slice(&[0x32; 32]).unwrap();
         let (old, new) = (eth_address(&old_key), eth_address(&new_key));
         let sign = |k: &SigningKey, d: &[u8; 32]| {
-            let (sig, recid) = k.sign_prehash_recoverable(d).unwrap();
+            let (sig, recid) = k.sign_prehash_recoverable(d);
             let mut out = [0u8; 65];
             out[..64].copy_from_slice(&sig.to_bytes());
             out[64] = 27 + recid.to_byte();

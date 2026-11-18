@@ -36,7 +36,6 @@ impl ClockAdmission {
         if !self.enabled {
             return Ok(None);
         }
-        const BUSY: &str = "clock settlement in progress; retry after finality";
         if self.closed.load(Ordering::Acquire) {
             return Err(BUSY);
         }
@@ -67,6 +66,67 @@ impl ClockAdmission {
     }
 }
 
+/// The refusal of every admission while a clock window owns the exclusive permit.
+pub(crate) const BUSY: &str = "clock settlement in progress; retry after finality";
+
+/// The answer to a request refused while admission is closed: 503 with
+/// `Retry-After`, a polling hint (a settlement takes as long as it takes).
+pub(crate) fn closed_response(error: &str) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    (
+        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        [(axum::http::header::RETRY_AFTER, "2")],
+        axum::Json(serde_json::json!({ "error": error })),
+    )
+        .into_response()
+}
+
+/// Prefix of the refusal of a timed operation while the open window is closing
+/// (`WindowBound`). The HTTP layer answers it 503 with `Retry-After`.
+pub(crate) const WINDOW_CLOSING: &str = "CLOCK_WINDOW_CLOSING";
+
+/// When the open clock window stops admitting timed operations (audit G2-2).
+///
+/// The verifier refuses to register a window whose timed operations span more
+/// than `maxWindowMs`. Only the settle loop's seal bounds the open window, and
+/// several conditions skip a seal (a failed batch-count read, a stale challenge
+/// read, a failed snapshot) while ticks go on adding timed funding operations, so
+/// the window is bounded here instead: once its first timed operation is
+/// `cutoff_ms` old, no further timed operation (a tick's fills, funding and
+/// liquidations, an order, a withdrawal) is admitted until it is sealed. The
+/// cutoff leaves one seal period of `maxWindowMs`, so the next seal finds the
+/// window inside the bound and its last timed operation at most a seal period
+/// before the registration that follows. Runtime policy, read from the verifier
+/// at boot; demo and legacy modes have none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct WindowBound {
+    pub timing: crate::l1::ClockTiming,
+    /// No timed operation is admitted once the window's first one is this old.
+    pub cutoff_ms: u64,
+    /// The settle loop's seal period.
+    pub seal_period_ms: u64,
+}
+impl WindowBound {
+    pub(crate) fn new(timing: crate::l1::ClockTiming, seal_period: std::time::Duration) -> Self {
+        let period = u64::try_from(seal_period.as_millis()).unwrap_or(u64::MAX);
+        Self {
+            timing,
+            cutoff_ms: timing.max_window_ms.saturating_sub(period),
+            seal_period_ms: period,
+        }
+    }
+    /// Whether a window whose first timed operation is at `first_ms` stops
+    /// admitting timed operations at `now_ms`.
+    pub(crate) fn closing(&self, first_ms: u64, now_ms: u64) -> bool {
+        now_ms.saturating_sub(first_ms) >= self.cutoff_ms
+    }
+    /// Whether that window is within one seal period of `closing`. A window is
+    /// sealed every seal period, so only one whose seals were skipped gets here.
+    pub(crate) fn near_closing(&self, first_ms: u64, now_ms: u64) -> bool {
+        now_ms.saturating_sub(first_ms) >= self.cutoff_ms.saturating_sub(self.seal_period_ms)
+    }
+}
+
 pub(crate) struct Paused {
     owner: Arc<ClockAdmission>,
     _permit: OwnedRwLockWriteGuard<()>,
@@ -89,12 +149,38 @@ impl Drop for Paused {
     }
 }
 
+/// Mutating routes the HTTP gate admits without holding the permit (audit G2-1).
+/// Each reads L1, or waits for a lock held across L1 reads, before it changes
+/// anything. The settle loop's pause closes admission and then waits for every
+/// permit, so a permit held across that wait would make the seal wait for a slow
+/// or rate-limited RPC while the open window's registration budget runs out.
+/// They are still refused while admission is closed, and each takes the permit
+/// itself after its L1 work, only for what it changes and makes durable, and
+/// answers 503 with `Retry-After` if admission closed meanwhile.
+fn admitted_without_permit(path: &str) -> bool {
+    matches!(
+        path,
+        // The deposit scan (`deposit_ingestion::ingest_once`).
+        "/v1/accounts/deposit/onchain"
+            | "/v1/admin/insurance/bootstrap"
+            // Waits for the deposit lock the scan holds across its reads.
+            | "/v1/accounts/deposit/route"
+            // Reads the settlement's deposit terms at the latest block.
+            | "/v1/accounts/deposit/authorize"
+            // Reads the L1 wind-down phase in close-only.
+            | "/v1/accounts/withdraw"
+            // Reads L1 close-only and, for the rebase, the finalized settled state.
+            | "/v1/admin/wind-down"
+            // Reads `slashCount()`; changes nothing a window holds.
+            | "/v1/admin/bond/acknowledge-slash"
+    )
+}
+
 pub(crate) async fn http_gate(
     axum::extract::State(app): axum::extract::State<crate::Shared>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    use axum::response::IntoResponse;
     let readonly = matches!(
         *request.method(),
         axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
@@ -106,19 +192,14 @@ pub(crate) async fn http_gate(
         request.uri().path(),
         "/v1/admin/settlement/resume" | "/v1/admin/settlement/cancel-anchor"
     );
+    let late = admitted_without_permit(request.uri().path());
     let _permit = if readonly || recovery {
         None
     } else {
         match app.clock_admission.enter() {
+            Ok(_) if late => None,
             Ok(p) => p,
-            Err(error) => {
-                return (
-                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                    [(axum::http::header::RETRY_AFTER, "2")],
-                    axum::Json(serde_json::json!({"error": error})),
-                )
-                    .into_response()
-            }
+            Err(error) => return closed_response(error),
         }
     };
     next.run(request).await

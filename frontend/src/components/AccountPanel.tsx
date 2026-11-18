@@ -4,7 +4,13 @@ import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { RefundableDeposit, TrackedOrder, WithdrawalEntry } from "../domain/types";
 import { validateWithdrawal } from "../domain/withdrawal";
-import { depositMinimumError, marketFreeBalance, withdrawalMinimumError } from "../domain/minimums";
+import {
+  depositMinimumError,
+  depositOpensEntry,
+  marketFreeBalance,
+  withdrawalEntryBalanceError,
+  withdrawalMinimumError,
+} from "../domain/minimums";
 import { validateRefund } from "../domain/refund";
 import {
   buildClaimBundle,
@@ -158,8 +164,18 @@ export function AccountPanel() {
     if (kind === "withdraw") {
       // The gateway exempts a request for the selected market's whole free
       // balance, not the account-wide one.
-      const tooSmall = withdrawalMinimumError(v, marketFreeBalance(state.account, state.selectedMarketId));
+      const marketFree = marketFreeBalance(state.account, state.selectedMarketId);
+      const tooSmall = withdrawalMinimumError(v, marketFree);
       if (tooSmall) return setErr(tooSmall);
+      // A per-market source is the gateway, which keeps the 100 USDC entry
+      // minimum outside close-only (the demo mock has no entries).
+      if (state.account.marketFree !== undefined && state.mode !== "CloseOnly") {
+        const open = state.account.positions.some(
+          (p) => p.marketId === state.selectedMarketId && p.size !== 0n,
+        );
+        const leavesDust = withdrawalEntryBalanceError(v, marketFree, open);
+        if (leavesDust) return setErr(leavesDust);
+      }
     }
     setBusy(kind);
     try {
@@ -203,13 +219,22 @@ export function AccountPanel() {
         </p>
       )}
 
-      {walletCapable && <WalletDepositCard client={client as DarkPerpClient & WalletDepositClient} />}
+      {walletCapable && (
+        <WalletDepositCard
+          client={client as DarkPerpClient & WalletDepositClient}
+          opensEntry={depositOpensEntry(state.account, state.selectedMarketId)}
+        />
+      )}
 
       <label className="field">
         <span className="field__label">Amount (USD)</span>
         <input className="field__input" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
       </label>
-      <p className="muted small">Minimum withdrawal: 1 USDC, unless you withdraw your entire free balance in the selected market.</p>
+      <p className="muted small">
+        Minimum withdrawal: 10 USDC, unless you withdraw your entire free balance in the selected market.
+        {state.account.marketFree !== undefined &&
+          " A withdrawal leaves at least 100 USDC in the market, unless it takes its entire balance with no open position."}
+      </p>
       {authCapable && auth !== undefined && (
         auth.callerSigned ? (
           <p className="muted small">
@@ -287,7 +312,9 @@ const STEP_COLOR: Record<StepStatus, string> = {
 
 /** Wallet prompts retain one immutable account/deployment/market/amount intent.
  * Progress is journaled before sending; retries only resume known hashes. */
-export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
+/// `opensEntry`: the deposit may open a position entry in the selected market
+/// (`depositOpensEntry`), so its minimum is the 100 USDC entry minimum.
+export function WalletDepositCard({ client, opensEntry = false }: { client: WalletDepositClient; opensEntry?: boolean }) {
   const address = useWalletAddress();
   const [amount, setAmount] = useState("1000");
   const [steps, setSteps] = useState<Record<StepId, StepStatus>>(idleSteps);
@@ -348,7 +375,7 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
     if (v === null || v <= 0n) return setErr("Enter a valid amount.");
     // A resumed deposit already holds its permit; only a new one meets the minimum.
     if (!original) {
-      const tooSmall = depositMinimumError(v);
+      const tooSmall = depositMinimumError(v, opensEntry);
       if (tooSmall) return setErr(tooSmall);
     }
     active.current = true;
@@ -412,7 +439,11 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
               disabled={running || !!original}
             />
           </label>
-          <p className="muted small">Minimum deposit: 10 USDC.</p>
+          <p className="muted small">
+            {opensEntry
+              ? "Minimum deposit: 100 USDC to open this market (10 USDC to top up a market holding at least 100 USDC or an open position)."
+              : "Minimum deposit: 10 USDC."}
+          </p>
           {!statusOnly && <button type="button" className="btn btn--ghost" onClick={run} disabled={running || !!issue}>
             {running ? "Working…" : original ? "Resume original deposit" : "Deposit"}
           </button>}

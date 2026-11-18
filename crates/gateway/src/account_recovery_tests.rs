@@ -6,7 +6,7 @@ use k256::ecdsa::SigningKey;
 fn prepared() -> (Gw, [u8; 32], PubKey, SigningKey, [u8; 20]) {
     let mut gw = Gw::boot_with(GenesisMode::Production);
     let sk = SigningKey::from_bytes((&[7u8; 32]).into()).unwrap();
-    let public = sk.verifying_key().to_encoded_point(false);
+    let public = sk.verifying_key().to_sec1_point(false);
     let hash = <RawKeccak as sha3::Digest>::digest(&public.as_bytes()[1..]);
     let payer: [u8; 20] = hash[12..].try_into().unwrap();
     let (key, owner) = gw.register_account(Some(payer));
@@ -16,7 +16,7 @@ fn prepared() -> (Gw, [u8; 32], PubKey, SigningKey, [u8; 20]) {
 
 fn signature(gw: &Gw, sk: &SigningKey, owner: &PubKey, nonce: u64) -> [u8; 65] {
     let d = digest(gw.chain_id, &gw.vault, owner, nonce);
-    let (sig, recovery) = sk.sign_prehash_recoverable(&d).unwrap();
+    let (sig, recovery) = sk.sign_prehash_recoverable(&d);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = recovery.to_byte() + 27;
@@ -191,7 +191,7 @@ async fn a07_rotation_preserves_ingested_receipts_prefix_and_proof_replay() {
 }
 
 fn local_sign(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-    let (sig, recovery) = sk.sign_prehash_recoverable(digest).unwrap();
+    let (sig, recovery) = sk.sign_prehash_recoverable(digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = recovery.to_byte() + 27;
@@ -199,7 +199,7 @@ fn local_sign(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
 }
 
 fn local_address(sk: &SigningKey) -> [u8; 20] {
-    let public = sk.verifying_key().to_encoded_point(false);
+    let public = sk.verifying_key().to_sec1_point(false);
     let hash = <RawKeccak as sha3::Digest>::digest(&public.as_bytes()[1..]);
     hash[12..].try_into().unwrap()
 }

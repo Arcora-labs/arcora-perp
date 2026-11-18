@@ -14,7 +14,7 @@ tekrarlanabilir hâle getirir.
 | Dosya | Görev |
 |---|---|
 | `systemd/darkperp-gateway.service` | Gateway. `darkperp` kullanıcısıyla, `127.0.0.1:8080`'de, `/var/lib/darkperp/state.snap` durumuyla çalışır. Sertleştirilmiştir. 10 dakikada 5 başarısız başlatmadan sonra alarm verir. |
-| `systemd/darkperp-backup.{service,timer}` | 30 dakikada bir tutarlı snapshot ve journal yedeği alır ([gateway_backup.py](../scripts/ops/gateway_backup.py)). İsteğe bağlı olarak rsync ile başka makineye kopyalar. |
+| `systemd/darkperp-backup.{service,timer}` | 30 dakikada bir tutarlı snapshot ve journal yedeği alır, emir geçmişi yan kayıtlarını (`<state>.orderlog`, `<state>.batches`) da ekler ([gateway_backup.py](../scripts/ops/gateway_backup.py)). İsteğe bağlı olarak rsync ile başka makineye kopyalar. |
 | `systemd/darkperp-monitor.{service,timer}` | Dakikada bir public sağlık okuması yapar ([gateway_monitor.py](../scripts/ops/gateway_monitor.py)). Ayarlıysa settlement kontratını L1'den doğrudan da okur. |
 | `systemd/darkperp-notify@.service` | `OnFailure=` kancası. Tek seferlik, redakte edilmiş olay gönderir ([ops_notify.py](../scripts/ops/ops_notify.py)). |
 | `env/gateway.env.example`, `env/ops.env.example` | Yalnız değişken adları. Değerler sunucuda doldurulur, git'e girmez. |
@@ -60,8 +60,8 @@ gizlidir; tahmin edilemez bir ad seçin.
 
 | Kaynak | Olaylar | Ne zaman |
 |---|---|---|
-| Gateway içi (`ops_alerts.rs`, şema `arcora.ops-alert.v1`) | `settlement_held`, `persistence_failed`, `deposit_halted`, `archive_pressure`, `bond_shortfall`, `unanswerable_challenge`, `challenge_discovery_failed`, `stale_anchor`, `liveness_low`, `permit_gc_stalled`, `engine_close_only`, `admission_cap_reached`, `withdraw_nonce_repaired`, `deposit_blocked_at_cap`, `window_voided`, `clock_recovery_blocked` | Süreç ayaktayken başlangıçta ve toparlanmada birer kez |
-| Dış izleyici (şema `arcora.ops-monitor.v1`) | `gateway_unreachable`, `settlement_held`, `deposit_halted`, `settle_stall`; gateway ayaktayken `/api/state` `opsAlerts` içindeki `bond_shortfall`, `unanswerable_challenge`, `challenge_discovery_failed`, `stale_anchor`, `liveness_low`, `permit_gc_stalled`, `engine_close_only`, `admission_cap_reached`, `withdraw_nonce_repaired`, `deposit_blocked_at_cap`, `window_voided`, `clock_recovery_blocked`; L1 okumaları ayarlıysa `liveness_low`, `l1_close_only`, `challenge_unanswered`, `l1_unreachable` | Süreç düşük veya kilitliyken de çalışır |
+| Gateway içi (`ops_alerts.rs`, şema `arcora.ops-alert.v1`) | `settlement_held`, `persistence_failed`, `deposit_halted`, `archive_pressure`, `bond_shortfall`, `unanswerable_challenge`, `challenge_discovery_failed`, `stale_anchor`, `liveness_low`, `permit_gc_stalled`, `engine_close_only`, `admission_cap_reached`, `withdraw_nonce_repaired`, `deposit_blocked_at_cap`, `window_voided`, `clock_recovery_blocked`, `snapshot_size_high`, `clock_registration_refused`, `deposit_reads_dropped`, `withdraw_reserve_near` | Süreç ayaktayken başlangıçta ve toparlanmada birer kez |
+| Dış izleyici (şema `arcora.ops-monitor.v1`) | `gateway_unreachable`, `settlement_held`, `deposit_halted`, `settle_stall`; gateway ayaktayken `/api/state` `opsAlerts` içindeki `bond_shortfall`, `unanswerable_challenge`, `challenge_discovery_failed`, `stale_anchor`, `liveness_low`, `permit_gc_stalled`, `engine_close_only`, `admission_cap_reached`, `withdraw_nonce_repaired`, `deposit_blocked_at_cap`, `window_voided`, `clock_recovery_blocked`, `snapshot_size_high`, `clock_registration_refused`, `deposit_reads_dropped`, `withdraw_reserve_near`; L1 okumaları ayarlıysa `liveness_low`, `l1_close_only`, `challenge_unanswered`, `l1_unreachable` | Süreç düşük veya kilitliyken de çalışır |
 | `OnFailure=` (`arcora.ops-monitor.v1`) | `gateway_service_failed`, `backup_failed`, `monitor_failed` | Unit failed durumuna geçtiğinde |
 
 `settle_stall`: Mühürlenmiş bir pencere bekliyor (`openWindowId > l1.batchCount`)

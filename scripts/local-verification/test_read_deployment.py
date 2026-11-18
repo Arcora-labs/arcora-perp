@@ -103,6 +103,55 @@ class DeploymentObservationTests(unittest.TestCase):
         self.assertEqual(result["rpc_agreement"]["status"], "BLOCKED")
         self.assertIn(text, result["blocker"])
 
+    def test_audit_1116_sv1_the_registered_gateways_owner_is_observed(self):
+        result, calls, code = self.observe()
+        self.assertEqual(code, 0)
+        recorded = result["sp1_gateway_owner"]
+        self.assertRegex(recorded["gateway"], "^0x[0-9a-fA-F]{40}$")
+        self.assertRegex(recorded["owner"], "^0x[0-9a-f]{40}$")
+        self.assertIs(recorded["owner_exposed"], True)
+        self.assertTrue(any(c[1] == "eth_call" and c[2][0]["to"] == recorded["gateway"]
+                            and c[2][0]["data"] == "owner()" for c in calls))
+
+    def test_audit_1116_sv1_a_stateless_verifier_without_owner_does_not_block_a_witnessed_observation(self):
+        # A direct stack's sp1VerifierGateway is the stateless verifier: owner() reverts there.
+        def stateless(_, method, params, response, __):
+            if method == "eth_call" and params[0]["data"] == "owner()":
+                response.pop("result")
+                response["error"] = {"code": 3, "message": "execution reverted"}
+            return response
+        for witness in (None, WITNESS):
+            with self.subTest(witness=witness):
+                result, _, code = self.observe(witness=witness, change=stateless)
+                self.assertEqual(code, 0, result)
+                self.assertEqual(result["status"], "OBSERVED")
+                recorded = result["sp1_gateway_owner"]
+                self.assertIsNone(recorded["owner"])
+                self.assertIs(recorded["owner_exposed"], False)
+                self.assertNotIn("error", recorded)
+
+    def test_audit_1116_sv1_only_an_agreed_revert_means_no_owner(self):
+        # Disagreement (one endpoint reverts, the other answers) and non-revert errors still block.
+        def split(ep, method, params, response, __):
+            if ep == "witness" and method == "eth_call" and params[0]["data"] == "owner()":
+                response.pop("result")
+                response["error"] = {"code": 3, "message": "execution reverted"}
+            return response
+        result, _, code = self.observe(witness=WITNESS, change=split)
+        self.assert_blocked(result, code, "SP1 gateway owner()")
+        def unavailable(_, method, params, response, __):
+            if method == "eth_call" and params[0]["data"] == "owner()":
+                response.pop("result")
+                response["error"] = {"code": -32000, "message": "header not found"}
+            return response
+        result, _, code = self.observe(witness=WITNESS, change=unavailable)
+        self.assert_blocked(result, code, "RPC error")
+        result, _, code = self.observe(change=unavailable)
+        self.assertEqual(code, 0)
+        self.assertIsNone(result["sp1_gateway_owner"]["owner"])
+        self.assertIn("error", result["sp1_gateway_owner"])
+        self.assertNotIn("owner_exposed", result["sp1_gateway_owner"])
+
     def test_hash_pins_every_contract_read_and_checks_token_binding(self):
         result, calls, code = self.observe()
         self.assertEqual(code, 0)
@@ -175,7 +224,7 @@ class DeploymentObservationTests(unittest.TestCase):
         for endpoint in ("primary", "witness"):
             reads = [(method, params) for ep, method, params in calls
                      if ep == endpoint and method in ("eth_call", "eth_getCode")]
-            self.assertEqual(len(reads), 19)
+            self.assertEqual(len(reads), 20)
             for _, params in reads:
                 self.assertEqual(params[-1], {"blockHash": HASH, "requireCanonical": True})
         self.assertEqual(calls[-2:], [("primary", "eth_getBlockByNumber", ["0x40", False]),

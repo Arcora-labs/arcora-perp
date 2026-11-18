@@ -10,6 +10,6 @@ test candidate_bridge::bridge_actual_captured_context_rederives_exact_contract_a
 
 test result: ok. 5 passed; 0 failed; 2 ignored; 0 measured; 615 filtered out; finished in 3.47s
 
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 43.59s
      Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)

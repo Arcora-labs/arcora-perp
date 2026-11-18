@@ -1,4 +1,4 @@
-   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+   Compiling prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/prover)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.65s
      Running unittests src/lib.rs (target/debug/deps/prover-0dfeb90128b006a1)
 

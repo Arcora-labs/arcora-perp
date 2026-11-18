@@ -26,6 +26,8 @@ mod nonce_fence;
 mod observation;
 pub(crate) use clock_binding::AnchorAge;
 use clock_binding::ClockConfig;
+pub(crate) use clock_binding::SP1_ROUTER_TRUST_VAR;
+pub(crate) use clock_binding::{ClockTiming, PAST_REGISTRATION_SKEW, REGISTRATION_REVERTED};
 pub(crate) use nonce_fence::{fence_path, Ceiling, NonceFence};
 use observation::{abi_address, abi_bool, abi_u128, abi_u64, address_word, CanonicalRead};
 pub(crate) use observation::{OpenChallenge, OpenSetRead};
@@ -1058,6 +1060,24 @@ impl L1 {
         args: &[&str],
         gas_limit: Option<&str>,
     ) -> Result<String, String> {
+        self.send_on_receipt(lane, target, sig, args, gas_limit)
+            .map(|out| tx_hash(&out))
+    }
+
+    /// `send` returning cast's JSON receipt, not only its transaction hash: cast
+    /// reports a mined transaction that reverted (`status` 0) as a success.
+    fn send_receipt(&self, target: &str, sig: &str, args: &[&str]) -> Result<String, String> {
+        self.send_on_receipt(self.sequencer_lane(), target, sig, args, None)
+    }
+
+    fn send_on_receipt(
+        &self,
+        lane: Lane<'_>,
+        target: &str,
+        sig: &str,
+        args: &[&str],
+        gas_limit: Option<&str>,
+    ) -> Result<String, String> {
         let mut guard = lane.nonce.lock().map_err(|_| "nonce lock poisoned")?;
         let n = match *guard {
             Some(n) => n,
@@ -1087,7 +1107,7 @@ impl L1 {
         match self.cast(&a) {
             Ok(out) => {
                 *guard = Some(n + 1);
-                Ok(tx_hash(&out))
+                Ok(out)
             }
             Err(e) => {
                 *guard = None; // re-seed from chain next time

@@ -75,6 +75,12 @@ fn height_of(hash: &[u8; 32]) -> u64 {
         })
         .expect("known block hash")
 }
+/// A uint64 as one ABI word.
+fn word(n: u64) -> [u8; 32] {
+    let mut w = [0u8; 32];
+    w[24..].copy_from_slice(&n.to_be_bytes());
+    w
+}
 fn count(n: u64) -> u64 {
     if n < 2 {
         0
@@ -155,6 +161,13 @@ impl Rpc for MockRpc {
                     let mut w = [0u8; 32];
                     w[24..].copy_from_slice(&count(n).to_be_bytes());
                     Ok(json!(hex0x(&w)))
+                } else if data[..4] == Keccak256::digest(b"depositBlock(uint64)")[..4] {
+                    let id = uint64(&data[4..]).unwrap();
+                    let landed = all_events()
+                        .get(id as usize)
+                        .filter(|_| id < count(n))
+                        .map_or(0, |e| e.block.number);
+                    Ok(json!(hex0x(&word(landed))))
                 } else {
                     assert_eq!(data[..4], Keccak256::digest(b"depositTipAt(uint64)")[..4]);
                     let id = uint64(&data[4..]).unwrap();
@@ -239,6 +252,13 @@ impl Rpc for TwoDepositBlocks {
                     let mut w = [0u8; 32];
                     w[24..].copy_from_slice(&two_block_count(n).to_be_bytes());
                     Ok(json!(hex0x(&w)))
+                } else if data[..4] == Keccak256::digest(b"depositBlock(uint64)")[..4] {
+                    let id = uint64(&data[4..]).unwrap();
+                    let landed = two_block_events()
+                        .get(id as usize)
+                        .filter(|_| id < two_block_count(n))
+                        .map_or(0, |e| e.block.number);
+                    Ok(json!(hex0x(&word(landed))))
                 } else {
                     let id = uint64(&data[4..]).unwrap();
                     assert!(id > 0 && id <= two_block_count(n));
@@ -635,4 +655,107 @@ fn a01_block_identity_ignores_the_unpersisted_timestamp() {
         postcard::to_allocvec(&fresh).unwrap(),
         postcard::to_allocvec(&(fresh.number, fresh.hash)).unwrap()
     );
+}
+
+/// The deposits of `all_events` under a finalized head far past them: 2 in block
+/// 2 and one in block 4. Every header served is remembered by its hash, so the
+/// pinned calls can be answered at any height.
+struct FarHead {
+    head: u64,
+    served: Mutex<std::collections::BTreeMap<[u8; 32], u64>>,
+    block_reads: AtomicUsize,
+    deposit_block_reads: AtomicUsize,
+}
+impl Rpc for FarHead {
+    fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
+        use sha3::{Digest, Keccak256};
+        match m {
+            "eth_chainId" => Ok(json!("0x1")),
+            "eth_getBlockByNumber" => {
+                self.block_reads.fetch_add(1, Ordering::SeqCst);
+                let n = if p[0] == json!("finalized") {
+                    self.head
+                } else {
+                    quantity(&p[0]).unwrap()
+                };
+                let header = test_header(n, 0);
+                self.served
+                    .lock()
+                    .unwrap()
+                    .insert(digest(&header["hash"]).unwrap(), n);
+                Ok(header)
+            }
+            "eth_call" => {
+                let hash = digest(&p[1]["blockHash"]).unwrap();
+                let n = self.served.lock().unwrap()[&hash];
+                let data = bytes(&p[0]["data"]).unwrap();
+                if data[..4] == Keccak256::digest(b"depositCount()")[..4] {
+                    Ok(json!(hex0x(&word(count(n)))))
+                } else if data[..4] == Keccak256::digest(b"depositBlock(uint64)")[..4] {
+                    self.deposit_block_reads.fetch_add(1, Ordering::SeqCst);
+                    let id = uint64(&data[4..]).unwrap();
+                    let landed = all_events()
+                        .get(id as usize)
+                        .filter(|_| id < count(n))
+                        .map_or(0, |e| e.block.number);
+                    Ok(json!(hex0x(&word(landed))))
+                } else {
+                    assert_eq!(data[..4], Keccak256::digest(b"depositTipAt(uint64)")[..4]);
+                    let id = uint64(&data[4..]).unwrap();
+                    assert!(id > 0 && id <= count(n));
+                    Ok(json!(hex0x(&all_events()[id as usize - 1].tip)))
+                }
+            }
+            "eth_getLogs" => {
+                let hash = digest(&p[0]["blockHash"]).unwrap();
+                Ok(json!(all_events()
+                    .iter()
+                    .filter(|e| e.block.hash == hash)
+                    .map(log)
+                    .collect::<Vec<_>>()))
+            }
+            other => panic!("unexpected RPC method: {other}"),
+        }
+    }
+}
+
+/// Audit 2026-11-16 G2-1: an ordinary deposit cost the scan a binary search over
+/// every block since the last credited one, about two dozen sequential L1 reads,
+/// each a chance for a slow provider to stretch the scan. The vault records the
+/// block each deposit landed in (`depositBlock(id)`): one hash-pinned read names
+/// the next deposit block, whatever the distance to the finalized head, and the
+/// boundary reads that follow still check it.
+#[test]
+fn audit_1116_g2_1_the_next_deposit_block_is_one_vault_read_not_a_search() {
+    let rpc = FarHead {
+        head: 1_000_000,
+        served: Mutex::new(Default::default()),
+        block_reads: 0.into(),
+        deposit_block_reads: 0.into(),
+    };
+    let source = VaultSource::new(rpc);
+    let page = source.fetch(cursor()).unwrap();
+    assert_eq!(page.end, block(2));
+    assert_eq!(
+        page.events.iter().map(|e| e.id).collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    // The head, the deposit block and its parent, and the two canonical rechecks.
+    assert_eq!(source.rpc.block_reads.load(Ordering::SeqCst), 5);
+    assert_eq!(source.rpc.deposit_block_reads.load(Ordering::SeqCst), 1);
+    // From the credited anchor the next deposit block is found the same way.
+    let mut next = cursor();
+    next.count = 2;
+    next.tip = page.events[1].tip;
+    next.anchor = Some(page.end);
+    source.rpc.block_reads.store(0, Ordering::SeqCst);
+    let page = source.fetch(next).unwrap();
+    assert_eq!(page.end, block(4));
+    assert_eq!(
+        page.events.iter().map(|e| e.id).collect::<Vec<_>>(),
+        vec![2]
+    );
+    // One more: the anchor's canonical recheck.
+    assert_eq!(source.rpc.block_reads.load(Ordering::SeqCst), 6);
+    assert_eq!(source.rpc.deposit_block_reads.load(Ordering::SeqCst), 2);
 }

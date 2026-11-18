@@ -42,11 +42,19 @@ use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::state::Mode;
-use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
+use sequencer::{
+    adl_tag, adl_tag_key, forced_close_tag, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness,
+};
 
 mod account_recovery;
 mod admission;
 mod answer_lane;
+#[cfg(test)]
+mod audit_1116_g11_tests;
+#[cfg(test)]
+mod audit_1116_ga2_tests;
+#[cfg(test)]
+mod audit_1116_or1_tests;
 mod bootstrap;
 #[cfg(test)]
 mod candidate_bridge;
@@ -98,6 +106,7 @@ mod candidate_recovery_tests;
 mod candidate_registration;
 mod candles;
 mod challenge_auth;
+mod challenge_rejections;
 mod challenge_scan;
 mod clock_admission;
 mod clock_client;
@@ -124,10 +133,13 @@ mod injected_inputs;
 mod l1;
 mod listen_config;
 mod live_void;
+#[cfg(test)]
+mod open_order_limit_tests;
 mod ops_alerts;
 mod oracle_crosscheck;
 #[cfg(test)]
 mod oracle_intake_tests;
+mod order_history;
 mod order_log;
 #[cfg(test)]
 mod order_minimum_tests;
@@ -149,7 +161,10 @@ mod service_shutdown;
 #[cfg(test)]
 mod service_shutdown_tests;
 mod settle_health;
+mod side_log;
 mod snapshot;
+#[cfg(test)]
+mod tick_scaling_tests;
 mod trading_gate;
 mod wind_down;
 #[cfg(test)]
@@ -890,6 +905,8 @@ const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain
 /// How often the L1 health task reads liveness, anchor age and finalized close-only.
 const L1_HEALTH_SECS: u64 = 60;
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
+/// Error prefix (HTTP 503) of a durable change refused after a failed snapshot write.
+const PERSISTENCE_UNAVAILABLE: &str = "PERSISTENCE_UNAVAILABLE";
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
 /// Registration bounds across all clients, on top of the per-client limit above.
 const V1_REGISTER_GLOBAL_RATE: u32 = 300; // max account registrations/min, all clients
@@ -926,10 +943,35 @@ const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
 /// and an `Err` that a caller can refuse on is strictly better than an unbounded hang
 /// that takes the whole gateway with it.
 const SNAPSHOT_ACK_TIMEOUT_SECS: u64 = 30;
+/// Durability requests the snapshot writer queues. Every accepted order waits for
+/// one (audit GF-2), and one write answers every request queued before its
+/// capture, so a burst of concurrent orders shares a write instead of waiting for
+/// one write per handful of orders.
+const SNAPSHOT_REQUEST_QUEUE: usize = 1024;
 /// Soft cap on retained per-account order history. A SETTLED partial fill can still
 /// have a live remainder: only sealed orders absent from the book may be evicted.
 /// Live orders take priority over the history cap so their cancellation stays reachable.
 const MAX_ACCOUNT_ORDER_HISTORY: usize = 500;
+/// Finished order rows kept across all accounts (audit GF-1 + SM-4). Each row
+/// costs a few hundred bytes of snapshot, so 500 per account let enough accounts
+/// fill the 64 MiB payload with order history alone. About 16 MB at this budget.
+const ORDER_HISTORY_BUDGET: usize = 50_000;
+
+/// The rows each of `holders` accounts keeps: an equal share of `budget`, at most
+/// [`MAX_ACCOUNT_ORDER_HISTORY`] and at least one. While `budget` is at least
+/// [`MAX_ACCOUNTS`], every holder's share together stays within it.
+fn account_order_history_cap(holders: usize, budget: usize) -> usize {
+    (budget / holders.max(1)).clamp(1, MAX_ACCOUNT_ORDER_HISTORY)
+}
+
+/// Whether `owner`'s order of row `o` rests with a remainder in its market's
+/// book, found by its hash (audit 2026-11-16 GA-1 + SM-1): a lookup, not a walk
+/// of the book.
+fn order_rests(seq: &Sequencer, owner: &PubKey, o: &GwOrder) -> bool {
+    seq.book(o.order.market_id)
+        .and_then(|book| book.remaining_for(owner, &o.order_hash))
+        .is_some_and(|remaining| remaining > 0)
+}
 
 /// Evict up to `len - max` of the OLDEST terminal entries (front-first) so a Vec stays
 /// bounded, never dropping a non-terminal (live/in-flight) entry. Generic over the
@@ -1329,6 +1371,12 @@ fn below_order_minimum(
     );
     sequencer::below_minimum_order_notional(position, &probe, mark)
 }
+/// The refusal of a withdrawal or transfer that would take the collateral the
+/// account's pending orders hold (audit 2026-11-16 SM-1,
+/// `Sequencer::unbind_keeps_reserve`).
+const PENDING_MARGIN_UNBIND: &str = "PENDING_MARGIN: the account's pending orders in this \
+     market need this collateral as initial margin until they fill, are cancelled or \
+     expire; cancel some of them first, or move less";
 fn below_order_minimum_error() -> String {
     format!(
         "Order is below the minimum size: an order that opens, grows or flips a position \
@@ -1663,6 +1711,10 @@ struct GwOrder {
     created_ms: u64,
     sealed: bool,
     last_finality: String,
+    /// The order's [`snapshot::DurableMarks`] mark (audit GF-2). Runtime-only: an
+    /// order restored from a snapshot is durable (mark 0).
+    #[serde(skip)]
+    durable_mark: u64,
 }
 
 /// A registered external API account (multi-tenant `/v1`). Each is an independent
@@ -1788,11 +1840,41 @@ struct Gw {
     /// Runtime-only alert episode state; never changes the frozen snapshot encoding.
     #[serde(skip)]
     ops_alerts: ops_alerts::OpsAlerts,
+    /// Whether the last snapshot write failed. Order intake and the other promises
+    /// a restart would forget are refused while it did (audit GF-1). Runtime-only.
+    #[serde(skip)]
+    snapshot_health: snapshot::WriteHealth,
+    /// Which accepted orders a durable snapshot holds: an order's receipt (and its
+    /// `l1Challenge`) is served only once one does (audit GF-2). Tracked only with
+    /// persistence configured. Runtime-only.
+    #[serde(skip)]
+    durable_marks: snapshot::DurableMarks,
+    /// Where the side logs beside the snapshot end (`order_history`). Runtime-only:
+    /// the snapshot's history extension carries the positions.
+    #[serde(skip)]
+    history: order_history::HistoryState,
     /// Persisted as the snapshot payload's flag byte, outside the positional Gw body.
     /// Freezes ordinary ops after SettleAll. It never proves phase-1 completion;
     /// only a canonical L1 read does that.
     #[serde(skip)]
     wind_down_started: bool,
+    /// Per-account withdrawal rate (runtime) and history-unit ledger (audit GA-2).
+    /// The ledger is persisted as its own snapshot section, outside the positional
+    /// Gw body.
+    #[serde(skip)]
+    withdraw_limits: admission::WithdrawLimits,
+    /// The withdrawals that dust sweeps made (audit G1-1), shown as forced exits.
+    /// Persisted as its own snapshot section, after the ledger.
+    #[serde(skip)]
+    dust_sweeps: admission::DustSweeps,
+    /// The client group each outstanding permit that may open a position entry
+    /// was issued to (audit G1-1). Runtime-only.
+    #[serde(skip)]
+    permit_groups: admission::PermitGroups,
+    /// The API key of each account by its owner, for the dust sweep. Runtime-only:
+    /// rebuilt on restore, kept on registration and on a credential rotation.
+    #[serde(skip)]
+    owner_keys: std::collections::BTreeMap<PubKey, [u8; 32]>,
 
     // Encoded beside the positional Gw body in the snapshot payload.
     #[serde(skip)]
@@ -1819,6 +1901,13 @@ struct Gw {
     mm_nonce: u64,
     rng: u64,
     pending_settle: Vec<(u64, u64)>, // (batch_id, tick sealed)
+    /// The ticks whose fills an order row may hold unsettled (audit 2026-11-16
+    /// GA-1 + SM-1, round 1 review): a tick updates a row holding such a fill
+    /// only once its tick settles or is discarded (`Gw::settled_fill_ticks`),
+    /// not on every tick until then. Rebuilt from the rows when unset, after a
+    /// boot or a restore; never persisted.
+    #[serde(skip)]
+    unsettled_fill_ticks: Option<std::collections::BTreeSet<u64>>,
     /// Cumulative collateral the USER has had clawed by auto-deleverage (audit Q2),
     /// recognized from the sealed batches' ADL receipts via the user's secret key.
     user_adl_clawed: i128,
@@ -1888,7 +1977,14 @@ struct Gw {
     pending_rejected: Vec<Digest>,
     /// Per ON-CHAIN batch id → the (ordered, rejected) order hashes it committed, retained so a
     /// challenge for an order in that batch can be answered with a Merkle proof against its root.
-    batch_orders: std::collections::BTreeMap<u64, (Vec<Digest>, Vec<Digest>)>,
+    /// All in memory; with a state path the snapshot keeps only the batches not yet appended to
+    /// the batches side log (audit GF-1 + SM-4, `order_history`), in the same positional layout.
+    batch_orders: order_history::BatchOrders,
+    /// Open challenges for orders this gateway does not know, declared rejected in
+    /// a window so a settled batch answers them (audit GF-2): order hash → that
+    /// window. Kept in a snapshot extension (`challenge_rejections`), not here.
+    #[serde(skip)]
+    challenge_rejections: challenge_rejections::Declarations,
     /// Last on-chain settlement the L1 bridge published (None until it settles once).
     l1_status: Option<L1Status>,
     /// FIN-001 settle-loop health (bounded-retry → HELD circuit breaker). Runtime-only:
@@ -1994,6 +2090,16 @@ struct Gw {
     /// shows it (`clockRecovery`). Runtime-only, like the recovery itself.
     #[serde(skip)]
     clock_recovery: Option<clock_recovery::RecoveryStatus>,
+    /// When the open clock window stops admitting timed operations (audit G2-2).
+    /// Set from the verifier's timing policy in `main()` when windows are
+    /// clock-bound; `None` in demo and legacy modes. Runtime policy, never
+    /// persisted.
+    #[serde(skip)]
+    clock_window: Option<clock_admission::WindowBound>,
+    /// The first timed operation time of the window whose hold was last logged,
+    /// so a closing window is logged once, not on every tick. Runtime-only.
+    #[serde(skip)]
+    clock_window_held: Option<u64>,
 }
 
 /// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
@@ -2376,6 +2482,9 @@ impl Gw {
         // is held to the order minimum itself (off-chain boot configuration, set
         // again on restore).
         seq.set_minimum_exempt_owner(Some(mm.owner));
+        // Audit G1-1: below the entry minimum no order adds exposure, at intake or
+        // when it fills (off-chain boot configuration, set again on restore).
+        seq.set_min_entry_collateral(admission::MIN_ENTRY_BALANCE);
         let now = now_ms();
 
         // ZK-001: the single oracle-publisher key every market trusts. Its address is
@@ -2481,6 +2590,9 @@ impl Gw {
         let mut gw = Gw {
             candidate_archive_required: false,
             ops_alerts: Default::default(),
+            snapshot_health: Default::default(),
+            durable_marks: Default::default(),
+            history: Default::default(),
             wind_down_started: false,
             deposits: Default::default(),
             l1_settlement: None,
@@ -2497,8 +2609,13 @@ impl Gw {
             mm_nonce: 1_000_000,
             rng: 0x2545F4914F6CDD1D,
             pending_settle: Vec::new(),
+            unsettled_fill_ticks: None,
             user_adl_clawed: 0,
             accounts: std::collections::BTreeMap::new(),
+            withdraw_limits: Default::default(),
+            dust_sweeps: Default::default(),
+            permit_groups: Default::default(),
+            owner_keys: std::collections::BTreeMap::new(),
             pending_withdrawals: Vec::new(),
             next_withdraw_nonce: 1,
             withdraw_proofs: std::collections::BTreeMap::new(),
@@ -2519,7 +2636,8 @@ impl Gw {
             last_manifest: [0u8; 32],
             pending_ordered: Vec::new(),
             pending_rejected: Vec::new(),
-            batch_orders: std::collections::BTreeMap::new(),
+            batch_orders: Default::default(),
+            challenge_rejections: Default::default(),
             l1_status: None,
             settle_health: default_settle_health(),
             settlement_held_since_ms: None,
@@ -2545,6 +2663,8 @@ impl Gw {
             void_breaker: Default::default(),
             last_void: None,
             clock_recovery: None,
+            clock_window: None,
+            clock_window_held: None,
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -2572,6 +2692,10 @@ impl Gw {
         );
         execution::append_snapshot(self, &mut bytes);
         account_recovery::append(self, &mut bytes);
+        order_history::append_snapshot(self, &mut bytes);
+        challenge_rejections::append_snapshot(self, &mut bytes);
+        self.append_withdraw_ledger(&mut bytes);
+        self.append_dust_sweeps(&mut bytes);
         bytes
     }
 
@@ -2606,7 +2730,16 @@ impl Gw {
         ) = postcard::take_from_bytes(body).map_err(|e| format!("snapshot decode: {e}"))?;
         gw.deposits = deposits;
         let recovery = execution::restore_snapshot_prefix(&mut gw, rest)?;
-        account_recovery::restore(&mut gw, recovery)?;
+        let history = account_recovery::restore_prefix(&mut gw, recovery)?;
+        let challenges = order_history::restore_snapshot(&mut gw, history)?;
+        let ledger = challenge_rejections::restore_snapshot(&mut gw, challenges)?;
+        let sweeps = gw.restore_withdraw_ledger(ledger)?;
+        gw.restore_dust_sweeps(sweeps)?;
+        gw.owner_keys = gw
+            .accounts
+            .iter()
+            .map(|(key, account)| (account.wallet.owner, *key))
+            .collect();
         // The flag is the terminal latch SettleAll sets; it never proves phase 1
         // settled, and a state that carries it must be in CloseOnly.
         gw.wind_down_started = wind_down_started;
@@ -2614,6 +2747,17 @@ impl Gw {
             return Err("wind-down snapshot latch requires CloseOnly".into());
         }
         gw.validate_deposit_state()?;
+        // The open window must replay under this build's engine rules, or its next
+        // seal would prove a root the live state does not have. A snapshot written
+        // by a build whose ops meant something else (audit 2026-11-16 PC-1) is
+        // refused here, not wedged at the next settle.
+        gw.seq.check_open_window_replays().map_err(|e| {
+            format!(
+                "{e}; settle the open window with the build that wrote this snapshot \
+                 before upgrading (docs/FINAL_SETTLE_RUNBOOK.md, upgrading across an \
+                 engine rule change)"
+            )
+        })?;
 
         let attestation = attest_from_env();
         let measurement = attestation
@@ -2630,8 +2774,10 @@ impl Gw {
         let (enclave_seed, _) = enclave_seed_from_env().unwrap_or((DEMO_ENCLAVE_SEED, true));
         gw.seq
             .set_enclave(EnclaveIdentity::from_seed(enclave_seed, 1, measurement));
-        // Not persisted either; the same house exemption boot sets.
+        // Not persisted either; the same house exemption and entry minimum boot sets.
         gw.seq.set_minimum_exempt_owner(Some(gw.mm.owner));
+        gw.seq
+            .set_min_entry_collateral(admission::MIN_ENTRY_BALANCE);
         gw.attestation = attestation;
         // Re-derive the order-ingress epoch from ENCLAVE_SEED exactly as boot() does
         // (the snapshot serde-skips it — the epoch secret must never persist to disk).
@@ -2705,6 +2851,7 @@ impl Gw {
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
+        self.owner_keys.insert(owner, api_key);
         (api_key, owner)
     }
 
@@ -3400,11 +3547,27 @@ impl Gw {
             );
         }
         let normal_oracle = if self.seq.state.mode != Mode::CloseOnly {
+            // Audit G2-2: an ordinary withdrawal's unbind is a timed operation.
+            self.refuse_if_clock_window_closing(context.price.now_ms)?;
             self.require_candidate_price(market, context.price)?
         } else {
             None
         };
-        let free = self.market_free_of(&wallet.owner, market);
+        // Audit OR-1: with an open position the withdrawal is measured against the
+        // stored, validated report, and so is the free balance.
+        let (verified, price) = if self.seq.state.mode == Mode::CloseOnly {
+            (None, self.px_of(market))
+        } else {
+            match normal_oracle {
+                Some(oracle) => (Some(oracle), oracle.price),
+                None => {
+                    let oracle =
+                        self.withdrawal_oracle(&wallet.owner, market, context.price.now_ms)?;
+                    (Some(oracle), oracle.price)
+                }
+            }
+        };
+        let free = self.market_free_at(&wallet.owner, market, price);
         if amount > free {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
@@ -3417,7 +3580,32 @@ impl Gw {
                 MIN_WITHDRAWAL / QUOTE_SCALE
             ));
         }
+        // audit 2026-11-16 SM-1: the collateral reserve holds the margin of the
+        // account's pending orders until they fill, are cancelled or expire, so a
+        // withdrawal cannot take it first and leave them resting unbacked.
+        if !self
+            .seq
+            .unbind_keeps_reserve(&wallet.owner, market, amount, context.price.now_ms)
+        {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
+        // Audit G1-1: no withdrawal leaves an entry as dust, or below the entry
+        // minimum under an open position.
+        if let Some(refusal) = self.entry_balance_refusal(&wallet.owner, market, amount) {
+            return Err(refusal);
+        }
+        // ...and no full exit leaves a top-up permit below the entry minimum to
+        // land in the missing entry.
+        if let Some(refusal) = self.top_up_exit_refusal(key, &wallet.owner, market, amount) {
+            return Err(refusal.into());
+        }
         if let Some(refusal) = self.exit_cap_refusal(key, &wallet.owner, market, amount) {
+            return Err(refusal.into());
+        }
+        let limit_now = context.price.now_ms;
+        if let Some(refusal) =
+            self.withdrawal_limit_refusal(key, &wallet.owner, market, amount, limit_now)
+        {
             return Err(refusal.into());
         }
         let nonce = self.next_withdrawal_nonce()?;
@@ -3433,10 +3621,9 @@ impl Gw {
             }
         } else {
             let now = context.price.now_ms;
-            // Candidate uses the original admitted transcript, including its
-            // source publish time. Never turn a frozen report into a fresh one.
-            let oracle = normal_oracle
-                .unwrap_or_else(|| oracle_of(self.px_of(market), now, market, &self.oracle_signer));
+            // The verified transcript, with its original source publish time.
+            // Never turn a frozen report into a fresh one.
+            let oracle = verified.expect("normal mode resolved a transcript above");
             BatchOp::Unbind {
                 owner: wallet.owner,
                 market_id: market,
@@ -3474,6 +3661,7 @@ impl Gw {
             }
         })?;
         self.next_withdraw_nonce = nonce.saturating_add(1);
+        self.withdraw_limits.record(&wallet.owner, limit_now);
         let w = Withdrawal {
             owner: wallet.owner,
             to,
@@ -3676,6 +3864,8 @@ impl Gw {
         self.batch_orders.insert(batch_id, (ordered, rejected));
         // A voided window's replacement has settled.
         self.ops_alerts.recover(ops_alerts::AlertKind::WindowVoided);
+        self.ops_alerts
+            .recover(ops_alerts::AlertKind::ClockRegistrationRefused);
         // the window manifest is the source of truth for this batch's roots; the legacy
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
         self.pending_ordered.clear();
@@ -3736,6 +3926,8 @@ impl Gw {
         for leaf in &cset {
             self.withdraw_proofs.remove(leaf);
         }
+        // A paid forced exit is no longer listed: nothing is left to mark.
+        self.dust_sweeps.forget(&cset);
     }
 
     /// Slice 3b-3: re-inject a failed window's drained withdrawals AHEAD of any accumulated
@@ -3777,6 +3969,8 @@ impl Gw {
                     // root in legacy); fall back to the last published root pre-publish.
                     "root": entry.map(|(r, _)| hex0x(r)).unwrap_or_else(|| current_root.clone()),
                     "claimable": entry.is_some(),
+                    // Made by a dust sweep (audit G1-1), not signed by the account.
+                    "forcedExit": self.dust_sweeps.contains(&leaf),
                     "proof": entry
                         .map(|(_, p)| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>())
                         .unwrap_or_default(),
@@ -3793,6 +3987,11 @@ impl Gw {
 
     /// Per-owner free margin in a market (the multi-tenant analog of `market_free`).
     fn market_free_of(&self, owner: &PubKey, market: u64) -> i128 {
+        self.market_free_at(owner, market, self.px_of(market))
+    }
+
+    /// `market_free_of` with the position's margin priced at `price`.
+    fn market_free_at(&self, owner: &PubKey, market: u64, price: i128) -> i128 {
         let coll = self
             .seq
             .state
@@ -3800,10 +3999,51 @@ impl Gw {
             .map(|p| p.collateral)
             .unwrap_or(0);
         let locked = match self.seq.state.position(owner, market) {
-            Some(p) if p.size != 0 => required_margin(p.size.abs(), self.px_of(market)),
+            Some(p) if p.size != 0 => required_margin(p.size.abs(), price),
             _ => 0,
         };
         (coll - locked).max(0)
+    }
+
+    /// The oracle transcript a withdrawal from `owner`'s entry in `market` is
+    /// applied against at `now_ms` (audit OR-1). With an open position it is the
+    /// stored report as it is, valid or refused as "oracle unavailable", exactly as
+    /// an order is: a withdrawal must never sign the last price under a fresh
+    /// timestamp while the feed is down. A flat entry has no margin to check, so
+    /// it needs no price and withdraws through an outage.
+    fn withdrawal_oracle(
+        &self,
+        owner: &PubKey,
+        market: u64,
+        now_ms: u64,
+    ) -> Result<OracleTranscript, String> {
+        let open = self
+            .seq
+            .state
+            .position(owner, market)
+            .is_some_and(|p| p.size != 0);
+        if !open {
+            return Ok(oracle_of(
+                self.px_of(market),
+                now_ms,
+                market,
+                &self.oracle_signer,
+            ));
+        }
+        let unavailable = || {
+            "oracle unavailable: a withdrawal with an open position needs a fresh verified \
+             oracle report"
+                .to_string()
+        };
+        let policy = self
+            .seq
+            .state
+            .markets
+            .get(&market)
+            .ok_or("Unknown market.")?;
+        let oracle = *self.seq.oracle(market).ok_or_else(unavailable)?;
+        oracle.validate(policy, now_ms).map_err(|_| unavailable())?;
+        Ok(oracle)
     }
     /// Does this order open/increase the owner's position (vs reduce/close)?
     fn is_opening_of(&self, owner: &PubKey, market: u64, side: &str, size: i128) -> bool {
@@ -3858,6 +4098,76 @@ impl Gw {
         Ok(())
     }
 
+    /// Audit GF-1: while the latest snapshot write failed, a restart would forget
+    /// any new order, account, withdrawal or binding, together with the receipt
+    /// or authority it handed out. Refuse them until a write succeeds again (the
+    /// writer retries every `SNAPSHOT_SECS`).
+    fn refuse_if_persistence_failed(&self) -> Result<(), String> {
+        if self.snapshot_health.failed() {
+            return Err(format!(
+                "{PERSISTENCE_UNAVAILABLE}: the latest state snapshot could not be written; \
+                 new orders and other durable changes are refused until a snapshot write \
+                 succeeds. Retry shortly."
+            ));
+        }
+        Ok(())
+    }
+
+    /// Audit G2-2: refuse a timed operation (a tick's fills, funding and
+    /// liquidations, an order, a withdrawal) at `now_ms` once the open clock
+    /// window's first timed operation is `WindowBound::cutoff_ms` old, until the
+    /// settle loop seals the window. Past the verifier's `maxWindowMs` the window
+    /// could never register, and voiding it would roll back every trade in it.
+    /// A window that holds only idle funding no-ops is dropped instead, as the
+    /// settle loop drops it before a seal, so an idle exchange is not held.
+    /// Without a bound (demo and legacy modes) nothing is refused.
+    fn refuse_if_clock_window_closing(&mut self, now_ms: u64) -> Result<(), String> {
+        let Some(bound) = self.clock_window else {
+            return Ok(());
+        };
+        let Some(first) = self.seq.window_first_timed_ms() else {
+            return Ok(());
+        };
+        if !bound.closing(first, now_ms) {
+            return Ok(());
+        }
+        if self.window_withdrawals.is_empty()
+            && self.seq.state.state_root() == self.last_settled_root
+            && self.seq.discard_idle_funding_window()
+        {
+            return Ok(());
+        }
+        if self.clock_window_held != Some(first) {
+            self.clock_window_held = Some(first);
+            eprintln!(
+                "[clock] window {}: its first timed operation is {} ms old (maxWindowMs {}); \
+                 no timed operation is admitted until the window is sealed",
+                self.seq.current_window_id(),
+                now_ms.saturating_sub(first),
+                bound.timing.max_window_ms
+            );
+        }
+        Err(format!(
+            "{}: the open settlement window is closing; orders, withdrawals and other \
+             timed operations are refused until the settle loop seals it. Retry later.",
+            clock_admission::WINDOW_CLOSING
+        ))
+    }
+
+    /// Audit G2-2: whether the open clock window holds work and is within one
+    /// seal period of its cutoff at `now_ms`. Past the cutoff no timed operation
+    /// is admitted, so its last one stays put and whatever the settle loop does
+    /// before the registration is spent from its `clockSkewMs` budget. Without a
+    /// bound (demo and legacy modes), or for an idle window, never.
+    fn clock_window_near_cutoff(&self, now_ms: u64) -> bool {
+        let (Some(bound), Some(first)) = (self.clock_window, self.seq.window_first_timed_ms())
+        else {
+            return false;
+        };
+        !(self.window_is_idle() && self.window_withdrawals.is_empty())
+            && bound.near_closing(first, now_ms)
+    }
+
     /// Place an order for an account. Ioc/Fok are takers; Gtc/PostOnly rest in the
     /// matcher book (so an MM bot can quote). Returns the signed receipt.
     /// SEC-025-D: refuse while the launch gate is closed.
@@ -3907,6 +4217,9 @@ impl Gw {
             .ok_or("Unknown account.")?
             .wallet
             .owner;
+        self.refuse_if_persistence_failed()?;
+        // Audit G2-2: the order would fill in a tick of the closing window.
+        self.refuse_if_clock_window_closing(price_use.now_ms)?;
 
         // ── sealed order ingress: decrypt inside the enclave (Task 10) ────────
         // A client may send its order ENCRYPTED to the enclave's current order-epoch
@@ -4026,6 +4339,11 @@ impl Gw {
             if need > self.market_free_of(&owner, req.market_id) {
                 return Err("Insufficient free margin to open this position (§3).".into());
             }
+            // Audit G1-1: below the entry minimum no order adds exposure (the
+            // sequencer holds each fill to the same rule).
+            if let Some(refusal) = self.entry_order_refusal(&owner, req.market_id) {
+                return Err(refusal);
+            }
         }
         let tif = parse_tif_strict(&req.tif)?;
         let now_rate = now_ms();
@@ -4098,6 +4416,12 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
+        // The sequencer's open-order limits (audit 2026-11-16 GA-1 + SM-1), before the
+        // nonce is spent or anything is recorded: `OPEN_ORDER_LIMIT` (409) or
+        // `PENDING_MARGIN` (400). The seal applies them again to every order.
+        self.seq
+            .check_open_order_limits(&order, price_use.now_ms)
+            .map_err(|e| e.to_string())?;
         if let Some(expected) = signer {
             let sig_hex = match req.signature.as_deref() {
                 Some(s) => s,
@@ -4174,6 +4498,7 @@ impl Gw {
                 created_ms: now,
                 sealed: false,
                 last_finality: "ACCEPTED".into(),
+                durable_mark: self.durable_marks.issue(),
             },
         );
         Ok(receipt)
@@ -4367,18 +4692,37 @@ impl Gw {
             view
         })
     }
-    /// One scan per market, not one full-book scan per historical order row.
-    fn live_order_hashes(&self, owner: &PubKey) -> std::collections::BTreeSet<Digest> {
-        self.mkts
+    /// The ticks whose fills an order row held unsettled and that settled or
+    /// were discarded since the last tick, no longer watched (audit 2026-11-16
+    /// GA-1 + SM-1, round 1 review). Watching costs a lookup per tick with an
+    /// unsettled fill, not one per row; the set is rebuilt from the rows after a
+    /// boot or a restore.
+    fn settled_fill_ticks(&mut self) -> std::collections::BTreeSet<u64> {
+        if self.unsettled_fill_ticks.is_none() {
+            let ticks = self
+                .orders
+                .iter()
+                .chain(self.accounts.values().flat_map(|a| &a.orders))
+                .filter_map(|o| o.execution.as_ref())
+                .flat_map(execution::Execution::unsettled_ticks)
+                .collect();
+            self.unsettled_fill_ticks = Some(ticks);
+        }
+        let watched = self
+            .unsettled_fill_ticks
+            .as_mut()
+            .expect("the watched ticks were just built");
+        let settled: std::collections::BTreeSet<u64> = watched
             .iter()
-            .filter_map(|m| self.seq.book(m.id))
-            .flat_map(|book| book.resting_hashes_for(owner))
-            .collect()
+            .copied()
+            .filter(|tick| !self.seq.fill_tick_pending(*tick))
+            .collect();
+        watched.retain(|tick| !settled.contains(tick));
+        settled
     }
 
     fn v1_orders_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let a = self.accounts.get(key)?;
-        let live = self.live_order_hashes(&a.wallet.owner);
         let orders: Vec<_> = a
             .orders
             .iter()
@@ -4393,7 +4737,7 @@ impl Gw {
                     "reduceOnly": o.input.reduce_only,
                     "orderHash": hex0x(&o.order_hash),
                     "finality": o.last_finality,
-                    "cancellable": live.contains(&o.order_hash) || (!o.sealed && self.seq.cancellable_size(&a.wallet.owner, &o.order, false).is_some()),
+                    "cancellable": order_rests(&self.seq, &a.wallet.owner, o) || (!o.sealed && self.seq.cancellable_size(&a.wallet.owner, &o.order, false).is_some()),
                     "filledSize": o.execution.as_ref().filter(|e| e.known).map(|e| e.filled.to_string()),
                     "avgFillPrice": o.execution.as_ref().filter(|e| e.known).map(|e| e.average().to_string()),
                     "execution": execution::wire(o, &self.seq),
@@ -4409,7 +4753,14 @@ impl Gw {
                     // fields cannot fail serialization today, but a panic is never
                     // the right default on a serving path — the frontend already
                     // synthesizes a stub for an absent/null receipt.
-                    "receipt": self.receipt_json(&o.receipt, a.deposit_address),
+                    // Audit GF-2: null until a durable snapshot holds the order. A
+                    // restart could otherwise forget an order whose holder kept the
+                    // enclave's signature and `l1Challenge` for it.
+                    "receipt": if self.durable_marks.is_durable(o.durable_mark) {
+                        self.receipt_json(&o.receipt, a.deposit_address)
+                    } else {
+                        serde_json::Value::Null
+                    },
                 })
             })
             .collect();
@@ -4502,6 +4853,54 @@ impl Gw {
         hex32(&self.seq.state.state_root())
     }
 
+    /// One challenge-watcher round after `watcher` observed an open-set read: plan
+    /// the answers from the retained settled batches, declare rejected the open
+    /// hashes this gateway does not know when `declare` (the caller holds a clock
+    /// admission permit, audit GF-2), and raise the `unanswerable_challenge` alert
+    /// while an open hash was due in a batch that settled without it.
+    fn plan_challenge_round(
+        &mut self,
+        watcher: &mut challenge_scan::Watcher,
+        declare: bool,
+    ) -> challenge_scan::AnswerPlan {
+        let mut plan = watcher.plan(&self.batch_orders);
+        if declare {
+            plan.declared = self.reject_unknown_challenges(watcher, &plan.unlocated);
+        }
+        if !plan.declared.is_empty() {
+            eprintln!(
+                "[l1] {} open challenge(s) name orders this gateway does not know; declared \
+                 rejected in window {}: {}",
+                plan.declared.len(),
+                self.seq.current_window_id(),
+                plan.declared
+                    .iter()
+                    .take(8)
+                    .map(hex32)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        if plan.unanswerable.is_empty() {
+            self.ops_alerts
+                .recover(ops_alerts::AlertKind::UnanswerableChallenge);
+        } else {
+            self.ops_alerts
+                .activate(ops_alerts::AlertKind::UnanswerableChallenge);
+            eprintln!(
+                "[l1] {} open challenge(s) name orders no settled batch holds: {}",
+                plan.unanswerable.len(),
+                plan.unanswerable
+                    .iter()
+                    .take(8)
+                    .map(hex32)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        plan
+    }
+
     /// Build the answer to an inclusion challenge for `order_hash` (audit DP-004): find the
     /// settled on-chain batch that committed it and build the Merkle proof against that batch's
     /// ordered root (matched) or rejected root (validly rejected). Returns
@@ -4511,7 +4910,7 @@ impl Gw {
     /// reference stays for the tests that pin it.
     #[cfg(test)]
     fn build_challenge_answer(&self, order_hash: &Digest) -> Option<(bool, u64, Vec<[u8; 32]>)> {
-        for (&batch_id, (ordered, rejected)) in &self.batch_orders {
+        for (&batch_id, (ordered, rejected)) in self.batch_orders.iter() {
             if let Some(i) = ordered.iter().position(|h| h == order_hash) {
                 let leaves: Vec<[u8; 32]> = ordered
                     .iter()
@@ -4561,6 +4960,7 @@ impl Gw {
         self.refuse_if_gate_closed()?;
         let market = 0u64;
         let now = now_ms();
+        self.refuse_if_clock_window_closing(now)?;
         let px = self.px_of(market);
         if px <= 0 {
             return Err("no market price".into());
@@ -4696,6 +5096,8 @@ impl Gw {
     /// (debit one, credit the other) — the engine has no native transfer, so this is
     /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
     /// net-zero externally. `from` must have `value` free in market 0.
+    /// Demo only (refused in production): it takes none of the per-account withdrawal
+    /// limits, which protect the production provable-history budget.
     fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
         self.refuse_candidate_synthetic_price()?;
         self.refuse_if_wind_down_started()?;
@@ -4706,11 +5108,17 @@ impl Gw {
         // anything: a production refusal must mutate NOTHING. The mint-site check
         // remains the backstop for every other caller.
         refuse_unbacked_mint(self.prod)?;
-        if value > self.market_free_of(&from.owner, 0) {
+        let now = now_ms();
+        self.refuse_if_clock_window_closing(now)?;
+        let oracle = self.withdrawal_oracle(&from.owner, 0, now)?;
+        if value > self.market_free_at(&from.owner, 0, oracle.price) {
             return Err("Insufficient market-0 free balance.".into());
         }
-        let now = now_ms();
-        let oracle = oracle_of(self.px_of(0), now, 0, &self.oracle_signer);
+        // The debit leg is an unbind like a withdrawal's: it cannot take the margin
+        // of `from`'s pending orders either (audit 2026-11-16 SM-1).
+        if !self.seq.unbind_keeps_reserve(&from.owner, 0, value, now) {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
         let c = self.lp_counter;
         self.lp_counter += 1;
         let mut db = [0xE0u8; 32];
@@ -5096,19 +5504,23 @@ impl Gw {
         new != 0 && (pos > 0) != (new > 0)
     }
 
-    fn finality_str(&self, oh: &Digest) -> String {
-        match self.seq.finality_of(oh) {
-            Some(Finality::Accepted) => "ACCEPTED",
-            Some(Finality::Matched) => "MATCHED",
-            Some(Finality::Settled) => "SETTLED",
-            None => "ACCEPTED",
+    /// The order's finality: the sequencer's record, else the finality the row
+    /// last recorded. The sequencer drops a finished order's record once a settle
+    /// hardened it and a tick recorded it here (audit GF-1 + SM-4).
+    fn finality_str(&self, o: &GwOrder) -> String {
+        match self.seq.finality_of(&o.order_hash) {
+            Some(Finality::Accepted) => "ACCEPTED".to_string(),
+            Some(Finality::Matched) => "MATCHED".to_string(),
+            Some(Finality::Settled) => "SETTLED".to_string(),
+            None => o.last_finality.clone(),
         }
-        .to_string()
     }
 
     // ── mutations ───────────────────────────────────────────────────────────
     fn place_order(&mut self, req: &OrderReq) -> Result<(WReceipt, Vec<WEvent>), String> {
         self.refuse_candidate_synthetic_price()?;
+        self.refuse_if_persistence_failed()?;
+        self.refuse_if_clock_window_closing(now_ms())?;
         // Legacy dev/demo plaintext ingress (this route is mounted only in the demo
         // build). It shares `OrderReq` — whose fields are `#[serde(default)]` for the
         // sealed wire — so it must enforce the SAME core-field presence as
@@ -5163,7 +5575,6 @@ impl Gw {
         }
 
         let nonce = self.user_nonce;
-        self.user_nonce += 1;
         // user is the taker (Ioc) — crosses the resting market-maker maker each seal.
         // Pass the RAW limit (0 = market) so the seal loop can tell a market order (fill
         // at the mark) from a caller-chosen limit and apply the off-market check to the
@@ -5179,6 +5590,12 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
+        // The sequencer's open-order limits, as on the /v1 path: before the nonce
+        // is spent, so a refused order leaves it for the next one.
+        self.seq
+            .check_open_order_limits(&order, now)
+            .map_err(|e| e.to_string())?;
+        self.user_nonce += 1;
         let signed = self.seq.accept_order(&order, now);
         let r = &signed.receipt;
         let receipt = WReceipt {
@@ -5211,6 +5628,7 @@ impl Gw {
                 created_ms: now,
                 sealed: false,
                 last_finality: "ACCEPTED".into(),
+                durable_mark: self.durable_marks.issue(),
             },
         );
         let ev = vec![WEvent {
@@ -5248,21 +5666,41 @@ impl Gw {
 
     fn withdraw(&mut self, amount: i128) -> Result<(), String> {
         self.refuse_candidate_synthetic_price()?;
+        self.refuse_if_clock_window_closing(now_ms())?;
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
-        if amount > self.market_free(self.selected) {
+        let now = now_ms();
+        let owner = self.user.owner;
+        let oracle = self.withdrawal_oracle(&owner, self.selected, now)?;
+        let free = self.market_free_at(&owner, self.selected, oracle.price);
+        if amount > free {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
             );
         }
-        let now = now_ms();
-        let oracle = oracle_of(
-            self.px_of(self.selected),
-            now,
-            self.selected,
-            &self.oracle_signer,
-        );
+        if !self
+            .seq
+            .unbind_keeps_reserve(&self.user.owner, self.selected, amount, now)
+        {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
+        if amount < MIN_WITHDRAWAL && amount != free {
+            return Err(format!(
+                "BELOW_MINIMUM: a withdrawal must be at least {} USDC unless it withdraws the \
+                 whole free balance in this market",
+                MIN_WITHDRAWAL / QUOTE_SCALE
+            ));
+        }
+        if let Some(refusal) = self.exit_cap_refusal(&owner, &owner, self.selected, amount) {
+            return Err(refusal.into());
+        }
+        // The shared demo user has the rate limits and the reserve, not the quota.
+        if let Some(refusal) =
+            self.demo_withdrawal_limit_refusal(&owner, self.selected, amount, now)
+        {
+            return Err(refusal.into());
+        }
         // SEC-026: same repeat hazard as the demo deposit — `op_unbind` MINTS a note,
         // so the old `0xC0 + tick % 60` blind made withdrawing the same amount 60 ticks
         // apart a historical DuplicateCommitment. Same fix: the tree leaf count never
@@ -5291,6 +5729,7 @@ impl Gw {
                 nonce: 0,
             })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
+        self.withdraw_limits.record_rate(&owner, now);
         Ok(())
     }
 
@@ -5394,6 +5833,14 @@ impl Gw {
         if self.wind_down_started || self.deposits.check_ready().is_err() {
             return Ok((vec![], vec![]));
         }
+        // Audit G2-2: every tick adds timed operations (funding at least), so none
+        // runs while the open clock window is closing; it resumes in the next window.
+        if self
+            .refuse_if_clock_window_closing(price_use.now_ms)
+            .is_err()
+        {
+            return Ok((vec![], vec![]));
+        }
         if self.candidate_archive_required {
             for m in &self.mkts {
                 self.require_candidate_price(m.id, price_use)?;
@@ -5439,9 +5886,42 @@ impl Gw {
             .filter(|(_, o)| !o.sealed)
             .map(|(i, _)| i)
             .collect();
+        // registered /v1 accounts' pending orders, sealed after the demo user's
+        let mut account_refs: Vec<([u8; 32], usize)> = Vec::new();
+        for (k, acct) in &self.accounts {
+            for (i, o) in acct.orders.iter().enumerate() {
+                if !o.sealed {
+                    account_refs.push((*k, i));
+                }
+            }
+        }
+        // Whether the seal's pre-trade gate admits each of these orders, in seal
+        // order: the per-order checks, the owner's earlier orders of the batch, the
+        // reduce-only rule and the open-order limits (audit 2026-11-16 GA-1 + SM-1).
+        // The house counters pushed between them change no other owner's verdict.
+        // Only asked when some order is a taker the house could answer.
+        let takers: Vec<Order> = pending
+            .iter()
+            .map(|&i| self.orders[i].order)
+            .chain(
+                account_refs
+                    .iter()
+                    .map(|(k, i)| self.accounts[k].orders[*i].order),
+            )
+            .collect();
+        let admits = if self.trading_gate == trading_gate::TradingGate::Open
+            && takers
+                .iter()
+                .any(|o| matches!(o.tif, TimeInForce::Ioc | TimeInForce::Fok))
+        {
+            self.seq.seal_admits(&takers, now)
+        } else {
+            vec![false; takers.len()]
+        };
+        let (demo_takers, account_takers) = takers.split_at(pending.len());
+        let (demo_admits, account_admits) = admits.split_at(pending.len());
         let mut seal: Vec<Order> = Vec::new();
-        for &i in &pending {
-            let uo = self.orders[i].order;
+        for (&uo, &admitted) in demo_takers.iter().zip(demo_admits) {
             let mark = self.px_of(uo.market_id);
             // Same off-market protection as the /v1 path: the house MM quotes at the mark,
             // and only counters a market order (limit 0 → matcher crosses at any price) or
@@ -5458,11 +5938,11 @@ impl Gw {
             // vector without touching `accept_order` and carries no `prod` gate of its
             // own — a gate placed only in the order handlers would leave it live, stopped
             // merely because no taker got through. A taker the seal would refuse gets
-            // no counter, which would otherwise rest with nothing to answer.
-            if crosses
-                && self.trading_gate == trading_gate::TradingGate::Open
-                && self.seq.pre_trade_check(&uo, now).is_ok()
-            {
+            // no counter, which would otherwise rest with nothing to answer: the
+            // verdict is the seal's own (`Sequencer::seal_admits`), not the per-order
+            // check alone, which leaves out the batch's earlier orders and the
+            // open-order limits.
+            if crosses && self.trading_gate == trading_gate::TradingGate::Open && admitted {
                 let opp = match uo.side {
                     Side::Buy => Side::Sell,
                     Side::Sell => Side::Buy,
@@ -5483,71 +5963,62 @@ impl Gw {
             seal.push(uo);
         }
         // registered /v1 accounts
-        let account_keys: Vec<[u8; 32]> = self.accounts.keys().copied().collect();
-        let mut account_refs: Vec<([u8; 32], usize)> = Vec::new();
-        for k in &account_keys {
-            let pend: Vec<usize> = self.accounts[k]
-                .orders
-                .iter()
-                .enumerate()
-                .filter(|(_, o)| !o.sealed)
-                .map(|(i, _)| i)
-                .collect();
-            for i in pend {
-                let uo = self.accounts[k].orders[i].order; // Order: Copy
-                let mark = self.px_of(uo.market_id);
-                // A market order carries limit_price == 0 (kept through admission); the
-                // matcher treats it as crossing any price, so it fills at the MM's mark.
-                // A limit order keeps the caller's own price for its crossing check. Either
-                // way the taker order is pushed UNCHANGED so its seal-time order hash still
-                // matches the one accept_order recorded at admission.
-                let is_market = uo.limit_price == 0;
-                if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
-                    // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
-                    // never at the taker's own limit, and only provides the counter-fill
-                    // when a limit order's price actually crosses the mark (a market order
-                    // always crosses). Otherwise a taker could name an off-market price (buy
-                    // far below / sell far above the mark), mint an off-market entry against
-                    // the fabricated MM, and drain the vault.
-                    let crosses = is_market
-                        || match uo.side {
-                            Side::Buy => uo.limit_price >= mark,
-                            Side::Sell => uo.limit_price <= mark,
-                        };
-                    // SEC-025-D: the /v1-account injector, gated on the SAME terms as the
-                    // demo arm above. There are TWO injectors and the first pass gated only
-                    // one — not exploitable today, since the one-way latch means no order
-                    // can be staged while Closed, but that is exactly the positional
-                    // reliance this branch refuses one screen earlier for `simulate_adl`.
-                    // As above, a taker the seal would refuse gets no counter.
-                    if crosses
-                        && self.trading_gate == trading_gate::TradingGate::Open
-                        && self.seq.pre_trade_check(&uo, now).is_ok()
-                    {
-                        let opp = match uo.side {
-                            Side::Buy => Side::Sell,
-                            Side::Sell => Side::Buy,
-                        };
-                        let mmn = self.mm_nonce;
-                        self.mm_nonce += 1;
-                        seal.push(mk_order(
-                            self.mm.owner,
-                            uo.market_id,
-                            opp,
-                            uo.size,
-                            mark,
-                            mmn,
-                            TimeInForce::Gtc,
-                            false,
-                        ));
-                    }
+        for (&uo, &admitted) in account_takers.iter().zip(account_admits) {
+            let mark = self.px_of(uo.market_id);
+            // A market order carries limit_price == 0 (kept through admission); the
+            // matcher treats it as crossing any price, so it fills at the MM's mark.
+            // A limit order keeps the caller's own price for its crossing check. Either
+            // way the taker order is pushed UNCHANGED so its seal-time order hash still
+            // matches the one accept_order recorded at admission.
+            let is_market = uo.limit_price == 0;
+            if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
+                // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
+                // never at the taker's own limit, and only provides the counter-fill
+                // when a limit order's price actually crosses the mark (a market order
+                // always crosses). Otherwise a taker could name an off-market price (buy
+                // far below / sell far above the mark), mint an off-market entry against
+                // the fabricated MM, and drain the vault.
+                let crosses = is_market
+                    || match uo.side {
+                        Side::Buy => uo.limit_price >= mark,
+                        Side::Sell => uo.limit_price <= mark,
+                    };
+                // SEC-025-D: the /v1-account injector, gated on the SAME terms as the
+                // demo arm above. There are TWO injectors and the first pass gated only
+                // one — not exploitable today, since the one-way latch means no order
+                // can be staged while Closed, but that is exactly the positional
+                // reliance this branch refuses one screen earlier for `simulate_adl`.
+                // As above, a taker the seal would refuse gets no counter.
+                if crosses && self.trading_gate == trading_gate::TradingGate::Open && admitted {
+                    let opp = match uo.side {
+                        Side::Buy => Side::Sell,
+                        Side::Sell => Side::Buy,
+                    };
+                    let mmn = self.mm_nonce;
+                    self.mm_nonce += 1;
+                    seal.push(mk_order(
+                        self.mm.owner,
+                        uo.market_id,
+                        opp,
+                        uo.size,
+                        mark,
+                        mmn,
+                        TimeInForce::Gtc,
+                        false,
+                    ));
                 }
-                seal.push(uo);
-                account_refs.push((*k, i));
             }
+            seal.push(uo);
         }
         let sealed = self.seq.seal_batch(&seal, now);
         self.last_manifest = sealed.manifest_hash;
+        if !self.window_settle_mode {
+            // The legacy settle simulation never settles a window on L1, so nothing
+            // takes or clears these accumulators: keep only this tick's, not every
+            // order's hash inside the snapshot for good (audit GF-1 + SM-4).
+            self.pending_ordered.clear();
+            self.pending_rejected.clear();
+        }
         // audit DP-004: accumulate this batch's matched + validly-rejected order hashes; at the
         // next L1 settle they become this on-chain batch's ordered/rejected roots, so the
         // sequencer can answer an inclusion challenge for either instead of being wrongfully slashed.
@@ -5561,20 +6032,47 @@ impl Gw {
             self.user_adl_clawed += adl_clawed;
         }
         let any_sealed = !pending.is_empty() || !account_refs.is_empty();
-        // Update all orders, including makers submitted in older ticks/windows.
-        // Applied-fill attribution is independent of the monotone finality axis.
+        // Update the order rows this batch touched, including makers submitted in
+        // older ticks/windows (audit 2026-11-16 GA-1 + SM-1): the orders it sealed
+        // (the rows still unsealed, every one of which was pushed into it above),
+        // the orders with an applied fill, a rejection or a removal in it, and the
+        // rows holding a fill of a tick that settled or was discarded since the
+        // last tick (`execution::needs_update`). Every other row is an order
+        // resting as recorded or ended, whose fills still wait for their proof;
+        // updating it changed nothing a response or an event shows, and cost a
+        // book lookup and a scan of the batch per row, every tick, under this
+        // lock. The batch is indexed by order hash once (`execution::Touches`).
+        // Rows are visited in the same order as before, so the events keep
+        // theirs. Applied-fill attribution is independent of the monotone
+        // finality axis.
+        let settled_ticks = self.settled_fill_ticks();
+        let touches = execution::Touches::of(&sealed, settled_ticks);
         let mut acct_events: Vec<String> = Vec::new();
-        for (i, o) in self.orders.iter_mut().enumerate() {
-            let fresh = pending.contains(&i);
-            let _ = execution::update(o, &self.seq, &sealed, fresh);
+        for o in self.orders.iter_mut() {
+            let fresh = !o.sealed;
+            if !fresh && !execution::needs_update(o, &touches) {
+                #[cfg(test)]
+                tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
+                continue;
+            }
+            #[cfg(test)]
+            tick_scaling_tests::count_row_update();
+            let _ = execution::update_with(o, &self.seq, &touches, fresh);
             if fresh {
                 o.sealed = true;
             }
         }
-        for (key, acct) in &mut self.accounts {
-            for (i, o) in acct.orders.iter_mut().enumerate() {
-                let fresh = account_refs.contains(&(*key, i));
-                for mut event in execution::update(o, &self.seq, &sealed, fresh) {
+        for acct in self.accounts.values_mut() {
+            for o in acct.orders.iter_mut() {
+                let fresh = !o.sealed;
+                if !fresh && !execution::needs_update(o, &touches) {
+                    #[cfg(test)]
+                    tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
+                    continue;
+                }
+                #[cfg(test)]
+                tick_scaling_tests::count_row_update();
+                for mut event in execution::update_with(o, &self.seq, &touches, fresh) {
                     event["owner"] = serde_json::json!(hex0x(&acct.wallet.owner));
                     acct_events.push(event.to_string());
                 }
@@ -5582,6 +6080,12 @@ impl Gw {
                     o.sealed = true;
                 }
             }
+        }
+        // The rows that recorded a fill of this tick hold it unsettled.
+        if !sealed.applied_fills.is_empty() {
+            self.unsettled_fill_ticks
+                .get_or_insert_with(Default::default)
+                .insert(sealed.batch_id);
         }
         // Task 5: the SETTLE_TICKS queue is the LEGACY (demo/no-prover) finality
         // simulation. In window-settle mode SETTLED is earned by the real on-chain
@@ -5613,7 +6117,8 @@ impl Gw {
                 Some(Finality::Accepted) => "ACCEPTED",
                 Some(Finality::Matched) => "MATCHED",
                 Some(Finality::Settled) => "SETTLED",
-                None => "ACCEPTED",
+                // A finished order's record goes after this row recorded it.
+                None => continue,
             };
             if f != o.last_finality {
                 o.last_finality = f.to_string();
@@ -5634,8 +6139,9 @@ impl Gw {
         for acct in self.accounts.values_mut() {
             let owner_hex = hex0x(&acct.wallet.owner);
             for o in acct.orders.iter_mut() {
-                // Execution was updated above for every row. This separate
-                // receipt axis may retain an earlier SETTLED fact indefinitely.
+                // Execution was updated above for every row the batch touched.
+                // This separate receipt axis may retain an earlier SETTLED fact
+                // indefinitely.
                 if o.last_finality == "SETTLED" {
                     continue;
                 }
@@ -5674,26 +6180,29 @@ impl Gw {
                     .to_string(),
                 );
             }
-            // A04: SETTLED is a finality axis, not proof of full execution. Never
-            // evict the only API row for a still-live partial maker. Gather its live
-            // hashes once (only when pruning is needed), not once per history row.
-            if acct.orders.len() > MAX_ACCOUNT_ORDER_HISTORY {
-                let live: std::collections::BTreeSet<Digest> = self
-                    .mkts
-                    .iter()
-                    .filter_map(|m| self.seq.book(m.id))
-                    .flat_map(|book| book.resting_hashes_for(&acct.wallet.owner))
-                    .collect();
-                cap_history(&mut acct.orders, MAX_ACCOUNT_ORDER_HISTORY, |o| {
-                    o.sealed
-                        && o.last_finality == "SETTLED"
-                        && !live.contains(&o.order_hash)
-                        && o.execution
-                            .as_ref()
-                            .is_some_and(execution::Execution::terminal)
-                });
+            // per-account forced close (audit 2026-11-16 PC-1): another account's
+            // liquidation closed some or all of this position at the oracle price,
+            // and the sequencer cancelled the account's resting orders in that
+            // market (`ForcedClose`). Recognized the same way, under its own tag.
+            for m in &self.mkts {
+                let tag = forced_close_tag(&tag_key, m.id, sealed.batch_id);
+                for r in sealed.forced_close_receipts.iter().filter(|r| r.tag == tag) {
+                    acct_events.push(
+                        serde_json::json!({
+                            "owner": owner_hex, "type": "forcedClose", "marketId": m.id,
+                            "size": r.size.to_string(), "price": r.price.to_string(),
+                            "realizedPnl": r.realized.to_string(),
+                            "penalty": r.penalty.to_string(),
+                        })
+                        .to_string(),
+                    );
+                }
             }
         }
+        self.cap_account_order_history(ORDER_HISTORY_BUDGET);
+        // Every row above has recorded the finality it reports, so the sequencer can
+        // now drop the records of orders a settle finished (audit GF-1 + SM-4).
+        self.seq.prune_settled_order_history();
         if adl_clawed > 0 {
             events.push(WEvent {
                 order_id: format!("adl-{}", sealed.batch_id),
@@ -5705,6 +6214,54 @@ impl Gw {
             });
         }
         Ok((events, acct_events))
+    }
+
+    /// Bound the API order rows kept per account, and so in the snapshot (audit
+    /// GF-1 + SM-4): each account holding rows (the demo user's list counts as
+    /// one) keeps at most [`account_order_history_cap`] rows, its share of
+    /// `budget`. Only finished rows are evicted, oldest first: sealed, off the
+    /// book, a terminal execution, and a finality that reached SETTLED or whose
+    /// record the sequencer dropped (an order that never filled is never SETTLED).
+    /// A04: never evict the only API row of a still-live partial maker; live rows
+    /// count but stay.
+    fn cap_account_order_history(&mut self, budget: usize) {
+        let holders = usize::from(!self.orders.is_empty())
+            + self
+                .accounts
+                .values()
+                .filter(|a| !a.orders.is_empty())
+                .count();
+        let cap = account_order_history_cap(holders, budget);
+        let seq = &self.seq;
+        // A row that ended without filling never reaches SETTLED, so it is also
+        // finished once the tick that last updated it is hard (audit 2026-11-16
+        // GA-1 + SM-1).
+        let finished = |o: &GwOrder| {
+            let Some(e) = o.execution.as_ref().filter(|e| e.terminal()) else {
+                return false;
+            };
+            o.sealed
+                && (o.last_finality == "SETTLED"
+                    || seq.finality_of(&o.order_hash).is_none()
+                    || (e.filled == 0 && e.last_tick_hardened(seq)))
+        };
+        let lists = std::iter::once((self.user.owner, &mut self.orders)).chain(
+            self.accounts
+                .values_mut()
+                .map(|a| (a.wallet.owner, &mut a.orders)),
+        );
+        for (owner, rows) in lists {
+            // Scan the books only for a list with something to evict.
+            if rows.len() <= cap || !rows.iter().any(finished) {
+                continue;
+            }
+            // Rows are kept newest first; `cap_history` evicts from the front. A
+            // row's book is looked up by its hash, not walked (audit 2026-11-16
+            // GA-1 + SM-1).
+            rows.reverse();
+            cap_history(rows, cap, |o| finished(o) && !order_rests(seq, &owner, o));
+            rows.reverse();
+        }
     }
 
     // ── snapshot ──────────────────────────────────────────────────────────────
@@ -5785,7 +6342,6 @@ impl Gw {
                 }
             }
         }
-        let live = self.live_order_hashes(&self.user.owner);
         let orders: Vec<WTrackedOrder> = self
             .orders
             .iter()
@@ -5793,8 +6349,8 @@ impl Gw {
                 id: o.id.clone(),
                 input: o.input.clone(),
                 receipt: self.receipt_json(&o.receipt, None),
-                finality: self.finality_str(&o.order_hash),
-                cancellable: live.contains(&o.order_hash)
+                finality: self.finality_str(o),
+                cancellable: order_rests(&self.seq, &self.user.owner, o)
                     || (!o.sealed
                         && self
                             .seq
@@ -5830,7 +6386,7 @@ impl Gw {
                 let hashes: String = os.iter().map(|o| o.receipt.order_hash.clone()).collect();
                 let fin = os
                     .iter()
-                    .map(|o| self.finality_str(&o.order_hash))
+                    .map(|o| self.finality_str(o))
                     .min_by_key(|f| rank(f))
                     .unwrap_or_else(|| "SETTLED".into());
                 let sealed_ms = os.iter().map(|o| o.receipt.recv_time_ms).min().unwrap_or(0);
@@ -6367,6 +6923,25 @@ fn commit_candidate_retention(
     }
 }
 
+/// One challenge-watcher round over `watcher`'s latest read
+/// ([`Gw::plan_challenge_round`]). A declared rejection changes the open window, so
+/// it needs a clock admission permit like every other change to it (audit GF-2):
+/// while a window holds admission closed, nothing is declared and the next round
+/// tries again. The permit is taken before the state lock, as the tick loop does.
+async fn challenge_round(
+    app: &Shared,
+    watcher: &mut challenge_scan::Watcher,
+) -> challenge_scan::AnswerPlan {
+    let admission = app.clock_admission.enter();
+    let plan = app
+        .gw
+        .lock()
+        .await
+        .plan_challenge_round(watcher, admission.is_ok());
+    drop(admission);
+    plan
+}
+
 /// Acknowledgement after a complete sealed snapshot write, rename, and directory sync.
 type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 
@@ -6430,6 +7005,7 @@ async fn final_snapshot<'a>(
     let (plain, plan) = match capture {
         Ok(capture) => capture,
         Err(error) => {
+            frozen.snapshot_health.record(false);
             frozen
                 .ops_alerts
                 .activate(ops_alerts::AlertKind::PersistenceFailed);
@@ -6442,6 +7018,7 @@ async fn final_snapshot<'a>(
             return (frozen, false);
         }
     };
+    note_snapshot_size(&frozen.ops_alerts, plain.len());
     let path = path.to_owned();
     let saved = tokio::task::spawn_blocking(move || {
         // Cancellation must not release serialization while the filesystem worker
@@ -6457,6 +7034,7 @@ async fn final_snapshot<'a>(
             ok = commit_candidate_retention(app, plan).is_ok();
         }
     }
+    frozen.snapshot_health.record(ok);
     if ok {
         frozen
             .ops_alerts
@@ -6532,7 +7110,9 @@ async fn write_snapshot_with_entry(
         return tokio::task::spawn_blocking(move || {
             let _serial = guard;
             entry.notify();
-            let gw = app.gw.blocking_lock();
+            let mut gw = app.gw.blocking_lock();
+            let history = append_history_locked(&mut gw, &path, &seed);
+            let captured = gw.durable_marks.captured();
             let result = (|| {
                 let (plain, plan) = match archive_slot(app.archive.as_ref()) {
                     ArchiveSlot::Guard(binding) => {
@@ -6540,11 +7120,15 @@ async fn write_snapshot_with_entry(
                     }
                     _ => return Err("candidate checkpoint archive lock unavailable".to_string()),
                 };
+                note_snapshot_size(&gw.ops_alerts, plain.len());
                 snapshot::write_atomic(&path, &snapshot::seal(&plain, &seed))
                     .map_err(|_| "candidate checkpoint filesystem write failed".to_string())?;
                 commit_candidate_retention(&app, plan)
             })();
+            let result = result.and(history);
+            gw.snapshot_health.record(result.is_ok());
             if result.is_ok() {
+                gw.durable_marks.written(captured);
                 gw.ops_alerts
                     .recover(ops_alerts::AlertKind::PersistenceFailed);
                 match archive_slot(app.archive.as_ref()) {
@@ -6567,9 +7151,13 @@ async fn write_snapshot_with_entry(
         .await
         .unwrap_or(false);
     }
-    let (plain, alerts) = {
+    // Side logs first (audit GF-1 + SM-4): whatever they take, the capture below
+    // leaves out. The append runs without the gateway lock but keeps the
+    // serialization guard, so no other writer appends or captures meanwhile.
+    let job = {
         let gw = app.gw.lock().await;
         if gw.candidate_archive_required {
+            gw.snapshot_health.record(false);
             gw.ops_alerts
                 .activate(ops_alerts::AlertKind::PersistenceFailed);
             gw.ops_alerts
@@ -6577,20 +7165,71 @@ async fn write_snapshot_with_entry(
             eprintln!("[state] candidate checkpoint requires its configured archive");
             return false;
         }
-        let alerts = gw.ops_alerts.clone();
-        (gw.snapshot_plain(), alerts)
+        gw.history_append_job(path)
+    };
+    let (guard, appended) = match job {
+        Ok(Some(job)) => {
+            match tokio::task::spawn_blocking(move || {
+                let done = job.run(&seed);
+                (guard, done)
+            })
+            .await
+            {
+                Ok((guard, done)) => (guard, Ok(Some(done))),
+                Err(e) => {
+                    let gw = app.gw.lock().await;
+                    gw.snapshot_health.record(false);
+                    gw.ops_alerts
+                        .activate(ops_alerts::AlertKind::PersistenceFailed);
+                    eprintln!("[state] side-log worker failed: {e}");
+                    return false;
+                }
+            }
+        }
+        Ok(None) => (guard, Ok(None)),
+        Err(error) => (guard, Err(error)),
+    };
+    let (plain, alerts, health, history, marks, captured) = {
+        let mut gw = app.gw.lock().await;
+        let history = match appended {
+            Ok(Some(done)) => {
+                gw.history_appended(&done);
+                done.error.map_or(Ok(()), Err)
+            }
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
+        };
+        let plain = gw.snapshot_plain();
+        note_snapshot_size(&gw.ops_alerts, plain.len());
+        (
+            plain,
+            gw.ops_alerts.clone(),
+            gw.snapshot_health.clone(),
+            history,
+            gw.durable_marks.clone(),
+            gw.durable_marks.captured(),
+        )
     };
     let path = path.to_path_buf();
     let writer_alerts = alerts.clone();
+    let writer_health = health.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = guard;
         entry.notify();
         let sealed = snapshot::seal(&plain, &seed);
-        let result = snapshot::write_atomic(&path, &sealed);
+        // The snapshot is written even when a side-log append failed: it then
+        // still holds those records itself. The write reports failure all the
+        // same, so promises stay refused until every part is durable.
+        let result = snapshot::write_atomic(&path, &sealed)
+            .map_err(|e| format!("snapshot write failed: {e}"))
+            .and(history.map_err(|e| format!("side log: {e}")));
         // Publish the episode transition before releasing the same serialization
         // guard as the write. A delayed successful caller must not clear an alert
         // emitted by a later failed writer.
+        writer_health.record(result.is_ok());
         if result.is_ok() {
+            // Every order this capture holds is durable now (audit GF-2).
+            marks.written(captured);
             writer_alerts.recover(ops_alerts::AlertKind::PersistenceFailed);
         } else {
             writer_alerts.activate(ops_alerts::AlertKind::PersistenceFailed);
@@ -6601,14 +7240,41 @@ async fn write_snapshot_with_entry(
     {
         Ok(Ok(())) => true,
         Ok(Err(e)) => {
-            eprintln!("[state] snapshot write failed: {e}");
+            eprintln!("[state] {e}");
             false
         }
         Err(e) => {
+            health.record(false);
             alerts.activate(ops_alerts::AlertKind::PersistenceFailed);
             eprintln!("[state] snapshot worker failed: {e}");
             false
         }
+    }
+}
+
+/// Append the side logs for `path` while holding `gw` (the archive writer and
+/// boot). The caller holds the snapshot serialization guard. A failed append
+/// keeps its records in the snapshot; the error is returned for the outcome.
+fn append_history_locked(
+    gw: &mut Gw,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+) -> Result<(), String> {
+    let Some(job) = gw.history_append_job(path)? else {
+        return Ok(());
+    };
+    let done = job.run(seed);
+    gw.history_appended(&done);
+    done.error.map_or(Ok(()), |e| Err(format!("side log: {e}")))
+}
+
+/// Raise `snapshot_size_high` while a captured payload is at or above three
+/// quarters of the cap (audit GF-1), long before a write fails at the cap.
+fn note_snapshot_size(alerts: &ops_alerts::OpsAlerts, plain_len: usize) {
+    if plain_len >= snapshot::SIZE_ALERT_BYTES {
+        alerts.activate(ops_alerts::AlertKind::SnapshotSizeHigh);
+    } else {
+        alerts.recover(ops_alerts::AlertKind::SnapshotSizeHigh);
     }
 }
 
@@ -6852,10 +7518,11 @@ fn parse_hex65(s: &str) -> Option<[u8; 65]> {
 /// accepts 0..3 as well as 27..30, whereas `CollateralVault`/`DarkPerpSettlement`
 /// accept only 27/28. That is safe for gateway-local authorization (these signatures
 /// never reach a contract), but it is NOT byte-identical to on-chain `ecrecover`.
-/// High-`s` (malleable) signatures are rejected inside k256's recovery primitive
-/// (`recover_from_prehash` ends by re-verifying, and secp256k1's `verify_prehashed`
-/// refuses a high-`s` signature).
+/// High-`s` (malleable) signatures are rejected: the recovered key must verify the
+/// signature, and secp256k1's `verify_prehash` refuses a high-`s` signature. (ecdsa
+/// 0.16's `recover_from_prehash` re-verified itself; 0.17's does not, so it is explicit.)
 fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
+    use k256::ecdsa::signature::hazmat::PrehashVerifier;
     use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
     use sha3::{Digest as _, Keccak256 as RawKeccak};
     let s = Signature::from_slice(&sig[..64]).ok()?;
@@ -6863,7 +7530,8 @@ fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
     let recid_byte = if v >= 27 { v - 27 } else { v };
     let recid = RecoveryId::from_byte(recid_byte)?;
     let vk = VerifyingKey::recover_from_prehash(prehash, &s, recid).ok()?;
-    let point = vk.to_encoded_point(false);
+    vk.verify_prehash(prehash, &s).ok()?;
+    let point = vk.to_sec1_point(false);
     let hash = RawKeccak::digest(&point.as_bytes()[1..]);
     let mut a = [0u8; 20];
     a.copy_from_slice(&hash[12..]);
@@ -6932,7 +7600,7 @@ const PUBLIC_DEV_ADDRESSES: [&str; 10] = [
 /// keccak256 of its uncompressed public key.
 fn eth_address(key: &k256::ecdsa::SigningKey) -> [u8; 20] {
     use sha3::{Digest as _, Keccak256 as RawKeccak};
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     let hash = RawKeccak::digest(&point.as_bytes()[1..]);
     let mut a = [0u8; 20];
     a.copy_from_slice(&hash[12..]);
@@ -7069,10 +7737,7 @@ impl GatewaySigner {
         valid_until: u64,
     ) -> Result<[u8; 65], String> {
         let digest = self.digest(from, owner_commit, amount, valid_until);
-        let (sig, recid) = self
-            .key
-            .sign_prehash_recoverable(&digest)
-            .map_err(|e| format!("gateway sign failed: {e}"))?;
+        let (sig, recid) = self.key.sign_prehash_recoverable(&digest);
         let mut out = [0u8; 65];
         out[..64].copy_from_slice(&sig.to_bytes());
         out[64] = 27 + recid.to_byte();
@@ -7455,6 +8120,68 @@ async fn start_clock_recovery(
     (rec, delay)
 }
 
+/// Audit G2-2: the settle loop's turn for a sealed window whose operation times
+/// can never register (`PreflightRefusal::Unregistrable`). Its intent is already
+/// journaled and nothing was sent. It is not rolled back, which would seal the
+/// same times again: `clock_registration_refused` is raised and the recovery
+/// registers nothing and decides the window at finalized blocks, voiding a timed
+/// window once the chain clock is past its registration skew.
+#[allow(clippy::too_many_arguments)] // `start_clock_recovery`'s arguments
+async fn start_unregistrable_recovery(
+    app: &Shared,
+    batch_id: u64,
+    witness: &WindowWitness,
+    phase: u8,
+    why: String,
+    prune_candidates: Vec<[u8; 32]>,
+    gate_was_closed: bool,
+    ceiling: l1::Ceiling,
+) -> (clock_recovery::PendingRecovery, Duration) {
+    eprintln!("[clock] {why}; nothing was sent, the recovery decides the window");
+    app.gw
+        .lock()
+        .await
+        .ops_alerts
+        .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
+    start_clock_recovery(
+        app,
+        batch_id,
+        witness,
+        phase,
+        why,
+        prune_candidates,
+        gate_was_closed,
+        ceiling,
+    )
+    .await
+}
+
+/// Audit G2-2: raise `clock_registration_refused` for a clock failure that says
+/// the window's registration was refused: the verifier reverted it, or it was
+/// too late to send. Such a failure is not waited out; the reason is in the log.
+async fn note_registration_refusal(app: &Shared, error: &str) {
+    if error.contains(l1::REGISTRATION_REVERTED) || error.contains(l1::PAST_REGISTRATION_SKEW) {
+        app.gw
+            .lock()
+            .await
+            .ops_alerts
+            .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
+    }
+}
+
+/// Audit G2-2: the open window's admission bound. Clock-bound windows, sealed by
+/// a clock-enabled settle loop, stop admitting timed operations before they
+/// outgrow the verifier's `maxWindowMs`; demo and legacy modes have none.
+fn clock_window_bound(
+    timing: Option<l1::ClockTiming>,
+    clock_prover: bool,
+    seal_period: Duration,
+) -> Option<clock_admission::WindowBound> {
+    timing
+        .filter(|_| clock_prover)
+        .map(|timing| clock_admission::WindowBound::new(timing, seal_period))
+}
+
 /// Whether a clock settle that failed after its send goes to the recovery:
 /// while the finalized batch count is still the window's, or could not be read
 /// (`None`). Outside clock mode, or at any other count, the loop holds (a count
@@ -7781,6 +8508,13 @@ async fn post_v1_admin_wind_down(
         }
     } else {
         None
+    };
+    // Audit G2-1: the clock admission permit is taken after the L1 reads, for
+    // the rebase, the queued SettleAll and their durability barrier. Everything
+    // read is checked again below against the state it is applied to.
+    let _admission = match app.clock_admission.enter() {
+        Ok(permit) => permit,
+        Err(error) => return clock_admission::closed_response(error),
     };
     let (sink, chain_id, vault) = {
         let mut gw = app.gw.lock().await;
@@ -8122,6 +8856,9 @@ async fn post_v1_register(
     };
     let (key, owner, chain_id, vault) = {
         let mut gw = app.gw.lock().await;
+        if let Err(error) = gw.refuse_if_persistence_failed() {
+            return mutation_error(error);
+        }
         if gw.accounts.len() >= MAX_ACCOUNTS {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -8203,14 +8940,14 @@ async fn post_v1_deposit_address(
         },
         None => None,
     };
-    match app
-        .gw
-        .lock()
-        .await
-        .account_set_deposit_address(&key, addr, &sig, current_sig.as_ref())
-    {
+    let bound = {
+        let mut gw = app.gw.lock().await;
+        gw.refuse_if_persistence_failed()
+            .and_then(|()| gw.account_set_deposit_address(&key, addr, &sig, current_sig.as_ref()))
+    };
+    match bound {
         Ok(()) => Json(serde_json::json!({ "depositAddress": hex0x(&addr) })).into_response(),
-        Err(e) => err400(e).into_response(),
+        Err(e) => mutation_error(e),
     }
 }
 
@@ -8241,6 +8978,14 @@ pub(crate) enum PermitGateRefusal {
     EngineCloseOnly,
     /// The provable-history admission cap is reached for this permit.
     AdmissionCap,
+    /// The asking client group already holds
+    /// `admission::MAX_GROUP_OPENING_PERMITS` outstanding permits that may open a
+    /// position entry (audit G1-1).
+    ClientOpeningPermits,
+    /// The position entries refuse a permit that may open one (audit G1-1): the
+    /// state's entries are at their soft cap and no sweep made room, or the
+    /// state's entries and those the outstanding permits may open fill the bound.
+    PositionEntries,
     /// The state is beyond a provable-history bound: the deposit of a held permit
     /// would not be credited, so the permit is not re-signed.
     AdmissionHardCap,
@@ -8248,8 +8993,14 @@ pub(crate) enum PermitGateRefusal {
     /// another market: it holds permits for one market until its first deposit is
     /// credited.
     OneMarketUntilFirstDeposit,
+    /// The account spent its history quota (`admission::ACCOUNT_HISTORY_QUOTA`):
+    /// no further deposit permit; it can still exit in full.
+    AccountQuota,
     /// The amount is below `admission::MIN_DEPOSIT_PERMIT`.
     BelowMinimum,
+    /// The permit may open a position entry and is below
+    /// `admission::MIN_ENTRY_DEPOSIT` (audit G1-1).
+    BelowEntryMinimum,
     /// The settlement accepts no deposits (no paired vault).
     NotAccepting,
     /// The deposit would exceed what the posted bond covers.
@@ -8286,6 +9037,27 @@ pub(crate) fn permit_gate(
     Ok(())
 }
 
+/// Send the account events of dust sweeps (`admission::forced_exit_event`) once a
+/// snapshot carries the sweeps (audit G1-1), as a void's are sent once it is
+/// durable. Without that acknowledgement no one is told: a sweep a crash loses
+/// never happened, and one a later snapshot carries shows in its owner's
+/// withdrawals as a forced exit.
+async fn announce_once_durable(app: &Shared, events: Vec<String>) {
+    if events.is_empty() {
+        return;
+    }
+    match snapshot_now(&app.snapshot_req).await {
+        Ok(()) => {
+            for event in events {
+                let _ = app.events_tx.send(event);
+            }
+        }
+        Err(e) => {
+            eprintln!("[admission] dust sweep not yet durable ({e}); its owners are not told")
+        }
+    }
+}
+
 fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Response {
     match refusal {
         PermitGateRefusal::CloseOnly => (
@@ -8306,6 +9078,21 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
                 "error": "the provable-history admission cap is reached; no new deposit permit is issued. Withdrawals keep working"
             })),
         ),
+        PermitGateRefusal::ClientOpeningPermits => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({
+                "error": format!(
+                    "OPENING_PERMIT_LIMIT: this client (an IPv4 address or an IPv6 /48) already holds {} outstanding deposit permits that may open a position entry; retry once one of those deposits is credited or its permit expires",
+                    admission::MAX_GROUP_OPENING_PERMITS
+                )
+            })),
+        ),
+        PermitGateRefusal::PositionEntries => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "POSITION_ENTRIES_FULL: the position entries and the deposit permits that may open one are at their admission cap; no permit that may open a new position entry is issued now. Top-ups of existing entries and withdrawals keep working"
+            })),
+        ),
         PermitGateRefusal::AdmissionHardCap => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
@@ -8318,11 +9105,29 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
                 "error": "an account with no position yet holds deposit permits for one market at a time; complete the deposit for the market of its outstanding permit first, or let that permit expire"
             })),
         ),
+        PermitGateRefusal::AccountQuota => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": "ACCOUNT_HISTORY_QUOTA: this account used its quota of provable history and gets no further deposit permit. It can still withdraw its balance in full"
+            })),
+        ),
         PermitGateRefusal::BelowMinimum => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
                 "error": format!("BELOW_MINIMUM: a deposit permit is issued for at least {} USDC", admission::MIN_DEPOSIT_PERMIT / QUOTE_SCALE as u128),
                 "minimum": admission::MIN_DEPOSIT_PERMIT.to_string(),
+            })),
+        ),
+        PermitGateRefusal::BelowEntryMinimum => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "BELOW_ENTRY_MINIMUM: this account holds no position entry in this market, or only a flat one below {} USDC, so the deposit may open one and its permit is issued for at least {} USDC (a top-up of any other entry needs {} USDC)",
+                    admission::MIN_ENTRY_DEPOSIT / QUOTE_SCALE as u128,
+                    admission::MIN_ENTRY_DEPOSIT / QUOTE_SCALE as u128,
+                    admission::MIN_DEPOSIT_PERMIT / QUOTE_SCALE as u128
+                ),
+                "minimum": admission::MIN_ENTRY_DEPOSIT.to_string(),
             })),
         ),
         PermitGateRefusal::NotAccepting => (
@@ -8356,6 +9161,7 @@ fn permit_refusal_response(refusal: PermitGateRefusal) -> axum::response::Respon
 /// spec §1b). The SECRET blind is never returned, only `ownerCommit`.
 async fn post_v1_deposit_authorize(
     State(app): State<Shared>,
+    connect: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(req): Json<DepositAuthorizeReq>,
 ) -> impl IntoResponse {
@@ -8418,9 +9224,24 @@ async fn post_v1_deposit_authorize(
         None => None,
     };
     let now_s = now_ms() / 1000;
+    // Audit G2-1: the clock admission permit is taken after the L1 read, for the
+    // permit store and its durability barrier only. The terms are a latest-block
+    // reading either way; the vault enforces its own terms when the deposit lands.
+    let admission = match app.clock_admission.enter() {
+        Ok(permit) => permit,
+        Err(error) => return clock_admission::closed_response(error),
+    };
+    // The client group a permit that may open a position entry counts toward
+    // (audit G1-1): IPv4 by address, IPv6 by /48. An in-process request without
+    // connection info has none.
+    let group = connect
+        .map(|ConnectInfo(peer)| service_policy::client_group_key(client_ip(peer, &headers)));
+    // The account events of this request's dust sweeps, sent once a snapshot
+    // carries the sweeps.
+    let mut forced_exits: Vec<String> = Vec::new();
     // Release the account lock before requesting durability. No signature may be
     // constructed or returned until the writer acknowledges the stored blind.
-    let (commit, valid_until, reused) = {
+    let issued: Result<([u8; 32], u64, bool), axum::response::Response> = {
         let mut gw = app.gw.lock().await;
         if let Err(error) = gw.deposits.check_ready() {
             if gw.deposits.halt.is_some() {
@@ -8476,25 +9297,89 @@ async fn post_v1_deposit_authorize(
             if gw.held_permit_beyond_cap(&commit) {
                 return permit_refusal_response(PermitGateRefusal::AdmissionHardCap);
             }
-            (commit, until, true)
+            Ok((commit, until, true))
         } else {
-            // Re-signing a held permit issues nothing new; a fresh one stops at the
-            // soft admission cap, which counts the permits already outstanding.
-            if let Some(refusal) = gw.permit_cap_refusal(&key, req.market_id, req.purpose) {
+            // A permit that may open a position entry needs the entry minimum.
+            if let Some(refusal) =
+                gw.entry_minimum_refusal(&key, req.market_id, req.purpose, amount)
+            {
                 return permit_refusal_response(refusal);
             }
-            if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
-                return (status, Json(serde_json::json!({ "error": error }))).into_response();
-            }
-            let until = now_s.saturating_add(app.permit_ttl_secs);
-            match gw.authorize_routed_deposit(&key, from, amount, req.market_id, req.purpose, until)
-            {
-                Ok(c) => {
-                    gw.charge_deposit_permit(&key, req.purpose, now_s);
-                    (c, until, false)
+            // Dust never holds the position entries against a new one (audit G1-1):
+            // when they alone refuse this permit and exiting dust entries admits it,
+            // sweep as many as it needs (whatever permits their accounts hold); their
+            // owners are told once a snapshot carries the sweeps. Like a withdrawal,
+            // a sweep applies timed engine operations.
+            let price_now = now_ms();
+            let swept = match archive_slot(app.archive.as_ref()) {
+                ArchiveSlot::Guard(binding) => gw.sweep_dust_for_permit(
+                    &request,
+                    group,
+                    now_s,
+                    PriceUse {
+                        archive: Some(&binding),
+                        now_ms: price_now,
+                    },
+                ),
+                ArchiveSlot::NotConfigured => gw.sweep_dust_for_permit(
+                    &request,
+                    group,
+                    now_s,
+                    PriceUse {
+                        archive: None,
+                        now_ms: price_now,
+                    },
+                ),
+                ArchiveSlot::Poisoned => Ok(Vec::new()),
+            };
+            // Audit G2-2: the sweep the permit needs waits for the closing window.
+            let swept = match swept {
+                Ok(swept) => swept,
+                Err(e) => return clock_admission::closed_response(&e),
+            };
+            forced_exits = swept
+                .iter()
+                .map(|(market, w)| admission::forced_exit_event(*market, w))
+                .collect();
+            'issue: {
+                // Re-signing a held permit issues nothing new; a fresh one stops at
+                // the admission cap, which counts the permits already outstanding.
+                if let Some(refusal) =
+                    gw.permit_cap_refusal(&key, req.market_id, req.purpose, group)
+                {
+                    break 'issue Err(permit_refusal_response(refusal));
                 }
-                Err(e) => return err400(e).into_response(),
+                if let Err((status, error)) = gw.admit_deposit_permit(&key, req.purpose, now_s) {
+                    break 'issue Err(
+                        (status, Json(serde_json::json!({ "error": error }))).into_response()
+                    );
+                }
+                let until = now_s.saturating_add(app.permit_ttl_secs);
+                match gw.authorize_routed_deposit(
+                    &key,
+                    from,
+                    amount,
+                    req.market_id,
+                    req.purpose,
+                    until,
+                ) {
+                    Ok(c) => {
+                        gw.charge_deposit_permit(&key, req.purpose, now_s);
+                        gw.record_permit_group(c, group);
+                        Ok((c, until, false))
+                    }
+                    Err(e) => Err(err400(e).into_response()),
+                }
             }
+        }
+    };
+    let (commit, valid_until, reused) = match issued {
+        Ok(issued) => issued,
+        Err(refusal) => {
+            // The sweep plans for this permit, so it is refused after one only if
+            // something changed in between; the sweeps stand all the same.
+            announce_once_durable(&app, forced_exits).await;
+            return refusal;
         }
     };
     // A re-signed permit is already durable; a new one is not until the writer ACKs.
@@ -8515,6 +9400,11 @@ async fn post_v1_deposit_authorize(
             )
                 .into_response();
         }
+    }
+    drop(admission);
+    // The snapshot just acknowledged carries this request's sweeps.
+    for event in forced_exits {
+        let _ = app.events_tx.send(event);
     }
     match app.gateway_signer.sign(&from, &commit, amount, valid_until) {
         Ok(sig) => Json(serde_json::json!({
@@ -8592,8 +9482,17 @@ async fn post_v1_withdraw(
     } else {
         None
     };
+    // Audit G2-1: the clock admission permit is taken after the close-only L1
+    // read, for the withdrawal itself.
+    let _admission = match app.clock_admission.enter() {
+        Ok(permit) => permit,
+        Err(error) => return clock_admission::closed_response(error),
+    };
     let r = {
         let mut gw = app.gw.lock().await;
+        if let Err(error) = gw.refuse_if_persistence_failed() {
+            return mutation_error(error);
+        }
         // The terminal wind-down path has no oracle-bearing operations. Its
         // existing pinned L1 phase gate remains sufficient even if feeds stop.
         if gw.seq.state.mode == Mode::CloseOnly {
@@ -8654,7 +9553,12 @@ async fn post_v1_withdraw(
             "status": "recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof",
         }))
         .into_response(),
-        Err(e) => err400(e).into_response(),
+        Err(e) if admission::is_withdraw_rate_limit(&e) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -8714,7 +9618,7 @@ async fn post_v1_lp_deposit(
         Ok(shares) => {
             Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 /// LP withdraw for an account: burn `shares` for their current pool value.
@@ -8754,7 +9658,7 @@ async fn post_v1_lp_withdraw(
         Ok(value) => {
             Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 async fn get_v1_account(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
@@ -8804,15 +9708,36 @@ async fn post_v1_deposit(
 }
 async fn post_v1_order(
     State(app): State<Shared>,
+    Extension(policy): Extension<Arc<service_policy::ServicePolicy>>,
+    peer: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(req): Json<OrderReq>,
 ) -> impl IntoResponse {
+    // Audit GF-1: one client may not spread orders over many accounts unbounded.
+    // Charged before the state lock; the client is the proxy-reported address
+    // behind the trusted loopback proxy (the registration limiter's rule). An
+    // in-process router without connection info has no client to charge.
+    if let Some(ConnectInfo(peer)) = peer {
+        if !policy.admit_order(client_ip(peer, &headers)) {
+            return mutation_error(
+                "RATE_LIMIT: too many orders from this client address, retry shortly".into(),
+            );
+        }
+    }
     let key = match api_key_from(&headers) {
         Ok(k) => k,
         Err(e) => return e.into_response(),
     };
     let r = {
         let mut gw = app.gw.lock().await;
+        // Audit GF-2: without persistence no receipt can be made durable, so
+        // production refuses before accepting anything, as cancellation does.
+        if gw.prod && app.snapshot_req.is_none() {
+            return mutation_error(format!(
+                "{PERSISTENCE_UNAVAILABLE}: state persistence is not configured; \
+                 orders are refused."
+            ));
+        }
         let result = match archive_slot(app.archive.as_ref()) {
             ArchiveSlot::Guard(binding) => gw.account_place_order_checked(
                 &key,
@@ -8832,18 +9757,71 @@ async fn post_v1_order(
             ),
             ArchiveSlot::Poisoned => Err("candidate price archive lock is poisoned".into()),
         };
+        // The receipt names the address bound at acceptance.
         let beneficiary = gw.accounts.get(&key).and_then(|a| a.deposit_address);
-        result.map(|receipt| gw.receipt_json(&receipt, beneficiary))
+        result.map(|receipt| (receipt, beneficiary))
     };
-    match r {
-        Ok(receipt) => Json(receipt).into_response(),
-        Err(e) if e.starts_with("RATE_LIMIT") => (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(serde_json::json!({ "error": e })),
-        )
-            .into_response(),
-        Err(e) => err400(e).into_response(),
+    let (receipt, beneficiary) = match r {
+        Ok(accepted) => accepted,
+        // audit 2026-11-16 GA-1: the account's open-order cap
+        // (`sequencer::OpenOrderLimit`); cancelling an open order clears it.
+        Err(e) if e.starts_with("OPEN_ORDER_LIMIT") => {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({ "error": e })),
+            )
+                .into_response();
+        }
+        Err(e) => return mutation_error(e),
+    };
+    // Audit GF-2: the enclave-signed receipt and its `l1Challenge` let the holder
+    // challenge the order on L1 and slash the bond if no settled batch answers. A
+    // restart before a durable snapshot holds the order would forget it, so neither
+    // leaves until the writer acknowledges a write that holds it. The state lock is
+    // released while waiting; concurrent orders share one write. The order is not
+    // rolled back when the write fails: a tick may already have matched it, and the
+    // next durable snapshot holds it, after which GET /v1/orders serves its receipt.
+    if app.snapshot_req.is_some() {
+        if let Err(e) = snapshot_now(&app.snapshot_req).await {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": format!("Order durability unconfirmed: {e}. The order was accepted in memory and may still execute, but no receipt or l1Challenge is issued for it until a durable snapshot holds it; GET /v1/orders then serves its receipt."),
+                    "orderHash": receipt.order_hash,
+                    "durability": "unknown",
+                })),
+            )
+                .into_response();
+        }
     }
+    Json(app.gw.lock().await.receipt_json(&receipt, beneficiary)).into_response()
+}
+
+/// A refusal answered 400, except `CLOCK_WINDOW_CLOSING` (audit G2-2), which is
+/// answered like the clock pause: 503 with `Retry-After`.
+fn err400_or_window_closing(e: String) -> axum::response::Response {
+    if e.starts_with(clock_admission::WINDOW_CLOSING) {
+        return clock_admission::closed_response(&e);
+    }
+    err400(e).into_response()
+}
+
+/// A refused mutation: `RATE_LIMIT` is 429, `PERSISTENCE_UNAVAILABLE` is 503 (retry
+/// once a snapshot write succeeds), anything else 400.
+fn mutation_error(e: String) -> axum::response::Response {
+    // Audit G2-2: the open clock window is sealed on a coming tick; retry like a
+    // pause.
+    if e.starts_with(clock_admission::WINDOW_CLOSING) {
+        return clock_admission::closed_response(&e);
+    }
+    let status = if e.starts_with("RATE_LIMIT") {
+        StatusCode::TOO_MANY_REQUESTS
+    } else if e.starts_with(PERSISTENCE_UNAVAILABLE) {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::BAD_REQUEST
+    };
+    (status, Json(serde_json::json!({ "error": e }))).into_response()
 }
 async fn delete_v1_order(
     State(app): State<Shared>,
@@ -9085,7 +10063,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
         "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
-            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": { "200": { "description": "apiKey + owner + callerSigned + recoveryNonce + chainId + vault" }, "503": { "description": "the account capacity is reached, or the state itself is at the soft admission cap (outstanding deposit permits never close registration)" } } } },
+            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": { "200": { "description": "apiKey + owner + callerSigned + recoveryNonce + chainId + vault" }, "503": { "description": "the account capacity is reached, or the state's own history or unspent notes are at their soft admission cap (position entries and outstanding deposit permits never close registration)" } } } },
             "/v1/accounts/me": { "get": { "summary": "Own account (balance: settledBalance account-wide and marketFree [{ marketId, free }] per market, the balance a withdrawal from that market takes from and the minimum's exception; positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode; after close-only, refundableDeposits lists { id, from, ownerCommit, amount } for vault.refundDeposit)", "responses": ok("account"), "security": auth["security"] } },
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
@@ -9094,7 +10072,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
-            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, (409) in close-only (the settlement's, or the engine's while the settlement is not yet), above depositCapacity() (the body carries `capacity`), or for an account with no position yet that already holds a permit for another market, and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached for a new permit (a held one is re-signed unless the state is beyond a bound)", "security": auth["security"],
+            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + validUntil + gateway sig for deposit(amount, ownerCommit, validUntil, sig). Refused (400) below the 10 USDC minimum, or below the 100 USDC entry minimum (`BELOW_ENTRY_MINIMUM`, the body carries `minimum`) for a market where the account holds no position entry or only a flat one below 100 USDC, (409) in close-only (the settlement's, or the engine's while the settlement is not yet), above depositCapacity() (the body carries `capacity`), or for an account with no position yet that already holds a permit for another market, and (503) while ingestion is not ready, settlement is failing with little liveness left, or the provable-history admission cap is reached for a new permit (a held one is re-signed unless the state is beyond a bound): a permit that may open a position entry is issued only while the state's own entries are below their soft cap and the state's entries plus those every outstanding permit may open fit the bound (503 POSITION_ENTRIES_FULL otherwise); one client (IPv4 address or IPv6 /48) holds at most 2 such permits at any level, a renewal of an entry its account already reserves included (429 OPENING_PERMIT_LIMIT). When the position entries alone refuse a permit that opens one and exiting flat entries of other accounts below 100 USDC (at most 8) admits it, those are first swept to their bound deposit addresses (forced exits, whatever permits their accounts hold; their orders in that market are cancelled); at the position soft cap a further permit for an entry the account already reserves is refused", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" }, "reuseOwnerCommit": { "type": "string", "description": "optional: an ownerCommit you were issued and never sent; re-signed if still outstanding for exactly this request, otherwise a fresh permit is issued" } } } } } },
                 "responses": ok("ownerCommit + sig + validUntil (unix seconds)") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
@@ -9104,11 +10082,11 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
-                "responses": ok("recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)") } },
-            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
+                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 10 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "400": { "description": "BELOW_MINIMUM; BELOW_ENTRY_BALANCE (outside close-only a withdrawal leaves at least 100 USDC in its market's position entry, open position or not, unless it is a full exit); TOP_UP_PERMIT_OUTSTANDING (a full exit waits while the account holds an outstanding deposit permit below 100 USDC for that market, until that deposit is credited or the permit expires); WITHDRAW_QUOTA_EXCEEDED (the account spent its lifetime 100-unit provable-history quota, outstanding deposit permits included; it never resets); WITHDRAW_RESERVE_REACHED (the exchange-wide partial-withdrawal reserve is used up); HISTORY_CAP; PENDING_MARGIN (the withdrawal would take collateral the account's pending orders in that market hold as initial margin, until they fill, are cancelled or expire); or another refusal. A full exit is exempt from the quota and the reserve" }, "429": { "description": "WITHDRAW_RATE_LIMIT_MINUTE (3 per minute) or WITHDRAW_RATE_LIMIT_WINDOW (10 in the open settlement window); retry later" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; or, in close-only, the L1 wind-down phase could not be read. Nothing was recorded and the nonce is not used; retry later" } } } },
+            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] (each with `forcedExit`: true for a dust sweep's forced exit, not signed by the account) + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature, unless `forcedExit` is true: a voided dust sweep, whose entry is back)") } },
             "/v1/orders": {
-                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s)" } } },
-                "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null)", "security": auth["security"], "responses": ok("orders") }
+                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt, including `l1Challenge`, sent once a durable state snapshot holds the order" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price or in a market whose position entry holds less than 100 USDC (BELOW_ENTRY_BALANCE; reduce-only orders and reductions are exempt from both), and an order whose initial margin together with the account's pending orders on the same side exceeds its collateral in the market (`PENDING_MARGIN: ...`)" }, "409": { "description": "the account already has 64 open orders in the market or 128 across all markets (`OPEN_ORDER_LIMIT: ...`); cancel one first" }, "429": { "description": "rate limit (10/s per account; per client address, 40 at once then 20/s by default)" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; nothing was recorded, retry later. With `durability: \"unknown\"` and the `orderHash`: the order was accepted, but the snapshot write it waited for failed or timed out, so no receipt or `l1Challenge` was issued; it may still execute, and GET /v1/orders serves its receipt once a durable snapshot holds it. CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; nothing was recorded, retry in a few seconds" } } },
+                "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null). An order's `receipt` is null until a durable state snapshot holds it", "security": auth["security"], "responses": ok("orders") }
             },
             "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a pending order or live maker remainder. Prior fills are unchanged, including settled partial fills. Retains the original receipt and execution history; retries are idempotent. Production success requires a durable snapshot; cancellation is recorded in the open window manifest", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: unknown order or no cancellable remainder" }, "503": { "description": "persistence unavailable or durable cancellation outcome unknown" } } } },
             "/v1/positions": { "get": { "summary": "Own open positions", "security": auth["security"], "responses": ok("positions") } },
@@ -9226,7 +10204,7 @@ async fn post_order(State(app): State<Shared>, Json(req): Json<OrderReq>) -> imp
             let receipt = app.gw.lock().await.receipt_json(&receipt, None);
             Json(receipt).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => mutation_error(e),
     }
 }
 
@@ -9258,7 +10236,7 @@ async fn post_withdraw(State(app): State<Shared>, Json(req): Json<AmountReq>) ->
             app.broadcast(&gw).await;
             Json(serde_json::json!({})).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9283,7 +10261,7 @@ async fn post_lp_deposit(
             app.broadcast(&gw).await;
             Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9318,7 +10296,7 @@ async fn post_lp_withdraw(
             app.broadcast(&gw).await;
             Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9335,7 +10313,7 @@ async fn post_close(State(app): State<Shared>, Json(req): Json<MarketReq>) -> im
             }
             Json(serde_json::json!({})).into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -9389,7 +10367,7 @@ async fn post_simulate_adl(State(app): State<Shared>) -> impl IntoResponse {
             Json(serde_json::json!({ "clawed": (clawed / QUOTE_SCALE).to_string() }))
                 .into_response()
         }
-        Err(e) => err400(e).into_response(),
+        Err(e) => err400_or_window_closing(e),
     }
 }
 
@@ -10101,17 +11079,22 @@ async fn main() {
         }),
     );
     let l1 = l1.map(|chain| chain.with_clock_shutdown(service_policy.shutdown.clone()));
-    let clock_settle_period = if let Some(chain) = l1.as_ref().filter(|c| c.clock_enabled()) {
+    // The clock verifier's timing policy is read once here and kept: it sets the
+    // seal cadence and when the open window stops admitting timed operations.
+    let (clock_timing, clock_settle_period) = if let Some(chain) =
+        l1.as_ref().filter(|c| c.clock_enabled())
+    {
         let chain = chain.clone();
-        match tokio::task::spawn_blocking(move || chain.clock_seal_period()).await {
-            Ok(Ok(period)) => period,
+        let read = tokio::task::spawn_blocking(move || chain.clock_timing()).await;
+        match read.map(|timing| timing.and_then(|t| t.seal_period().map(|p| (t, p)))) {
+            Ok(Ok((timing, period))) => (Some(timing), period),
             _ => {
                 eprintln!("[clock] REFUSING startup: cannot verify timing policy and seal cadence");
                 std::process::exit(1);
             }
         }
     } else {
-        Duration::from_secs(L1_SETTLE_SECS)
+        (None, Duration::from_secs(L1_SETTLE_SECS))
     };
     // SEC-020 Task 4: the DEV_INSECURE escape is refused outright in production
     // (Task-1 posture). `resolve_seal_root` only refuses it when the seal root
@@ -10525,7 +11508,33 @@ async fn main() {
         eprintln!("[wind-down] REFUSING to start: {error}");
         std::process::exit(1);
     }
+    // Audit GF-1 + SM-4: the order log and the settled batches' hash lists live in
+    // side logs beside the snapshot. Load them against what the snapshot recorded
+    // (an earlier snapshot that still holds them loads as is), then append what the
+    // snapshot still holds, so the next one leaves it out. Before boot recovery:
+    // a recovery snapshot written below records the side logs' new ends.
+    if let Some(p) = &state_path {
+        if let Err(error) = gw.attach_history(p, &enclave_seed, !restored_from_snapshot) {
+            eprintln!(
+                "[state] REFUSING to start: {error}. The side logs ({} and {}) belong \
+                 beside the snapshot; restore them together.",
+                side_log::Kind::OrderLog.path(p).display(),
+                side_log::Kind::Batches.path(p).display()
+            );
+            std::process::exit(1);
+        }
+        if let Err(error) = append_history_locked(&mut gw, p, &enclave_seed) {
+            // Refuse new promises until the writer (which also raises the alert)
+            // gets every part durable.
+            eprintln!("[state] {error}; the snapshot keeps those records and the writer retries");
+            gw.snapshot_health.record(false);
+        }
+    }
     gw.prod = prod;
+    if state_path.is_some() {
+        // Receipts wait for the durable write that holds their order (audit GF-2).
+        gw.durable_marks = snapshot::DurableMarks::tracked();
+    }
     gw.candidate_archive_required = archive_binding.is_some();
     gw.configure_oracle_crosscheck(oracle_crosscheck_policy)
         .unwrap_or_else(|error| {
@@ -10581,6 +11590,13 @@ async fn main() {
     // be false finality (see `honest_finality_required` + the boot warning above; pinned
     // by `l1_without_a_prover_must_not_simulate_settled`).
     gw.window_settle_mode = honest_finality_required(prover.is_some(), l1.is_some());
+    // Audit G2-2: clock-bound windows stop admitting timed operations before they
+    // outgrow the verifier's maxWindowMs. Only where the settle loop seals them.
+    gw.clock_window = clock_window_bound(
+        clock_timing,
+        prover.as_ref().is_some_and(|p| p.clock_enabled()),
+        clock_settle_period,
+    );
     if gw.window_settle_mode {
         // Task 5 fix round 1 (report Concern 1, memory): the window path never
         // consumes the per-tick rollback snapshots, and with the SETTLE_TICKS
@@ -11040,18 +12056,28 @@ async fn main() {
                     recipient,
                 )?;
                 let p = l1c.boot_posture()?;
-                l1::check_boot_posture(&p, &e).map(|()| p)
+                l1::check_boot_posture(&p, &e)?;
+                // The SP1 route (audit SV-1); mock proofs verify nothing, so pin nothing.
+                let sp1 = l1c.sp1_boot_gate(
+                    allow_mock_proof,
+                    std::env::var(l1::SP1_ROUTER_TRUST_VAR).ok().as_deref(),
+                )?;
+                Ok((p, sp1))
             })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
         };
         match verdict {
-            Ok(p) => {
+            Ok((p, sp1)) => {
+                if let Some(warning) = sp1.warning() {
+                    eprintln!("[l1] WARN: {warning}");
+                }
                 println!(
-                    "[l1] boot handshake OK (ABI_VERSION {}, anchorTimeoutMs {}, consumedDepositCount {}, permit TTL {permit_ttl_secs} s)",
+                    "[l1] boot handshake OK (ABI_VERSION {}, anchorTimeoutMs {}, consumedDepositCount {}, permit TTL {permit_ttl_secs} s, {})",
                     p.abi_version,
                     p.anchor_timeout_ms.unwrap_or_default(),
-                    p.consumed_deposit_count
+                    p.consumed_deposit_count,
+                    sp1.describe()
                 );
                 // With matching roots the settled state consumed exactly this
                 // many deposits; credits at or above it are not settled yet.
@@ -11221,7 +12247,8 @@ async fn main() {
     gw.repair_withdraw_nonce();
     gw.note_engine_close_only();
     gw.note_admission_cap();
-    let (snapshot_req_tx, mut snapshot_req_rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+    let (snapshot_req_tx, mut snapshot_req_rx) =
+        tokio::sync::mpsc::channel::<SnapshotAck>(SNAPSHOT_REQUEST_QUEUE);
     let snapshot_req = state_path.as_ref().map(|_| snapshot_req_tx);
     let deposit_source = l1.as_ref().map(|l| {
         gw.deposits.required = true;
@@ -11694,6 +12721,7 @@ async fn main() {
             let app = app.clone();
             let l1a = l1.clone();
             let stop = service_policy.shutdown.clone();
+            let snapshot_notify = snapshot_notify.clone();
             background.push(tokio::spawn(async move {
                 let mut watcher = challenge_scan::Watcher::default();
                 let mut sending: Option<tokio::task::JoinHandle<()>> = None;
@@ -11725,19 +12753,10 @@ async fn main() {
                     alerts.recover(ops_alerts::AlertKind::ChallengeDiscoveryFailed);
                     let open = read.hashes.len();
                     watcher.observe(read);
-                    let plan = {
-                        let gw = app.gw.lock().await;
-                        watcher.plan(&gw.batch_orders)
-                    };
-                    if plan.unanswerable.is_empty() {
-                        alerts.recover(ops_alerts::AlertKind::UnanswerableChallenge);
-                    } else {
-                        alerts.activate(ops_alerts::AlertKind::UnanswerableChallenge);
-                        eprintln!(
-                            "[l1] {} open challenge(s) name orders no settled batch holds: {}",
-                            plan.unanswerable.len(),
-                            plan.unanswerable.iter().take(8).map(hex32).collect::<Vec<_>>().join(", ")
-                        );
+                    let plan = challenge_round(&app, &mut watcher).await;
+                    if !plan.declared.is_empty() {
+                        // Persist the declarations promptly (audit GF-2).
+                        snapshot_notify.notify_one();
                     }
                     if plan.sends.is_empty() {
                         if open > 0 {
@@ -11831,24 +12850,38 @@ async fn main() {
                     // (A) Everything that reads or sends on L1 without depending on the
                     // window runs BEFORE admission pauses (RPC, no lock). A timed window
                     // must register within clockSkewMs of its last operation, and
-                    // operations are admitted until the pause, so none of this is spent
-                    // from that budget: the bond top-up and the stake-refund sweep (both
-                    // sequencer-key sends, made while no window is sealed), the batch
-                    // count, and, when there may be a window to seal, the registration
-                    // checks that do not depend on it. Settlement never depends on the
-                    // bond, so a bond problem only raises an alert; only a failed batch
-                    // count read skips this tick.
+                    // operations are admitted until the pause, so while the window is
+                    // inside its cutoff none of this is spent from that budget: the bond
+                    // top-up and the stake-refund sweep (both sequencer-key sends, made
+                    // while no window is sealed), the batch count, and, when there may
+                    // be a window to seal, the registration checks that do not depend
+                    // on it. Settlement never depends on the bond, so a bond problem
+                    // only raises an alert; only a failed batch count read skips this
+                    // tick. Audit G2-2: past the cutoff no timed operation is admitted
+                    // and the budget runs, so within a seal period of it the two sends,
+                    // which wait for their receipts, are left to a later tick; the reads
+                    // the seal needs still run.
                     let clocked = client.clock_enabled();
                     let liveness_due = tokio::time::Instant::now() >= liveness_read_at;
-                    let read_pre = clocked
-                        && pending.is_none()
-                        && (liveness_due || !app.gw.lock().await.window_is_idle());
+                    let (read_pre, defer_sends) = {
+                        let gw = app.gw.lock().await;
+                        (
+                            clocked
+                                && pending.is_none()
+                                && (liveness_due || !gw.window_is_idle()),
+                            gw.clock_window_near_cutoff(now_ms()),
+                        )
+                    };
                     let l1c = l1.clone();
                     let pre_client = client.clone();
                     let (bond, swept, bc, pre) = match tokio::task::spawn_blocking(move || {
                         (
-                            l1c.ensure_bond(),
-                            l1c.sweep_requested_stake_refunds(),
+                            (!defer_sends).then(|| l1c.ensure_bond()),
+                            if defer_sends {
+                                Ok(None)
+                            } else {
+                                l1c.sweep_requested_stake_refunds()
+                            },
                             l1c.batch_count(),
                             read_pre.then(|| pre_client.register_preconditions()),
                         )
@@ -11866,7 +12899,10 @@ async fn main() {
                         Ok(None) => {}
                         Err(e) => eprintln!("[l1] stake refund sweep will retry: {e}"),
                     }
-                    {
+                    if defer_sends {
+                        println!("[l1] the open clock window is near its cutoff; bond top-up and stake-refund sweep wait for a later tick");
+                    }
+                    if let Some(bond) = bond {
                         let alerts = app.gw.lock().await.ops_alerts.clone();
                         match bond {
                             Ok(l1::BondOutcome::Covered { .. }) => {
@@ -11990,6 +13026,23 @@ async fn main() {
                             && gw.window_withdrawals.is_empty()
                             && gw.seq.state.state_root() == gw.last_settled_root
                         { gw.seq.discard_idle_funding_window(); }
+                        // Audit G2-2: the pause waited for the work in flight. A
+                        // window that can no longer register is reported before the
+                        // seal; the post-seal preflight then hands it to the recovery
+                        // without sending a registration.
+                        if let Some(bound) = gw.clock_window {
+                            if let Err(why) = bound
+                                .timing
+                                .check_registrable(&gw.seq.window_time_bounds(), now_ms())
+                            {
+                                eprintln!(
+                                    "[clock] window {} can no longer register when sealed: {why}",
+                                    gw.seq.current_window_id()
+                                );
+                                gw.ops_alerts
+                                    .activate(ops_alerts::AlertKind::ClockRegistrationRefused);
+                            }
+                        }
                         // A poisoned archive mutex must HOLD the settle. The old
                         // `.map(lock).and_then(ok)` silently became `None` and
                         // sealed candidate windows with NO binding — a legacy
@@ -12093,6 +13146,15 @@ async fn main() {
                             }
                         };
                         journal = returned;
+                        // Audit G2-2: a window whose operation times can never
+                        // register is not rolled back, which would seal the same
+                        // times again; it goes to the recovery below.
+                        let (preflight, unregistrable) = match preflight {
+                            Err(prover_client::PreflightRefusal::Unregistrable(why)) => {
+                                (Ok(()), Some(why))
+                            }
+                            other => (other, None),
+                        };
                         if let Err(refusal) = preflight {
                             let wrong_phase = matches!(refusal, prover_client::PreflightRefusal::WrongPhase(_));
                             eprintln!("[l1] window {batch_id} was not registered: {refusal}; rolled back, nothing was sent");
@@ -12135,6 +13197,26 @@ async fn main() {
                         if let Err(error) = durable {
                             hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
                             break;
+                        }
+                        if let Some(why) = unregistrable {
+                            // Journaled with its intent and nothing sent: the recovery
+                            // registers nothing and decides the window at finalized
+                            // blocks. A timed window is voided once a finalized block's
+                            // time is past its registration skew.
+                            let (rec, delay) = start_unregistrable_recovery(
+                                &app,
+                                batch_id,
+                                &witness_rb,
+                                phase,
+                                why,
+                                prune_candidates,
+                                gate_was_closed,
+                                l1.nonce_ceiling(),
+                            )
+                            .await;
+                            pending = Some(rec);
+                            next_attempt = tokio::time::Instant::now() + delay;
+                            continue;
                         }
                     }
                     // Archive-required guard BEFORE any prover/chain side effect:
@@ -12315,6 +13397,10 @@ async fn main() {
                                 ),
                                 _ => eprintln!("[recovery] window {batch_id}: clock failed: {e}"),
                             }
+                            // Audit G2-2: a reverted registration is not waited out, and
+                            // one too late to send was not sent; the operator is told at
+                            // once (the reason is in the log above).
+                            note_registration_refusal(&app, &e).await;
                             // The ceiling is taken after the worker returned: a send
                             // holds its lane until cast returns, so it covers every
                             // send the attempt made.
@@ -15984,7 +17070,7 @@ mod tests {
         }
         let pos = gw.seq.state.position(&gw.user.owner, 0).expect("position");
         assert!(pos.size > 0, "user is long after the seal");
-        let fin = gw.finality_str(&gw.orders[0].order_hash);
+        let fin = gw.finality_str(&gw.orders[0]);
         assert!(
             fin == "MATCHED" || fin == "SETTLED",
             "finality advanced: {fin}"
@@ -15993,7 +17079,7 @@ mod tests {
         for _ in 0..(SETTLE_TICKS + 1) {
             gw.tick();
         }
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "SETTLED");
     }
 
     #[test]
@@ -16175,14 +17261,14 @@ mod tests {
         use sha3::{Digest as _, Keccak256 as RawKeccak};
 
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, oh: &Digest) -> String {
-            let (sig, recid) = sk.sign_prehash_recoverable(oh).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(oh);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();
@@ -16358,14 +17444,14 @@ mod tests {
         use k256::ecdsa::SigningKey;
         use sha3::{Digest as _, Keccak256 as RawKeccak};
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-            let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(digest);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();
@@ -16425,14 +17511,14 @@ mod tests {
         use k256::ecdsa::SigningKey;
         use sha3::{Digest as _, Keccak256 as RawKeccak};
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, prehash: &[u8; 32]) -> [u8; 65] {
-            let (sig, recid) = sk.sign_prehash_recoverable(prehash).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(prehash);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();
@@ -16510,7 +17596,7 @@ mod tests {
     /// Shared by the SEC-021b rebind tests below: sign a 32-byte digest directly
     /// (the raw-digest shape (a) of `eip191_prehash_candidates`).
     fn sign_digest(sk: &k256::ecdsa::SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(digest);
         let mut s = [0u8; 65];
         s[..64].copy_from_slice(&sig.to_bytes());
         s[64] = 27 + recid.to_byte();
@@ -16519,7 +17605,7 @@ mod tests {
     /// The Ethereum address of a secp256k1 key (keccak of the uncompressed point).
     fn eth_addr(sk: &k256::ecdsa::SigningKey) -> [u8; 20] {
         use sha3::{Digest as _, Keccak256 as RawKeccak};
-        let point = sk.verifying_key().to_encoded_point(false);
+        let point = sk.verifying_key().to_sec1_point(false);
         let hash = RawKeccak::digest(&point.as_bytes()[1..]);
         let mut a = [0u8; 20];
         a.copy_from_slice(&hash[12..]);
@@ -16858,8 +17944,9 @@ mod tests {
         // One REAL authorized withdrawal: the served nonce must track
         // `last_withdraw_nonce` (the withdrawal-auth counter) — not any other
         // per-account counter, which all still read 0 here.
-        fund_test_account(&mut gw, &key, 10_000_000);
-        signed_withdraw(&mut gw, &key, &sk, 0, 5_000_000, eoa).expect("authorized withdrawal");
+        // Enough that the withdrawal leaves the 100 USDC entry minimum (audit G1-1).
+        fund_test_account(&mut gw, &key, 120_000_000);
+        signed_withdraw(&mut gw, &key, &sk, 0, 10_000_000, eoa).expect("authorized withdrawal");
         let v = gw.v1_account(&key).unwrap();
         assert_eq!(
             v["nextWithdrawNonce"], 2,
@@ -16935,16 +18022,16 @@ mod tests {
         );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
-        fund_test_account(&mut gw, &key, 10_000_000);
+        fund_test_account(&mut gw, &key, 120_000_000);
 
         // Wrong destination, even with a valid signature over that destination.
         let elsewhere = [0x66u8; 20];
         let sig_elsewhere = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &elsewhere, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &elsewhere, 1),
         );
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, elsewhere, 1, &sig_elsewhere)
+            .account_withdraw(&key, 0, 10_000_000, elsewhere, 1, &sig_elsewhere)
             .expect_err("server-custody withdrawal to a non-bound address must be refused");
         assert!(
             err.contains("bound deposit address"),
@@ -16954,17 +18041,17 @@ mod tests {
         // Correct destination + signature.
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1),
         );
         let w = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect("accepted");
         assert_eq!(w.to, eoa);
         assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
 
         // Replay of the same signed request.
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect_err("replay must be refused");
         assert!(err.contains("nonce"), "unexpected error: {err}");
     }
@@ -16989,10 +18076,10 @@ mod tests {
 
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1),
         );
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect_err("over-balance withdrawal fails");
         assert!(err.contains("Not withdrawable"), "unexpected error: {err}");
         assert_eq!(
@@ -17001,9 +18088,10 @@ mod tests {
             "nonce must survive a post-verification failure"
         );
 
-        // Fund and retry the SAME signed request — it must now succeed.
-        fund_test_account(&mut gw, &key, 10_000_000);
-        gw.account_withdraw(&key, 0, 5_000_000, eoa, 1, &sig)
+        // Fund and retry the SAME signed request — it must now succeed (and leave
+        // the 100 USDC entry minimum, audit G1-1).
+        fund_test_account(&mut gw, &key, 120_000_000);
+        gw.account_withdraw(&key, 0, 10_000_000, eoa, 1, &sig)
             .expect("the unchanged signed request is still valid on retry");
     }
 
@@ -17025,19 +18113,19 @@ mod tests {
         );
         gw.account_set_deposit_address(&key, eoa, &bind, None)
             .unwrap();
-        fund_test_account(&mut gw, &key, 10_000_000);
+        fund_test_account(&mut gw, &key, 120_000_000);
 
-        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &eoa, 1);
+        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &eoa, 1);
         // The bound address signs — must be refused, the account registered a signer.
         let err = gw
-            .account_withdraw(&key, 0, 5_000_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
+            .account_withdraw(&key, 0, 10_000_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
             .expect_err("bound-address signature must not authorize a caller-signed account");
         assert!(err.contains("signature"), "unexpected error: {err}");
         // The registered signer signs — accepted, and `to` is free for caller-signed.
         gw.account_withdraw(
             &key,
             0,
-            5_000_000,
+            10_000_000,
             eoa,
             1,
             &sign_digest(&signer_sk, &digest),
@@ -17078,12 +18166,12 @@ mod tests {
         let mut gw = Gw::boot();
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let (key, owner) = gw.register_account(Some(eth_addr(&sk)));
-        fund_test_account(&mut gw, &key, 100_000_000);
+        fund_test_account(&mut gw, &key, 200_000_000);
 
         let to = [0x66u8; 20];
         let sig = sign_digest(
             &sk,
-            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &to, 1),
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &to, 1),
         );
         // Amount tampered.
         assert!(gw
@@ -17091,16 +18179,16 @@ mod tests {
             .is_err());
         // Destination tampered.
         assert!(gw
-            .account_withdraw(&key, 0, 5_000_000, [0x77u8; 20], 1, &sig)
+            .account_withdraw(&key, 0, 10_000_000, [0x77u8; 20], 1, &sig)
             .is_err());
         // Nonce tampered.
         assert!(gw
-            .account_withdraw(&key, 0, 5_000_000, to, 2, &sig)
+            .account_withdraw(&key, 0, 10_000_000, to, 2, &sig)
             .is_err());
         // Nothing was applied by any of the three.
         assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 0);
         // The untampered request still works.
-        gw.account_withdraw(&key, 0, 5_000_000, to, 1, &sig)
+        gw.account_withdraw(&key, 0, 10_000_000, to, 1, &sig)
             .expect("untampered request is valid");
     }
 
@@ -17116,11 +18204,12 @@ mod tests {
         for shape in 0..3 {
             let mut gw = Gw::boot();
             let (key, owner) = gw.register_account(Some(addr));
-            fund_test_account(&mut gw, &key, 10_000_000);
-            let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &to, 1);
+            fund_test_account(&mut gw, &key, 120_000_000);
+            let digest =
+                withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 10_000_000, &to, 1);
             let prehash = eip191_prehash_candidates(&digest)[shape];
             let sig = sign_digest(&sk, &prehash);
-            gw.account_withdraw(&key, 0, 5_000_000, to, 1, &sig)
+            gw.account_withdraw(&key, 0, 10_000_000, to, 1, &sig)
                 .unwrap_or_else(|e| panic!("prehash shape {shape} must be accepted: {e}"));
         }
     }
@@ -17666,14 +18755,14 @@ mod tests {
         use sha3::{Digest as _, Keccak256 as RawKeccak};
 
         fn eth_addr(sk: &SigningKey) -> [u8; 20] {
-            let point = sk.verifying_key().to_encoded_point(false);
+            let point = sk.verifying_key().to_sec1_point(false);
             let hash = RawKeccak::digest(&point.as_bytes()[1..]);
             let mut a = [0u8; 20];
             a.copy_from_slice(&hash[12..]);
             a
         }
         fn sign(sk: &SigningKey, oh: &Digest) -> String {
-            let (sig, recid) = sk.sign_prehash_recoverable(oh).unwrap();
+            let (sig, recid) = sk.sign_prehash_recoverable(oh);
             let mut s = [0u8; 65];
             s[..64].copy_from_slice(&sig.to_bytes());
             s[64] = 27 + recid.to_byte();
@@ -20745,7 +21834,7 @@ mod tests {
         for _ in 0..(SETTLE_TICKS * 3) {
             gw.tick();
         }
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "MATCHED");
         assert!(
             gw.pending_settle.is_empty(),
             "window mode must not accumulate the legacy settle queue"
@@ -20773,7 +21862,7 @@ mod tests {
             status,
             trading_gate::GateObservation::OpensGate,
         );
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "SETTLED");
     }
 
     // Task 5: without a prover (flag defaults false) the demo-era tick simulation is
@@ -20795,11 +21884,11 @@ mod tests {
         };
         let (_r, _ev) = gw.place_order(&req).expect("accepted");
         gw.tick(); // seals the fill → MATCHED
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "MATCHED");
         for _ in 0..(SETTLE_TICKS + 1) {
             gw.tick();
         }
-        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+        assert_eq!(gw.finality_str(&gw.orders[0]), "SETTLED");
     }
 
     #[test]
@@ -20930,4 +22019,7 @@ mod tests {
     include!("execution_regression_tests.rs");
     include!("audit_cancellation_tests.rs");
     include!("permit_keepalive_tests.rs");
+    include!("audit_1116_gf1_tests.rs");
+    include!("audit_1116_gf2_tests.rs");
+    include!("audit_1116_g2_tests.rs");
 }

@@ -27,7 +27,7 @@ patterns = {
     "candidate-anvil-after": ["test_candidate_target_anvil.py"],
 }
 if name == "gateway-build-after":
-    command = ["/Users/huseyinarslan/.cargo/bin/cargo", "+1.99.0", "check", "--locked", "-p", "gateway", "--bin", "gateway"]
+    command = ["/Users/<dev>/.cargo/bin/cargo", "+1.99.0", "check", "--locked", "-p", "gateway", "--bin", "gateway"]
 elif name == "relative-before":
     command = [sys.executable, "-c", "import sys,unittest; sys.path.insert(0,'scripts/local-verification'); "
                "suite=unittest.defaultTestLoader.loadTestsFromName('test_candidate_identity_manifest.ManifestTests.test_relative_public_paths_bind_current_directory_before_private_name_checks'); "

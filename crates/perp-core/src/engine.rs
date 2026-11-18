@@ -99,17 +99,30 @@ pub enum BatchOp {
     /// system is close-only. So a market that has recorded a price refreshes it at
     /// least once per epoch, and in close-only every tick keeps it current, while
     /// the ticks of a market that never recorded one stay root-neutral.
+    ///
+    /// The observed rate is stored only while the side that would receive it holds
+    /// no more open interest than the side that would pay it; otherwise (one side
+    /// empty, say) the tick stores a zero rate, so the receivers never get more
+    /// than the payers owe and the clearing pool pays no funding (audit 2026-11-16
+    /// PC-1). Liquidations keep both sides equal, so this binds only on a state
+    /// that already held a pool position.
     AccrueFunding {
         market_id: MarketId,
         mark: i128,
         oracle: OracleTranscript,
         now_ms: u64,
     },
-    /// Liquidate an underwater position at the validated oracle price (§5). A
-    /// shortfall left by the close is covered by the insurance fund, then the
-    /// treasury, then auto-deleverage of the market's winners (each bounded by
-    /// [`Position::adl_clawable`]); anything still uncovered stays parked on the
-    /// closed position and trips the system to close-only. Like `Fill`, it first
+    /// Liquidate an underwater position at the validated oracle price (§5). The
+    /// positions on the other side of the market are closed with it, at the same
+    /// price, by the liquidated size between them, pro rata by size, so the sizes
+    /// of the market's positions keep summing to zero and the clearing pool never
+    /// holds a position (audit 2026-11-16 PC-1; a pool position a state already
+    /// held only shrinks). A shortfall left by the closes, on the liquidated
+    /// position or on a counterparty they leave flat, is covered by the insurance
+    /// fund, then the treasury, then auto-deleverage of the market's winners (each
+    /// bounded by [`Position::adl_clawable_after`], which still reaches the gain a
+    /// counterparty just realized); anything still uncovered stays parked on those
+    /// closed positions and trips the system to close-only. Like `Fill`, it first
     /// commits the market's open funding span up to `now_ms`, and records the
     /// validated oracle price as the market's last price.
     Liquidate {
@@ -118,10 +131,12 @@ pub enum BatchOp {
         oracle: OracleTranscript,
         now_ms: u64,
     },
-    /// Move free margin out of a position into a fresh note (must remain ≥
-    /// initial margin if still open). Value-preserving. Like `Fill`, it first
-    /// commits the market's open funding span up to `now_ms`, and records the
-    /// validated oracle price as the market's last price.
+    /// Move free margin out of a position into a fresh note. A position that stays
+    /// open must keep its initial margin both in equity and in collateral alone,
+    /// so unrealized gain never stands in for it (audit 2026-11-16 PC-2).
+    /// Value-preserving. Like `Fill`, it first commits the market's open funding
+    /// span up to `now_ms`, and records the validated oracle price as the market's
+    /// last price.
     Unbind {
         owner: PubKey,
         market_id: MarketId,
@@ -140,6 +155,9 @@ pub enum BatchOp {
     /// [`MAX_WITHDRAWAL_NONCE_STEP`], and becomes the new last nonce; so every
     /// withdrawal leaf, across all batches and phases, carries a distinct nonce. An
     /// internal burn must carry `nonce = 0` and leaves the counter unchanged.
+    ///
+    /// Either kind is refused when it would take `external_out` above
+    /// `external_in` (audit 2026-11-16 PC-1).
     Withdraw {
         note_commitment: Digest,
         spend_key: Digest,
@@ -183,14 +201,14 @@ pub enum BatchOp {
     ///    (`last_withdrawal_nonce + 1`). With no recipient set (tests and demos)
     ///    the reserves stay in place.
     ///
-    /// A liquidation closes its position against the clearing pool, so the pool
-    /// is the counterparty to the open interest that position leaves behind,
-    /// and its balance at step 1 includes its result on that exposure. A price
-    /// move after the liquidation in the pool's favour therefore reaches the
-    /// recipient at step 5, and that gain can include collateral that
-    /// auto-deleverage took from winners to cover the liquidation's shortfall.
-    /// A move against the pool is covered at steps 3 and 4: first by the
-    /// reserves, then by the haircut.
+    /// A liquidation closes the other side of the market with its position, so
+    /// the clearing pool holds no position and its balance at step 1 is only the
+    /// realized results and funding routed through it; it nets to zero, up to
+    /// rounding, once step 1 has closed every position. A state written before
+    /// that rule may still hold a pool position (only liquidations ever created
+    /// one); its result at the settlement price is part of the pool's balance: a
+    /// gain reaches the recipient at step 5, a loss is covered at steps 3 and 4,
+    /// first by the reserves, then by the haircut.
     ///
     /// The system is then close-only, every remaining position is flat with
     /// positive collateral, and no value was created: the claims and reserves
@@ -219,18 +237,80 @@ pub enum BatchOp {
 
 /// One auto-deleverage haircut: `clawed` was taken from `owner`'s position
 /// collateral to cover another position's liquidation bad debt (§6, §9; audit
-/// Q2/Q7). It is never more than [`Position::adl_clawable`] for that position: its
-/// gain net of funding, bounded so its collateral stays non-negative and its
-/// equity stays at or above maintenance margin. The engine surfaces these from
-/// [`State::liquidate`] so a socialized loss can be reported back to the affected
-/// account as an attributable receipt instead of vanishing silently — the
-/// transparency half of the bad-debt backstop. It carries no identifying salt
-/// itself; the sequencer publishes it under a secret-keyed tag.
+/// Q2/Q7). It is never more than [`Position::adl_clawable_after`] for that
+/// position: its gain net of funding (including what the liquidation's close of
+/// the other side just realized for it), bounded so its collateral stays
+/// non-negative and its equity stays at or above maintenance margin. The engine
+/// surfaces these from [`State::liquidate`] so a socialized loss can be reported
+/// back to the affected account as an attributable receipt instead of vanishing
+/// silently — the transparency half of the bad-debt backstop. It carries no
+/// identifying salt itself; the sequencer publishes it under a secret-keyed tag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AdlHaircut {
     pub owner: PubKey,
     pub clawed: i128,
+}
+
+/// One position a liquidation closed with the liquidated one (audit 2026-11-16
+/// PC-1): the other side of the market gives up the liquidated size pro rata, at
+/// the liquidation's oracle price. Before that rule another account's liquidation
+/// never changed a position, so the engine surfaces each of these from
+/// [`State::liquidate_reported`]: the sequencer cancels the owner's resting
+/// orders in the market (an order placed against the old position, a
+/// take-profit for one, must not open a new one) and publishes a receipt only
+/// the owner can recognize, as it does for an [`AdlHaircut`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ForcedClose {
+    pub owner: PubKey,
+    /// The size change the close applied, size-scaled: opposite in sign to the
+    /// position (a short gives up size by buying), never more than its size.
+    pub size: i128,
+    /// The PnL the close realized into the position's collateral, quote-scaled.
+    pub realized: i128,
+    /// The liquidation penalty the close charged, quote-scaled: non-zero only
+    /// for a position that was itself liquidatable before the close.
+    pub penalty: i128,
+}
+
+/// What one liquidation did beyond closing the liquidated position: the
+/// auto-deleverage haircuts its shortfall applied, in the order the plan made
+/// them, and the positions on the other side it closed with it, in key order.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LiquidationReport {
+    pub haircuts: Vec<AdlHaircut>,
+    pub forced_closes: Vec<ForcedClose>,
+}
+
+/// The net size (longs minus shorts) of each market one batch has already
+/// measured (round-1 review of audit 2026-11-16 PC-1). `AccrueFunding` needs it
+/// for every tick with a non-zero rate, and measuring it reads every position, so
+/// [`State::apply_batch`] measures each market once and keeps the value for the
+/// rest of the batch; an op applied on its own starts from an empty set and
+/// measures again. Only `Liquidate` and `SettleAll` change a market's net size
+/// (a fill moves its two legs by opposite amounts): `Liquidate` stores the value
+/// it leaves and `SettleAll` forgets every value.
+#[derive(Default)]
+struct NetSizes(BTreeMap<MarketId, i128>);
+
+impl NetSizes {
+    /// The net size of `market_id` in `state`, measured on the first call and
+    /// kept; `None`, and nothing kept, when the sum overflows.
+    fn of<H: Hasher>(&mut self, state: &State<H>, market_id: MarketId) -> Option<i128> {
+        if let Some(net) = self.0.get(&market_id) {
+            debug_assert_eq!(
+                Some(*net),
+                state.net_size(market_id),
+                "a kept net size went stale"
+            );
+            return Some(*net);
+        }
+        let net = state.net_size(market_id)?;
+        self.0.insert(market_id, net);
+        Some(net)
+    }
 }
 
 /// One withdrawal this batch authorizes: value `amount` (bound to the burned note)
@@ -313,8 +393,10 @@ impl<H: Hasher> State<H> {
             .checked_add(1)
             .ok_or(EngineError::Overflow)?;
         let mut outputs = BatchOutputs::default();
+        // Every market's net size, measured once and kept for the whole batch.
+        let mut nets = NetSizes::default();
         for op in ops {
-            let out = self.apply_op(op)?;
+            let out = self.apply_op_with(op, &mut nets)?;
             if let Some(w) = out.withdrawal {
                 outputs.withdrawals.push(w);
             }
@@ -344,15 +426,24 @@ impl<H: Hasher> State<H> {
     /// Such an entry already present in the pre-state and left untouched is allowed;
     /// it is root-bound and refusing it would make an anchored root unprovable.
     pub fn apply_op(&mut self, op: &BatchOp) -> Result<OpOutput, EngineError> {
+        self.apply_op_with(op, &mut NetSizes::default())
+    }
+
+    /// [`State::apply_op`] with the net sizes the batch has already measured.
+    fn apply_op_with(
+        &mut self,
+        op: &BatchOp,
+        nets: &mut NetSizes,
+    ) -> Result<OpOutput, EngineError> {
         #[cfg(debug_assertions)]
         let empty_before = self.empty_position_keys();
-        let out = self.dispatch_op(op);
+        let out = self.dispatch_op(op, nets);
         #[cfg(debug_assertions)]
         self.assert_no_new_empty_position(&empty_before, op);
         out
     }
 
-    fn dispatch_op(&mut self, op: &BatchOp) -> Result<OpOutput, EngineError> {
+    fn dispatch_op(&mut self, op: &BatchOp, nets: &mut NetSizes) -> Result<OpOutput, EngineError> {
         match op {
             BatchOp::Withdraw {
                 note_commitment,
@@ -376,10 +467,14 @@ impl<H: Hasher> State<H> {
                     withdrawal: w,
                     deposit: None,
                 }),
-            BatchOp::SettleAll => self.op_settle_all().map(|w| OpOutput {
-                withdrawal: w,
-                deposit: None,
-            }),
+            BatchOp::SettleAll => {
+                // It closes every position: no measured net size survives it.
+                nets.0.clear();
+                self.op_settle_all().map(|w| OpOutput {
+                    withdrawal: w,
+                    deposit: None,
+                })
+            }
             BatchOp::Deposit {
                 owner,
                 asset_id,
@@ -403,14 +498,18 @@ impl<H: Hasher> State<H> {
                     deposit: Some(d),
                 }),
             other => self
-                .apply_settlement_op(other)
+                .apply_settlement_op(other, nets)
                 .map(|()| OpOutput::default()),
         }
     }
 
     /// Apply a non-withdraw settlement op. These are value-preserving within the
     /// shielded pool (or bring value in) and never produce an L1 withdrawal output.
-    fn apply_settlement_op(&mut self, op: &BatchOp) -> Result<(), EngineError> {
+    fn apply_settlement_op(
+        &mut self,
+        op: &BatchOp,
+        nets: &mut NetSizes,
+    ) -> Result<(), EngineError> {
         match op {
             BatchOp::FundPosition {
                 owner,
@@ -442,14 +541,14 @@ impl<H: Hasher> State<H> {
                 mark,
                 oracle,
                 now_ms,
-            } => self.op_accrue_funding(*market_id, *mark, oracle, *now_ms),
+            } => self.op_accrue_funding(*market_id, *mark, oracle, *now_ms, nets),
             BatchOp::Liquidate {
                 owner,
                 market_id,
                 oracle,
                 now_ms,
             } => self
-                .op_liquidate(owner, *market_id, oracle, *now_ms)
+                .op_liquidate(owner, *market_id, oracle, *now_ms, nets)
                 .map(|_| ()),
             BatchOp::Unbind {
                 owner,
@@ -597,10 +696,14 @@ impl<H: Hasher> State<H> {
         //    pre-state conserving, and the payout added to `external_out` above,
         //    the post-state conserves too.
         let positions_ok = positions.values().all(|p| p.size == 0 && p.collateral > 0);
+        // The payout is a withdrawal too: it never takes `external_out` above
+        // `external_in` (audit 2026-11-16 PC-1; implied by the other conditions,
+        // checked anyway).
         let reserves_ok = vault_pool >= 0
             && insurance_fund >= 0
             && treasury >= 0
-            && (!has_recipient || (vault_pool == 0 && insurance_fund == 0 && treasury == 0));
+            && (!has_recipient || (vault_pool == 0 && insurance_fund == 0 && treasury == 0))
+            && external_out <= self.external_in;
         let inside_after = checked_sum(notes.values().map(|n| n.amount))
             .zip(checked_sum(positions.values().map(|p| p.collateral)))
             .and_then(|(n, p)| checked_sum([n, p, insurance_fund, vault_pool, treasury]));
@@ -779,8 +882,8 @@ impl<H: Hasher> State<H> {
     /// Liquidate `owner`'s position, returning the auto-deleverage haircuts the
     /// cascade applied (empty when none — the penalty alone, or the insurance fund
     /// and the treasury, covered it, or no winner had anything clawable). This is the SAME state transition as `BatchOp::Liquidate`
-    /// (which discards the attribution); the sequencer calls this entry so it can
-    /// report each socialized haircut back to the clawed account (audit Q2).
+    /// (which discards the attribution). See [`State::liquidate_reported`] for
+    /// the positions it closed on the other side.
     pub fn liquidate(
         &mut self,
         owner: &PubKey,
@@ -788,17 +891,34 @@ impl<H: Hasher> State<H> {
         oracle: &OracleTranscript,
         now_ms: u64,
     ) -> Result<Vec<AdlHaircut>, EngineError> {
+        self.liquidate_reported(owner, market_id, oracle, now_ms)
+            .map(|report| report.haircuts)
+    }
+
+    /// [`State::liquidate`], also returning every position on the other side the
+    /// liquidation closed with the liquidated one ([`ForcedClose`]). The same
+    /// state transition as `BatchOp::Liquidate`; the sequencer calls this entry
+    /// so it can report each socialized haircut back to the clawed account (audit
+    /// Q2) and each forced close back to its owner, and cancel that owner's
+    /// resting orders in the market (round-1 review of audit 2026-11-16 PC-1).
+    pub fn liquidate_reported(
+        &mut self,
+        owner: &PubKey,
+        market_id: MarketId,
+        oracle: &OracleTranscript,
+        now_ms: u64,
+    ) -> Result<LiquidationReport, EngineError> {
         #[cfg(debug_assertions)]
         let empty_before = self.empty_position_keys();
-        let result = self.op_liquidate(owner, market_id, oracle, now_ms);
+        let result = self.op_liquidate(owner, market_id, oracle, now_ms, &mut NetSizes::default());
         #[cfg(debug_assertions)]
         self.assert_no_new_empty_position(&empty_before, &"liquidate");
-        let haircuts = result?;
+        let report = result?;
         debug_assert!(
             self.conservation_holds(),
             "conservation invariant broken by liquidate"
         );
-        Ok(haircuts)
+        Ok(report)
     }
 
     /// The only writer of `positions` (apart from `SettleAll`, which builds its
@@ -1227,6 +1347,7 @@ impl<H: Hasher> State<H> {
         mark: i128,
         oracle: &OracleTranscript,
         now_ms: u64,
+        nets: &mut NetSizes,
     ) -> Result<(), EngineError> {
         let market = *self
             .markets
@@ -1255,6 +1376,26 @@ impl<H: Hasher> State<H> {
         }
         let close_only = self.mode == Mode::CloseOnly;
         let publish_ms = oracle.publish_time_ms;
+        // Audit 2026-11-16 PC-1: one index serves both sides, so funding nets out
+        // only when the side that receives holds no more open interest than the
+        // side that pays; otherwise the clearing pool would pay the difference.
+        // A positive rate makes the longs pay, so it is stored only while the
+        // market's net size (longs minus shorts) is not negative, and a negative
+        // rate only while it is not positive. Liquidations keep the net size at
+        // zero, so this binds only on a state that already held a pool position;
+        // with one side empty it stores zero. An overflowing sum stores zero too.
+        // The sum reads every position, so it is taken only for a non-zero rate
+        // (a zero rate needs no counterparty), and a batch takes it once per
+        // market (`NetSizes`).
+        let observed = crate::funding::FundingState::funding_rate(mark, index_price);
+        let rate = if observed == 0 {
+            0
+        } else {
+            match nets.of(self, market_id) {
+                Some(net) if observed.signum() * net.signum() >= 0 => observed,
+                _ => 0,
+            }
+        };
         let f = self
             .funding
             .get_mut(&market_id)
@@ -1262,9 +1403,9 @@ impl<H: Hasher> State<H> {
         // Whether the recorded price is from an earlier refresh epoch, judged
         // against the price recorded before this tick.
         let refresh_due = f.price_refresh_due(publish_ms);
-        // commit — infallible: the span is charged at the stored rate, then the rate
-        // observed now is stored for the next span
-        let changed = f.accrue(mark, index_price, now_ms);
+        // commit — infallible: the span is charged at the stored rate, then the
+        // rate admitted above is stored for the next span
+        let changed = f.accrue_rate(rate, index_price, now_ms);
         // A tick that changed nothing on a market whose price is current (or that
         // never recorded one) stays root-neutral, except in close-only, where every
         // tick keeps the settlement price current.
@@ -1280,7 +1421,8 @@ impl<H: Hasher> State<H> {
         market_id: MarketId,
         oracle: &OracleTranscript,
         now_ms: u64,
-    ) -> Result<Vec<AdlHaircut>, EngineError> {
+        nets: &mut NetSizes,
+    ) -> Result<LiquidationReport, EngineError> {
         let market = *self
             .markets
             .get(&market_id)
@@ -1302,6 +1444,15 @@ impl<H: Hasher> State<H> {
         let notional = pos.notional(price).ok_or(EngineError::Overflow)?;
         let penalty =
             apply_rate(notional, market.liquidation_fee_ratio).ok_or(EngineError::Overflow)?;
+        // One pass over the market: its net size, and the split of the close over
+        // the other side (audit 2026-11-16 PC-1).
+        let (net_before, closes) = self.counterparty_closes(market_id, pos.size)?;
+        debug_assert!(
+            nets.0
+                .get(&market_id)
+                .is_none_or(|kept| *kept == net_before),
+            "a kept net size went stale"
+        );
         // SEC-024 (SEC-022 §4, carried into op_liquidate): stage EVERY fallible value
         // on a COPY before the first mutation. This op used to close the position via
         // `apply_fill` and only THEN run the fallible vault-pool / insurance-fund
@@ -1309,22 +1460,17 @@ impl<H: Hasher> State<H> {
         // closed — and `run_maintenance` logs an op only on success, so the live root
         // reflected a close the replayable op-log did not contain, wedging the next
         // proof. Close the whole position at oracle price, staged:
-        let mut staged = *pos;
-        let close_delta = -staged.size;
-        let (realized, funding) = staged.apply_fill(close_delta, price, funding_index)?;
-        let new_vault_pool = self
-            .vault_pool
-            .checked_sub(realized)
-            .ok_or(EngineError::Overflow)?
-            .checked_add(funding)
-            .ok_or(EngineError::Overflow)?;
+        let mut loser = *pos;
+        let close_delta = loser.size.checked_neg().ok_or(EngineError::Overflow)?;
+        let (realized, funding) = loser.apply_fill(close_delta, price, funding_index)?;
+        let mut pool_delta = funding.checked_sub(realized).ok_or(EngineError::Overflow)?;
         // Take the liquidation penalty from any remaining (positive) collateral
         // into the insurance fund. Bad debt (a close that left collateral < 0) is
         // then handled by the waterfall below. `take ∈ [0, max(collateral, 0)]`, so
         // the sub cannot actually fail — checked anyway (crate rule: every
         // arithmetic step is `checked_*`), and still before the first mutation.
-        let take = penalty.min(staged.collateral.max(0));
-        staged.collateral = staged
+        let take = penalty.min(loser.collateral.max(0));
+        loser.collateral = loser
             .collateral
             .checked_sub(take)
             .ok_or(EngineError::Overflow)?;
@@ -1333,26 +1479,119 @@ impl<H: Hasher> State<H> {
             .checked_add(take)
             .ok_or(EngineError::Overflow)?;
 
-        // Bad-debt waterfall (§6, §9), staged like the close: a close that left the
-        // position underwater (a gap past the maintenance buffer) is covered, in
+        // Audit 2026-11-16 PC-1: close the other side with it. The positions on the
+        // opposite side give up the liquidated size between them, pro rata by size
+        // (`counterparty_closes`), at the same price, staged like the close above;
+        // their realized results and settled funding go through the clearing pool
+        // like any fill's. So the pool never becomes the counterparty to the open
+        // interest a liquidation would otherwise leave behind.
+        //
+        // A counterparty that was itself liquidatable pays the liquidation penalty
+        // on the size the close takes, out of its positive collateral, into the
+        // insurance fund (round-1 review): without it, a position under
+        // maintenance would leave penalty-free whenever an opposite liquidation hit
+        // first. What it still holds is liquidated on its own and pays for itself.
+        let mut others: BTreeMap<PubKey, Position> = BTreeMap::new();
+        let mut forced_closes: Vec<ForcedClose> = Vec::new();
+        let mut net_after = loser
+            .size
+            .checked_sub(pos.size)
+            .and_then(|d| net_before.checked_add(d))
+            .ok_or(EngineError::Overflow)?;
+        for (who, delta) in closes {
+            let mut other = *self
+                .positions
+                .get(&(who, market_id))
+                .ok_or(EngineError::UnknownPosition)?;
+            let was_liquidatable = other.is_liquidatable(&market, price, funding_index);
+            let size_before = other.size;
+            let (realized, funding) = other.apply_fill(delta, price, funding_index)?;
+            pool_delta = pool_delta
+                .checked_sub(realized)
+                .and_then(|d| d.checked_add(funding))
+                .ok_or(EngineError::Overflow)?;
+            let mut charged = 0i128;
+            if was_liquidatable {
+                let closed = notional_quote(abs(delta), price).ok_or(EngineError::Overflow)?;
+                let due = apply_rate(closed, market.liquidation_fee_ratio)
+                    .ok_or(EngineError::Overflow)?;
+                charged = due.min(other.collateral.max(0));
+                other.collateral = other
+                    .collateral
+                    .checked_sub(charged)
+                    .ok_or(EngineError::Overflow)?;
+                new_insurance_fund = new_insurance_fund
+                    .checked_add(charged)
+                    .ok_or(EngineError::Overflow)?;
+            }
+            // The market's net size after the close, from the staged positions:
+            // only the liquidated position and these change size.
+            net_after = other
+                .size
+                .checked_sub(size_before)
+                .and_then(|d| net_after.checked_add(d))
+                .ok_or(EngineError::Overflow)?;
+            forced_closes.push(ForcedClose {
+                owner: who,
+                size: delta,
+                realized,
+                penalty: charged,
+            });
+            others.insert(who, other);
+        }
+        let new_vault_pool = self
+            .vault_pool
+            .checked_add(pool_delta)
+            .ok_or(EngineError::Overflow)?;
+        // The invariant: the market's sizes sum to zero as before, or, in a state
+        // that already held a pool position, to no more than before and on the
+        // same side.
+        if !(net_after == 0
+            || (net_after.signum() == net_before.signum()
+                && net_after.unsigned_abs() <= net_before.unsigned_abs()))
+        {
+            return Err(EngineError::ClearingPoolExposure);
+        }
+
+        // Bad-debt waterfall (§6, §9), staged like the closes. The shortfall is the
+        // debt the closes left on the liquidated position and on every counterparty
+        // they left flat (one that was itself under water), and it is covered, in
         // order, by
         //   1. the insurance fund,
         //   2. the treasury,
         //   3. auto-deleverage of the winners in this market (see
-        //      `auto_deleverage_plan`),
-        // and whatever is still uncovered stays parked on the closed position while
-        // the system trips to close-only (the depletion halt). Every step only moves
-        // value between balances inside the conservation identity, and each draw is
-        // bounded by the shortfall that remains, so the steps cannot overflow; they
-        // are checked anyway and run before the first mutation.
-        let mut loser = staged;
-        let mut new_treasury = self.treasury;
-        let mut winners: Vec<(AdlHaircut, Position)> = Vec::new();
+        //      `auto_deleverage_plan`), which still reaches the gain a counterparty
+        //      just realized,
+        // and whatever is still uncovered stays parked on those flat positions,
+        // the liquidated one first, while the system trips to close-only (the
+        // depletion halt). Every step only moves value between balances inside the
+        // conservation identity, and each draw is bounded by the shortfall that
+        // remains, so the steps cannot overflow; they are checked anyway and run
+        // before the first mutation.
+        let mut debtors: Vec<PubKey> = Vec::new();
         if loser.collateral < 0 {
-            let bad_debt = loser
-                .collateral
-                .checked_neg()
-                .ok_or(EngineError::Overflow)?;
+            debtors.push(*owner);
+        }
+        for (who, other) in &others {
+            if !other.is_open() && other.collateral < 0 {
+                debtors.push(*who);
+            }
+        }
+        let mut new_treasury = self.treasury;
+        let mut haircuts: Vec<AdlHaircut> = Vec::new();
+        if !debtors.is_empty() {
+            let mut bad_debt = 0i128;
+            for who in &debtors {
+                let debt = if who == owner {
+                    loser.collateral
+                } else {
+                    others[who].collateral
+                };
+                bad_debt = debt
+                    .checked_neg()
+                    .and_then(|d| bad_debt.checked_add(d))
+                    .ok_or(EngineError::Overflow)?;
+            }
             let from_insurance = bad_debt.min(new_insurance_fund.max(0));
             let after_insurance = bad_debt
                 .checked_sub(from_insurance)
@@ -1361,18 +1600,28 @@ impl<H: Hasher> State<H> {
             let residual = after_insurance
                 .checked_sub(from_treasury)
                 .ok_or(EngineError::Overflow)?;
+            let mut recovered = 0i128;
             if residual > 0 {
                 // Any overflow while planning leaves no haircuts: the residual stays
                 // parked and the system trips to close-only (fail closed).
-                winners = self
-                    .auto_deleverage_plan(&market, market_id, owner, residual, price, funding_index)
+                let winners = self
+                    .auto_deleverage_plan(
+                        &market,
+                        market_id,
+                        owner,
+                        residual,
+                        price,
+                        funding_index,
+                        &others,
+                    )
                     .unwrap_or_default();
-            }
-            let mut recovered = 0i128;
-            for (haircut, _) in &winners {
-                recovered = recovered
-                    .checked_add(haircut.clawed)
-                    .ok_or(EngineError::Overflow)?;
+                for (haircut, winner) in winners {
+                    recovered = recovered
+                        .checked_add(haircut.clawed)
+                        .ok_or(EngineError::Overflow)?;
+                    others.insert(haircut.owner, winner);
+                    haircuts.push(haircut);
+                }
             }
             debug_assert!(recovered <= residual, "ADL took more than the residual");
             new_insurance_fund = new_insurance_fund
@@ -1381,58 +1630,147 @@ impl<H: Hasher> State<H> {
             new_treasury = new_treasury
                 .checked_sub(from_treasury)
                 .ok_or(EngineError::Overflow)?;
-            loser.collateral = loser
-                .collateral
-                .checked_add(from_insurance)
-                .and_then(|c| c.checked_add(from_treasury))
+            // Hand what was covered to the debtors in order, each up to its debt.
+            let mut cover = from_insurance
+                .checked_add(from_treasury)
                 .and_then(|c| c.checked_add(recovered))
                 .ok_or(EngineError::Overflow)?;
+            for who in &debtors {
+                let debtor = if who == owner {
+                    &mut loser
+                } else {
+                    others.get_mut(who).ok_or(EngineError::UnknownPosition)?
+                };
+                let paid = cover.min(debtor.collateral.checked_neg().unwrap_or(0));
+                debtor.collateral = debtor
+                    .collateral
+                    .checked_add(paid)
+                    .ok_or(EngineError::Overflow)?;
+                cover = cover.checked_sub(paid).ok_or(EngineError::Overflow)?;
+            }
+            debug_assert_eq!(cover, 0, "covered more than the shortfall");
         }
+        let parked = loser.collateral < 0
+            || others
+                .values()
+                .any(|other| !other.is_open() && other.collateral < 0);
 
-        // commit — infallible from here down. `store_position` removes the closed
+        // commit — infallible from here down. `store_position` removes a closed
         // entry when it ends with zero collateral.
         settled.record_price(price, oracle.publish_time_ms);
         self.funding.insert(market_id, settled);
         self.store_position(key, loser);
-        let mut haircuts = Vec::with_capacity(winners.len());
-        for (haircut, winner) in winners {
-            self.store_position((haircut.owner, market_id), winner);
-            haircuts.push(haircut);
+        for (who, other) in others {
+            self.store_position((who, market_id), other);
         }
         self.vault_pool = new_vault_pool;
         self.insurance_fund = new_insurance_fund;
         self.treasury = new_treasury;
-        if loser.collateral < 0 {
+        if parked {
             // Insurance, the treasury and the winners' clawable amounts did not
-            // cover the shortfall: the rest stays parked on the closed position
+            // cover the shortfall: the rest stays parked on the closed positions
             // (conservation-safe) and the system trips to close-only.
             self.mode = Mode::CloseOnly;
         }
-        Ok(haircuts)
+        nets.0.insert(market_id, net_after);
+        Ok(LiquidationReport {
+            haircuts,
+            forced_closes,
+        })
+    }
+
+    /// The sum of the sizes of every position in `market_id`, longs minus shorts;
+    /// `None` when it overflows. The clearing pool's implicit position is its
+    /// negation: fills change both sides by the same size and liquidations close
+    /// both sides together, so from a fresh state it is always zero.
+    fn net_size(&self, market_id: MarketId) -> Option<i128> {
+        checked_sum(
+            self.positions
+                .iter()
+                .filter(|((_, mid), _)| *mid == market_id)
+                .map(|(_, p)| p.size),
+        )
+    }
+
+    /// The net size of `market_id` (longs minus shorts, liquidated position
+    /// included) and the size changes that close the other side of a liquidated
+    /// position of `size` there (audit 2026-11-16 PC-1), from one pass over the
+    /// positions.
+    ///
+    /// Every open position on the opposite side of `size` is weighted by its
+    /// absolute size, and the size to close is split by [`allocate_pro_rata`], so
+    /// each gives up at most its whole position and never flips; iteration is in
+    /// key order, so the split is deterministic. Each change has the sign of `size`
+    /// (a short gives up size by buying when a long is liquidated).
+    ///
+    /// The size to close is `|size|`, less the part that reduces a pool position a
+    /// state already held (the net size on the same side as `size`): that part
+    /// closes against the pool, so such a position only shrinks. The net size
+    /// counts `size` itself, so the opposite side always holds at least the rest;
+    /// a sum or split that cannot be made (only on overflow) is refused as
+    /// `Overflow`.
+    fn counterparty_closes(
+        &self,
+        market_id: MarketId,
+        size: i128,
+    ) -> Result<(i128, Vec<(PubKey, i128)>), EngineError> {
+        let side = size.signum();
+        let mut net = 0i128;
+        let mut owners: Vec<PubKey> = Vec::new();
+        let mut weights: Vec<i128> = Vec::new();
+        for ((who, mid), p) in &self.positions {
+            if *mid != market_id {
+                continue;
+            }
+            net = net.checked_add(p.size).ok_or(EngineError::Overflow)?;
+            if p.size.signum() == -side && side != 0 {
+                owners.push(*who);
+                weights.push(abs(p.size));
+            }
+        }
+        let to_pool = if net.signum() == side {
+            abs(net).min(abs(size))
+        } else {
+            0
+        };
+        let need = abs(size)
+            .checked_sub(to_pool)
+            .ok_or(EngineError::Overflow)?;
+        let takes = allocate_pro_rata(need, &weights).ok_or(EngineError::Overflow)?;
+        let closes = owners
+            .into_iter()
+            .zip(takes)
+            .filter(|(_, take)| *take > 0)
+            .map(|(who, take)| (who, side * take))
+            .collect();
+        Ok((net, closes))
     }
 
     /// Auto-deleverage plan (§6, §9): how much of `residual` each winner in
     /// `market_id` covers, together with that winner's position after its haircut.
     /// Nothing is mutated; the caller commits the plan.
     ///
-    /// Every open position in the market other than `exclude`'s is weighted by
-    /// [`Position::adl_clawable`] at `price` and `funding_index`, and the covered
-    /// amount `min(residual, Σ clawable)` is split by [`allocate_pro_rata`]. So
-    /// each winner gives at most its gain net of funding, its collateral stays at
-    /// or above zero, and its equity stays at or above its maintenance margin: ADL
-    /// never creates new bad debt and never makes a position liquidatable, and
-    /// the haircuts sum to at most `residual`. Iteration is in key order, so the
-    /// plan is deterministic.
+    /// Every position in the market that was open before the liquidation, other
+    /// than `exclude`'s, is weighted by [`Position::adl_clawable_after`] at `price`
+    /// and `funding_index`, against its staged position in `closed` when the
+    /// liquidation just reduced it (otherwise against itself, which is
+    /// [`Position::adl_clawable`]). The covered amount `min(residual, Σ clawable)`
+    /// is split by [`allocate_pro_rata`]. So each winner gives at most its gain net
+    /// of funding, the part a reduction just realized included, its collateral
+    /// stays at or above zero, and its equity stays at or above its maintenance
+    /// margin: ADL never creates new bad debt and never makes a position
+    /// liquidatable, and the haircuts sum to at most `residual`. Iteration is in
+    /// key order, so the plan is deterministic.
     ///
     /// `None` on any overflow, including in one winner's clawable amount; the
     /// caller then applies no haircut at all.
     ///
-    /// This takes collateral rather than reducing position size, so a clawed
-    /// winner keeps its full exposure on a thinner margin above maintenance,
-    /// and the liquidated position's exposure stays with the clearing pool (see
-    /// [`BatchOp::SettleAll`] for where the pool's result on it goes at wind-down).
-    /// The burden is computed per liquidation, so across several bad-debt
-    /// liquidations in one batch the split follows op order.
+    /// This takes collateral rather than size: the liquidation has already closed
+    /// the opposite side by the liquidated size, so a clawed winner keeps whatever
+    /// exposure it still holds, on a thinner margin above maintenance. The burden
+    /// is computed per liquidation, so across several bad-debt liquidations in one
+    /// batch the split follows op order.
+    #[allow(clippy::too_many_arguments)]
     fn auto_deleverage_plan(
         &self,
         market: &Market,
@@ -1441,6 +1779,7 @@ impl<H: Hasher> State<H> {
         residual: i128,
         price: i128,
         funding_index: i128,
+        closed: &BTreeMap<PubKey, Position>,
     ) -> Option<Vec<(AdlHaircut, Position)>> {
         let mut candidates: Vec<(PubKey, Position)> = Vec::new();
         let mut weights: Vec<i128> = Vec::new();
@@ -1449,10 +1788,11 @@ impl<H: Hasher> State<H> {
             if *mid != market_id || owner == exclude || !pos.is_open() {
                 continue;
             }
-            let clawable = pos.adl_clawable(market, price, funding_index)?;
+            let after = closed.get(owner).copied().unwrap_or(*pos);
+            let clawable = pos.adl_clawable_after(&after, market, price, funding_index)?;
             if clawable > 0 {
                 total = total.checked_add(clawable)?;
-                candidates.push((*owner, *pos));
+                candidates.push((*owner, after));
                 weights.push(clawable);
             }
         }
@@ -1546,9 +1886,23 @@ impl<H: Hasher> State<H> {
             });
         }
         pos.collateral -= amount;
-        // if still open, must remain ≥ initial margin after the withdrawal.
+        // if still open, must remain ≥ initial margin after the withdrawal, and
+        // (audit 2026-11-16 PC-2) that margin must be held in collateral, not in
+        // unrealized gain: the rule the gateway applies to a withdrawal
+        // (collateral less the initial margin is what is free). Without it a
+        // profitable position could unbind its collateral to zero, leaving
+        // auto-deleverage nothing to take from it.
         if pos.is_open() {
             pos.check_initial_margin(&market, mark, funding_index)?;
+            let initial = pos
+                .initial_required(&market, mark)
+                .ok_or(EngineError::Overflow)?;
+            if pos.collateral < initial {
+                return Err(EngineError::Risk {
+                    source: RiskError::InsufficientMargin,
+                    leg: None,
+                });
+            }
         }
         // all checks passed. Do the fallible mint FIRST (SEC-026 shared primitive:
         // historical-uniqueness gate + append, which can fail on a duplicate or a
@@ -1592,6 +1946,12 @@ impl<H: Hasher> State<H> {
             .external_out
             .checked_add(note.amount)
             .ok_or(EngineError::Overflow)?;
+        // Audit 2026-11-16 PC-1: never pay out, over the system's life, more than
+        // came in. Such a withdrawal could only be paid from other accounts'
+        // claims (a clearing pool driven negative, say).
+        if new_out > self.external_in {
+            return Err(EngineError::WithdrawalExceedsDeposits);
+        }
 
         // commit — infallible from here
         let _ = self.nullifiers.insert(nf);

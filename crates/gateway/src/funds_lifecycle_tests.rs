@@ -77,7 +77,7 @@ fn successful(output: Output) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 fn sign(sk: &k256::ecdsa::SigningKey, digest: &[u8; 32]) -> String {
-    let (sig, rec) = sk.sign_prehash_recoverable(digest).unwrap();
+    let (sig, rec) = sk.sign_prehash_recoverable(digest);
     let mut wire = [0; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = 27 + rec.to_byte();

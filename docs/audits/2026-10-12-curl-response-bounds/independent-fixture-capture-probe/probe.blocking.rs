@@ -146,7 +146,7 @@ fn json_body(len: usize) -> Vec<u8> {
 }
 
 
-#[path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs"] mod curl_transport;
+#[path = "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs"] mod curl_transport;
 fn main() {
  accepted_mode_probe();
  let dir=std::path::PathBuf::from(std::env::args_os().nth(1).expect("owned output"));

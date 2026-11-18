@@ -170,6 +170,7 @@ impl Server {
             stop: None,
             program_vkey: Default::default(),
             clock_skew_ms: Default::default(),
+            max_window_ms: Default::default(),
         });
         l1
     }

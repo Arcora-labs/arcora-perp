@@ -86,17 +86,17 @@
   "job17_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
   "checkouts": {
     "primary": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "path": "/Users/<dev>/Desktop/arcora-perp/repo",
       "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
       "dirty_files": 13
     },
     "job17": {
-      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "path": "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
       "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
       "dirty_files": 7
     },
     "old_desktop": {
-      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "path": "/Users/<dev>/Desktop/Projeler/Dark Perp/dark-perp",
       "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
       "dirty_files": 62
     }

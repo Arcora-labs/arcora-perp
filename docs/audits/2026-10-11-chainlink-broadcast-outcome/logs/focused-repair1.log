@@ -30,6 +30,6 @@ test candidate_broadcast_tests::broadcast_wrong_finalized_result_identity_effect
 
 test result: ok. 26 passed; 0 failed; 1 ignored; 0 measured; 622 filtered out; finished in 66.11s
 
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 55s
      Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)

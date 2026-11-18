@@ -1,4 +1,4 @@
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 8.76s
      Running unittests src/main.rs (target/debug/deps/gateway-5bdde49e6ccce77a)
 

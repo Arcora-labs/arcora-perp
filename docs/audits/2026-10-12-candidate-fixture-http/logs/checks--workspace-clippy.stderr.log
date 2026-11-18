@@ -1,4 +1,4 @@
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
 error: manual `!RangeInclusive::contains` implementation
    --> crates/gateway/src/candidate_fixture_transport.rs:717:8
     |

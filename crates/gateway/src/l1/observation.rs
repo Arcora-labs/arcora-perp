@@ -230,6 +230,23 @@ impl<'a> CanonicalRead<'a> {
         }
         Ok(bytes)
     }
+    /// The runtime code at `to`, read at the anchor block; a configured witness must
+    /// return the same bytes.
+    pub fn code(&self, to: &str) -> Result<Vec<u8>, String> {
+        let params = vec![
+            json!(to),
+            json!({"blockHash":crate::hex32(&self.anchor.1),"requireCanonical":true}),
+        ];
+        let code = hex_bytes(&self.primary.call("eth_getCode", params.clone())?)?;
+        if let Some(witness) = self.witness {
+            if hex_bytes(&witness.call("eth_getCode", params)?)? != code {
+                return Err(
+                    "settlement observation: witness disagrees on the contract code".into(),
+                );
+            }
+        }
+        Ok(code)
+    }
     /// The account nonce (transaction count, the next unused nonce) of `account`
     /// at the anchor block. A configured witness must report the same value.
     pub fn nonce(&self, account: &[u8; 20]) -> Result<u64, String> {

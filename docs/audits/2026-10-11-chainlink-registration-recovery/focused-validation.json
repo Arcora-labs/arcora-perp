@@ -1,14 +1,14 @@
 {
   "schema": "arcora-registration-recovery-focused-validation-v1",
   "created_utc": "2026-10-11T13:59:07.756791+00:00",
-  "checkout": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "checkout": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
   "branch": "feat/chainlink-registration-recovery-20261011",
   "base_head": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0",
   "source_frozen": true,
   "checks": [
     {
       "argv": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",
@@ -16,13 +16,13 @@
         "gateway",
         "candidate_recovery"
       ],
-      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
       "environment": {
-        "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        "CARGO_TARGET_DIR": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target"
       },
       "exit_code": 0,
       "exit_evidence": "exec session63661 exit0",
-      "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/recovery-focused-first.log",
+      "raw_log": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/recovery-focused-first.log",
       "raw_log_sha256": "73ccdf10293e633f7cca54b3c3db3b6212c5380fcd50189a7ed4477b673266c1",
       "raw_log_bytes": 3032,
       "summary": {
@@ -48,7 +48,7 @@
     },
     {
       "argv": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",
@@ -56,13 +56,13 @@
         "gateway",
         "candidate_recovery"
       ],
-      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
       "environment": {
-        "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        "CARGO_TARGET_DIR": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target"
       },
       "exit_code": 0,
       "exit_evidence": "sequential set-e exec session65707 exit0",
-      "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/recovery-focused-final.log",
+      "raw_log": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/recovery-focused-final.log",
       "raw_log_sha256": "22be4710c461fc0a5097ad45d7c1435c42cc6f833ad2d63b69821ad313093cf9",
       "raw_log_bytes": 3141,
       "summary": {
@@ -88,7 +88,7 @@
     },
     {
       "argv": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",
@@ -96,13 +96,13 @@
         "gateway",
         "candidate_protocol_tests"
       ],
-      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
       "environment": {
-        "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        "CARGO_TARGET_DIR": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target"
       },
       "exit_code": 0,
       "exit_evidence": "sequential set-e exec session65707 exit0",
-      "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/protocol-regression-final.log",
+      "raw_log": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/protocol-regression-final.log",
       "raw_log_sha256": "5ac59cfc71c7bbf034ae251f3d49c69f2b2fa1621690b69233a13c2850d55ac2",
       "raw_log_bytes": 1559,
       "summary": {
@@ -126,7 +126,7 @@
     },
     {
       "argv": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "clippy",
         "--locked",
@@ -137,13 +137,13 @@
         "-D",
         "warnings"
       ],
-      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
       "environment": {
-        "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        "CARGO_TARGET_DIR": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target"
       },
       "exit_code": 0,
       "exit_evidence": "sequential set-e exec session65707 exit0",
-      "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/gateway-clippy-final.log",
+      "raw_log": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/gateway-clippy-final.log",
       "raw_log_sha256": "83399b76e44c224ffc38cadd22569d15e775726a56fcaf3a5fe5ab7d0986e0ce",
       "raw_log_bytes": 187,
       "summary": {
@@ -161,18 +161,18 @@
     },
     {
       "argv": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "fmt",
         "--all",
         "--",
         "--check"
       ],
-      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
       "environment": {},
       "exit_code": 0,
       "exit_evidence": "sequential set-e exec session65707 exit0",
-      "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/fmt-check-final.log",
+      "raw_log": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/fmt-check-final.log",
       "raw_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "raw_log_bytes": 0,
       "summary": {
@@ -192,11 +192,11 @@
         "diff",
         "--check"
       ],
-      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
       "environment": {},
       "exit_code": 0,
       "exit_evidence": "sequential set-e exec session65707 exit0",
-      "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/diff-check-final.log",
+      "raw_log": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/diff-check-final.log",
       "raw_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "raw_log_bytes": 0,
       "summary": {

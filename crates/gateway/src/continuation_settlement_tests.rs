@@ -98,7 +98,7 @@ impl Fixture {
         gw.window_settle_mode = true;
         gw.seq.set_retain_tick_snapshots(false);
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x73; 32]).unwrap();
-        let public = sk.verifying_key().to_encoded_point(false);
+        let public = sk.verifying_key().to_sec1_point(false);
         let hash = <sha3::Keccak256 as sha3::Digest>::digest(&public.as_bytes()[1..]);
         let signer = hash[12..].try_into().unwrap();
         let (key, owner) = gw.register_account(Some(signer));
@@ -106,7 +106,7 @@ impl Fixture {
         let amount = 5_000 * QUOTE_SCALE;
         let to = [7; 20];
         let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, 1);
-        let (sig, recovery) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (sig, recovery) = sk.sign_prehash_recoverable(&digest);
         let mut signature = [0; 65];
         signature[..64].copy_from_slice(&sig.to_bytes());
         signature[64] = 27 + recovery.to_byte();
@@ -136,8 +136,12 @@ impl Fixture {
         fixture.assert_uncommitted();
         fixture
     }
+    fn finality(&self) -> String {
+        let order = self.gw.orders.iter().find(|o| o.order_hash == self.order);
+        self.gw.finality_str(order.unwrap())
+    }
     fn assert_uncommitted(&self) {
-        assert_eq!(self.gw.finality_str(&self.order), "MATCHED");
+        assert_eq!(self.finality(), "MATCHED");
         assert!(self.gw.withdraw_proofs.is_empty());
         assert!(self.gw.l1_status.is_none());
         let response = self.gw.v1_withdrawals_json(&self.key).unwrap();
@@ -478,7 +482,7 @@ fn restart_expired_session_retry_pending_then_durable_roll_forward() {
             finish_boot_recovery(&f.gw, true, &f.dir.state(), &f.dir.journal(), &SEED, None);
             assert!(!f.dir.journal().exists());
             f.restore();
-            assert_eq!(f.gw.finality_str(&f.order), "SETTLED");
+            assert_eq!(f.finality(), "SETTLED");
             let (published, proof) = &f.gw.withdraw_proofs[&f.leaf];
             assert_eq!(*published, withdrawal_root);
             assert!(withdrawals::verify(*published, f.leaf, proof));

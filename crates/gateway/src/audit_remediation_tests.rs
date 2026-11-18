@@ -35,7 +35,7 @@ mod audit_remediation {
             .header("content-type", "application/json")
             .header("x-api-key", hex0x(key))
             .body(Body::from(
-                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "10000000", "marketId": 0, "purpose": "collateral"}).to_string(),
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "100000000", "marketId": 0, "purpose": "collateral"}).to_string(),
             ))
             .unwrap()
     }
@@ -82,7 +82,7 @@ mod audit_remediation {
                 &app.gateway_signer.digest(
                     &[0x42; 20],
                     &commit,
-                    10_000_000,
+                    100_000_000,
                     body["validUntil"].as_u64().unwrap()
                 ),
                 &sig
@@ -99,13 +99,13 @@ mod audit_remediation {
                     &key,
                     [0x42; 20],
                     commit,
-                    10_000_000,
+                    100_000_000,
                     id,
                     "test-restored",
                     0
                 )
                 .unwrap(),
-            10_000_000
+            100_000_000
         );
         assert!(restored.seq.state.conservation_holds());
     }
@@ -237,7 +237,7 @@ mod audit_remediation {
     }
 
     fn sign(sk: &k256::ecdsa::SigningKey, digest: &Digest) -> [u8; 65] {
-        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(digest);
         let mut bytes = [0u8; 65];
         bytes[..64].copy_from_slice(&sig.to_bytes());
         bytes[64] = 27 + recid.to_byte();
@@ -514,7 +514,7 @@ mod audit_remediation {
             .header("content-type", "application/json")
             .header("x-api-key", hex0x(key))
             .body(Body::from(
-                serde_json::json!({"from": hex0x(&from), "amount": "10000000", "marketId": 0, "purpose": "collateral"}).to_string(),
+                serde_json::json!({"from": hex0x(&from), "amount": "100000000", "marketId": 0, "purpose": "collateral"}).to_string(),
             ))
             .unwrap()
     }
@@ -591,7 +591,7 @@ mod audit_remediation {
 
         let again = router
             .clone()
-            .oneshot(reuse_request(&key, "10000000", &commit))
+            .oneshot(reuse_request(&key, "100000000", &commit))
             .await
             .unwrap();
         assert_eq!(again.status(), StatusCode::OK);
@@ -606,7 +606,7 @@ mod audit_remediation {
         }
 
         // A different amount, or a commit the gateway does not hold, is a new permit.
-        for (amount, reuse) in [("12000000", commit.clone()), ("10000000", hex0x(&[0x77; 32]))] {
+        for (amount, reuse) in [("120000000", commit.clone()), ("100000000", hex0x(&[0x77; 32]))] {
             let response = json_body(
                 router
                     .clone()
@@ -618,7 +618,7 @@ mod audit_remediation {
             assert_ne!(response["ownerCommit"].as_str().unwrap(), reuse);
         }
         assert_eq!(app.gw.lock().await.accounts[&key].deposit_authorizations.len(), 3);
-        let bad = router.oneshot(reuse_request(&key, "10000000", "0x12")).await.unwrap();
+        let bad = router.oneshot(reuse_request(&key, "100000000", "0x12")).await.unwrap();
         assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
         writer.abort();
     }
@@ -725,5 +725,27 @@ mod audit_remediation {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(app.reg_limit.lock().await.len(), 1);
+    }
+
+    #[test]
+    fn recover_eth_address_refuses_a_high_s_twin() {
+        // (r, n − s, v ⊕ 1) recovers the same key, so ecdsa 0.17's
+        // `recover_from_prehash` alone would accept it; `recover_eth_address`
+        // re-verifies against the recovered key and refuses the high-s twin.
+        use k256::elliptic_curve::ff::PrimeField;
+        let key = k256::ecdsa::SigningKey::from_slice(&[0x2b; 32]).unwrap();
+        let digest = [0x61u8; 32];
+        let (signature, recid) = key.sign_prehash_recoverable(&digest);
+        let mut sig = [0u8; 65];
+        sig[..64].copy_from_slice(&signature.to_bytes());
+        sig[64] = 27 + recid.to_byte();
+        let signer = recover_eth_address(&digest, &sig).expect("the low-s signature recovers");
+        let s = k256::Scalar::from_repr(signature.to_bytes()[32..].try_into().unwrap()).unwrap();
+        let mut twin = sig;
+        twin[32..64].copy_from_slice(&<[u8; 32]>::from((-s).to_bytes()));
+        twin[64] = if sig[64] == 27 { 28 } else { 27 };
+        assert_ne!(twin, sig);
+        assert_eq!(recover_eth_address(&digest, &twin), None, "high-s twin must not recover");
+        assert_eq!(recover_eth_address(&digest, &sig), Some(signer));
     }
 }

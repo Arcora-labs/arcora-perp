@@ -15,7 +15,7 @@ import verify_clock_proof as clock
 # produces a value that differs from the committed proof.
 DUMMY_GUEST = {"elf": "cd" * 32, "vkey": "0x" + "ab" * 32}
 DUMMY_FIXTURE = {"witness_sha256": "ef" * 32, "commitment": "0x" + "12" * 32}
-SUITES = {"SP1RealVerifierGuardTest": 8, "SP1RealProofTest": 10, "ClockBoundRealProofTest": 6}
+SUITES = {"SP1RealVerifierGuardTest": 10, "SP1RealProofTest": 11, "ClockBoundRealProofTest": 6}
 # The evidence keys and scope text each gate wrote before the identity split. The
 # split only adds keys next to these; a rename belongs to a change that intends it.
 PROOF_REPORT_KEYS = {
@@ -36,14 +36,16 @@ FIXTURE_REPORT_KEYS = {
 FIXTURE_REPORT_SCOPE = ("Actual SP1 verifier, clock adapter, settlement and synthetic vault withdrawal; "
                         "not full HTTP/order/production lifecycle.")
 # The guest inputs the reviewed guest changed since the clock-v2 guest: the guest
-# entry point, its manifest and lockfile (the Keccak precompile patch), and twelve
-# perp-core sources. The root and perp-core manifests, hash, market, note and
-# oracle are unchanged.
+# entry point, its manifest and lockfile (the Keccak precompile patch), the perp-core
+# manifest and fourteen perp-core sources (hash since the 2026-11-16 audit's ForcedClose
+# domain; the manifest and oracle since the k256 0.14 upgrade). The root manifest,
+# market and note are unchanged.
 CHANGED_SINCE_CLOCK_V2 = {
     "crates/sp1-guest/src/main.rs", "crates/sp1-guest/Cargo.toml", "crates/sp1-guest/Cargo.lock",
+    "crates/perp-core/Cargo.toml",
     *("crates/perp-core/src/" + name + ".rs" for name in (
-        "clock", "commitment", "engine", "error", "fixed", "funding", "lib", "merkle", "nullifier", "order",
-        "position", "state")),
+        "clock", "commitment", "engine", "error", "fixed", "funding", "hash", "lib", "merkle", "nullifier",
+        "oracle", "order", "position", "state")),
 }
 
 
@@ -207,7 +209,10 @@ class ProofFixtureAndStatus(unittest.TestCase):
         directory = root / clock.PROOF_FIXTURE["dir"]
         evidence = json.loads((directory / "proof-evidence.json").read_text())
         mutations = {
-            "proof.bin": lambda d: (d / "proof.bin").write_bytes((d / "proof.bin").read_bytes()[:-1] + b"\x00"),
+            # Flip the last byte: overwriting it with a constant is a no-op when the
+            # proof already ends in that byte (the k256 0.14 proof ends in 0x00).
+            "proof.bin": lambda d: (d / "proof.bin").write_bytes(
+                (d / "proof.bin").read_bytes()[:-1] + bytes([(d / "proof.bin").read_bytes()[-1] ^ 0x01])),
             "guest.elf": lambda d: (d / "guest.elf").write_bytes((d / "guest.elf").read_bytes() + b"\x00"),
             "public-values.bin": lambda d: (d / "public-values.bin").write_bytes(bytes(32)),
             "missing": lambda d: (d / "program-vkey.bin").unlink(),
@@ -291,7 +296,7 @@ class ProofFixtureAndStatus(unittest.TestCase):
         # The committed proof's evidence recorded its ELF beside its guest sources;
         # PROOF_FIXTURE pairs the same two, so the evidence never pairs that ELF with
         # the checkout's sources.
-        evidence = json.loads((clock.target.ROOT / "docs/audits/2026-10-21-gpu-day/real-clock-proof/"
+        evidence = json.loads((clock.target.ROOT / "docs/audits/2026-11-18-guest-reproof/real-clock-proof/"
                                "verification.json").read_text())
         self.assertEqual(evidence["guest_elf_sha256"], clock.PROOF_FIXTURE["elf"])
         self.assertEqual(evidence["guest_sources_sha256"], dict(clock.PROOF_FIXTURE["sources"]))

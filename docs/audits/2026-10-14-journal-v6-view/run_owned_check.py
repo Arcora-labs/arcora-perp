@@ -9,7 +9,7 @@ assert name.isidentifier() and command
 folder=out/'local'/name;folder.mkdir(parents=True,exist_ok=False)
 paths=['crates/gateway/src/rollback_journal.rs']
 inputs={p:sha256((repo/p).read_bytes()).hexdigest() for p in paths}
-env=os.environ.copy();rust='/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin'
+env=os.environ.copy();rust='/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin'
 env['RUSTC']=rust+'/rustc';env['PATH']=rust+':/opt/homebrew/bin:'+env.get('PATH','');env['RUST_TEST_THREADS']='2'
 start=time.monotonic();stamp=datetime.now(timezone.utc).isoformat()
 with (folder/'stdout.log').open('xb') as stdout,(folder/'stderr.log').open('xb') as stderr:

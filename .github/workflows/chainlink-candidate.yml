@@ -70,7 +70,7 @@ jobs:
           forge build --root contracts
           forge build --root contracts/vendor/sp1-contracts
           mkdir -p /tmp/arcora-candidate-drills
-      - name: Candidate target identity against owned seven-contract Anvil stack
+      - name: Candidate target identity against owned six-contract Anvil stack (adapter bound directly to the SP1 verifier)
         run: |
           ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-candidate-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v
       - name: Candidate fixture HTTP transport, frozen-lane form (not live service)

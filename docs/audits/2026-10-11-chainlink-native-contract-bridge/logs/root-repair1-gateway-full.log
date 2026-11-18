@@ -627,6 +627,6 @@ test report_archive_binding::tests::retention_real_gateway_continues_past_4096_c
 
 test result: ok. 602 passed; 0 failed; 20 ignored; 0 measured; 0 filtered out; finished in 723.35s
 
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 25.34s
      Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)

@@ -37,3 +37,6 @@ docs/audits/2026-10-12-curl-response-bounds/**/*.log binary
 
 # Preserve the failed dependency audit and locked TEE capture compiler output.
 docs/audits/2026-10-12-tee-quic-advisories/**/*.log binary
+
+# Preserve the raw real-verifier build and GPU proving command output byte-exact.
+docs/audits/2026-11-18-guest-reproof/**/*.log binary

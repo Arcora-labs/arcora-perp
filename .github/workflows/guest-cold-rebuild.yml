@@ -22,7 +22,9 @@ permissions:
 jobs:
   cold-guest:
     name: cold guest build (macOS ARM64)
-    runs-on: macos-14
+    # macos-14 is no longer offered ('macos-14-arm64-us-default' is not supported);
+    # macos-15 is the same Apple-silicon class, and the step below still requires arm64.
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

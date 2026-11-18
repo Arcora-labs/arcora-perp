@@ -1,4 +1,4 @@
-#[path="/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs"] mod curl_transport;
+#[path="/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs"] mod curl_transport;
 mod prover_client {
 #[derive(Debug)] pub enum ProverClientError { Http(String), Unauthorized }
 const STATUS_SENTINEL: &str = "__DPHTTP_STATUS__";

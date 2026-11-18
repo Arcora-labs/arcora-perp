@@ -136,11 +136,11 @@
     }
   },
   "actual_prover_check": {
-    "receipt_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/receipt.json",
+    "receipt_path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/request-admission-validation-20261012/prover-typecheck-final/receipt.json",
     "receipt_sha256": "57f357f55fccb569a740592f04992a57c72688f2c180cb647df3e3d1de658475",
     "passed": true,
     "command": [
-      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+      "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
       "check",
       "--offline",
       "--locked",

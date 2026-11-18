@@ -28,6 +28,8 @@ AUXILIARY_TEST_SOURCES = {
 MAX_JSON = 2 * 1024 * 1024
 MAX_JSON_DEPTH = 64
 MAX_SOURCE_FILES = 8192
+# Like the clock release stack, the candidate graph binds its SP1 adapter directly to the
+# stateless verifier: no SP1 gateway (router) role exists (audit SV-1).
 CONTRACTS = {**legacy.CONTRACTS,
     "oracle_wrapper": ("out/ChainlinkOracleVerifier.sol/ChainlinkOracleVerifier.json",
                        "ChainlinkOracleVerifier", "0.8.24+commit.e11b9ed9")}
@@ -170,7 +172,9 @@ def public_config(value):
 def verify_pins(root):
     require(legacy.check_sp1_release.check(root)["passed"], "SP1 release/provenance guard failed")
     legacy.verify_reviewed_guest(root)
-    for path, expected in candidate.CANDIDATE_SOURCES.items():
+    # The checkout holds the measured sources, with the pinned checkout inputs (manifest
+    # and locks that follow the current perp-core) in place of the measured ones.
+    for path, expected in candidate.checkout_sources().items():
         require(legacy.identity(root, path)["sha256"] == expected,
                 "candidate runtime source changed: " + path)
     for path, expected in AUXILIARY_TEST_SOURCES.items():
@@ -194,6 +198,7 @@ def verify_pins(root):
             require(not path.exists() and not path.is_symlink(), "unreviewed candidate build input")
     return {"reviewed_v2_sources_sha256": dict(legacy.clock.HISTORICAL_V2_GUEST_SOURCES),
             "candidate_sources_sha256": dict(candidate.CANDIDATE_SOURCES),
+            "candidate_checkout_inputs_sha256": dict(candidate.CANDIDATE_CHECKOUT_INPUTS),
             "candidate_auxiliary_test_sources_sha256": dict(AUXILIARY_TEST_SOURCES)}
 
 
@@ -246,7 +251,7 @@ def compiled_contract(root, role):
     require(list(settings["compilationTarget"].values()) == [name], "wrong compilation target: " + role)
     require(canonical(settings["optimizer"]) == canonical({"enabled": True, "runs": 200}),
             "wrong optimizer profile: " + role)
-    compiler_root = root / ("contracts/vendor/sp1-contracts" if role in {"sp1_gateway", "sp1_verifier"} else "contracts")
+    compiler_root = root / ("contracts/vendor/sp1-contracts" if role == "sp1_verifier" else "contracts")
     sources = metadata["sources"]
     require(isinstance(sources, dict) and sources, "missing compiler source bindings")
     for source, expected in sources.items():

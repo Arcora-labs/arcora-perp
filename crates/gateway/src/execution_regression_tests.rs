@@ -82,6 +82,78 @@ mod execution_regressions {
         plain[snapshot::PAYLOAD_MAGIC.len() + 1..].to_vec()
     }
 
+    /// Audit 2026-11-16 PC-1, round-1 review: a liquidation closes the other side
+    /// of the market with the liquidated position. The short it closed hears about
+    /// it (`forcedClose`), and its resting take-profit is cancelled with reason
+    /// `ForcedClose` instead of filling later into a long it never asked for.
+    #[test]
+    fn audit_1116_pc1_a_forced_close_is_reported_and_cancels_the_take_profit() {
+        let mut gw = exchange();
+        let long = account(&mut gw);
+        let short = account(&mut gw);
+        gw.seq.seal_genesis_baseline();
+        let px = gw.px_of(0);
+        // About $400k of notional against $50k each: a 10% fall liquidates the long.
+        let size = SIZE_SCALE * (4_000_000 * PRICE_SCALE / px) / 10;
+        submit(&mut gw, &long, "Buy", size, px, "Gtc");
+        submit(&mut gw, &short, "Sell", size, px, "Gtc");
+        tick(&mut gw);
+        let short_owner = gw.accounts[&short].wallet.owner;
+        assert_eq!(gw.seq.state.position(&short_owner, 0).unwrap().size, -size);
+        submit(&mut gw, &short, "Buy", size, px * 8 / 10, "Gtc");
+        tick(&mut gw);
+        let take_profit = |gw: &Gw| {
+            gw.v1_orders_json(&short).unwrap()["orders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|o| o["side"] == "Buy")
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(take_profit(&gw)["execution"]["status"], "RESTING");
+
+        gw.mkts[0].px = px * 9 / 10;
+        let events: Vec<serde_json::Value> = tick(&mut gw)
+            .iter()
+            .map(|e| serde_json::from_str(e).unwrap())
+            .collect();
+        assert_eq!(gw.seq.state.position(&short_owner, 0).map_or(0, |p| p.size), 0);
+        let closes: Vec<&serde_json::Value> =
+            events.iter().filter(|e| e["type"] == "forcedClose").collect();
+        assert_eq!(closes.len(), 1, "{events:?}");
+        assert_eq!(closes[0]["owner"], gw.owner_hex_for(&short).unwrap());
+        assert_eq!(closes[0]["marketId"], 0);
+        assert_eq!(closes[0]["size"], size.to_string());
+        assert_eq!(closes[0]["price"], (px * 9 / 10).to_string());
+        assert_eq!(take_profit(&gw)["execution"]["status"], "CANCELLED");
+        assert_eq!(take_profit(&gw)["execution"]["reason"], "ForcedClose");
+        assert_eq!(gw.seq.book(0).unwrap().resting_size(Side::Buy), 0);
+        assert_replay(&mut gw);
+    }
+
+    /// Audit 2026-11-16 PC-1, round-1 review: a snapshot whose open window does
+    /// not replay under this build (one written by a build whose ops meant
+    /// something else) is refused at restore instead of wedging the next settle.
+    #[test]
+    fn audit_1116_pc1_a_snapshot_whose_open_window_does_not_replay_is_refused() {
+        let (mut gw, maker, taker, _) = paired();
+        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 40, 0, "Ioc");
+        tick(&mut gw);
+        assert!(gw.seq.window_op_count() > 0);
+        assert!(Gw::boot_restored(&gw.snapshot_plain()).is_ok());
+        // A live state the window's ops do not reach, conservation intact.
+        let owner = gw.accounts[&maker].wallet.owner;
+        gw.seq.state.positions.get_mut(&(owner, 0)).unwrap().collateral += 1;
+        gw.seq.state.vault_pool -= 1;
+        assert!(gw.seq.state.conservation_holds());
+        let Err(refused) = Gw::boot_restored(&gw.snapshot_plain()) else {
+            panic!("a window that does not replay must not restore");
+        };
+        assert!(refused.contains("does not replay"), "{refused}");
+        assert!(refused.contains("FINAL_SETTLE_RUNBOOK"), "{refused}");
+    }
+
     #[test]
     fn sealed_maker_cancel_removes_remainder_and_commits_manifest() {
         let (mut gw, maker, taker, _) = paired();

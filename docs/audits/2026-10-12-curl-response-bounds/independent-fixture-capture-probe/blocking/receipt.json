@@ -1,7 +1,7 @@
 {
   "command": [
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking"
   ],
   "exit_code": 0,
   "elapsed_seconds": 2.749267375,

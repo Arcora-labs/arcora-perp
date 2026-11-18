@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Back up a running gateway's sealed snapshot and rollback journal as one pair.
+"""Back up a running gateway's sealed snapshot and rollback journal as one pair,
+with the side logs the snapshot relies on.
 
 The gateway replaces `DARKPERP_STATE` and `<state>.rollback` only by atomic
 rename (snapshot.rs `write_atomic`), so a file whose (dev, inode, size,
@@ -8,7 +9,14 @@ in between. When both identities hold across the copy, the two copies
 coexisted on disk and form a pair the boot recovery table accepts; otherwise
 the attempt is discarded and retried. The gateway is never stopped.
 
-Both files are sealed under ENCLAVE_SEED; this tool never reads secrets. The
+The order log and the settled batches' order hashes live in append-only side
+logs beside the snapshot (`<state>.orderlog`, `<state>.batches`). A snapshot
+records where each one's durable records end, and the gateway only ever appends
+past that point, so a copy taken after the snapshot copy holds every record the
+copied snapshot relies on (a torn last frame is cut off at boot). A restore puts
+them back beside the snapshot under the same names.
+
+All files are sealed under ENCLAVE_SEED; this tool never reads secrets. The
 manifest carries the exact restore pins the gateway checks at boot
 (DARKPERP_RESTORE_SHA256 / DARKPERP_RESTORE_JOURNAL). Candidate archive mode
 (`<state>.chainlink`) is refused instead of producing a partial backup.
@@ -31,6 +39,7 @@ from pathlib import Path
 
 SCHEMA = "arcora.gateway-backup.v1"
 NAME = re.compile(r"[0-9]{8}T[0-9]{6}Z")
+SIDE_LOGS = (".orderlog", ".batches")
 
 
 class BackupError(Exception):
@@ -96,12 +105,20 @@ def backup(state, dest, now=None, max_tries=5, _during_copy=None, _sleep=time.sl
                 shutil.rmtree(partial)
                 _sleep(0.2 * attempt)
                 continue
+            # After the pair: the side logs then reach at least as far as the
+            # copied snapshot records.
+            side_logs = [
+                _copy(Path(str(state) + suffix), partial / (state.name + suffix))
+                for suffix in SIDE_LOGS
+                if Path(str(state) + suffix).exists()
+            ]
             manifest = {
                 "schema": SCHEMA,
                 "created_utc": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "attempts": attempt,
                 "snapshot": snapshot,
                 "journal": journal_copy or "absent",
+                "side_logs": side_logs,
                 "restore_env": {
                     "DARKPERP_REQUIRE_RESTORE": "1",
                     "DARKPERP_RESTORE_SHA256": snapshot["sha256"],

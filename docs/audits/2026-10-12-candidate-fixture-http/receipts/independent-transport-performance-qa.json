@@ -24,7 +24,7 @@
   "execution_evidence": [
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",
@@ -59,7 +59,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",
@@ -96,7 +96,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",
@@ -133,7 +133,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "clippy",
         "--workspace",
@@ -166,7 +166,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "clippy",
         "--workspace",
@@ -199,7 +199,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "fmt",
         "--all",

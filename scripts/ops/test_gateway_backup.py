@@ -66,6 +66,19 @@ class Pair(Fixture):
         self.assertEqual(manifest["schema"], "arcora.gateway-backup.v1")
         self.assertEqual(manifest["attempts"], 1)
 
+    def test_side_logs_are_copied_after_the_pair(self):
+        (self.live / "state.snap.orderlog").write_bytes(b"order-log-frames")
+        (self.live / "state.snap.batches").write_bytes(b"batch-frames")
+        out = gateway_backup.backup(self.state, self.dest, now=at(0))
+        manifest = json.loads((out / "manifest.json").read_text())
+        self.assertEqual((out / "state.snap.orderlog").read_bytes(), b"order-log-frames")
+        self.assertEqual((out / "state.snap.batches").read_bytes(), b"batch-frames")
+        self.assertEqual(
+            [entry["file"] for entry in manifest["side_logs"]],
+            ["state.snap.orderlog", "state.snap.batches"],
+        )
+        self.assertEqual(manifest["side_logs"][1]["sha256"], sha(self.live / "state.snap.batches"))
+
     def test_missing_journal_is_pinned_as_absent(self):
         out = gateway_backup.backup(self.state, self.dest, now=at(0))
         manifest = json.loads((out / "manifest.json").read_text())

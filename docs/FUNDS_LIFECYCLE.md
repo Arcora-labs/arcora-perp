@@ -242,7 +242,7 @@ change to that read-out updates the file by hand.
 ## Amounts and nonces a wallet sees
 
 - **Deposit permits** are issued for at least 10 USDC (10,000,000 base units).
-- **Withdrawals** are at least 1 USDC, unless they take the entire free balance in
+- **Withdrawals** are at least 10 USDC, unless they take the entire free balance in
   that market (`marketFree` in `GET /v1/accounts/me`), which the account panel checks
   for the selected market.
 - **Orders** that open, grow or flip a position need at least $10 of notional;
@@ -288,6 +288,9 @@ settlement windows).
 
 An accepted order's receipt carries `l1Challenge`, the enclave's authorization to
 open `challengeInclusion` for that order (docs/API.md, § L1 inclusion challenges).
+The gateway issues it only once a durable state snapshot holds the order, so a
+restart cannot forget an order whose authorization is already out (docs/API.md,
+§ When the state cannot be written).
 If no settled batch ever includes or rejects the order, the user needs this
 authorization after the fact, possibly when the gateway no longer answers. The web
 client keeps it:

@@ -1,4 +1,4 @@
-#[path="/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs"] mod curl_transport;
+#[path="/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs"] mod curl_transport;
 fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
     http_get_json_command(url, std::process::Command::new("curl"))
 }

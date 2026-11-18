@@ -58,6 +58,9 @@ pub(crate) struct VoidReport {
     pub fills_reverted: usize,
     /// The voided withdrawals; none of their leaves is pending any more.
     pub withdrawals: Vec<Withdrawal>,
+    /// The leaves of the voided withdrawals that were forced exits of dust sweeps
+    /// (audit G1-1), which their accounts never signed.
+    pub forced_exits: BTreeSet<[u8; 32]>,
     /// The ids of the deposits restored for re-ingestion, in order.
     pub deposits: Vec<u64>,
     /// The same ids by the owner of the account each is credited to.
@@ -138,6 +141,8 @@ pub(crate) struct VoidNotice {
     pub orders: usize,
     pub fills: usize,
     pub withdrawals: Vec<Withdrawal>,
+    /// Which of `withdrawals` were forced exits of dust sweeps.
+    pub forced_exits: BTreeSet<[u8; 32]>,
     pub deposits: usize,
 }
 
@@ -155,18 +160,22 @@ impl VoidNotice {
         })
     }
 
-    /// `owner`'s voided withdrawals, for its withdrawals view.
+    /// `owner`'s voided withdrawals, for its withdrawals view. `forcedExit` marks a
+    /// dust sweep's forced exit, which the account did not sign and need not
+    /// request again: its entry is back.
     pub(crate) fn withdrawals_of(&self, owner: &PubKey) -> Vec<serde_json::Value> {
         self.withdrawals
             .iter()
             .filter(|w| w.owner == *owner)
             .map(|w| {
+                let leaf = w.leaf();
                 serde_json::json!({
                     "to": hex0x(&w.to),
                     "amount": w.amount.to_string(),
                     "nonce": w.nonce,
-                    "leaf": hex0x(&w.leaf()),
+                    "leaf": hex0x(&leaf),
                     "batchId": self.batch_id,
+                    "forcedExit": self.forced_exits.contains(&leaf),
                 })
             })
             .collect()
@@ -194,23 +203,26 @@ impl VoidReport {
             orders: self.orders,
             fills: self.fills_reverted,
             withdrawals: self.withdrawals.clone(),
+            forced_exits: self.forced_exits.clone(),
             deposits: self.deposits.len(),
         }
     }
 
     /// The per-account events of this void, each tagged with its owner: one
     /// `execution` event per changed order record, one `withdrawalVoided` per
-    /// withdrawal and one `depositRestored` per depositor. Sent once the void is
-    /// durable.
+    /// withdrawal (`forcedExit` marks a dust sweep's) and one `depositRestored` per
+    /// depositor. Sent once the void is durable.
     pub(crate) fn account_events(&self) -> Vec<String> {
         let withdrawals = self.withdrawals.iter().map(|w| {
+            let leaf = w.leaf();
             serde_json::json!({
                 "type": "withdrawalVoided",
                 "owner": hex0x(&w.owner),
-                "leaf": hex0x(&w.leaf()),
+                "leaf": hex0x(&leaf),
                 "amount": w.amount.to_string(),
                 "nonce": w.nonce,
                 "batchId": self.batch_id,
+                "forcedExit": self.forced_exits.contains(&leaf),
             })
             .to_string()
         });
@@ -566,6 +578,10 @@ impl Gw {
             let lost =
                 || LiveVoidError::PostCheck(format!("deposit {} could not be restored", d.id));
             let credit = self.deposits.credits.remove(&d.id).ok_or_else(lost)?;
+            // The credit is reverted; ingestion charges it again when it credits it.
+            if credit.route.purpose == deposit_ingestion::Purpose::Collateral {
+                self.withdraw_limits.refund_credit(&d.owner);
+            }
             self.accounts
                 .get_mut(&credit.route.key)
                 .ok_or_else(lost)?
@@ -611,9 +627,17 @@ impl Gw {
 
         let mut withdrawals = j.ww.clone();
         withdrawals.append(&mut self.window_withdrawals);
+        // The voided withdrawals are removed and re-signed: their charges go too.
+        for w in &withdrawals {
+            self.refund_removed_withdrawal(w);
+        }
         let leaves: BTreeSet<[u8; 32]> = withdrawals.iter().map(Withdrawal::leaf).collect();
         self.pending_withdrawals
             .retain(|w| !leaves.contains(&w.leaf()));
+        // A voided dust sweep leaves its entry in place: it is no forced exit now,
+        // and its owner is told it was one, not a withdrawal to request again.
+        let forced_exits = self.dust_sweeps.among(&leaves);
+        self.dust_sweeps.forget(&leaves);
 
         let fills_reverted = j
             .witness
@@ -627,6 +651,7 @@ impl Gw {
             orders: voided.hashes.len(),
             fills_reverted,
             withdrawals,
+            forced_exits,
             deposits: deposits.iter().map(|d| d.id).collect(),
             depositors: deposits.iter().fold(Default::default(), |mut by, d| {
                 by.entry(d.owner).or_insert_with(Vec::new).push(d.id);

@@ -43,9 +43,9 @@
    Compiling ecdsa v0.16.9
    Compiling k256 v0.13.4
    Compiling cobs v0.3.0
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
+   Compiling perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/perp-core)
    Compiling postcard v1.1.3
-   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+   Compiling prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/prover)
     Finished `release` profile [optimized] target(s) in 9.84s
      Running unittests src/lib.rs (target/release/deps/prover-43420be30b59caea)
 

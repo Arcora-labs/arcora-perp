@@ -16,7 +16,7 @@ perp-core = { path = "../perp-core" }
 # so `std` / default features are fine (the guest re-verifies via perp-core's no_std
 # k256). Must resolve to the SAME k256 0.13 as perp-core so `SigningKey`/`OracleSig`
 # are one type across the crates (cargo unifies to the union of features).
-k256 = { version = "0.13", features = ["ecdsa"] }
+k256 = { version = "0.14", features = ["ecdsa"] }
 ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 serde_json = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
@@ -26,3 +26,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 [[bin]]
 name = "probe"
 required-features = ["http"]
+
+[lints]
+workspace = true

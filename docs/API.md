@@ -43,20 +43,20 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 
 | Method | Path | Auth | Body / notes |
 |--------|------|------|--------------|
-| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned, recoveryNonce, chainId, vault }`; `503` `{ error }` once the account capacity is reached, or while the state itself is at the soft admission cap (§ Admission cap); outstanding deposit permits never close registration |
+| POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned, recoveryNonce, chainId, vault }`; `503` `{ error }` once the account capacity is reached, or while the state's own history or unspent notes are at their soft admission cap (§ Admission cap), or `PERSISTENCE_UNAVAILABLE` while the state cannot be written (§ When the state cannot be written); registration adds no position entry, so the position entries never close it, and neither do outstanding deposit permits |
 | GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, marketFree[], positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }`, `marketFree` being `[{ marketId, free }]`, each market's free balance (the withdrawal minimum's exception, § Withdrawals); after close-only also `refundableDeposits[]` (§ Refunds after close-only) |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
 | POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
 | POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose, reuseOwnerCommit? }` → `{ ownerCommit, sig, validUntil, marketId, purpose }` — durable permit with explicit routing and a deadline |
 | POST | `/v1/accounts/deposit/route` | ✓ | `{ ownerCommit, from, amount, marketId, purpose }` — explicitly adopt a legacy pending permit |
 | POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — optional finalized ingestion accelerator / durable receipt |
-| POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
+| POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization); `503` `CLOCK_WINDOW_CLOSING` with `Retry-After: 2` while the open settlement window is closing (§ When the settlement window is closing) |
 | GET  | `/v1/accounts/withdrawals` | ✓ | `{ vault, withdrawals[], voided[] }` with claim proofs |
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
-| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges) |
-| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`) |
+| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges), sent once a durable state snapshot holds the order; `409` past the open-order cap (§ Open-order limits); `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written, and `503` with `durability: "unknown"` (no receipt) when the write the order waits for fails (§ When the state cannot be written); `503` `CLOCK_WINDOW_CLOSING` with `Retry-After: 2` while the open settlement window is closing (§ When the settlement window is closing) |
+| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`; `receipt` is `null` until a durable state snapshot holds the order), newest first; finished orders beyond the account's share of the row budget are dropped (see **Order rows kept per account**) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
 | GET  | `/v1/markets` | – | `{ markets[] }` |
@@ -85,12 +85,75 @@ same state mutex. The existing Cancelled reason enters the current window
 manifest. Proof-v1 replays accounting and commits that manifest; it does not
 independently prove cancellation authorization or CLOB matching fairness.
 
+### When the state cannot be written
+
+After a state snapshot write fails, the gateway refuses every change that would hand
+out a promise a restart could forget, until a later write succeeds (the writer
+retries every 30 seconds): `POST /v1/orders` (no receipt, no `l1Challenge`),
+`POST /v1/accounts`, `POST /v1/accounts/withdraw` and
+`POST /v1/accounts/deposit/address` answer `503`
+`{ "error": "PERSISTENCE_UNAVAILABLE: ..." }` and change nothing; retry later.
+Cancellation and the routes that already wait for a durable snapshot keep their own
+`503` behaviour below. The `persistence_failed` alert is active meanwhile, and
+`snapshot_size_high` warns once a snapshot reaches three quarters of its 64 MiB cap
+(§ Operational alerts).
+
+**An order receipt waits for a durable snapshot.** The receipt and its
+`l1Challenge` are the enclave's promise that the order is sequenced, and the
+`l1Challenge` lets its holder fine the sequencer's bond if no settled batch answers a
+challenge. A restart before a snapshot holds the order would forget it, so
+`POST /v1/orders` answers only once the snapshot writer has durably written a snapshot
+that holds the order (concurrent orders share one write). When that write fails or
+times out, the answer is `503` with `durability: "unknown"`, the `orderHash`, and no
+receipt, signature or `l1Challenge`. The order is not taken back: it was accepted
+in memory and may still execute, so look it up by `orderHash` before placing it again.
+`GET /v1/orders` lists it with `receipt: null` until a later snapshot holds it, then
+serves its receipt and `l1Challenge`; a restart before that forgets the order, and no
+authorization for it was ever issued. Production
+without persistence refuses orders before accepting them (`503`
+`PERSISTENCE_UNAVAILABLE`). A demo build without persistence answers at once: it
+keeps nothing across a restart.
+
 Production without persistence refuses cancellation before mutation (503).
 With persistence, success waits for a durable snapshot ACK. Write failure or
 timeout returns 503 with `durability: "unknown"`; the in-memory quote remains
 removed, but restart durability is unconfirmed. Do not infer safe replacement
 from an empty order list after this error. Obtain confirmed durable state
 before replacing the quote. Snapshot acknowledgement is not L1 settlement.
+
+### When the settlement window is closing
+
+In clock mode each settlement window registers the times of its operations with
+the clock verifier, which refuses a window whose timed operations (fills, funding,
+liquidations, withdrawals) span more than its `maxWindowMs` (30 s at launch); such
+a window could never settle and would be voided with every trade in it (§ Voided
+settlement windows). The gateway seals a window every seal period: a quarter of
+the shorter of `maxWindowMs` and `clockSkewMs`, 7.5 s at launch. When a seal is
+late (a slow L1 RPC or disk, a challenge read that is behind), the open
+window stops admitting timed operations once its first one is `maxWindowMs` less
+one seal period old (22.5 s at launch): `POST /v1/orders` and
+`POST /v1/accounts/withdraw` (and, in the demo build, the LP and demo routes that
+trade or move funds) answer `503` with `Retry-After: 2` and
+`{ "error": "CLOCK_WINDOW_CLOSING: ..." }` and change nothing, and the matching
+tick (fills, funding, liquidations) waits. Orders already accepted wait in the
+book or the queue. Everything resumes in the next window, as soon as this one is
+sealed. A deposit permit that needs a dust sweep to be issued (§ Admission cap)
+gets the same answer, since a sweep's forced exits are withdrawals: nothing is
+swept and no permit is issued until the window is sealed. Cancellation, deposits
+and reads are not affected otherwise. A window that holds
+nothing but idle funding steps is not held: it is dropped, as at a seal. Demo and
+legacy modes (no clock verifier) refuse nothing.
+
+`Retry-After` is a polling hint, not a promise. A window whose seal attempt was
+refused and rolled back keeps its first operation, so it stays closing until the
+settle loop seals it again after its backoff. Once a window is sealed, every
+mutating request is answered `503` with `Retry-After: 2` and
+`{ "error": "clock settlement in progress; retry after finality" }` until the
+window settles. Requests that read L1 before they change anything
+(`POST /v1/accounts/deposit/authorize`, `/deposit/route`, `/deposit/onchain`, a
+close-only `POST /v1/accounts/withdraw`, the admin wind-down) do not hold the
+exchange open while they read, so they can get that answer after their read:
+nothing was changed and no permit was issued; send the request again.
 
 **Order body** (`POST /v1/orders`):
 
@@ -116,15 +179,59 @@ fill only against genuine external resting liquidity and are otherwise killed. T
 (§ Trading is gated until launch discusses the same gap.)
 
 Opening orders
-are margin-checked against the account's free balance; close-only mode blocks
-openers (§6). Acceptance is not a fill guarantee: that margin check runs against the
+are margin-checked against the account's free balance, and together with the
+account's other pending orders (§ Open-order limits); close-only mode blocks
+openers (§6). Acceptance is not a fill guarantee: those checks run against the
 **pre-batch** state, so an order can also be **rejected at settlement**, not just at
-submission — the ordinary cause is two of your own orders that individually fit your
-margin but together do not (each passes alone; the second fails initial margin when
-the batch settles). A settlement-rejected order never rests or fills and receives no
-further receipt — it stays `ACCEPTED` in `GET /v1/orders` and is resolved in the
-batch manifest's **rejected** set. **Rate limit:** at most 10 orders/sec per account
-— over that returns `429` `{ "error": "RATE_LIMIT: ..." }`.
+submission — when the oracle price moves before the batch, or when the account's
+earlier orders of the same batch change the position the order meets. A
+settlement-rejected order never rests or fills and receives no further receipt — it
+stays `ACCEPTED` in `GET /v1/orders` and is resolved in the batch manifest's
+**rejected** set. **Rate limit:** at most 10 orders/sec per account — over that
+returns `429` `{ "error": "RATE_LIMIT: ..." }`. Each client address (the
+address the gateway's trusted proxy reports; IPv6 counted by /64) is also limited
+across all its accounts: 40 orders at once, then 20 per second
+(`GATEWAY_ORDER_BURST_PER_CLIENT`, `GATEWAY_ORDER_RATE_PER_CLIENT`), with the same
+`429` past it.
+
+**Open-order limits.** An account keeps at most **64 open orders in one market** and
+**128 across all markets**. Open orders are the orders that can rest on the book —
+`Gtc` with a limit price, and `PostOnly` — counting the ones resting, the ones
+accepted and waiting for the next batch, and the earlier orders of the same batch.
+`Ioc`, `Fok` and market orders never rest, so they are neither counted nor refused
+for the cap. An order past a cap is refused at submission with `409`
+`{ "error": "OPEN_ORDER_LIMIT: ..." }`; cancel an open order (or let one fill or
+expire) to place another.
+
+Every order is also held to a **collateral reserve**: the account's collateral in the
+market must cover the initial margin of the position after **every pending order on
+the new order's side** fills in full at the validated oracle price, the new order
+included. A reduce-only order counts only up to the size that closes the position;
+each side is margined on its own. Nothing is held back in advance: a fill moves an
+order's margin into the position, and a cancel, an expiry or a rejection releases
+it. An `Ioc` holds nothing once its batch has run, whether it traded or not. With
+$10 of collateral an account can keep ten $10 orders on a side. An order the reserve
+refuses is refused at submission with `400`
+`{ "error": "PENDING_MARGIN: ..." }`. While the market has no validated oracle price,
+submission does not check the reserve; the batch then rejects the order as
+`OracleUnavailable`. Until an order fills, is cancelled, expires or is rejected, the
+collateral its margin needs stays in the market: a withdrawal (§ Withdrawals), or in
+the demo build an LP deposit, that would leave the account's pending orders in that
+market short of it is refused with `400` `{ "error": "PENDING_MARGIN: ..." }`; cancel
+orders first, or move less. While the market has no validated oracle price, an
+account with a pending order that could add exposure cannot withdraw from that
+market. In close-only mode pending orders hold nothing (they can only reduce).
+
+A refused order gets no receipt and is never recorded. The sequencer applies both
+limits again to every order when it seals the batch, whatever path the order came by,
+against the book the batch faces; an order it refuses there is in the batch
+manifest's **rejected** set as `InvalidOrder` (a cap) or `InsufficientMargin` (the
+reserve). Orders restored above a cap after an upgrade stay on the book, but the
+account's new orders are refused until it is back under. The gateway's house
+market-maker account (the counterparty it injects for `Ioc`/`Fok` takers) is exempt
+from both limits in every build; each of its orders still passes the per-order margin
+check, so where it holds no collateral its counters are refused. The gateway gives a
+counter only to a taker the batch admits.
 
 **Minimum order size.** An order that opens, grows or flips a position needs at least
 **$10 of notional** (10,000,000 quote units). Reduce-only orders, and orders that
@@ -143,12 +250,30 @@ with the reject reason `BelowMinimumSize`. While a market has no validated oracl
 submission does not refuse an order for its size; the batch then rejects it as
 `OracleUnavailable`.
 
+**Entry minimum.** An order that opens, grows or flips a position also needs at least
+**100 USDC** in that market's position entry (audit G1-1): otherwise it is refused at
+submission with `400` `{ error }` starting `BELOW_ENTRY_BALANCE` and is never
+recorded. Orders that only reduce the position are exempt. The sequencer holds every
+fill to the same rule when it settles, so an order accepted while the entry held 100
+USDC or more does not fill once a trading loss took the entry below that: it is
+rejected with `InsufficientMargin` and leaves the book. At settlement the entry is
+measured without the trading fees, rebates and funding of that settlement pass, and
+held to 100 USDC less twice the taker fee of the largest position 100 USDC margins
+(2 USDC on a 10x market at 10 bps), so an opener at exactly 100 USDC that fills in
+several pieces, in one batch or across batches while its remainder rests, fills them
+all; the entry then holds less than 100 USDC, and a further opening order needs a
+top-up. Deposit into the market to
+trade it again (§ Admission cap, Position entries and dust).
+
 **Margin.** Initial and maintenance margin are computed on the notional rounded up,
 and the ratio product is rounded up too. Initial margin is never below **$1** for an
 open position. The floor applies when an order opens, grows or flips a position, and
 when an unbind leaves the position open; reductions, closes and liquidations are
-checked against maintenance margin only. Submission computes the initial margin of
-the order and of the open position with the engine's own rule
+checked against maintenance margin only. An unbind that leaves the position open must
+also leave the initial margin in collateral alone: unrealized profit does not count
+toward it (the free balance of § Withdrawals; the proof enforces it too). Submission
+computes the initial margin of the order and of the open position with the engine's
+own rule
 (`Position::initial_required`), so for an order that opens a position from flat at
 the oracle price it admits exactly the orders the batch's initial-margin check
 admits.
@@ -162,15 +287,44 @@ the reason the batch manifest records for it (the manifest stores the numeric co
 | 2 | `SelfTradePrevented` | it would have traded against the same account |
 | 3 | `PostOnlyWouldTake` | a post-only order would have taken liquidity |
 | 4 | `ReduceOnlyViolation` | a reduce-only order would have opened or grown a position |
-| 5 | `InsufficientMargin` | not enough free margin for the initial-margin requirement |
+| 5 | `InsufficientMargin` | not enough free margin for the initial-margin requirement, of the order alone or together with the account's pending orders on its side (§ Open-order limits), or the order adds exposure to a position entry below the 100 USDC entry minimum |
 | 6 | `MarketCloseOnly` | the system is close-only and the order would open, grow or flip a position (reductions still trade), or the order was in a window dropped by the wind-down |
 | 7 | `OracleUnavailable` | no fresh validated price |
 | 8 | `FillOrKillUnfillable` | a fill-or-kill order could not fill in full |
 | 9 | `Cancelled` | the order expired before or at its matching instant |
-| 10 | `InvalidOrder` | malformed, or could not be applied for a reason with no more specific code |
+| 10 | `InvalidOrder` | malformed, could not be applied for a reason with no more specific code, or past an open-order cap (§ Open-order limits) |
 | 11 | `FillPriceOutOfBand` | the fill price lay outside the market's band around the oracle price |
 | 12 | `FillWouldBankrupt` | the fill would have left a leg with negative collateral, or open below maintenance margin |
 | 13 | `BelowMinimumSize` | the order adds exposure but its notional is below the minimum order size |
+
+**Fills that fail to settle.** A batch settles its fills on a copy of the state
+before they stand. A fill that fails because of one of its orders (a resting order
+that drifted out of the price band, a reduce-only order that would now add exposure,
+an account whose collateral cannot carry the fill) rejects that order, and the batch
+matches again without it, so the other side trades against the next order instead.
+When that order is a resting maker whose account's collateral could not carry the
+fill (`InsufficientMargin`, `FillWouldBankrupt`), every other order of that account on
+the same side of that market, resting or in the same batch, is rejected with it under
+the same reason; its reduce-only orders stay. When it is a resting maker that would
+add exposure where only a reduction may trade, and the account's position at the
+start of the batch gives that side nothing to reduce (no short for a bid, no long for
+an ask), the account's other orders on that side that would fail the same way go
+with it under the same reason: its reduce-only orders for `ReduceOnlyViolation`, its
+other orders but the reduce-only ones in close-only mode for `MarketCloseOnly`, its
+other orders admitted below the minimum for `BelowMinimumSize`. Each is an order the
+pre-trade checks would refuse against that position now.
+
+A batch matches at most 8 times (`MAX_MATCH_ROUNDS`, audit 2026-11-16 SM-2). The
+last pass settles each fill as it is matched, before the book changes for it: an
+order a fill would fail because of is rejected with its reason there and then (a
+resting order leaves the book; an incoming order stops, and its remainder neither
+trades nor rests), and the other side loses no size and goes on to the next order.
+An order that already traded in that pass keeps those fills and reads `CANCELLED`
+with the failure's reason (below). A fill-or-kill order that has not traded yet when
+a resting order it crossed fails is checked again against what is left, and rejected
+`FillOrKillUnfillable` if that cannot fill it; one that already traded can end with
+part of its size unfilled (`CANCELLED`, `UnfilledRemainder`). The failing orders the
+last pass did not reach wait for the next batch.
 
 Rejection membership is proven; the truthfulness of a rejection reason is not
 (`docs/SECURITY.md`).
@@ -178,7 +332,22 @@ Rejection membership is proven; the truthfulness of a rejection reason is not
 An order of a voided settlement window (§ Voided settlement windows) reads
 `execution.status` `CANCELLED` with `execution.reason` `WindowVoided`, a reason no
 manifest records: the replacement window's manifest rejects its hash as `Cancelled`
-(code 9).
+(code 9). An order the gateway cancelled when a dust sweep exited its market's
+entry (§ Admission cap, Position entries and dust) reads `CANCELLED` with
+`execution.reason` `DUST_SWEEP`; the manifest records it as `Cancelled` (code 9).
+
+**Removed by the sequencer.** A resting order the sequencer takes off the book reads
+`execution.status` `CANCELLED` with one of these reasons, which no manifest records
+either:
+
+| Reason | Meaning |
+|---|---|
+| `Expired` | its good-till-time expiry passed while it rested |
+| `Liquidated` | your position was liquidated: all your resting orders, in every market, are cancelled |
+| `ForcedClose` | another account's liquidation closed some or all of your position in this market (a liquidation closes the other side of its market by the same size, pro rata; `docs/ECONOMIC_SECURITY.md`, Q3/Q7): your resting orders in this market are cancelled, because they were placed against the position that changed. Place them again against the new position if you still want them. |
+| a rejection reason (codes 4, 5, 6, 11, 12, 13) | in a batch's last matching pass (§ Fills that fail to settle) the order traded and then a further fill failed because of it, for that reason: it keeps the fills it made, and the rest of it leaves the book (an incoming order's remainder does not rest) |
+
+A forced close also sends a `forcedClose` event (§ WebSocket).
 
 ## Faucet — get test USDC
 
@@ -241,10 +410,13 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    | the settlement cannot be read at the latest block | `503`; retry |
    | `amount` exceeds the settlement's `depositCapacity()` at the gateway's latest read | `409` `{ error, capacity }`, `capacity` a decimal string of USDC base units |
    | `amount` is below the 10 USDC minimum (10,000,000 base units) | `400` `{ error, minimum }`, `minimum` the minimum in base units |
+   | a collateral permit for a market where the account holds no position entry, or only dust (a flat entry below 100 USDC), so that it may open one (outstanding permits for that market or not), and `amount` is below the 100 USDC entry minimum (100,000,000 base units) | `400` `{ error, minimum }`, `error` starting `BELOW_ENTRY_MINIMUM`, `minimum` the entry minimum in base units; a top-up of any other entry (at least 100 USDC, or holding an open position) keeps the 10 USDC minimum (§ Position entries and dust) |
    | the settlement is in close-only | `409` `{ error }`; no further deposits are possible (§ Refunds after close-only) |
    | the engine is close-only (a liquidation's shortfall exceeded insurance, treasury and auto-deleverage) while the settlement is not yet | `409` `{ error }`; the gateway alerts governance to call `enterCloseOnly()` |
    | the settlement accepts no deposits (no paired vault) | `409` `{ error }` |
    | a new permit while the soft admission cap is reached in a dimension the permit adds to, or the permit would leave too little room for the reserved exits (§ Admission cap) | `503` `{ error }`; a held permit is still re-signed |
+   | a permit that may open a position entry while the state's entries are at their soft cap and no sweep makes room, or the state's entries and those the outstanding permits may open fill their bound | `503` `{ error }`, `error` starting `POSITION_ENTRIES_FULL` (§ Position entries and dust) |
+   | a permit that may open a position entry (a further one for an entry the account already reserves included) while this client (an IPv4 address or an IPv6 /48) already holds 2 outstanding such permits | `429` `{ error }`, `error` starting `OPENING_PERMIT_LIMIT`; retry once one of those deposits is credited or its permit expires (§ Position entries and dust) |
    | the account holds no position yet and already holds a permit for another market | `409` `{ error }`; it holds permits for one market until its first deposit is credited |
    | a held permit (`reuseOwnerCommit`) while the state is beyond an admission bound | `503` `{ error }`; its deposit would not be credited, so the permit is not re-signed |
    | the gateway's settles (keepalives included) are failing and less than two permit lifetimes of liveness remain | `503` `{ error }`, until settlement recovers |
@@ -260,16 +432,25 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
 
    - At 80% of a bound (the soft cap) it issues no new deposit permit that adds to
      that bound (`503` `{ error }`): any permit at the history soft cap, and a permit
-     that would open a position entry at the position soft cap. A top-up of an
-     existing entry is not refused for position headroom. It registers no new
-     account while the state itself is at a soft cap (`503`); outstanding permits do
-     not close registration. It raises the `admission_cap_reached` alert
-     (§ Operational alerts).
+     that may open a position entry (one for a market where the account holds no
+     entry or only dust, a further one for an entry its outstanding permit already
+     reserves included) while the state's own position entries are at their soft
+     cap, or while the state's entries and those every outstanding permit may open
+     fill the 1,328 bound (`POSITION_ENTRIES_FULL`); one client holds at most two
+     such permits at a time (§ Position entries and dust). A top-up of any other entry
+     is not refused for position headroom. It registers no new account while the
+     state's own history or unspent notes are at their soft cap (`503`); the position
+     entries never close registration (an account adds no entry until a deposit is
+     credited), and outstanding permits do not either. It raises the
+     `admission_cap_reached` alert (§ Operational alerts).
    - A new permit is issued only while the state, the outstanding permits, the new
      permit and the reserved exits fit within the history bound.
    - An account that holds no position yet holds permits for one market at a time
      until its first deposit is credited (`409` `{ error }` otherwise), so it
      reserves at most one position entry.
+   - An account that spent its lifetime history quota (100 units over credited
+     deposits and withdrawals, § Withdrawals) gets no further deposit permit
+     (`403` `ACCOUNT_HISTORY_QUOTA`); its outstanding permits count against it.
    - A withdrawal that would need more room than the history bound leaves is
      refused with `400` and a `HISTORY_CAP` error, unless it is a full exit: the
      whole balance of a closed position in that market, which removes the entry and
@@ -303,6 +484,111 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    assumed proving rate (`docs/audits/2026-10-19-pkg3-measurement-gate/`). They are
    admission policy, re-derived from the measured proving rate before launch, and
    change without a new program key.
+
+   **Position entries and dust.** An account holds one position entry per market it
+   has collateral in, from its first credited deposit until it withdraws that
+   market's whole balance. Every entry costs the same to prove whatever it holds
+   (each batch re-derives the positions digest, and the wind-down settles every
+   entry in one proof), so the 1,328 bound counts them all. To keep the entries
+   from filling with dust (audit G1-1):
+
+   - A flat entry (no open position) holding less than 100 USDC is **dust**.
+   - A permit that may open an entry (a collateral permit for a market where the
+     account holds no entry, or only dust) is issued for at least **100 USDC**
+     (`400` `BELOW_ENTRY_MINIMUM`, above), so a top-up of dust takes it to the
+     minimum, and a deposit that lands after its dust was swept opens an entry at
+     the minimum. It counts as opening an entry from the moment it is issued. A
+     permit taken and never sent reserves its entry until it expires
+     (`validUntil`), not longer.
+   - The position soft cap (1,063 entries) bounds the state's own entries, not the
+     outstanding permits: such a permit is issued only while the state's entries
+     are below it (unless a sweep makes room, below), and while the state's
+     entries, the entries every outstanding permit may open and its own fit the
+     1,328 bound, so every permitted deposit can be credited (`503`
+     `POSITION_ENTRIES_FULL` otherwise). At every level a client (an IPv4 address,
+     or an IPv6 /48) holds at most **2** such permits at a time, a further permit
+     for an entry its account already reserves included, which counts against the
+     client asking for it (`429` `OPENING_PERMIT_LIMIT`). So unfunded permits from
+     one client, or from one IPv6 /48 however many /64s it uses, hold at most two
+     entries. The limit applies to honest clients too: everyone behind one
+     carrier-grade NAT IPv4 address, or on one carrier's or ISP's shared IPv6 /48,
+     shares those two outstanding first-deposit permits, even with an empty state,
+     and one of them who keeps renewing a permit can keep the others from a first
+     deposit into a new market entry for as long as they do. Top-ups of an entry
+     that already exists are not limited this way; a client refused
+     with `OPENING_PERMIT_LIMIT` can retry from another network.
+   - Below **100 USDC** in a market's entry no order opens, grows or flips a
+     position (`400` `BELOW_ENTRY_BALANCE` at submission, `InsufficientMargin` at
+     settlement for an order accepted before; § Orders). Settlement measures the
+     entry without that pass's trading fees, rebates and funding, and allows it twice
+     the taker fee of the largest position the minimum margins (2 USDC at 10x and
+     10 bps), so an opener at the minimum is not refused by its own fees. So an entry below the minimum that
+     holds a position got there through trading (a realized loss, fees or funding)
+     after it opened at 100 USDC or more, and a flat one stays flat until topped up
+     to the minimum.
+   - Outside close-only, a withdrawal from an entry with an open position is
+     measured against the stored oracle report, never a re-signed copy of the last
+     price: while the feed is down (the report is stale or invalid) it is refused
+     with `oracle unavailable`, as an order is, and succeeds again once a fresh
+     report arrives. An entry with no open position needs no price and withdraws
+     through an outage.
+   - Outside close-only, a withdrawal leaves at least **100 USDC** in its market's
+     entry, whether it holds an open position or not, unless it is a full exit (the
+     whole balance with no open position): `400` `BELOW_ENTRY_BALANCE` otherwise
+     (§ Withdrawals). A full exit waits while the account holds an outstanding
+     permit for that market below 100 USDC (a top-up taken while the entry held the
+     minimum or a position): `400` `TOP_UP_PERMIT_OUTSTANDING`, accepted once that
+     deposit is credited (the whole balance then leaves with it) or the permit has
+     expired, so its deposit cannot open a new entry below the minimum after the
+     entry left. So none of the account's own withdrawals leaves dust: trading does,
+     and so can a sweep, a liquidation or an older permit landing in a missing entry
+     (a 10 USDC permit from before the minimum, one adopted through
+     `/v1/accounts/deposit/route`, which applies neither the minimum nor the cap so
+     that a deposit already sent stays creditable, or one held when a sweep or a
+     liquidation removed its entry). Such dust is flat, can open no position, and is
+     swept again.
+   - When a permit that opens an entry is refused only by the position entries,
+     and exiting as many dust entries of other accounts as it needs admits it (at
+     most 8 per request), the gateway first **sweeps** them: a forced full exit of
+     each entry's whole balance to its account's bound deposit address, the
+     smallest first. Every exit is planned on a copy of the state before the first
+     is made, so the sweep runs only when all of them can; nothing is swept for a
+     permit refused for any other reason, or when one request may not sweep enough
+     or there is not enough dust. The swept account's orders in that market are
+     cancelled once the exits are made (`execution.reason` `DUST_SWEEP`, § Orders);
+     a voided window that brings the entry back does not restore them. The withdrawal is
+     recorded like the account's own (claimable on L1 the same way, not charged to
+     its history ledger nor counted against its withdrawal rate limits; its
+     authorization nonce is not used), is listed in `GET /v1/accounts/withdrawals`
+     with `forcedExit: true`, and the account receives a `forcedExit` event once a
+     snapshot carries the sweep (§ WebSocket). No value moves: the whole balance is
+     claimable by the account's own address. A sweep needs a fresh oracle report for
+     the market (never a stale price signed again); a dust entry is left alone while
+     its account has no bound deposit address, and the account asking is never
+     swept. An outstanding permit does not keep dust from being swept. A voided
+     window undoes a sweep in it like any withdrawal: the entry is back, it is no
+     forced exit, and the voided list and `withdrawalVoided` event mark it with
+     `forcedExit: true` (nothing to request again).
+   - Entries holding at least 100 USDC, and entries holding an open position
+     whatever their collateral, are never swept: with the state's entries at the
+     soft cap and no dust left, a permit that opens an entry is refused as before
+     (`503`).
+   - What filling the soft cap costs: an entry the sweep never takes holds at least
+     100 USDC, or a position it opened at 100 USDC or more and then lost on. One
+     open at up to 10x and a partial close at the edges of the 2% fill band leave
+     about 65 USDC at a steady index; a move of the index against the position
+     before the close leaves about 30 USDC at the edge of liquidation (a further move
+     liquidates it, and the flat entry is swept). So the 1,063 entries of the soft
+     cap lock roughly $30,000 (an attacker who holds both sides and waits for a ~5%
+     move) to $70,000, plus 100 USDC passed through each entry to open it, where 10
+     USDC each ($10,600) was enough before. Unfunded permits cost nothing but are
+     bounded per client: holding the whole 1,328 bound with them takes 664
+     independent IPv4 addresses or IPv6 /48s (2 each), renewing every permit before
+     it expires. An attacker with that much address diversity can still keep new
+     entries out; that is a known residual. A gateway restart forgets which client
+     holds which outstanding permit, so for up to one permit lifetime (30 minutes)
+     after it the permits issued before it count toward the bound but toward no
+     client's two.
 
    The gateway reserves no capacity for a permit. The vault's bond-capacity gate
    decides when the deposit lands, first come first served, so a permitted deposit can
@@ -429,6 +715,58 @@ with a new genesis root. Its gateway refuses every snapshot and rollback-journal
 written before that change, by format magic, rather than migrating it. The v5–v7 notes
 above describe how those older formats behaved.
 
+**Order history beside the snapshot.** The encrypted order log and every settled
+batch's ordered/rejected order hashes (which inclusion challenges are answered from)
+grow with each order and are kept for good. They live in two append-only side logs
+beside `DARKPERP_STATE`: `<state>.orderlog` and `<state>.batches`, sealed under the
+same enclave seed and synced like the snapshot. The snapshot keeps only what is not
+appended yet and records where each side log's durable records end, so its size no
+longer grows with order volume. A snapshot written before this change (history
+inside) still loads; boot appends its history to the side logs. A snapshot that
+relies on side logs refuses to start without them, or with a side log rolled back
+to an older copy or taken from another history (boot checks every record the
+snapshot relies on); a fresh genesis refuses to start beside leftover side logs. Back
+up and restore the side logs together with the snapshot (`gateway_backup.py` copies
+them; `docs/RECOVERY_RESTORE.md`). The sequencer also drops a finished order's
+receipt and finality records once a settle has hardened it; `GET /v1/orders` keeps
+reporting the finality its row last recorded.
+
+**Order rows kept per account.** `GET /v1/orders` rows live in the snapshot, so they
+are bounded too. An account keeps at most 500 rows, and fewer once many accounts hold
+rows: each gets an equal share of 50,000 (100 accounts keep 500 each, 1,000 keep 50,
+at least one each). Only finished rows are dropped, oldest first: sealed, off the
+book, with a terminal execution and nothing left to settle, including orders that
+never filled. Pending and resting orders are never dropped and still count. A dropped
+row's signed receipt stays valid; keep it from the `POST /v1/orders` response.
+
+**Withdrawal ledger section (audit GA-2).** After the recovery section a snapshot
+carries a `DPWLIM01` section: the history units each account has spent (§ Withdrawals).
+It is written only once some usage is recorded, and a snapshot without it loads with
+an empty ledger. So a live gateway that upgrades to this source starts every account at
+0 units, including accounts that already made many deposits and withdrawals: their
+earlier usage is not counted against the per-account quota (the exchange-wide reserve
+reads the whole state, so it still counts). Binaries from before the section refuse a
+snapshot that carries it (`trailing recovery snapshot bytes`): once any usage is
+recorded, rolling the binary back fails at boot unless a snapshot written before the
+upgrade is restored with it, which discards everything since. Treat the upgrade as
+one-way.
+
+**Order of the optional snapshot sections.** After the recovery section a snapshot
+carries, each only when it holds something and always in this order: the order
+history section (`DPHIST1`, side-log positions), the challenge declarations
+(`DPCHRJ1`), the withdrawal ledger (`DPWLIM01`) and the dust sweeps (`DPSWEEP1`).
+Snapshots written before any of them, or by a build that wrote only some of them,
+load unchanged; a binary that does not know a section refuses a snapshot that
+carries it. In particular a binary from before the dust sweep (audit G1-1) refuses a
+snapshot written after the first sweep, so roll back before the first sweep, or
+together with a snapshot written before it.
+
+**Upgrade to the entry minimum (audit G1-1).** Entries that are flat and hold 10 to
+99.99 USDC when the gateway is upgraded become dust at once: they open no position
+(their resting opening orders are rejected when they would fill) and may be swept to
+their bound deposit addresses when a new entry needs room. Announce this to users
+before the upgrade.
+
 ## Trading is gated until launch (SEC-025-D)
 
 On a fresh production deployment, **order submission is refused** until the deployment has
@@ -496,16 +834,76 @@ directly:
    can't be double-spent) and records an authorized withdrawal leaf
    `keccak256(to, amount, nonce)`. `nonce` + `signature` are **required** — see
    § Withdrawal authorization for who must sign, what they sign, and the `to` rule.
-   The minimum is **1 USDC** (1,000,000 base units), unless `amount` is the entire
-   free balance in that market (`marketFree` in `GET /v1/accounts/me`, not the
-   account-wide `settledBalance`); a smaller request is a `400`. Once the admission
+   The minimum is **10 USDC** (10,000,000 base units, the order and deposit minimum),
+   unless `amount` is the entire free balance in that market (`marketFree` in
+   `GET /v1/accounts/me`, not the account-wide `settledBalance`); a smaller request
+   is a `400` `BELOW_MINIMUM`. Outside close-only a withdrawal also leaves at least
+   **100 USDC** in that market's position entry, whether it holds an open position
+   or not, unless it is a full exit (the whole balance with no open position): a
+   `400` `BELOW_ENTRY_BALANCE` otherwise, and a full exit waits while the account
+   holds an outstanding deposit permit below 100 USDC for that market (`400`
+   `TOP_UP_PERMIT_OUTSTANDING`; retry once that deposit is credited or the permit
+   expires), so no withdrawal leaves dust (§ Admission cap, Position entries and
+   dust). To take out more, close the position and withdraw the whole balance.
+   Every credited deposit and every withdrawal adds a
+   leaf and a nullifier (2 units) to the provable history, which only grows, so
+   each account is limited:
+   - at most **3 withdrawals per minute** and **10 in the open settlement window**
+     (a `429` `WITHDRAW_RATE_LIMIT_MINUTE` / `WITHDRAW_RATE_LIMIT_WINDOW`; retry
+     later). A withdrawal removed by a voided window is not counted again;
+   - a **lifetime** quota of **100 history units** (50 operations) for credited
+     deposits and withdrawals together, full exits included. The account's
+     outstanding deposit permits count against it too (2 units each, what their
+     credits will take), for withdrawals as for new permits. Once spent, a partial
+     withdrawal is a `400` `WITHDRAW_QUOTA_EXCEEDED` and a new deposit permit is a
+     `403` `ACCOUNT_HISTORY_QUOTA`. The quota never resets: it is kept in the
+     snapshot, so a restart does not reset it, and no window or time period does.
+     An account that spent it can still exit in full (below); to deposit or make
+     partial withdrawals again, register a new account. Active traders and market
+     makers that move funds often should plan for this;
+   - an exchange-wide reserve: once the state's own provable history reaches
+     **7,968** units, every partial withdrawal is a `400` `WITHDRAW_RESERVE_REACHED`,
+     whatever the account's own usage, so registration, deposit permits and exits
+     keep the room above it. Outstanding deposit permits do not count toward it:
+     they add no history until their deposits are credited. The history never
+     shrinks, so once the reserve is reached partial withdrawals stay closed for
+     every account for the life of the deployment (only full exits leave); enough
+     accounts making real deposits and withdrawals within their quotas (about 80)
+     can bring that about. Operators get the `withdraw_reserve_near` alert from
+     7,164 units on (§ Operational alerts).
+
+   A full exit (the whole balance of a closed position) is exempt from the quota and
+   the reserve, and a withdrawal of the whole free balance in the market from the
+   minimum, so funds can always leave. Full exits still count against the rate
+   limits and are charged to the ledger; they are bounded by the entries the account
+   holds, since no new entry opens without a deposit permit. A dust sweep's forced
+   exit (§ Admission cap) is the gateway's, so it is neither charged to the ledger
+   nor counted against the account's rate limits. The per-minute counter
+   lives in gateway memory and starts empty on restart. The non-production demo
+   build (`/api/withdraw`, `/api/lp/*`, `/api/deposit`, never mounted in
+   production) applies the minimum, the per-minute limit and the reserve to
+   `/api/withdraw` only, and no lifetime quota: every visitor shares its one demo
+   user, and its LP and self-service deposit routes are not limited. It has no
+   settlement window. Once the admission
    cap leaves no room for it, a withdrawal other than a full exit (the whole balance
    of a closed position) is a `400` with a `HISTORY_CAP` error (§ Admission cap).
+   The free balance is the market's collateral less the initial margin of the open
+   position, whatever its unrealized profit, and the proven transition applies the
+   same rule. It also refuses a withdrawal that would take the deployment's
+   cumulative withdrawals above its cumulative deposits; either refusal is a `400`
+   `withdrawal refused: …` (`Risk { InsufficientMargin, .. }` or
+   `WithdrawalExceedsDeposits`). A withdrawal that would take collateral the
+   account's pending orders in that market hold as initial margin is a `400`
+   `PENDING_MARGIN: …` until they fill, are cancelled or expire (§ Open-order limits);
+   `marketFree` does not deduct what they hold.
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
-   root, claimable, proof }] }`. Once `claimable` is `true`, `proof` is the Merkle path
-   and `root` is the published root that path verifies against. Pass that `root` to
+   root, claimable, forcedExit, proof }] }`. `forcedExit` is `true` for a dust
+   sweep's forced exit of a flat entry below 100 USDC, which the account did not
+   sign (§ Admission cap, Position entries and dust). Once `claimable` is `true`,
+   `proof` is the Merkle path and `root` is the published root that path verifies
+   against. Pass that `root` to
    `claim`, not the vault's current `withdrawalsRoot()`: a later published root can
    differ, and a proof checked against the wrong root reverts `BadWithdrawalProof`.
    The leaf's `nonce` is not your authorization nonce (§ Withdrawal authorization):
@@ -514,9 +912,10 @@ directly:
    a withdrawal whose nonce is not above it (by at most `2^32`), so no two leaves ever
    share a nonce, including the wind-down's reserve payout. `voided` lists the
    account's withdrawals that the last voided settlement window removed since the
-   gateway started, each `{ to, amount, nonce, leaf, batchId }`: their leaves are
-   never published, and the amount is back in the position
-   (§ Voided settlement windows).
+   gateway started, each `{ to, amount, nonce, leaf, batchId, forcedExit }`: their
+   leaves are never published, and the amount is back in the position
+   (§ Voided settlement windows). `forcedExit: true` marks a voided dust sweep,
+   which the account never signed and need not request again.
 4. On Base Sepolia: `vault.claim(to, amount, nonce, root, proof)`, with `root` and
    `proof` from step 3, releases the USDC.
    The leaf is single-claim (`AlreadyClaimed` on replay). A claim never draws on the
@@ -587,9 +986,11 @@ deposit chain and the settlement state, and prints the `triggerCloseOnly` and
 
 In clock mode a sealed window must register its operation times with the clock
 verifier before its proof can settle. A window whose registration can never land
-(its anchor was cancelled, or none exists and none can be created any more) is
-voided by the gateway without a restart (`docs/PROVING-RUNBOOK.md`, § Dead clock
-window). Nothing of it settled on L1, so only off-chain state is undone:
+(its anchor was cancelled, or none exists and none can be created any more, for
+example because its timed operations span more than `maxWindowMs` or it was sealed
+too long after its last one) is voided by the gateway without a restart
+(`docs/PROVING-RUNBOOK.md`, § Dead clock window). Nothing of it settled on L1, so
+only off-chain state is undone:
 
 - **Orders and fills.** The engine returns to the state before the window, and
   every fill of the window is undone. Each order the window sequenced, rejected or
@@ -617,7 +1018,8 @@ gateway started; they are not persisted, and a restart clears them.
 
 Every receipt (the `POST /v1/orders` response and each stored `receipt` in
 `GET /v1/orders`) carries `l1Challenge`, an enclave-signed authorization to
-challenge that order on L1:
+challenge that order on L1. The gateway issues a receipt only once a durable state
+snapshot holds its order (§ When the state cannot be written):
 
 ```json
 "l1Challenge": {
@@ -668,7 +1070,18 @@ Each order hash can be challenged once; it is refused in close-only.
 
 - **Answered.** Anyone proves the order is in a settled batch's ordered or rejected
   root. The stake returns to the submitter when that batch settled after the
-  challenge opened, otherwise it goes to the sequencer.
+  challenge opened, otherwise it goes to the sequencer. The gateway's challenge
+  watcher sends these answers itself. When an open challenge names an order hash
+  that no settled batch holds and the gateway has no record of (an order it lost),
+  the watcher declares the hash rejected (`Cancelled`) in the open window, once,
+  and answers the challenge from the batch that window settles as. It declares the
+  hash again only if that batch settles without it, and never for an order the
+  gateway still tracks: one that is pending, resting, sequenced but not settled, or
+  in the open window. It declares nothing while the settlement holds a settled
+  batch the gateway has not recorded yet (the hash may be in it), nor while a
+  settling window holds clock admission closed; the next round tries again.
+  Declarations are kept in the state snapshot until their challenge closes; a
+  gateway binary from before this rule refuses a snapshot that holds one.
 - **Slashed.** If no answer lands, `slashUnanswered(orderHash)` becomes available
   once `progressBatches` batches have settled since the challenge opened, plus
   `challengeGraceBlocks`. It credits the beneficiary with
@@ -878,13 +1291,26 @@ To also receive **your own** events, send `{ "type": "auth", "apiKey": "0x<64 he
 - `{ "type": "order", "orderId": "o1", "finality": "MATCHED", "marketId": 0 }`
 - `{ "type": "fill", "orderId": "o1", "marketId": 0, "side": "Buy", "size": "...", "price": "..." }`
 - `{ "type": "adl", "clawed": "..." }` (your position was auto-deleveraged, audit Q2)
+- `{ "type": "forcedClose", "marketId": 0, "size": "...", "price": "...", "realizedPnl": "...", "penalty": "..." }`
+  (another account's liquidation closed `size` of your position at the oracle
+  `price`, audit 2026-11-16 PC-1; `size` is the signed change, opposite in sign to
+  your position, in size units, `price` in price units, `realizedPnl` and `penalty`
+  in quote units. The penalty is non-zero only when your position was itself
+  liquidatable. Your resting orders in that market were cancelled with reason
+  `ForcedClose`)
 - `{ "type": "execution", "orderId": "o1", "execution": { "status": "CANCELLED", "reason": "WindowVoided", ... } }`
   (your order's cumulative execution changed; the object is the order's `execution`
   in `GET /v1/orders`)
-- `{ "type": "withdrawalVoided", "leaf": "0x...", "amount": "...", "nonce": 7, "batchId": 12 }`
-  (a voided window removed this withdrawal; request it again)
+- `{ "type": "withdrawalVoided", "leaf": "0x...", "amount": "...", "nonce": 7, "batchId": 12, "forcedExit": false }`
+  (a voided window removed this withdrawal; request it again. With `forcedExit:
+  true` it was a dust sweep's forced exit: the entry is back, nothing to request)
 - `{ "type": "depositRestored", "depositIds": [41, 42], "batchId": 12 }` (a voided
   window credited these deposits; they are credited again)
+- `{ "type": "forcedExit", "reason": "DUST_SWEEP", "marketId": 0, "amount": "...", "to": "0x...", "nonce": 7, "leaf": "0x..." }`
+  (a flat entry of yours below 100 USDC was exited in full to your bound deposit
+  address to make room for a new entry, and your orders in that market cancelled;
+  sent once a snapshot carries the sweep; claim it like any withdrawal, § Admission
+  cap)
 
 Each event also carries your `owner`.
 
@@ -992,21 +1418,25 @@ Each is raised once when it becomes active and once when it recovers:
 | Alert | Active while |
 |---|---|
 | `settlement_held` | the settle loop is held after repeated settle failures, or a clock recovery stopped it until a restart (§ Clock recovery status) |
-| `persistence_failed` | a durable state snapshot could not be written |
+| `persistence_failed` | a durable state snapshot (or one of its side logs) could not be written; new orders, registrations, withdrawals and deposit-address bindings are refused meanwhile (§ When the state cannot be written) |
+| `snapshot_size_high` | the sealed snapshot payload is at or above three quarters of its 64 MiB cap; writes still succeed, at the cap they fail |
 | `deposit_halted` | deposit ingestion is stopped by a safety halt |
 | `archive_pressure` | the configured price-report archive is under storage pressure, or a checkpoint with it could not be written |
 | `bond_shortfall` | the bond is below its target and could not be topped up, or top-ups are paused after an unacknowledged slash |
-| `unanswerable_challenge` | an open inclusion challenge names an order no settled batch can prove |
+| `unanswerable_challenge` | an open inclusion challenge names an order no settled batch can prove; one for an order the gateway does not know is declared rejected in the open window and answered once that window settles (§ L1 inclusion challenges) |
 | `challenge_discovery_failed` | the open-challenge set could not be read for several ticks in a row |
 | `stale_anchor` | the current batch's clock anchor is older than `anchorTimeoutMs` |
 | `liveness_low` | half of the settlement's liveness window has passed without progress |
 | `permit_gc_stalled` | finalized block headers have not re-hashed for a long stretch, so expired permits are not removed |
 | `engine_close_only` | the engine is in close-only while the settlement is not; governance should call `enterCloseOnly()` (§ Deposits after an engine trip) |
-| `admission_cap_reached` | the soft admission cap is reached; new permits that add to the bound at it are refused, and registrations while the state itself is at it (§ Admission cap) |
+| `admission_cap_reached` | the soft admission cap is reached; new permits that add to the bound at it are refused (at the position soft cap after dust entries are swept, § Position entries and dust), and registrations while the state's own history or unspent notes are at it (§ Admission cap) |
+| `withdraw_reserve_near` | the state's provable history is at 7,164 units or more, nine tenths of the 7,968-unit partial-withdrawal reserve; past the reserve every partial withdrawal is refused (`WITHDRAW_RESERVE_REACHED`) and only full exits leave. History never shrinks, so it stays active (§ Withdrawals) |
 | `withdraw_nonce_repaired` | at boot the withdrawal-leaf counter was at or behind the engine's last withdrawal nonce and was moved forward; find out which snapshot was restored |
 | `deposit_blocked_at_cap` | a deposit that landed under a permit is not credited because the state is beyond an admission bound (only after a bound is lowered under an existing state, or after a voided window when crediting its deposits again would exceed one); it is the oldest unconsumed deposit, and once it is older than `livenessTimeoutBlocks` anyone can put the settlement in close-only (§ Admission cap) |
 | `window_voided` | a sealed window whose clock registration can never land was voided, and the window after it has not settled yet (§ Voided settlement windows). Not persisted: a restart clears it |
 | `clock_recovery_blocked` | the settle loop's recovery of a clock window needs the operator or is running out of time; `clockRecovery.operatorAction` says what to do (§ Clock recovery status). Cleared when the recovery resolves |
+| `clock_registration_refused` | a clock window cannot register: its timed operations span more than `maxWindowMs`, its last one is past `clockSkewMs`, or the clock verifier reverted its registration, at its gas estimate or once mined (the gateway log names the revert). Nothing is registered and the recovery decides the window; a timed one is voided (§ Voided settlement windows). Cleared when a window settles |
+| `deposit_reads_dropped` | three deposit reads in a row finished after clock admission had closed and were dropped (each is read again once admission reopens): the L1 RPC is too slow for the time admission is open, nothing is credited meanwhile, and the oldest unconsumed deposit's `livenessTimeoutBlocks` keeps running. Cleared when a read is applied |
 
 ### Clock recovery status
 

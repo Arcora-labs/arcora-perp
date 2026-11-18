@@ -50,9 +50,11 @@ to regular, nonsymlinked repository paths. The manifest is a checksum binding,
 not a signature or an approval; the caller must trust the builder and its input
 checkout.
 
-Existing local compiler artifacts are required for seven roles: `settlement`,
-`vault`, `sp1_adapter`, `clock_verifier`, `sp1_gateway`, `sp1_verifier` and
-`oracle_wrapper`. Paths are the existing release tool's six artifact paths plus
+Existing local compiler artifacts are required for six roles: `settlement`,
+`vault`, `sp1_adapter`, `clock_verifier`, `sp1_verifier` and
+`oracle_wrapper`. There is no `sp1_gateway` role: like the clock release stack,
+the candidate adapter is bound directly to the stateless SP1 verifier (audit
+SV-1). Paths are the existing release tool's five artifact paths plus
 `contracts/out/ChainlinkOracleVerifier.sol/ChainlinkOracleVerifier.json`. The
 tool checks compiler version, compilation target, optimizer settings, source
 Keccak bindings and unlinked bytecode, then records the artifact, creation
@@ -67,8 +69,8 @@ Provide a public JSON configuration with exactly these fields:
 | Field | Accepted declaration |
 | --- | --- |
 | `chain_id`, `network` | Base Sepolia `(84532, 0)` or Base `(8453, 1)` |
-| `addresses` | Ten distinct, nonzero 20-byte addresses for the seven compiler roles above plus `token`, `verifier_proxy` and `uptime_feed` |
-| `expected_runtime_code_hashes` | Nonzero 32-byte declarations for the same ten roles |
+| `addresses` | Nine distinct, nonzero 20-byte addresses for the six compiler roles above plus `token`, `verifier_proxy` and `uptime_feed` |
+| `expected_runtime_code_hashes` | Nonzero 32-byte declarations for the same nine roles |
 | `program_vkey` | The exact historical candidate key above |
 | `clock.max_window_ms` | Integer `1..2^64-1` |
 | `clock.clock_skew_ms` | Integer `0..2^64-1` |

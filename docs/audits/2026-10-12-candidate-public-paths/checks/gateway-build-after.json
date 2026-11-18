@@ -4,7 +4,7 @@
   "observed_utc": "2026-10-12T15:51:07.438482+00:00",
   "head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
   "command": [
-    "/Users/huseyinarslan/.cargo/bin/cargo",
+    "/Users/<dev>/.cargo/bin/cargo",
     "+1.99.0",
     "check",
     "--locked",

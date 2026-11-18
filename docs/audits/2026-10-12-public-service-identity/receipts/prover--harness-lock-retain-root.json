@@ -1,7 +1,7 @@
 {
   "recorded_at": "2026-10-12T09:33:01.113764+00:00",
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "tree",
     "--offline",
     "--manifest-path",

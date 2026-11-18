@@ -54,7 +54,7 @@ fn s3_recovery_error_preserves_existing_state() {
     ] {
         let mut trailer = EXT.to_vec();
         trailer.extend(postcard::to_allocvec(&rows).unwrap());
-        assert!(restore(&mut gw, &trailer).is_err());
+        assert!(restore_prefix(&mut gw, &trailer).is_err());
         assert_eq!(
             gw.snapshot_plain(),
             before,
@@ -161,7 +161,7 @@ fn s3_recovery_legacy_absence_cannot_downgrade_existing_generation() {
     gw.accounts.get_mut(&key).unwrap().recovery_nonce = 9;
     let before = gw.snapshot_plain();
     assert!(
-        restore(&mut gw, &[]).is_err(),
+        restore_prefix(&mut gw, &[]).is_err(),
         "legacy absence must not reset an existing generation"
     );
     assert_eq!(gw.snapshot_plain(), before);
@@ -246,14 +246,14 @@ fn s3_historical_writers_are_refused() {
 /// The Ethereum address of a fixture signing key.
 fn signer_address(key: &k256::ecdsa::SigningKey) -> [u8; 20] {
     use sha3::Digest as _;
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     let hash = sha3::Keccak256::digest(&point.as_bytes()[1..]);
     hash[12..].try_into().unwrap()
 }
 
 /// A 65-byte `r ‖ s ‖ v` signature over a prehashed digest.
 fn sign_prehash(key: &k256::ecdsa::SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-    let (signature, recovery) = key.sign_prehash_recoverable(digest).unwrap();
+    let (signature, recovery) = key.sign_prehash_recoverable(digest);
     let mut wire = [0; 65];
     wire[..64].copy_from_slice(&signature.to_bytes());
     wire[64] = recovery.to_byte() + 27;

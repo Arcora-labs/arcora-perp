@@ -1,6 +1,6 @@
 //! Native order lifecycle, separate from proof finality. No ledger/witness changes.
 use super::*;
-use k256::elliptic_curve::bigint::{Encoding, U256};
+use k256::elliptic_curve::bigint::{Encoding, NonZero, U256};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
@@ -61,9 +61,10 @@ impl Execution {
             return false;
         }
         let value = U256::from_u128(size as u128).wrapping_mul(&U256::from_u128(price as u128));
-        self.numerator = U256::from_be_bytes(self.numerator)
+        self.numerator = U256::from_be_bytes(self.numerator.into())
             .wrapping_add(&value)
-            .to_be_bytes();
+            .to_be_bytes()
+            .into();
         self.filled = total;
         // total <= original <= i128::MAX also bounds every subset's sum.
         *self.pending.entry(tick).or_default() += size;
@@ -73,9 +74,12 @@ impl Execution {
         if self.filled <= 0 {
             return 0;
         }
-        let q = U256::from_be_bytes(self.numerator)
-            .wrapping_div(&U256::from_u128(self.filled as u128))
-            .to_be_bytes();
+        // filled > 0 here; a zero divisor panics, as wrapping_div did before.
+        let divisor = NonZero::<U256>::new_unwrap(U256::from_u128(self.filled as u128));
+        let q: [u8; 32] = U256::from_be_bytes(self.numerator.into())
+            .wrapping_div(&divisor)
+            .to_be_bytes()
+            .into();
         i128::from_be_bytes(q[16..].try_into().expect("16 bytes"))
     }
     /// Undo the fills of the voided ticks `ticks` and end the order: a void
@@ -119,6 +123,16 @@ impl Execution {
     pub fn refresh_finality(&mut self, seq: &Sequencer) {
         self.pending.retain(|tick, _| seq.fill_tick_pending(*tick));
     }
+    /// The ticks whose fills this record holds unsettled, as of its last update.
+    pub fn unsettled_ticks(&self) -> impl Iterator<Item = u64> + '_ {
+        self.pending.keys().copied()
+    }
+    /// Whether the tick that last updated this record has settled or been
+    /// discarded since; a record no tick updated counts too.
+    pub fn last_tick_hardened(&self, seq: &Sequencer) -> bool {
+        self.last_tick
+            .is_none_or(|tick| !seq.fill_tick_pending(tick))
+    }
     pub fn unsettled(&self) -> i128 {
         self.pending.values().sum()
     }
@@ -154,7 +168,7 @@ impl Execution {
         }
         let max =
             U256::from_u128(self.filled as u128).wrapping_mul(&U256::from_u128(i128::MAX as u128));
-        if U256::from_be_bytes(self.numerator) > max {
+        if U256::from_be_bytes(self.numerator.into()) > max {
             return false;
         }
         let pending =
@@ -204,14 +218,109 @@ fn ensure_record(o: &mut GwOrder, seq: &Sequencer) {
     }
 }
 
-/// Call exactly once for each sealed tick; fills are emitted only here, never on
-/// a finality transition. A maker can keep filling after earlier fills settle.
+/// What one sealed batch did to each order it names, indexed by order hash once
+/// per tick (audit 2026-11-16 GA-1 + SM-1): the applied fills of each order,
+/// its first rejection and its first removal, and the ticks whose fills settled
+/// or were discarded since the tick before ([`Touches::of`]). A row's update
+/// then costs its own entries, not a scan of the batch.
+pub(super) struct Touches<'a> {
+    batch: &'a SealedBatch,
+    /// The positions in `batch.applied_fills` of each order's fills, in order.
+    fills: BTreeMap<Digest, Vec<usize>>,
+    rejected: BTreeMap<Digest, perp_core::order::RejectReason>,
+    removed: BTreeMap<Digest, &'static str>,
+    settled: BTreeSet<u64>,
+}
+
+impl<'a> Touches<'a> {
+    /// Index `batch`; `settled` are the ticks whose fills settled or were
+    /// discarded since the tick before.
+    pub fn of(batch: &'a SealedBatch, settled: BTreeSet<u64>) -> Self {
+        let mut fills: BTreeMap<Digest, Vec<usize>> = BTreeMap::new();
+        for (i, m) in batch.applied_fills.iter().enumerate() {
+            fills.entry(m.taker_order_hash).or_default().push(i);
+            if m.maker_order_hash != m.taker_order_hash {
+                fills.entry(m.maker_order_hash).or_default().push(i);
+            }
+        }
+        let mut rejected = BTreeMap::new();
+        for (h, reason) in &batch.manifest.rejected {
+            rejected.entry(*h).or_insert(*reason);
+        }
+        let mut removed = BTreeMap::new();
+        for r in &batch.removals {
+            removed.entry(r.order_hash).or_insert(r.reason);
+        }
+        Self {
+            batch,
+            fills,
+            rejected,
+            removed,
+            settled,
+        }
+    }
+
+    /// Whether the batch names `hash`: in an applied fill, a rejection or a
+    /// removal.
+    pub fn names(&self, hash: &Digest) -> bool {
+        self.fills.contains_key(hash)
+            || self.rejected.contains_key(hash)
+            || self.removed.contains_key(hash)
+    }
+}
+
+/// Whether a tick must [`update_with`] the row `o` of an order it did not seal
+/// (audit 2026-11-16 GA-1 + SM-1): its batch names the order (see
+/// [`Touches::names`]), the row has no record yet, or it holds a fill of a tick
+/// that settled or was discarded since the tick before, which the update
+/// reports. For any other row an update changes nothing a response or an event
+/// shows: its order is resting as recorded or has ended, and the fills it holds
+/// still wait for their proof, so the tick leaves it alone rather than look it
+/// up in the book. A row whose fills wait for a window settle is therefore not
+/// updated on every tick until then (round 1 review).
+pub(super) fn needs_update(o: &GwOrder, touches: &Touches<'_>) -> bool {
+    touches.names(&o.order_hash)
+        || o.execution.as_ref().is_none_or(|e| {
+            !touches.settled.is_empty() && e.pending.keys().any(|t| touches.settled.contains(t))
+        })
+}
+
+/// The row's record without the last tick it was updated in, which no response
+/// or event shows (tests only).
+#[cfg(test)]
+pub(super) fn record_without_tick(o: &GwOrder) -> Option<Execution> {
+    o.execution.clone().map(|mut e| {
+        e.last_tick = None;
+        e
+    })
+}
+
+/// [`update_with`] for one row, indexing `batch` for it.
+#[cfg(test)]
 pub(super) fn update(
     o: &mut GwOrder,
     seq: &Sequencer,
     batch: &SealedBatch,
     newly_submitted: bool,
 ) -> Vec<serde_json::Value> {
+    update_with(
+        o,
+        seq,
+        &Touches::of(batch, BTreeSet::new()),
+        newly_submitted,
+    )
+}
+
+/// Call once for each sealed tick that sealed the order or for which
+/// [`needs_update`] holds; fills are emitted only here, never on a finality
+/// transition. A maker can keep filling after earlier fills settle.
+pub(super) fn update_with(
+    o: &mut GwOrder,
+    seq: &Sequencer,
+    touches: &Touches<'_>,
+    newly_submitted: bool,
+) -> Vec<serde_json::Value> {
+    let batch = touches.batch;
     ensure_record(o, seq);
     let e = o.execution.as_mut().expect("record initialized");
     // Window rollback does not re-apply financial fills. Replayed notifications
@@ -224,10 +333,11 @@ pub(super) fn update(
     let old_unsettled = e.unsettled();
     let old_reason = e.reason.clone();
     let mut events = Vec::new();
-    for m in &batch.applied_fills {
-        if m.taker_order_hash != o.order_hash && m.maker_order_hash != o.order_hash {
-            continue;
-        }
+    let fills = touches
+        .fills
+        .get(&o.order_hash)
+        .map_or(&[][..], Vec::as_slice);
+    for m in fills.iter().map(|&i| &batch.applied_fills[i]) {
         let same_leg = (m.taker_order_hash == o.order_hash && m.taker == o.order.owner)
             || (m.maker_order_hash == o.order_hash && m.maker == o.order.owner);
         if !same_leg || m.market_id != o.order.market_id {
@@ -244,17 +354,12 @@ pub(super) fn update(
             "tickBatchId": batch.batch_id }));
     }
     e.pending.retain(|tick, _| seq.fill_tick_pending(*tick));
-    let rejection = batch
-        .manifest
-        .rejected
-        .iter()
-        .find(|(h, _)| *h == o.order_hash)
-        .map(|(_, r)| *r);
-    let removal = batch.removals.iter().find(|r| r.order_hash == o.order_hash);
+    let rejection = touches.rejected.get(&o.order_hash).copied();
+    let removal = touches.removed.get(&o.order_hash).copied();
     let live = seq.remaining_order_size(&o.order_hash);
-    if let Some(r) = removal {
+    if let Some(reason) = removal {
         e.status = Status::Cancelled;
-        e.reason = Some(r.reason.into());
+        e.reason = Some(reason.into());
         e.remaining = 0;
     } else if let Some(reason) = rejection {
         e.reason = Some(format!("{reason:?}"));

@@ -25,8 +25,8 @@ use perp_core::order::{Order, RejectReason, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::{EngineError, FillLeg, Note, RiskError};
 use sequencer::{
-    below_minimum_order_notional, EnclaveIdentity, Sequencer, FUNDING_IMPACT_MAX_ORDERS,
-    FUNDING_IMPACT_NOTIONAL, FUNDING_MARK_MIN_SPAN_MS, MIN_ORDER_NOTIONAL,
+    below_minimum_order_notional, EnclaveIdentity, SealedBatch, Sequencer, FUNDING_IMPACT_NOTIONAL,
+    FUNDING_MARK_MIN_SPAN_MS, MAX_OPEN_ORDERS_PER_MARKET, MIN_ORDER_NOTIONAL,
 };
 
 fn enclave() -> EnclaveIdentity {
@@ -1074,19 +1074,21 @@ fn exempt_ask_book(stacked: usize, ticks: usize) -> (Sequencer, u64, Vec<Order>)
 }
 
 /// Orders admitted below the minimum because they reduce can be stacked, one per
-/// batch, far beyond the position they reduce; settlement fills them only while
-/// they still reduce. They give no depth beyond that position either: with 120
-/// stacked $9 asks against a $10 long, the impact ask is the one a single such ask
-/// gives, and a $1,000 buy at their price fills $9 of them.
+/// batch, beyond the position they reduce, up to the open-order cap; settlement
+/// fills them only while they still reduce. They give no depth beyond that
+/// position either: with 64 stacked $9 asks against a $10 long, $576 in all, the
+/// impact ask is the one a single such ask gives, and a $1,000 buy at their price
+/// fills $9 of them.
 #[test]
 fn stacked_exempt_orders_give_no_depth_beyond_the_committed_position() {
-    let ticks = 120;
+    let ticks = MAX_OPEN_ORDERS_PER_MARKET;
     let (mut stacked, t, asks) = exempt_ask_book(ticks, ticks);
     let (single, t_single, _) = exempt_ask_book(1, ticks);
     assert_eq!(t, t_single);
     assert!(
-        i128::try_from(asks.len()).unwrap() * 9 * QUOTE_SCALE > FUNDING_IMPACT_NOTIONAL,
-        "fixture: the stacked asks hold more than the impact notional"
+        i128::try_from(asks.len()).unwrap() * notional_at(TEN_DOLLARS * 9 / 10, 100_050)
+            > FUNDING_IMPACT_NOTIONAL / 2,
+        "fixture: counted, the stacked asks would hold half the impact notional"
     );
     for ask in &asks {
         assert!(stacked
@@ -1116,11 +1118,16 @@ fn stacked_exempt_orders_give_no_depth_beyond_the_committed_position() {
         .any(|(_, reason)| *reason == RejectReason::BelowMinimumSize));
 }
 
-/// A book with `orders` $10 bids from owner 3 (funded with $15) at $100,010, ahead
+/// The notional, quote-scaled, of `size` at `price_usd`.
+fn notional_at(size: i128, price_usd: i128) -> i128 {
+    size * price_usd * PRICE_SCALE / (SIZE_SCALE * (PRICE_SCALE / QUOTE_SCALE))
+}
+
+/// A batch of `orders` $10 bids from owner 3 (funded with $15) at $100,010, ahead
 /// of owner 1's $10k of bids at $99,990; owner 2 asks $10k at $100,030. Each of
 /// owner 3's bids fits initial margin on its own, but together only about $150 of
-/// them could fill.
-fn bloated_bid_book(orders: usize) -> (Sequencer, u64) {
+/// them do.
+fn bloated_bid_book(orders: usize) -> (Sequencer, u64, SealedBatch) {
     let t = 10_000u64;
     let mut s = setup(t);
     fund(&mut s, 3, 15, 0x33);
@@ -1130,28 +1137,33 @@ fn bloated_bid_book(orders: usize) -> (Sequencer, u64) {
     batch.push(order(1, Side::Buy, SIZE_SCALE / 10, 99_990, 1));
     batch.push(order(2, Side::Sell, SIZE_SCALE / 10, 100_030, 2));
     let sealed = s.seal_batch(&batch, t);
-    assert!(sealed.manifest.rejected.is_empty());
-    (s, t)
+    (s, t, sealed)
 }
 
-/// The impact sweep visits at most `FUNDING_IMPACT_MAX_ORDERS` orders of a side.
-/// Below that, the orders a maker could not fill are passed over and the honest
-/// depth behind them prices the side; a side that would need more has no impact
-/// price, and the mark is the index, as for a side without the depth.
+/// The collateral reserve (audit 2026-11-16 SM-1) admits only the bids owner 3's
+/// $15 margins together; every other one is refused for margin and never rests, so
+/// 4,096 such bids leave the book, and the funding mark, as twenty do. Before, all
+/// of them rested, and since the impact sweep gave no price to a side it had to
+/// walk more than 4,096 orders of, the mark fell back to the index.
 #[test]
-fn a_side_that_needs_more_orders_than_the_sweep_visits_falls_back_to_the_index() {
-    let (s, t) = bloated_bid_book(FUNDING_IMPACT_MAX_ORDERS - 2);
+fn bids_the_collateral_cannot_margin_together_never_rest() {
+    let (mut s, t, sealed) = bloated_bid_book(4_096);
+    let rested = s.book(0).unwrap().resting_hashes_for(&owner_id(3)).len();
+    assert!((10..20).contains(&rested), "{rested}");
+    assert_eq!(sealed.manifest.rejected.len(), 4_096 - rested);
+    assert!(sealed
+        .manifest
+        .rejected
+        .iter()
+        .all(|(_, reason)| *reason == RejectReason::InsufficientMargin));
     let mid = s.impact_mid(0, t).expect("the honest bids are reached");
-    // the same mid as a book where owner 3 rests only a few more bids than fill
-    let (few, _) = bloated_bid_book(20);
+    let (few, _, _) = bloated_bid_book(20);
     assert_eq!(few.impact_mid(0, t), Some(mid));
     assert!(mid > 100_000 * PRICE_SCALE && mid < 100_030 * PRICE_SCALE);
-    let (mut s, t) = bloated_bid_book(FUNDING_IMPACT_MAX_ORDERS + 1);
-    assert_eq!(s.impact_mid(0, t), None);
     let t2 = t + 700;
     s.set_oracle(0, oracle(100_000, t2));
     let sealed = s.seal_batch(&[], t2);
-    assert_eq!(accrue_mark(&sealed.ops), 100_000 * PRICE_SCALE);
+    assert!(accrue_mark(&sealed.ops) > 100_000 * PRICE_SCALE);
 }
 
 /// A quote resting through one tick's matching counts for the span it priced,
@@ -1305,15 +1317,19 @@ fn a_traded_market_gives_one_non_idle_window_per_price_epoch() {
 #[test]
 fn an_adl_winner_healthy_at_one_seal_is_not_liquidated_at_the_next() {
     let mut s = setup(1_000);
+    fund(&mut s, 3, 100_000, 0x33);
     s.seal_batch(
         &[
-            order(1, Side::Sell, SIZE_SCALE, 100_000, 1),
+            order(1, Side::Sell, 2 * SIZE_SCALE, 100_000, 1),
             order(2, Side::Buy, SIZE_SCALE, 100_000, 2),
+            order(3, Side::Buy, SIZE_SCALE, 100_000, 3),
         ],
         1_000,
     );
-    // a gap to $75k: the long's $25k loss exceeds its $20k collateral, and with no
-    // insurance or treasury the shortfall is clawed from the short
+    // a gap to $75k: the long's $25k loss exceeds its $20k collateral; the
+    // liquidation closes 1 BTC of the short with it, and with no insurance or
+    // treasury the shortfall is clawed from the short, which stays open against
+    // the healthy second long
     let crash = oracle(75_000, 5_000);
     s.set_oracle(0, crash);
     let n = s.seal_batch(&[], 5_000);

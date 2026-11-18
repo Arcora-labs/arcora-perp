@@ -3,7 +3,7 @@
   "records": [
     {
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "update",
         "--manifest-path",
         "scripts/tee-capture/Cargo.toml",
@@ -19,7 +19,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "update",
         "--manifest-path",
         "scripts/tee-capture/Cargo.toml",

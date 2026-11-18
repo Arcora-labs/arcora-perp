@@ -20,7 +20,7 @@ dist/assets/index-BokHaU_U.js   285.18 kB │ gzip: 87.94 kB
 ✓ built in 2.28s
 {
   "status": "ok",
-  "outputDir": "/Users/huseyinarslan/.codex/worktrees/arcora-warm-ui-20261007/arcora-perp/.vercel/output",
+  "outputDir": "/Users/<dev>/.codex/worktrees/arcora-warm-ui-20261007/arcora-perp/.vercel/output",
   "outputDirRelative": ".vercel/output",
   "target": "production",
   "message": "Build completed successfully.",

@@ -65,6 +65,31 @@ kurtarma süreci de birlikte değerlendirilmelidir. Bu paket onların taşınmas
 veya farklı makinede restore edildiğini iddia etmez. Production **RELEASE HOLD**
 devam eder.
 
+## Emir geçmişi yan kayıtları
+
+Şifreli emir kaydı (order log) ve her settle edilmiş batch'in ordered/rejected emir
+hash listeleri her emirle büyür ve silinemez: L1 inclusion challenge'ı herhangi bir
+eski emir için açılabilir ve bu listelerden yanıtlanır. Bunlar artık snapshot'ın
+içinde değil, yanında iki append-only yan kayıtta tutulur:
+`<DARKPERP_STATE>.orderlog` ve `<DARKPERP_STATE>.batches`. Yan kayıtlar snapshot ile
+aynı enclave seed'i altında şifreli ve kimlik doğrulamalıdır, snapshot gibi fsync
+edilir. Snapshot yalnız henüz eklenmemiş kayıtları ve her yan kaydın dayanıklı
+sonunu (kayıt sayısı, bayt konumu, özet) tutar; boyutu emir hacmiyle büyümez.
+
+- Bu değişiklikten önce yazılmış (geçmişi içinde olan) snapshot yüklenir; açılışta
+  geçmiş yan kayıtlara eklenir. Yan kayda dayanmayan snapshot eski düzenle bayt bayt
+  aynıdır.
+- Yan kayda dayanan snapshot, yan kayıtlar eksikse, daha eski bir kopyaya geri
+  alınmışsa veya başka bir geçmişe aitse açılışı reddeder; açılış snapshot'ın
+  dayandığı her kaydı doğrular ve böyle bir dosyayı kesmez. Yedekten dönüşte yan kayıtlar snapshot'ın yanına aynı
+  adlarla konmalıdır. `gateway_backup.py` bunları snapshot/journal çiftinden sonra
+  kopyalar ve manifest'in `side_logs` alanına yazar; çift kopyalandıktan sonra
+  alınan kopya, kopyalanan snapshot'ın dayandığı her kaydı içerir.
+- Snapshot'tan sonra eklenmiş kayıtlar (çökme anında) korunur ve zincir sürer; yarım
+  kalmış son ek açılışta kesilir.
+- Snapshot olmadan yan kayıt bulunursa yeni genesis açılmaz; yan kayıtlar bilinçli
+  olarak kenara taşınmalıdır.
+
 ## GPU gerektirmeyen gerçek süreç tatbikatı
 
 ```sh
@@ -87,7 +112,7 @@ anahtar/API key, plaintext hesap dökümü veya snapshot gövdesi içermez.
 Tatbikat; hesap açma, cüzdan adresi bağlama, demo teminat, gerçekleşmemiş emir,
 emir iptali ve dayanıklı credential recovery akışını gerçek HTTP üzerinden
 çalıştırır. Kaynak süreç durdurulur, özgün snapshot yolu kaldırılır ve seçilen
-şifreli yedek iki kez farklı boş dizine taşınır. Her restore'da sekiz hesap alanı,
+şifreli yedek, yan kayıtlarıyla birlikte, iki kez farklı boş dizine taşınır. Her restore'da sekiz hesap alanı,
 özgün emir receipt'i ve iptal durumu doğrulanır; eski API key 401, eski recovery
 imzası 400 alır. Deposit route ve idempotent iptal sonucu korunur.
 

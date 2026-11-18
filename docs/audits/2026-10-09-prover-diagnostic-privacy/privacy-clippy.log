@@ -27,6 +27,6 @@
     Checking elliptic-curve v0.13.8
     Checking ecdsa v0.16.9
     Checking k256 v0.13.4
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
-    Checking prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+    Checking perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/perp-core)
+    Checking prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/prover)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.69s

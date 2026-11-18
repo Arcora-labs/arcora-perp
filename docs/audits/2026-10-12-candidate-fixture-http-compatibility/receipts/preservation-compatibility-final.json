@@ -70,7 +70,7 @@
       "head_unchanged": true,
       "name": "primary",
       "passed": true,
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "path": "/Users/<dev>/Desktop/arcora-perp/repo",
       "staged_binary_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "staged_unchanged": true,
       "status_unchanged": true
@@ -91,7 +91,7 @@
       "head_unchanged": true,
       "name": "kimi",
       "passed": true,
-      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "path": "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
       "staged_binary_diff_sha256": "0262e9d202a41c184a4352691be1a8aa2c9c6b24a62ef65b421eadaa0249a849",
       "staged_unchanged": true,
       "status_unchanged": true
@@ -167,7 +167,7 @@
       "head_unchanged": true,
       "name": "dark",
       "passed": true,
-      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "path": "/Users/<dev>/Desktop/Projeler/Dark Perp/dark-perp",
       "staged_binary_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "staged_unchanged": true,
       "status_unchanged": true

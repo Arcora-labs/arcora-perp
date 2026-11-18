@@ -14,7 +14,7 @@
     "crates/gateway/src/prover_client/window_ownership_tests.rs"
   ],
   "base_commit": "c387dbe2de0392a996d6028f745f81fa963809dd",
-  "canonical_repo": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "canonical_repo": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
   "excluded": [
     "GPU/proof generation",
     "live production backend/chain/CC/keyrelease",

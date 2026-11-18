@@ -180,7 +180,8 @@ pub trait ProverClient: Send + Sync {
 
 /// The registration preconditions that do not depend on the sealed window, read
 /// before admission pauses. A timed window must register within `clockSkewMs` of
-/// its last operation, and admission stays open until the pause, so these reads
+/// its last operation, and admission stays open until the pause, so while the
+/// open window is inside its cutoff (`clock_admission::WindowBound`) these reads
 /// (several L1 round trips, and the prover's identity) are not spent from that
 /// budget. Only the comparison with the sealed window runs after the seal.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,6 +192,9 @@ pub struct RegisterPreconditions {
     pub phase: u8,
     /// The request-body limit the prover advertised, when its identity was read.
     pub prover_body_bytes: Option<usize>,
+    /// The clock verifier's timing policy, which the sealed window's operation
+    /// times must meet.
+    pub timing: crate::l1::ClockTiming,
 }
 impl RegisterPreconditions {
     /// Whether window `batch`, sealed for wind-down `phase`, can register against
@@ -215,6 +219,14 @@ impl RegisterPreconditions {
         }
         Ok(())
     }
+    /// Whether the sealed window's operation times can still register at `now_ms`
+    /// (audit G2-2): its timed operations span at most `maxWindowMs`, and its last
+    /// one is within the registration skew. A refusal is final for the window.
+    pub fn admit_times(&self, w: &WindowWitness, now_ms: u64) -> Result<(), PreflightRefusal> {
+        self.timing
+            .check_registrable(&perp_core::clock::TimeBounds::derive(&w.ops), now_ms)
+            .map_err(|why| PreflightRefusal::Unregistrable(format!("window {}: {why}", w.batch_id)))
+    }
 }
 
 /// Why a sealed window was not registered. Nothing was sent to L1 in either case.
@@ -225,11 +237,16 @@ pub enum PreflightRefusal {
     WrongPhase(String),
     /// The window cannot be proven or registered as it is.
     Refused(String),
+    /// The window's operation times can never register (audit G2-2): they span
+    /// more than `maxWindowMs`, the last one is past the registration skew, or
+    /// they do not derive. Unlike a refusal, rolling the window back does not
+    /// help: its operations keep their times when they are sealed again.
+    Unregistrable(String),
 }
 impl std::fmt::Display for PreflightRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::WrongPhase(e) | Self::Refused(e) => f.write_str(e),
+            Self::WrongPhase(e) | Self::Refused(e) | Self::Unregistrable(e) => f.write_str(e),
         }
     }
 }
@@ -1263,7 +1280,7 @@ pub(crate) mod tests_support {
     fn signer_key() -> (k256::ecdsa::SigningKey, [u8; 20]) {
         use sha3::{Digest as _, Keccak256};
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x51u8; 32]).unwrap();
-        let point = sk.verifying_key().to_encoded_point(false);
+        let point = sk.verifying_key().to_sec1_point(false);
         let hash = Keccak256::digest(&point.as_bytes()[1..]);
         let mut signer = [0u8; 20];
         signer.copy_from_slice(&hash[12..]);
@@ -1284,7 +1301,7 @@ pub(crate) mod tests_support {
         let to = [7u8; 20];
         let digest =
             crate::withdraw_auth_digest(gw.chain_id, &gw.vault, owner, 0, amount, &to, auth_nonce);
-        let (s, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (s, recid) = sk.sign_prehash_recoverable(&digest);
         let mut sig = [0u8; 65];
         sig[..64].copy_from_slice(&s.to_bytes());
         sig[64] = 27 + recid.to_byte();
@@ -2860,6 +2877,10 @@ mod preflight_tests {
             batch_count: w.batch_id,
             phase: 0,
             prover_body_bytes,
+            timing: crate::l1::ClockTiming {
+                max_window_ms: 30_000,
+                clock_skew_ms: 30_000,
+            },
         };
         assert!(matches!(
             client.preflight(&w, 0, Some(&pre(Some(real / 2)))),

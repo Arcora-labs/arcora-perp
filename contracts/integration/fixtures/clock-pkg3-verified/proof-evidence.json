@@ -2,7 +2,7 @@
   "cases": [
     {
       "commitment": "0xd1d933cad0323ca4b7a0dca2017da7b7a6007f4bfc4e6e4fd57f8be72c9f15d2",
-      "cycles": 2971773,
+      "cycles": 1996328,
       "guest_exit": 0,
       "name": "epoch-price-refresh",
       "native_guest_equal": true,
@@ -11,7 +11,7 @@
     },
     {
       "commitment": "0x6bec4bfbe9e7d2dd917f402502556d6e3d854105cdd293dbde2b46cbc2501cea",
-      "cycles": 5740006,
+      "cycles": 3790647,
       "guest_exit": 0,
       "name": "pause-reopen-fill",
       "native_guest_equal": true,
@@ -19,35 +19,35 @@
       "witness_sha256": "a4759a507b6945bc7c2fc812096475fbe02794b38a428ce3f10c753e5a2904ea"
     },
     {
-      "commitment": "0x05d29866e9ebf45f62aec2f7e16c2c94a85a2a32a91ddfddd00d540d16564db8",
-      "cycles": 2981347,
+      "commitment": "0x7015c5ea4e76dcb6e08e89bb0ffb9b3e15f4c2ec0a8b980f39687d799caf52a3",
+      "cycles": 2030387,
       "guest_exit": 0,
       "name": "bad-debt-treasury-adl",
       "native_guest_equal": true,
       "phase": 0,
-      "witness_sha256": "5e9e4268cf9a9a5487191282419b3289ee11e24201e6a07d9975afbc577c559f"
+      "witness_sha256": "3ef5cb3d82cdf3154ef11e17ecc7504a5602ef7fc3076b78c15d402029849224"
     },
     {
-      "commitment": "0xcb0c459aa520bc736e9cd88405ae59daf4dd1b466a797c475c2574d81883b032",
-      "cycles": 252270,
+      "commitment": "0x02468bcd3154ebf06d0acdb5195e6d5d28c9a68525f141a7b280181bf5864f23",
+      "cycles": 261418,
       "guest_exit": 0,
       "name": "debt-top-up-prune",
       "native_guest_equal": true,
       "phase": 0,
-      "witness_sha256": "4cdb2225a4136ea06e1b8c8b39b9416bd81dbcee3785cecc50e4cb9447e3898c"
+      "witness_sha256": "97a3b63d696b87799522b896ac79037c398b562734380b5352e7cfd34fa2f942"
     },
     {
-      "commitment": "0xb813ecfd08db2557ec763e2ffb6ec335f45044b906e61fe2a92fa1f882e68f66",
-      "cycles": 2972380,
+      "commitment": "0xa0d8648b1a453ef92a61ff650d89b7682a6395102d1e5e9f0afa31250d8df60a",
+      "cycles": 2019758,
       "guest_exit": 0,
       "name": "debt-top-up-next-batch",
       "native_guest_equal": true,
       "phase": 0,
-      "witness_sha256": "c9becc2b21847c1b0efd3854dc934ecdad2a7d90b9f6956fc1f82f22666be559"
+      "witness_sha256": "57b1e6764adefe0e13f064321a66b47940c9229f5bffc83b5104b244c167bc31"
     },
     {
       "commitment": "0x6fb83abf2a8f2e17f3785ed6b11ab978848fe53e22e32ece14f30782cfe0ab12",
-      "cycles": 5755654,
+      "cycles": 3803803,
       "guest_exit": 0,
       "name": "full-exit-prune",
       "native_guest_equal": true,
@@ -56,7 +56,7 @@
     },
     {
       "commitment": "0x5045303a589c01e45d962855ee6639ae4f4a38f34985dd0a554e3cf9111e043a",
-      "cycles": 251800,
+      "cycles": 251767,
       "guest_exit": 0,
       "name": "empty-keepalive",
       "native_guest_equal": true,
@@ -65,7 +65,7 @@
     },
     {
       "commitment": "0xedc4c0a86b495f1cdbcb00636ed96faca085f9710cc868e0a2336780762b8aa7",
-      "cycles": 290552,
+      "cycles": 290952,
       "guest_exit": 0,
       "name": "settle-all-two-markets",
       "native_guest_equal": true,
@@ -74,7 +74,7 @@
     },
     {
       "commitment": "0xbf98b0229914a4654ba1f53aa49dad00169aae718d430bb4464fc0bc50b714b4",
-      "cycles": 318416,
+      "cycles": 319044,
       "guest_exit": 0,
       "name": "phase-two-exit",
       "native_guest_equal": true,
@@ -83,9 +83,9 @@
     }
   ],
   "commitment": "0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab",
-  "cycles": 5750329,
-  "elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
-  "groth16_prove_wall_s": 78.228204721,
+  "cycles": 3812229,
+  "elf_sha256": "151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7",
+  "groth16_prove_wall_s": 102.393747101,
   "kind": "clock-pkg3-native-guest",
   "local_sdk_verified": true,
   "native_guest_equal": true,
@@ -200,7 +200,7 @@
       "name": "deposit-in-close-only",
       "native_error": "Transition(CloseOnly)",
       "public_bytes": 0,
-      "witness_sha256": "3f79ad7ea77105bb9f71f63a56ff1b2903944a9151ad795fb94e362c9b56f678"
+      "witness_sha256": "1bebc38c9e2e732dd17ec7c37fec84dfdd63b3786d69ec88573412722bcce5f5"
     },
     {
       "guest_exit": 1,
@@ -245,11 +245,11 @@
       "witness_sha256": "2f46c18bd27c21be3342c047f455cba2278272ac3b28b1ede0bbb18d1045d552"
     }
   ],
-  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+  "program_vkey": "0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a",
   "proof_generated": true,
   "prover_backend": "cuda",
   "sdk_version": "6.1.0",
-  "setup_wall_s": 4.839023943,
+  "setup_wall_s": 7.674411701,
   "target_contract_verified": false,
   "witness_sha256": "70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a"
 }

@@ -1856,7 +1856,7 @@
   ],
   "files": {
     "github-main-ref": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-main-ref.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-main-ref.json",
       "bytes": 344,
       "sha256": "a4d2b85ffd6fa92d57fea309736501a19d141c5e82398dc27b5af12bd609a208",
       "command": [
@@ -1866,7 +1866,7 @@
       ]
     },
     "github-base-commit": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-base-commit.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-base-commit.json",
       "bytes": 2756,
       "sha256": "83192dfef2429d5881d17937d6eec546f540838a4e08a907554c422b797df7bd",
       "command": [
@@ -1876,7 +1876,7 @@
       ]
     },
     "github-pr61": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-pr61.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-pr61.json",
       "bytes": 6166,
       "sha256": "581ef148c1acbe1b5e78359d8141e9a235f13b95638b0fa04cb8c072e1d9ef6e",
       "command": [
@@ -1891,7 +1891,7 @@
       ]
     },
     "github-open-prs": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-open-prs.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/github-open-prs.json",
       "bytes": 3,
       "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
       "command": [
@@ -1907,7 +1907,7 @@
       ]
     },
     "applied-rules-start": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/applied-rules-start.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/applied-rules-start.json",
       "bytes": 1687,
       "sha256": "9faea6306394d097f40e28467eee98d774ceb6e7365abd5fefa787948f0cfae7",
       "command": [
@@ -1917,7 +1917,7 @@
       ]
     },
     "ruleset-start": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/ruleset-start.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/ruleset-start.json",
       "bytes": 1897,
       "sha256": "fc9f696a8d29d606db37b73a8999371cb5388ecc9fc5ca1298ac811f92359c21",
       "command": [
@@ -1927,7 +1927,7 @@
       ]
     },
     "main-run-38354124976": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/main-run-38354124976.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/main-run-38354124976.json",
       "bytes": 12310,
       "sha256": "751e75dd4b783672778d367168d04e1df3a947b1ec8b8dd975649ba822c322e6",
       "command": [
@@ -1942,7 +1942,7 @@
       ]
     },
     "main-run-38354124828": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/main-run-38354124828.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/main-run-38354124828.json",
       "bytes": 3588,
       "sha256": "ed0bafc943e937910f7db5c11ed4276f3ada34d6dc8dd394183453393459d5e5",
       "command": [
@@ -1957,7 +1957,7 @@
       ]
     },
     "main-run-38354124946": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/main-run-38354124946.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/main-run-38354124946.json",
       "bytes": 19790,
       "sha256": "1795e9404d21fd758b04d8bd4924a2de591595f96c59e14229cd1bcbc4efb9fa",
       "command": [

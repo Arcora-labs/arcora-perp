@@ -14,7 +14,65 @@ pub(crate) struct ClockConfig {
     /// The verifier's `clockSkewMs` once read; it is constructor-set, so the
     /// first successful read holds for every clone.
     pub clock_skew_ms: std::sync::Arc<std::sync::OnceLock<u64>>,
+    /// The verifier's `maxWindowMs` once read; constructor-set like the skew.
+    pub max_window_ms: std::sync::Arc<std::sync::OnceLock<u64>>,
 }
+
+/// The clock verifier's timing policy. Both values are constructor-set
+/// (immutable), so one read at boot holds for the life of the deployment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClockTiming {
+    /// `maxWindowMs`: the most a window's timed operations may span
+    /// (`lastMs - firstMs`); a wider window's `register` reverts (`InvalidTime`).
+    pub max_window_ms: u64,
+    /// `clockSkewMs`: a timed window registers only while the block time is at
+    /// most this far past its last timed operation.
+    pub clock_skew_ms: u64,
+}
+impl ClockTiming {
+    /// How often the settle loop seals a window: a quarter of the shorter bound,
+    /// and at least every `L1_SETTLE_SECS`.
+    pub(crate) fn seal_period(&self) -> Result<std::time::Duration, String> {
+        let millis = (self.max_window_ms / 4)
+            .min(self.clock_skew_ms / 4)
+            .min(crate::L1_SETTLE_SECS * 1000);
+        if millis < 100 {
+            return Err("clock timing policy is too narrow for gateway cadence".into());
+        }
+        Ok(std::time::Duration::from_millis(millis))
+    }
+    /// Whether a window whose operations have `bounds` can still register at
+    /// `now_ms` (audit G2-2). Each refusal is final for the window as sealed: its
+    /// operation times are fixed, so no retry registers it. An untimed window
+    /// always can.
+    pub(crate) fn check_registrable(
+        &self,
+        bounds: &Result<TimeBounds, perp_core::EngineError>,
+        now_ms: u64,
+    ) -> Result<(), String> {
+        let b = bounds.as_ref().map_err(|e| {
+            format!("its operation times are not monotonic ({e:?}), so it can never register")
+        })?;
+        if b.count == 0 {
+            return Ok(());
+        }
+        let span = b.last_ms.saturating_sub(b.first_ms);
+        if span > self.max_window_ms {
+            return Err(format!(
+                "its timed operations span {span} ms, more than maxWindowMs {}; the \
+                 verifier would revert its registration (InvalidTime)",
+                self.max_window_ms
+            ));
+        }
+        check_register_skew(b.last_ms, self.clock_skew_ms, now_ms)
+    }
+}
+
+/// Marks a registration the clock verifier reverted (`registration_sent`).
+pub(crate) const REGISTRATION_REVERTED: &str = "the clock verifier reverted the registration";
+/// Marks a timed window refused before sending because its last operation is too
+/// old to register (`check_register_skew`).
+pub(crate) const PAST_REGISTRATION_SKEW: &str = "timed window is past its registration skew";
 
 /// `cell`'s value, or the result of `read`, kept only when it succeeds.
 fn cached_once<T: Copy>(
@@ -49,6 +107,7 @@ impl ClockConfig {
             stop: None,
             program_vkey: Default::default(),
             clock_skew_ms: Default::default(),
+            max_window_ms: Default::default(),
         }))
     }
     pub(crate) fn from_env() -> Result<Option<Self>, String> {
@@ -417,9 +476,114 @@ fn read_clock_skew(r: &CanonicalRead<'_>, verifier: &[u8; 20]) -> Result<u64, St
 pub(super) fn check_register_skew(last_ms: u64, skew_ms: u64, now_ms: u64) -> Result<(), String> {
     let margin = (skew_ms / 10).min(REGISTER_SKEW_MARGIN_MS);
     if now_ms as u128 + margin as u128 > last_ms as u128 + skew_ms as u128 {
-        return Err("timed window is past its registration skew; nothing sent".into());
+        return Err(format!("{PAST_REGISTRATION_SKEW}; nothing sent"));
     }
     Ok(())
+}
+
+/// What a `register` send says about the registration (audit G2-2). Nothing is
+/// swallowed: the outcome is always logged. `sent` is cast's JSON receipt or its
+/// error. A revert registered nothing, now or later: a revert of the gas
+/// estimate (nothing was broadcast), or of the mined transaction (its receipt's
+/// `status` is 0, which cast reports as a success). Its reason is returned at
+/// once instead of waiting for an anchor that cannot come; the caller's recovery
+/// decides the window. Any other error leaves the outcome unknown (the
+/// transaction may still be mined): it is logged and `Ok` is returned, so the
+/// caller waits for the finalized anchor.
+pub(super) fn registration_sent(batch: u64, sent: Result<String, String>) -> Result<(), String> {
+    let sent = sent.and_then(|receipt| match mined_revert(&receipt) {
+        Some(reverted) => Err(reverted),
+        None => Ok(super::tx_hash(&receipt)),
+    });
+    match sent {
+        Ok(tx) => {
+            println!("[clock] window {batch}: registration sent in {tx}");
+            Ok(())
+        }
+        Err(e) if is_revert(&e) => {
+            let reason = revert_reason(&e);
+            eprintln!("[clock] window {batch}: {REGISTRATION_REVERTED} ({reason}): {e}");
+            Err(format!(
+                "{REGISTRATION_REVERTED} ({reason}); nothing was registered: {e}"
+            ))
+        }
+        Err(e) => {
+            eprintln!(
+                "[clock] window {batch}: the registration send failed with an unknown \
+                 outcome; waiting for its finalized anchor: {e}"
+            );
+            Ok(())
+        }
+    }
+}
+
+/// The revert of a mined transaction, from cast's JSON receipt: `status` 0,
+/// with the reason cast decoded, if any.
+fn mined_revert(receipt: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(receipt).ok()?;
+    let failed = match v.get("status")? {
+        serde_json::Value::String(s) => s == "0x0" || s == "0",
+        serde_json::Value::Number(n) => n.as_u64() == Some(0),
+        _ => false,
+    };
+    failed.then(|| {
+        format!(
+            "transaction {} was mined and reverted: {}",
+            v.get("transactionHash")
+                .and_then(|h| h.as_str())
+                .unwrap_or("(no hash)"),
+            v.get("revertReason")
+                .and_then(|r| r.as_str())
+                .unwrap_or("no reason given")
+        )
+    })
+}
+
+/// A send error that reports a revert of the call itself (the estimate, or the
+/// mined transaction), not a transport failure. cast's text cannot always tell
+/// them apart; a misread error only changes when the recovery takes the window,
+/// which it decides at finalized blocks either way.
+fn is_revert(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    e.contains("revert") && !e.contains("timed out")
+}
+
+/// How often a `register` is sent again after its gas estimate reverted with
+/// `BadContext`, and how long apart (audit G2-2).
+const REGISTER_RESENDS: u32 = 2;
+const REGISTER_RESEND_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Whether a `register` send that failed with `error` is sent again: only a
+/// revert of its gas estimate, so nothing was broadcast, that names `BadContext`.
+/// A load-balanced RPC whose backend has not seen the previous window's
+/// settlement yet answers that, and a moment later no longer does. Every other
+/// revert is final for the window as sealed.
+fn resend_registration(error: &str) -> bool {
+    is_revert(error)
+        && error.to_ascii_lowercase().contains("estimate gas")
+        && revert_reason(error) == "BadContext"
+}
+
+/// The `ClockBoundVerifier` error a revert names by its selector, or "reason not
+/// decoded".
+fn revert_reason(error: &str) -> &'static str {
+    const ERRORS: [&str; 6] = [
+        "InvalidTime",
+        "BadContext",
+        "ReplacementForbidden",
+        "Unauthorized",
+        "InvalidConfiguration",
+        "MissingAnchor",
+    ];
+    let e = error.to_ascii_lowercase();
+    ERRORS
+        .into_iter()
+        .find(|name| {
+            let selector =
+                crate::hex0x(&perp_core::clock::keccak(format!("{name}()").as_bytes())[..4]);
+            e.contains(&selector) || e.contains(&name.to_ascii_lowercase())
+        })
+        .unwrap_or("reason not decoded")
 }
 
 /// What a registration does once the window's anchor at the latest block is
@@ -427,7 +591,8 @@ pub(super) fn check_register_skew(last_ms: u64, skew_ms: u64, now_ms: u64) -> Re
 /// registration with `send` and return `None`. `ExistingOnly` never sends, and
 /// a timed window is never sent past its registration skew; `clock_skew_ms` is
 /// read only for a timed window that would be sent. An error from `send` means
-/// nothing was broadcast; a broadcast whose outcome is unknown returns `Ok`.
+/// nothing was or will be registered by it; a broadcast whose outcome is unknown
+/// returns `Ok`.
 pub(super) fn register_or_reuse(
     mode: crate::clock_client::RegisterMode,
     existing: Option<ClockContext>,
@@ -574,15 +739,12 @@ pub(super) fn read_register_state(
     Ok((count, phase))
 }
 
-/// The program vkey the clock route verifies: `innerVerifier()` is the SP1
+/// The SP1 adapter the clock route verifies through: `innerVerifier()` is the
 /// adapter, or an oracle wrapper whose own `innerVerifier()` is.
-pub(super) fn read_program_vkey(
-    r: &CanonicalRead<'_>,
-    verifier: &[u8; 20],
-) -> Result<Digest, String> {
+fn read_adapter(r: &CanonicalRead<'_>, verifier: &[u8; 20]) -> Result<String, String> {
     let inner = address(r.word(&crate::hex0x(verifier), "innerVerifier()", None)?)?;
     let inner_hex = crate::hex0x(&inner);
-    let adapter = match r.call_bytes(&inner_hex, "innerVerifier()", &[]) {
+    Ok(match r.call_bytes(&inner_hex, "innerVerifier()", &[]) {
         Ok(bytes) if bytes.len() == 32 => {
             let word: Digest = bytes[..]
                 .try_into()
@@ -590,8 +752,256 @@ pub(super) fn read_program_vkey(
             crate::hex0x(&address(word)?)
         }
         _ => inner_hex,
+    })
+}
+
+/// The program vkey the clock route verifies.
+pub(super) fn read_program_vkey(
+    r: &CanonicalRead<'_>,
+    verifier: &[u8; 20],
+) -> Result<Digest, String> {
+    r.word(&read_adapter(r, verifier)?, "programVKey()", None)
+}
+
+/// A compiled runtime the boot gate pins (audit SV-1). The deployed code must have
+/// the template's length, every occurrence of one immutable must hold the same word
+/// (so a getter cannot report one value while `verify` uses another), and with the
+/// immutable words zeroed, as the compiler leaves them, the code must hash to
+/// `keccak`. `scripts/local-verification/test_release_manifest.py` keeps every
+/// template here equal to its compiler artifact.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RuntimeTemplate {
+    /// The compiler artifact, relative to `contracts/`.
+    pub(crate) artifact: &'static str,
+    pub(crate) keccak: &'static str,
+    pub(crate) len: usize,
+    /// The byte offsets of each immutable's 32-byte occurrences.
+    pub(crate) immutables: &'static [&'static [usize]],
+}
+
+impl RuntimeTemplate {
+    fn name(&self) -> &'static str {
+        let file = self.artifact.rsplit('/').next().unwrap_or(self.artifact);
+        file.strip_suffix(".json").unwrap_or(file)
+    }
+
+    fn matches(&self, code: &[u8]) -> bool {
+        if code.len() != self.len {
+            return false;
+        }
+        let mut masked = code.to_vec();
+        for occurrences in self.immutables {
+            let Some(first) = occurrences.first().and_then(|&at| code.get(at..at + 32)) else {
+                return false;
+            };
+            for &at in *occurrences {
+                if code.get(at..at + 32) != Some(first) {
+                    return false;
+                }
+                masked[at..at + 32].fill(0);
+            }
+        }
+        crate::parse_hex32(self.keccak)
+            .is_some_and(|pinned| <sha3::Keccak256 as sha3::Digest>::digest(&masked)[..] == pinned)
+    }
+}
+
+/// Every hop between the settlement's clock verifier and the SP1 proof check.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RoutePins {
+    pub(crate) clock: RuntimeTemplate,
+    /// The optional oracle wrapper between the clock verifier and the adapter.
+    pub(crate) wrapper: RuntimeTemplate,
+    pub(crate) adapter: RuntimeTemplate,
+    /// The stateless SP1 v6.1.0 Groth16 verifier: no immutables, no owner, no routes.
+    pub(crate) verifier: RuntimeTemplate,
+}
+
+pub(crate) const ROUTE_PINS: RoutePins = RoutePins {
+    clock: RuntimeTemplate {
+        artifact: "out/ClockBoundVerifier.sol/ClockBoundVerifier.json",
+        keccak: "0x293e9a8ebae978c305db4ca1bd0051d3e6fb8d2ea45ec42253bc1856d03c1dff",
+        len: 6569,
+        immutables: &[
+            &[300, 4993],
+            &[363, 3930, 4384, 5507],
+            &[447, 4137, 4218, 4417, 5541],
+            &[572, 2266],
+            &[611, 1505],
+        ],
+    },
+    wrapper: RuntimeTemplate {
+        artifact: "out/ChainlinkOracleVerifier.sol/ChainlinkOracleVerifier.json",
+        keccak: "0xd414b10813242c0d513b4be218ce5f4cf8e01758208c8906bf6e4ec2a7550637",
+        len: 8467,
+        immutables: &[
+            &[375, 2507, 4142],
+            &[526, 1074],
+            &[755, 2468, 5863],
+            &[802, 2103],
+            &[860, 1988, 2314, 5525],
+            &[899, 1823, 2667],
+            &[996, 2021, 2347, 5558, 5656],
+        ],
+    },
+    adapter: RuntimeTemplate {
+        artifact: "out/SP1ZkVerifier.sol/SP1ZkVerifier.json",
+        keccak: "0x7fa987de58884430b5484a32fbb5dc7f2514ea7f1c735ef69fc87a247ccd9aa5",
+        len: 734,
+        immutables: &[&[72, 226], &[140, 273]],
+    },
+    verifier: RuntimeTemplate {
+        artifact: "out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json",
+        keccak: "0xb42cb7e21a6cf93e26ee95c376957b5207ed4a9087bac78be2ea6f4fd44dd849",
+        len: 6741,
+        immutables: &[],
+    },
+};
+
+/// What the boot gate established about the clock route's SP1 proof check.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Sp1Route {
+    /// `L1_ALLOW_MOCK_PROOF=1`: mock proofs verify nothing, so nothing is pinned.
+    MockProofs,
+    /// Pinned clock verifier (and wrapper) and adapter, verifying through the
+    /// pinned stateless verifier.
+    Pinned { verifier: [u8; 20] },
+    /// The pinned adapter verifies through a router the operator explicitly trusts
+    /// (`L1_ACCEPT_SP1_ROUTER_OWNER_TRUST=1`); `owner` is its `owner()`, if readable.
+    TrustedRouter {
+        router: [u8; 20],
+        owner: Option<[u8; 20]>,
+    },
+}
+
+impl Sp1Route {
+    /// The boot-handshake log fragment.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Self::MockProofs => "SP1 route not pinned (mock proofs)".into(),
+            Self::Pinned { verifier } => format!(
+                "SP1 verifier {} (pinned stateless v6.1.0)",
+                crate::hex0x(verifier)
+            ),
+            Self::TrustedRouter { router, .. } => format!(
+                "SP1 ROUTER {} (owner trusted: {SP1_ROUTER_TRUST_VAR}=1)",
+                crate::hex0x(router)
+            ),
+        }
+    }
+
+    /// The loud boot warning a trusted router needs.
+    pub(crate) fn warning(&self) -> Option<String> {
+        let Self::TrustedRouter { router, owner } = self else {
+            return None;
+        };
+        Some(format!(
+            "{SP1_ROUTER_TRUST_VAR}=1: proofs verify through the SP1 router {}, not the stateless \
+             verifier. Its owner ({}) can add an accept-everything route, so a fabricated batch \
+             settles, or freeze the route, so settlement halts (docs/SECURITY.md, audit SV-1)",
+            crate::hex0x(router),
+            owner.map_or_else(|| "unreadable".into(), |o| crate::hex0x(&o))
+        ))
+    }
+}
+
+/// Check the clock route a settlement's proofs go through (audit SV-1): the clock
+/// verifier, the optional oracle wrapper and the SP1 adapter must run their pinned
+/// compiled code, so their constructor-set links are what their getters report and
+/// what `verify` uses. The adapter must then verify through the pinned stateless SP1
+/// verifier: a router (an SP1 verifier gateway) has an owner who can add an
+/// accept-everything route or freeze the real one, and so bypass or halt every proof.
+/// `accept_router_owner_trust` is the operator's explicit opt-in to trust that owner
+/// instead; it waives only the last check.
+pub(super) fn check_sp1_route(
+    r: &CanonicalRead<'_>,
+    verifier: &[u8; 20],
+    accept_router_owner_trust: bool,
+    pins: &RoutePins,
+) -> Result<Sp1Route, String> {
+    let code = |a: &[u8; 20]| r.code(&crate::hex0x(a));
+    let refuse = |role: &str, a: &[u8; 20], t: &RuntimeTemplate| {
+        format!(
+            "the {role} {} is not the pinned {} runtime; only the reviewed compiled route is \
+             accepted (audit SV-1)",
+            crate::hex0x(a),
+            t.name()
+        )
     };
-    r.word(&adapter, "programVKey()", None)
+    if !pins.clock.matches(&code(verifier)?) {
+        return Err(refuse("clock verifier", verifier, &pins.clock));
+    }
+    let inner = address(r.word(&crate::hex0x(verifier), "innerVerifier()", None)?)?;
+    let inner_code = code(&inner)?;
+    let adapter = if pins.adapter.matches(&inner_code) {
+        inner
+    } else if pins.wrapper.matches(&inner_code) {
+        let adapter = address(r.word(&crate::hex0x(&inner), "innerVerifier()", None)?)?;
+        if !pins.adapter.matches(&code(&adapter)?) {
+            return Err(refuse(
+                "oracle wrapper's inner verifier",
+                &adapter,
+                &pins.adapter,
+            ));
+        }
+        adapter
+    } else {
+        return Err(format!(
+            "the clock verifier's inner verifier {} is not the pinned {} or {} runtime; only \
+             the reviewed compiled route is accepted (audit SV-1)",
+            crate::hex0x(&inner),
+            pins.adapter.name(),
+            pins.wrapper.name()
+        ));
+    };
+    let target = address(r.word(&crate::hex0x(&adapter), "gateway()", None)?)?;
+    if pins.verifier.matches(&code(&target)?) {
+        return Ok(Sp1Route::Pinned { verifier: target });
+    }
+    if !accept_router_owner_trust {
+        return Err(format!(
+            "the SP1 adapter's target {} is not the pinned stateless SP1 v6.1.0 verifier (a router \
+             or any other contract lets its owner bypass or halt proof verification); redeploy the \
+             adapter on the verifier, or set {SP1_ROUTER_TRUST_VAR}=1 to accept trusting that owner",
+            crate::hex0x(&target)
+        ));
+    }
+    // Best effort, for the warning: who can change the router's routes.
+    let owner = r
+        .word(&crate::hex0x(&target), "owner()", None)
+        .ok()
+        .and_then(|w| address(w).ok());
+    Ok(Sp1Route::TrustedRouter {
+        router: target,
+        owner,
+    })
+}
+
+/// Operator opt-in (`1`; any other value keeps the gate) to boot against an SP1
+/// router whose owner can bypass or halt proof verification (docs/SECURITY.md).
+pub(crate) const SP1_ROUTER_TRUST_VAR: &str = "L1_ACCEPT_SP1_ROUTER_OWNER_TRUST";
+
+/// The boot gate over one finalized snapshot, separate from its transport so
+/// in-process fixtures run the routine [`L1::sp1_boot_gate`] uses. Mock proofs pin
+/// nothing; otherwise [`check_sp1_route`] must pass, with the router opt-in only for
+/// `router_trust == Some("1")`.
+pub(super) fn sp1_boot_gate_from(
+    primary: &dyn crate::deposit_rpc::Rpc,
+    witness: Option<&dyn crate::deposit_rpc::Rpc>,
+    expected_chain: Option<u64>,
+    verifier: Option<[u8; 20]>,
+    allow_mock_proof: bool,
+    router_trust: Option<&str>,
+    pins: &RoutePins,
+) -> Result<Sp1Route, String> {
+    if allow_mock_proof {
+        return Ok(Sp1Route::MockProofs);
+    }
+    let verifier = verifier.ok_or("clock mode not configured")?;
+    let read = CanonicalRead::new(primary, witness, expected_chain)?;
+    let route = check_sp1_route(&read, &verifier, router_trust == Some("1"), pins)?;
+    read.finish()?;
+    Ok(route)
 }
 
 fn address(word: Digest) -> Result<[u8; 20], String> {
@@ -613,6 +1023,7 @@ impl L1 {
             stop: None,
             program_vkey: Default::default(),
             clock_skew_ms: Default::default(),
+            max_window_ms: Default::default(),
         });
         l1
     }
@@ -632,8 +1043,22 @@ impl L1 {
     fn clock_stop(&self) -> Option<&crate::service_shutdown::Shutdown> {
         self.clock.as_ref().and_then(|c| c.stop.as_deref())
     }
+    #[cfg(test)]
     pub(crate) fn clock_seal_period(&self) -> Result<std::time::Duration, String> {
+        self.clock_timing()?.seal_period()
+    }
+    /// The configured verifier's timing policy, read at the latest block with the
+    /// settlement's binding to it checked, and kept for every clone once read.
+    pub(crate) fn clock_timing(&self) -> Result<ClockTiming, String> {
         let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
+        if let (Some(max_window_ms), Some(clock_skew_ms)) =
+            (cfg.max_window_ms.get(), cfg.clock_skew_ms.get())
+        {
+            return Ok(ClockTiming {
+                max_window_ms: *max_window_ms,
+                clock_skew_ms: *clock_skew_ms,
+            });
+        }
         let verifier = crate::hex0x(&cfg.verifier);
         let (window, skew) = self.observe_at(observation::AnchorPolicy::Latest, |r| {
             if address(r.word(&self.settlement, "verifier()", None)?)? != cfg.verifier {
@@ -644,11 +1069,10 @@ impl L1 {
                 abi_u64(r.word(&verifier, "clockSkewMs()", None)?, "clockSkewMs")?,
             ))
         })?;
-        let millis = (window / 4).min(skew / 4).min(crate::L1_SETTLE_SECS * 1000);
-        if millis < 100 {
-            return Err("clock timing policy is too narrow for gateway cadence".into());
-        }
-        Ok(std::time::Duration::from_millis(millis))
+        Ok(ClockTiming {
+            max_window_ms: *cfg.max_window_ms.get_or_init(|| window),
+            clock_skew_ms: *cfg.clock_skew_ms.get_or_init(|| skew),
+        })
     }
     /// `anchorTimeoutMs()` of the configured clock verifier.
     #[allow(dead_code)] // consumed by the stale-anchor alert
@@ -903,6 +1327,35 @@ impl L1 {
             })
         })
     }
+    /// Boot gate (audit SV-1): the clock route's hops run pinned code and the SP1
+    /// adapter verifies through the pinned stateless verifier, unless mock proofs are
+    /// allowed or `router_trust` (`L1_ACCEPT_SP1_ROUTER_OWNER_TRUST`) is `1` (see
+    /// [`check_sp1_route`]).
+    pub(crate) fn sp1_boot_gate(
+        &self,
+        allow_mock_proof: bool,
+        router_trust: Option<&str>,
+    ) -> Result<Sp1Route, String> {
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        sp1_boot_gate_from(
+            &primary,
+            witness.as_ref().map(|r| r as &dyn crate::deposit_rpc::Rpc),
+            self.witness_chain,
+            self.clock.as_ref().map(|c| c.verifier),
+            allow_mock_proof,
+            router_trust,
+            &ROUTE_PINS,
+        )
+    }
     /// Cancel a dead anchor after `anchorTimeoutMs`, as its registrant role (the
     /// sequencer for phase 0, governance for phases 1 and 2). Every precondition
     /// is checked first, so a cancel that would revert is never broadcast. A lost
@@ -1086,14 +1539,40 @@ impl L1 {
                 roots.wind_down_phase.to_string(),
             ];
             let args: Vec<&str> = values.iter().map(String::as_str).collect();
-            // Errors are ambiguous: caller retains the pre-registration WAL intent.
-            // A lost receipt is ambiguous. Do not submit changed data or roll back;
-            // observe finalized state until this SAME registration resolves.
-            if self.clock_stopping() {
-                return Err("clock registration cancelled before broadcast; retain journal".into());
+            // A lost receipt is ambiguous: the caller retains the pre-registration
+            // WAL intent. Do not submit changed data or roll back; observe finalized
+            // state until this SAME registration resolves. A revert is not
+            // ambiguous: it registered nothing (`registration_sent`).
+            let verifier = crate::hex0x(&cfg.verifier);
+            let mut resends = 0;
+            loop {
+                if self.clock_stopping() {
+                    return Err(
+                        "clock registration cancelled before broadcast; retain journal".into(),
+                    );
+                }
+                let sent = self.send_receipt(&verifier, REGISTER_SIG, &args);
+                // Audit G2-2: an estimate that reverted with BadContext broadcast
+                // nothing; it is sent again a few times while the window can still
+                // register, instead of leaving the window to the recovery.
+                if let Err(e) = &sent {
+                    let registrable = b.count == 0
+                        || self.clock_skew_ms().is_ok_and(|skew| {
+                            check_register_skew(b.last_ms, skew, crate::now_ms()).is_ok()
+                        });
+                    if resends < REGISTER_RESENDS && resend_registration(e) && registrable {
+                        resends += 1;
+                        eprintln!(
+                            "[clock] window {}: the registration's gas estimate reverted with \
+                             BadContext; sending it again ({resends}/{REGISTER_RESENDS}): {e}",
+                            w.batch_id
+                        );
+                        std::thread::sleep(REGISTER_RESEND_DELAY);
+                        continue;
+                    }
+                }
+                return registration_sent(w.batch_id, sent);
             }
-            let _send_result = self.send(&crate::hex0x(&cfg.verifier), REGISTER_SIG, &args);
-            Ok(())
         };
         let reused = register_or_reuse(
             mode,
@@ -1210,12 +1689,155 @@ mod configuration_tests {
             stop: None,
             program_vkey: Default::default(),
             clock_skew_ms: Default::default(),
+            max_window_ms: Default::default(),
         });
         p.outcome.proof = vec![1; 32];
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());
         p.outcome.proof = perp_core::clock::PROOF_MAGIC.to_vec();
         p.outcome.proof.extend([1; 32]);
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());
+    }
+}
+
+/// Audit 2026-11-16 G2-2: the registration send's outcome is surfaced.
+#[cfg(test)]
+mod audit_1116_g2_tests {
+    use super::*;
+
+    /// The revert of a `register` call as cast reports it: the estimate's
+    /// JSON-RPC error with the custom error's selector.
+    fn reverted(error: &str) -> String {
+        let selector =
+            crate::hex0x(&perp_core::clock::keccak(format!("{error}()").as_bytes())[..4]);
+        format!(
+            "Error: server returned an error response: error code 3: execution reverted, \
+             data: \"{selector}\""
+        )
+    }
+
+    /// G2-2: the registration send's result was dropped, so a window the
+    /// verifier refused (InvalidTime past maxWindowMs) waited out the twenty
+    /// minute finality budget for an anchor that could never come, with trading
+    /// closed, before it was voided. A revert now returns at once with its reason
+    /// named, and nothing is waited for; a send whose outcome is unknown (a
+    /// timeout, a lost receipt) still waits for the finalized anchor.
+    #[test]
+    fn audit_1116_g2_2_a_reverted_registration_is_surfaced_and_not_waited_out() {
+        let error = registration_sent(7, Err(reverted("InvalidTime"))).unwrap_err();
+        assert!(error.contains(REGISTRATION_REVERTED), "{error}");
+        assert!(error.contains("InvalidTime"), "{error}");
+        assert!(error.contains("nothing was registered"), "{error}");
+        let error = registration_sent(7, Err(reverted("BadContext"))).unwrap_err();
+        assert!(error.contains("BadContext"), "{error}");
+        let error =
+            registration_sent(7, Err("execution reverted: unknown data".into())).unwrap_err();
+        assert!(error.contains("reason not decoded"), "{error}");
+        // Unknown outcomes and a sent registration wait for the anchor.
+        registration_sent(7, Err("cast timed out after 90s (RPC wedged)".into())).unwrap();
+        registration_sent(7, Err("error sending request: connection refused".into())).unwrap();
+        registration_sent(7, Ok("0xabc".into())).unwrap();
+        // The refusal reaches the caller of the registration, ahead of any wait.
+        let bounds = TimeBounds {
+            first_ms: 1_000,
+            last_ms: 40_000,
+            count: 2,
+        };
+        let refused = register_or_reuse(
+            crate::clock_client::RegisterMode::SendIfAbsent,
+            None,
+            &bounds,
+            40_000,
+            || Ok(30_000),
+            || registration_sent(7, Err(reverted("InvalidTime"))),
+        )
+        .unwrap_err();
+        assert!(refused.contains("InvalidTime"), "{refused}");
+    }
+
+    /// Real `cast send --json` output (Foundry 1.5.1 against anvil, a verifier
+    /// stub that reverts with the named error), as `run_cast` returns it: stderr
+    /// on a non-zero exit, stdout otherwise.
+    const ESTIMATE_REVERT_INVALID_TIME: &str = "Error: Failed to estimate gas: server returned \
+        an error response: error code 3: execution reverted: custom error 0x6f7eac26, data: \
+        \"0x6f7eac26\": InvalidTime";
+    const ESTIMATE_REVERT_BAD_CONTEXT: &str = "Error: Failed to estimate gas: server returned \
+        an error response: error code 3: execution reverted: custom error 0xc3a2fdfe, data: \
+        \"0xc3a2fdfe\": BadContext";
+    /// A mined transaction that reverted: cast exits 0 and prints the receipt.
+    const MINED_REVERT_INVALID_TIME: &str = r#"{"status":"0x0","cumulativeGasUsed":"0x5471","logs":[],"type":"0x2","transactionHash":"0x1720db2d2793c5d0d051e612f030cd0eb7178d75b36330bdb3a3d4cba141eec8","transactionIndex":"0x0","blockHash":"0x9c763227ed7f95dfa8ff573c7a308bc4d716fa84920987b3132fe6b2c098e9cc","blockNumber":"0x2","gasUsed":"0x5471","effectiveGasPrice":"0x34354a3b","blobGasPrice":"0x1","from":"0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266","to":"0x5fbdb2315678afecb367f032d93f642f64180aa3","contractAddress":null,"revertReason":"custom error 0x6f7eac26, data: \"0x6f7eac26\""}"#;
+    const MINED: &str = r#"{"status":"0x1","transactionHash":"0x1720db2d2793c5d0d051e612f030cd0eb7178d75b36330bdb3a3d4cba141eec8","blockNumber":"0x2","contractAddress":null}"#;
+    const CONNECTION_REFUSED: &str = "Error: error sending request for url \
+        (http://127.0.0.1:18546/)\n\nContext:\n- Error #0: client error (Connect)\n- Error #1: tcp \
+        connect error\n- Error #2: Connection refused (os error 111)";
+    const NONCE_TOO_LOW: &str =
+        "Error: server returned an error response: error code -32003: nonce too low";
+
+    /// G2-2 (round 2): `is_revert` reads cast's text, so it is pinned to real
+    /// cast output. A reverted estimate and a mined transaction that reverted
+    /// (which cast reports as a success: exit 0, `status` 0x0) are both
+    /// surfaced with the verifier's error; transport and nonce errors leave the
+    /// outcome unknown and wait for the anchor. Only a reverted estimate that
+    /// names BadContext, which broadcast nothing, is sent again.
+    #[test]
+    fn audit_1116_g2_2_registration_outcomes_are_pinned_to_real_cast_output() {
+        for (sent, reason) in [
+            (Err(ESTIMATE_REVERT_INVALID_TIME), "InvalidTime"),
+            (Err(ESTIMATE_REVERT_BAD_CONTEXT), "BadContext"),
+            (Ok(MINED_REVERT_INVALID_TIME), "InvalidTime"),
+        ] {
+            let error =
+                registration_sent(7, sent.map(str::to_string).map_err(str::to_string)).unwrap_err();
+            assert!(error.contains(REGISTRATION_REVERTED), "{error}");
+            assert!(error.contains(reason), "{error}");
+        }
+        for sent in [Ok(MINED), Err(CONNECTION_REFUSED), Err(NONCE_TOO_LOW)] {
+            registration_sent(7, sent.map(str::to_string).map_err(str::to_string)).unwrap();
+        }
+        assert!(resend_registration(ESTIMATE_REVERT_BAD_CONTEXT));
+        for error in [
+            ESTIMATE_REVERT_INVALID_TIME,
+            CONNECTION_REFUSED,
+            NONCE_TOO_LOW,
+            &mined_revert(MINED_REVERT_INVALID_TIME).unwrap(),
+        ] {
+            assert!(!resend_registration(error), "{error}");
+        }
+        assert_eq!(mined_revert(MINED), None);
+    }
+
+    /// G2-2: the timing policy's own checks: span, skew and derivation.
+    #[test]
+    fn audit_1116_g2_2_clock_timing_checks_span_skew_and_derivation() {
+        let timing = ClockTiming {
+            max_window_ms: 30_000,
+            clock_skew_ms: 30_000,
+        };
+        assert_eq!(
+            timing.seal_period().unwrap(),
+            std::time::Duration::from_millis(7_500)
+        );
+        let b = |first_ms, last_ms| {
+            Ok(TimeBounds {
+                first_ms,
+                last_ms,
+                count: 2,
+            })
+        };
+        timing.check_registrable(&b(0, 30_000), 30_000).unwrap();
+        assert!(timing
+            .check_registrable(&b(0, 30_001), 30_001)
+            .unwrap_err()
+            .contains("maxWindowMs"));
+        assert!(timing
+            .check_registrable(&b(0, 1_000), 31_000)
+            .unwrap_err()
+            .contains("skew"));
+        assert!(timing
+            .check_registrable(&Err(perp_core::EngineError::ClockMismatch), 0)
+            .is_err());
+        timing
+            .check_registrable(&Ok(TimeBounds::default()), u64::MAX)
+            .unwrap();
     }
 }
 

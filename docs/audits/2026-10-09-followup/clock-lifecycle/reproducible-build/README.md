@@ -44,7 +44,7 @@ The [captured original arguments](original-compiler-invocations.jsonl) establish
 
 For those two exact source entrypoints only, the wrapper changes the existing
 metadata value and appends `--remap-path-prefix` from the current checkout to
-`/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009`.
+`/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009`.
 Cargo output filenames, dependencies, source files and other arguments are
 retained. Before/after arguments are preserved for the
 [diagnostic](diagnostic-compiler-invocations.jsonl) and

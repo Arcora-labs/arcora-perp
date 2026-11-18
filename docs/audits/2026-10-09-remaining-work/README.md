@@ -110,8 +110,8 @@ Yerel check'ler için Rust 1.99.0 kullanıldı. Bu Mac'in varsayılan Homebrew `
 komutu Rust 1.95.0'a gider; CI ile aynı sürüm için:
 
 ```sh
-/Users/huseyinarslan/.cargo/bin/cargo +1.99.0 test --workspace --locked
-/Users/huseyinarslan/.cargo/bin/cargo +1.99.0 clippy --workspace --all-targets --locked -- -D warnings
+/Users/<dev>/.cargo/bin/cargo +1.99.0 test --workspace --locked
+/Users/<dev>/.cargo/bin/cargo +1.99.0 clippy --workspace --all-targets --locked -- -D warnings
 python3.11 -m unittest discover -s scripts/local-verification -p 'test_*.py'
 forge test --root contracts
 pnpm --dir frontend test

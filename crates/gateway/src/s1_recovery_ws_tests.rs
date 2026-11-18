@@ -10,7 +10,7 @@ use tower::ServiceExt as _;
 
 fn prepared() -> (Shared, [u8; 32], PubKey, SigningKey) {
     let sk = SigningKey::from_bytes((&[7u8; 32]).into()).unwrap();
-    let public = sk.verifying_key().to_encoded_point(false);
+    let public = sk.verifying_key().to_sec1_point(false);
     let hash = <RawKeccak as sha3::Digest>::digest(&public.as_bytes()[1..]);
     let payer: [u8; 20] = hash[12..].try_into().unwrap();
     let mut gw = Gw::boot_with(GenesisMode::Production);
@@ -27,7 +27,7 @@ async fn signature(app: &Shared, sk: &SigningKey, owner: &PubKey, nonce: u64) ->
         (gw.chain_id, gw.vault)
     };
     let d = digest(chain_id, &vault, owner, nonce);
-    let (sig, recovery) = sk.sign_prehash_recoverable(&d).unwrap();
+    let (sig, recovery) = sk.sign_prehash_recoverable(&d);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = recovery.to_byte() + 27;
@@ -394,7 +394,7 @@ async fn recovery_rejections_and_nonce_overflow() {
         (gw.chain_id, gw.vault)
     };
     let d = digest(chain_id ^ 1, &vault, &owner, 0);
-    let (s, rec) = wrong_sk.sign_prehash_recoverable(&d).unwrap();
+    let (s, rec) = wrong_sk.sign_prehash_recoverable(&d);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&s.to_bytes());
     wire[64] = rec.to_byte() + 27;
@@ -606,7 +606,7 @@ async fn ws_unrelated_sessions_unaffected_by_rotation() {
     let (mut app, key_a, owner_a, sk_a) = prepared();
     // Second account with its own authorizer.
     let sk_b = SigningKey::from_bytes((&[11u8; 32]).into()).unwrap();
-    let public_b = sk_b.verifying_key().to_encoded_point(false);
+    let public_b = sk_b.verifying_key().to_sec1_point(false);
     let hash_b = <RawKeccak as sha3::Digest>::digest(&public_b.as_bytes()[1..]);
     let payer_b: [u8; 20] = hash_b[12..].try_into().unwrap();
     let (key_b, owner_b) = {
@@ -1617,7 +1617,7 @@ async fn direct_idle_revocation_requires_transport_closure_not_silence() {
 }
 
 fn local_sign_digest(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
-    let (sig, recovery) = sk.sign_prehash_recoverable(digest).unwrap();
+    let (sig, recovery) = sk.sign_prehash_recoverable(digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = recovery.to_byte() + 27;
@@ -1690,7 +1690,7 @@ async fn local_real_rebind_before_recovery_rechecks_current_authorizer() {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(2);
         Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
         let new_sk = SigningKey::from_bytes((&[9u8; 32]).into()).unwrap();
-        let public = new_sk.verifying_key().to_encoded_point(false);
+        let public = new_sk.verifying_key().to_sec1_point(false);
         let hash = <RawKeccak as sha3::Digest>::digest(&public.as_bytes()[1..]);
         let new_address: [u8; 20] = hash[12..].try_into().unwrap();
         let sig = signature(&app, &old_sk, &owner, 0).await;

@@ -1,7 +1,7 @@
 [WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
 $ vitest run src/components/AccountPanel.test.tsx
 
- RUN  v4.1.11 /Users/huseyinarslan/Desktop/arcora-perp/repo/frontend
+ RUN  v4.1.11 /Users/<dev>/Desktop/arcora-perp/repo/frontend
 
  ❯ src/components/AccountPanel.test.tsx (11 tests | 1 failed) 48ms
      × rejects shell syntax and invalid claim fields before creating a command 3ms

@@ -1,4 +1,4 @@
-Diff in /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs:45:
+Diff in /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs:45:
  
  mod account_recovery;
  mod bootstrap;
@@ -6,7 +6,7 @@ Diff in /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/cra
  #[cfg(test)]
  mod candidate_intent;
  #[cfg(test)]
-Diff in /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs:54:
+Diff in /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs:54:
  mod candidate_protocol_tests;
  #[cfg(test)]
  mod candidate_registration;

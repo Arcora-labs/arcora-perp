@@ -7,11 +7,11 @@ sys.path.insert(0, str(root/'scripts/local-verification'))
 import candidate_identity_manifest as identity
 name = sys.argv[1]
 commands = {
-    'fixture-first': ['/Users/huseyinarslan/.cargo/bin/cargo','+1.99.0','test','--locked','-p','gateway','--bin','gateway','candidate_fixture_transport_tests','--','--nocapture'],
-    'gateway-final': ['/Users/huseyinarslan/.cargo/bin/cargo','+1.99.0','test','--locked','-p','gateway','--bin','gateway'],
-    'workspace-clippy': ['/Users/huseyinarslan/.cargo/bin/cargo','+1.99.0','clippy','--workspace','--all-targets','--locked','--','-D','warnings'],
-    'workspace-format': ['/Users/huseyinarslan/.cargo/bin/cargo','+1.99.0','fmt','--all','--check'],
-    'harness-format': ['/Users/huseyinarslan/.cargo/bin/cargo','+1.99.0','fmt','--manifest-path','scripts/local-verification/service-identity-harness/Cargo.toml','--check'],
+    'fixture-first': ['/Users/<dev>/.cargo/bin/cargo','+1.99.0','test','--locked','-p','gateway','--bin','gateway','candidate_fixture_transport_tests','--','--nocapture'],
+    'gateway-final': ['/Users/<dev>/.cargo/bin/cargo','+1.99.0','test','--locked','-p','gateway','--bin','gateway'],
+    'workspace-clippy': ['/Users/<dev>/.cargo/bin/cargo','+1.99.0','clippy','--workspace','--all-targets','--locked','--','-D','warnings'],
+    'workspace-format': ['/Users/<dev>/.cargo/bin/cargo','+1.99.0','fmt','--all','--check'],
+    'harness-format': ['/Users/<dev>/.cargo/bin/cargo','+1.99.0','fmt','--manifest-path','scripts/local-verification/service-identity-harness/Cargo.toml','--check'],
 }
 patterns = {
     'new-python-final': ['test_service_build_identity.py','test_service_identity_preflight.py'],

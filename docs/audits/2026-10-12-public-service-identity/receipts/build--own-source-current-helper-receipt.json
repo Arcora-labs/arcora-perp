@@ -3,9 +3,9 @@
     "python3.11",
     "scripts/local-verification/service_build_identity.py",
     "--root",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
     "--output",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/build/own-source-current/service-build-identity.json"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/build/own-source-current/service-build-identity.json"
   ],
   "exit_code": 0,
   "elapsed_seconds": 0.19924816698767245,

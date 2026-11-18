@@ -12,7 +12,7 @@
     "--",
     "--nocapture"
   ],
-  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
   "elapsed_seconds": 0.6289348748978227,
   "environment_override": {
     "CARGO_BUILD_JOBS": "2",

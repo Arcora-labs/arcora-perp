@@ -16,20 +16,20 @@ test_zero_tests_failure_and_ignored_are_not_passes (test_finite_preparation_prof
 ERROR: test_timeout_and_nonzero_logs_are_retained (test_finite_preparation_profile.CaptureEvidence.test_timeout_and_nonzero_logs_are_retained)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_finite_preparation_profile.py", line 87, in test_timeout_and_nonzero_logs_are_retained
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_finite_preparation_profile.py", line 87, in test_timeout_and_nonzero_logs_are_retained
     profile.capture(out, label, [sys.executable, "-S", "-c", script], timeout=timeout)
     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/finite_preparation_profile.py", line 165, in capture
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/finite_preparation_profile.py", line 165, in capture
     raise outcome.error
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 170, in supervise
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 170, in supervise
     cleanup()
     ~~~~~~~^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 136, in cleanup
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 136, in cleanup
     if not group_exists():
            ~~~~~~~~~~~~^^
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 111, in group_exists
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 111, in group_exists
     present = _group_exists(process.pid)
-  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 57, in _group_exists
+  File "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/owned_process.py", line 57, in _group_exists
     os.killpg(pgid, 0)
     ~~~~~~~~~^^^^^^^^^
 PermissionError: [Errno 1] Operation not permitted

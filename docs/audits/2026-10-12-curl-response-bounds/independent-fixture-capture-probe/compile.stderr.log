@@ -19,13 +19,13 @@ warning: field `request` is never read
    |     ^^^^^^^
 
 warning: constant `MAX_GET_RESPONSE_BYTES` is never used
-  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:13:18
+  --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:13:18
    |
 13 | pub(crate) const MAX_GET_RESPONSE_BYTES: usize = 1024 * 1024;
    |                  ^^^^^^^^^^^^^^^^^^^^^^
 
 warning: constant `MAX_STDERR_BYTES` is never used
-  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:14:18
+  --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:14:18
    |
 14 | pub(crate) const MAX_STDERR_BYTES: usize = 16 * 1024;
    |                  ^^^^^^^^^^^^^^^^

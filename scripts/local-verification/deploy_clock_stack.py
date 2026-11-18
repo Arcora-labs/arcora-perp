@@ -5,16 +5,23 @@ Deploys exactly the compiled artifacts `release_manifest.py` verifies (so the
 on-chain code can be observed as VERIFIED), in the order the owned-Anvil
 manifest test proves:
 
-  [sp1_verifier, sp1_gateway, addRoute] → sp1_adapter(gateway, reviewed vkey)
+  sp1_verifier → sp1_adapter(sp1_verifier, reviewed vkey)
   → clock_verifier(adapter, max_window_ms, clock_skew_ms, anchor_timeout_ms)
   → settlement(Config: 12 words from the policy and genesis_root) → token
   (MockUSDC) → vault(settlement, token, gateway_signer) → settlement.setVault(vault)
   → clock_verifier.bindSettlement(settlement)
 
-The first three steps are skipped when `sp1_gateway` names an existing SP1
-verifier gateway (Base Sepolia: Succinct's 0x397A5f7f…), whose route verifier
-must then be given as `sp1_verifier`. The program key is never configurable:
-it is the reviewed clock guest key the release manifest pins.
+The adapter is bound DIRECTLY to the stateless v6.1.0 SP1 verifier: no ownable
+SP1 verifier gateway (router) sits between settlement and proof verification,
+because a router owner can add an accept-everything route or freeze the route
+and so bypass or halt every proof. The first step is skipped when `sp1_verifier`
+names an existing verifier; before any transaction its runtime must then equal
+the compiled stateless verifier and it must report the pinned VERIFIER_HASH(), so
+a router (e.g. Succinct's shared gateway) is refused. `--accept-sp1-router-owner-trust`
+is the only way past that check: the operator then accepts that the router's
+owner can bypass or halt proof verification (docs/SECURITY.md), and
+`observe-target` will not report such a stack VERIFIED. The program key is never
+configurable: it is the reviewed clock guest key the release manifest pins.
 
 Every transaction goes through `cast send --json` with the signer flags given
 after `--` (`--unlocked --from ADDR` on Anvil; `--account NAME` or `--ledger`
@@ -37,13 +44,13 @@ declared --owned-test-chain must also use a local chain id (31337 or 1337).
         --output public-config.json -- --unlocked --from 0x…
 
 The config holds exactly: `chain_id`, `genesis_root`, `wind_down_recipient`,
-`oracle_signer_address`, `sp1_gateway` (null, or an existing gateway plus
-`sp1_verifier`), `clock` {max_window_ms, clock_skew_ms, anchor_timeout_ms},
+`oracle_signer_address`, `sp1_verifier` (null, or an existing stateless
+verifier, see above), `clock` {max_window_ms, clock_skew_ms, anchor_timeout_ms},
 `deposit_permit_ttl_secs` (bound into the public gateway config as
 DEPOSIT_PERMIT_TTL_SECS) and `operator_policy`
 (`release_manifest.operator_policy`: settlement addresses plus
-SETTLEMENT_POLICY, the vault gateway signer, the clock configurator and the
-SP1 gateway owner). The Base Sepolia launch values are liveness 43,200 blocks,
+SETTLEMENT_POLICY, the vault gateway signer and the clock configurator; the
+stateless verifier has no owner). The Base Sepolia launch values are liveness 43,200 blocks,
 challenge grace 3,600 blocks, a 0.01 ETH challenge bond, a 3,600 s inclusion
 deadline, final-settle grace 300 blocks, 2 progress batches, a 1,000 USDC
 (1,000,000,000 base units) payout cap, clock 30,000 / 30,000 / 3,600,000 ms and
@@ -67,7 +74,10 @@ WIND_DOWN_RECIPIENT and PROVER_EXPECTED_ELF_SHA256 come from the config and the
 reviewed guest) and the transaction record next to it as
 `<output>.deployment.json`, including `deploy_block` (the block of the first
 transaction) and `settlement_block` (the block the settlement was created in,
-where its liveness clock starts). If a transaction fails, nothing is written to
+where its liveness clock starts). Both records carry
+`sp1_router_owner_trust_accepted` and `sp1_trusted_router`: true and the router's
+address only when `--accept-sp1-router-owner-trust` let a reused target that is
+not the stateless verifier through. If a transaction fails, nothing is written to
 --output; `<output>.partial.json` records what was deployed before it.
 """
 import argparse
@@ -79,12 +89,12 @@ from pathlib import Path
 
 import release_manifest as release
 
-ROLES_IN_ORDER = ["sp1_verifier", "sp1_gateway", "sp1_adapter", "clock_verifier", "settlement", "token", "vault"]
+ROLES_IN_ORDER = ["sp1_verifier", "sp1_adapter", "clock_verifier", "settlement", "token", "vault"]
 
 # The ten default Anvil/Hardhat accounts (the published `test ... junk` mnemonic).
 PUBLIC_DEV_ADDRESSES = release.PUBLIC_DEV_ADDRESSES
 TOKEN_ARTIFACT = "out/MockUSDC.sol/MockUSDC.json"
-CONFIG_KEYS = {"chain_id", "genesis_root", "wind_down_recipient", "oracle_signer_address", "sp1_gateway",
+CONFIG_KEYS = {"chain_id", "genesis_root", "wind_down_recipient", "oracle_signer_address", "sp1_verifier",
                "clock", "operator_policy", "deposit_permit_ttl_secs"}
 # Genesis addresses: the config key, and its name in the release `genesis` block.
 GENESIS_ADDRESSES = {"wind_down_recipient": "wind_down_recipient", "oracle_signer_address": "oracle_signer"}
@@ -126,9 +136,8 @@ def word(value):
 
 def load_config(raw):
     keys = set(raw) if isinstance(raw, dict) else set()
-    expected = CONFIG_KEYS | ({"sp1_verifier"} if isinstance(raw, dict) and raw.get("sp1_gateway") else set())
-    if keys != expected:
-        raise DeployError(f"config keys must be exactly {sorted(expected)}")
+    if keys != CONFIG_KEYS:
+        raise DeployError(f"config keys must be exactly {sorted(CONFIG_KEYS)}")
     if type(raw["chain_id"]) is not int or raw["chain_id"] <= 0:
         raise DeployError("chain_id must be a positive integer")
     genesis = release.normalized_hex(raw["genesis_root"], 32, "genesis_root")
@@ -154,9 +163,8 @@ def load_config(raw):
     if type(ttl) is not int or not 0 < ttl < 2**64:
         raise DeployError("deposit_permit_ttl_secs must be a positive integer number of seconds")
     reuse = None
-    if raw["sp1_gateway"]:
-        reuse = {"sp1_gateway": release.normalized_hex(raw["sp1_gateway"], 20, "sp1_gateway"),
-                 "sp1_verifier": release.normalized_hex(raw["sp1_verifier"], 20, "sp1_verifier")}
+    if raw["sp1_verifier"]:
+        reuse = {"sp1_verifier": release.normalized_hex(raw["sp1_verifier"], 20, "sp1_verifier")}
     config = {"chain_id": raw["chain_id"], "genesis_root": genesis, **genesis_addresses, "clock": dict(clock),
               "operator_policy": policy, "deposit_permit_ttl_secs": ttl, "reuse": reuse}
     check_constructor_rules(config)
@@ -206,6 +214,44 @@ def _run_cast(argv, timeout=300):
 
 def cast(args, rpc):
     return _run_cast([*args, "--rpc-url", rpc])
+
+
+def pinned_verifier_artifact():
+    return release.read_json(release.ROOT / "contracts" / release.CONTRACTS["sp1_verifier"][0])
+
+
+def check_reused_verifier(config, rpc, accept_router_owner_trust=False):
+    """Refuse a reused SP1 target that is not the pinned stateless verifier.
+
+    A router (SP1VerifierGateway or any contract with an owner, routes or an
+    upgrade path) lets its owner add an accept-everything route or freeze the
+    route, so it must be an explicit, documented opt-in. Otherwise the target's
+    whole runtime must equal the compiled stateless v6.1.0 SP1 verifier (the same
+    match `observe-target` makes), and it must report the pinned VERIFIER_HASH().
+    Behavior probes alone would pass any lookalike that merely lacks an `owner()`.
+
+    Returns the router the opt-in let through (recorded with the deployment), or
+    None when the adapter targets the pinned verifier.
+    """
+    if not config["reuse"]:
+        return None
+    target = config["reuse"]["sp1_verifier"]
+    code = cast(["code", target], rpc)
+    try:
+        release.runtime_identity(pinned_verifier_artifact(), release.deployment_reader.hex_data(code), "sp1_verifier")
+    except ValueError:
+        if accept_router_owner_trust:
+            print("[deploy] WARNING: --accept-sp1-router-owner-trust: " + target + " is not the stateless "
+                  "SP1 verifier; its owner can bypass or halt proof verification (docs/SECURITY.md)",
+                  file=sys.stderr)
+            return target
+        raise DeployError("sp1_verifier's runtime is not the compiled stateless SP1 v6.1.0 verifier: a router "
+                          "or any other contract is refused (--accept-sp1-router-owner-trust accepts "
+                          "trusting a router owner)") from None
+    pinned = "0x" + release.clock.target.VERIFIER_HASH
+    if cast(["call", target, "VERIFIER_HASH()(bytes32)"], rpc).lower() != pinned:
+        raise DeployError("sp1_verifier does not report the pinned SP1 v6.1.0 VERIFIER_HASH()")
+    return None
 
 
 def check_chain(config, rpc, allow_public, owned_test_chain=False):
@@ -280,9 +326,8 @@ def deploy_stack(config, deployer):
         a.update(config["reuse"])
     else:
         deployer.create("sp1_verifier")
-        deployer.create("sp1_gateway", p["sp1_gateway"]["owner"])
-        deployer.call("sp1_gateway.addRoute", a["sp1_gateway"], "addRoute(address)", a["sp1_verifier"])
-    deployer.create("sp1_adapter", a["sp1_gateway"], release.clock.REVIEWED_GUEST["vkey"])
+    # Bound directly to the stateless verifier: there is no router owner to trust.
+    deployer.create("sp1_adapter", a["sp1_verifier"], release.clock.REVIEWED_GUEST["vkey"])
     c = config["clock"]
     deployer.create("clock_verifier", a["sp1_adapter"], c["max_window_ms"], c["clock_skew_ms"], c["anchor_timeout_ms"])
     deployer.create("settlement", *settlement_words(config, a["clock_verifier"]))
@@ -335,6 +380,9 @@ def main(argv=None):
     parser.add_argument("--owned-test-chain", action="store_true",
                         help="the target is a disposable chain you own; skips the Base launch floors "
                              "(chain id 31337 or 1337 until the real proof status is PROVEN)")
+    parser.add_argument("--accept-sp1-router-owner-trust", action="store_true",
+                        help="allow a reused sp1_verifier that is an ownable SP1 router; its owner can then "
+                             "bypass or halt proof verification (see docs/SECURITY.md)")
     parser.add_argument("--gateway-bin", type=Path,
                         help="the release's darkperp-gateway binary: recompute the genesis root from the "
                              "configured recipient and oracle signer and require the configured root")
@@ -351,10 +399,14 @@ def main(argv=None):
         public_config(config, {role: "0x" + format(i, "040x")
                                for i, role in enumerate(sorted(release.ADDRESS_ROLES), 1)})
         client, owned = check_chain(config, args.rpc, args.allow_public_chain, args.owned_test_chain)
+        trusted_router = check_reused_verifier(config, args.rpc, args.accept_sp1_router_owner_trust)
     except (DeployError, ValueError, OSError) as error:
         print(f"[deploy] REFUSED: {error}", file=sys.stderr)
         return 2
     deployer = Deployer(args.rpc, signer)
+    # Evidence: whether the adapter targets a router whose owner the operator chose to trust.
+    sp1_trust = {"sp1_router_owner_trust_accepted": trusted_router is not None,
+                 "sp1_trusted_router": trusted_router}
     try:
         deploy_stack(config, deployer)
         public = public_config(config, deployer.addresses)
@@ -363,7 +415,7 @@ def main(argv=None):
         args.output.with_suffix(".partial.json").write_text(json.dumps({
             "chain_id": config["chain_id"], "rpc_client": client, "owned_test_chain": owned,
             "addresses": deployer.addresses, "transactions": deployer.transactions,
-            "deploy_block": first_block(deployer), "failed": failed, "error": str(error),
+            "deploy_block": first_block(deployer), "failed": failed, "error": str(error), **sp1_trust,
         }, indent=2) + "\n")
         print(f"[deploy] FAILED: {error}; partial record written", file=sys.stderr)
         return 1
@@ -374,6 +426,7 @@ def main(argv=None):
         "oracle_signer_address": config["oracle_signer_address"],
         "genesis_recomputed": args.gateway_bin is not None, "deploy_block": first_block(deployer),
         "settlement_block": deployer.block_of("settlement"), "transactions": deployer.transactions,
+        **sp1_trust,
     }, indent=2) + "\n")
     print(json.dumps({"status": "DEPLOYED", "addresses": public["addresses"]}, indent=2))
     return 0

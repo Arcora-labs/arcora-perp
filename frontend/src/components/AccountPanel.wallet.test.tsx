@@ -237,6 +237,36 @@ describe("WalletDepositCard", () => {
     expect(p.sent().length).toBe(0);
   });
 
+  it("asks 100 USDC for a deposit that opens a market, before any wallet prompt (audit G1-1)", async () => {
+    const p = makeProvider();
+    install(p.provider);
+    const { client, authorizeCalls } = makeClient();
+    render(<WalletDepositCard client={client} opensEntry />);
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+    expect(screen.getByText(/minimum deposit: 100 usdc to open this market/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/deposit amount/i), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/minimum deposit into this market is 100 usdc/i)).toBeTruthy();
+    expect(p.switches().length).toBe(0);
+    expect(p.sent().length).toBe(0);
+    expect(authorizeCalls).toEqual([]);
+  });
+
+  it("keeps the 10 USDC minimum for a top-up of a market already open", async () => {
+    const p = makeProvider();
+    install(p.provider);
+    const { client, authorizeCalls } = makeClient();
+    render(<WalletDepositCard client={client} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+    expect(screen.getByText(/^minimum deposit: 10 usdc\.$/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/deposit amount/i), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
+    expect(authorizeCalls).toEqual([[addr, 50_000_000n]]);
+  });
+
   it("shows the vault's capacity refusal from the dry run and sends no deposit", async () => {
     const p = makeProvider({ eth_call: vaultRevert("BondCapacityExceeded") });
     install(p.provider);

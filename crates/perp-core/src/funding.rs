@@ -163,7 +163,18 @@ impl FundingState {
     /// nothing, the clock included, so an idle market's ticks leave the state root
     /// unchanged. Returns whether the state changed.
     pub fn accrue(&mut self, mark: i128, index_price: i128, now_ms: u64) -> bool {
-        let new_rate = Self::funding_rate(mark, index_price);
+        self.accrue_rate(Self::funding_rate(mark, index_price), index_price, now_ms)
+    }
+
+    /// [`FundingState::accrue`] with the rate to adopt given directly, clamped to
+    /// `±MAX_FUNDING_RATE_PER_INTERVAL`. The engine's `AccrueFunding` passes the
+    /// observed rate, or zero when the side that would receive it holds more open
+    /// interest than the side that would pay it.
+    pub fn accrue_rate(&mut self, new_rate: i128, index_price: i128, now_ms: u64) -> bool {
+        let new_rate = new_rate.clamp(
+            -MAX_FUNDING_RATE_PER_INTERVAL,
+            MAX_FUNDING_RATE_PER_INTERVAL,
+        );
         if self.rate == 0 && new_rate == 0 {
             return false;
         }

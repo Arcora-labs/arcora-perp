@@ -150,7 +150,7 @@ impl OracleTranscript {
 /// callers recover an address via [`OracleSig::recover`].
 fn eth_address(vk: &VerifyingKey) -> [u8; 20] {
     use tiny_keccak::{Hasher as _, Keccak};
-    let point = vk.to_encoded_point(false);
+    let point = vk.to_sec1_point(false);
     let mut k = Keccak::v256();
     k.update(&point.as_bytes()[1..]);
     let mut hash = [0u8; 32];
@@ -180,7 +180,7 @@ impl OracleSig {
     /// Sign a prehashed digest (host / test convenience — deterministic RFC-6979,
     /// no RNG). The guest never signs; it only [`recover`](OracleSig::recover)s.
     pub fn sign(key: &k256::ecdsa::SigningKey, digest: &Digest) -> Self {
-        let (sig, recid) = key.sign_prehash_recoverable(digest).expect("sign");
+        let (sig, recid) = key.sign_prehash_recoverable(digest);
         let b = sig.to_bytes();
         let mut r = [0u8; 32];
         let mut s = [0u8; 32];
@@ -193,12 +193,13 @@ impl OracleSig {
         }
     }
 
-    /// Recover the signer's eth address, or `None` if malformed. (A malleated
-    /// high-`s` twin is NOT rejected here — k256's `from_slice` accepts high-`s`;
-    /// the twin simply recovers to a DIFFERENT address and is caught by the
-    /// downstream `signer == oracle_pubkey` check.) This is the only path the guest
-    /// needs.
+    /// Recover the signer's eth address, or `None` if malformed. The recovered key
+    /// must verify the signature (`verify_prehash`), which for secp256k1 also
+    /// refuses a malleated high-`s` twin; ecdsa 0.16's `recover_from_prehash` did
+    /// this re-verification itself, 0.17's does not, so it is explicit here. This
+    /// is the only path the guest needs.
     pub fn recover(&self, digest: &Digest) -> Option<[u8; 20]> {
+        use k256::ecdsa::signature::hazmat::PrehashVerifier;
         use k256::ecdsa::{RecoveryId, Signature};
         let mut rs = [0u8; 64];
         rs[..32].copy_from_slice(&self.r);
@@ -206,6 +207,7 @@ impl OracleSig {
         let sig = Signature::from_slice(&rs).ok()?;
         let recid = self.v.checked_sub(27).and_then(RecoveryId::from_byte)?;
         let vk = VerifyingKey::recover_from_prehash(digest, &sig, recid).ok()?;
+        vk.verify_prehash(digest, &sig).ok()?;
         Some(eth_address(&vk))
     }
 }

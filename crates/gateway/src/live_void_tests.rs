@@ -53,7 +53,7 @@ fn sign_withdrawal(gw: &Gw, a: &Keyed, amount: i128, auth_nonce: u64) -> [u8; 65
         &a.address,
         auth_nonce,
     );
-    let (sig, recid) = a.sk.sign_prehash_recoverable(&digest).unwrap();
+    let (sig, recid) = a.sk.sign_prehash_recoverable(&digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = 27 + recid.to_byte();
@@ -71,7 +71,7 @@ fn withdraw(gw: &mut Gw, a: &Keyed, amount: i128) -> Withdrawal {
 fn rotate(gw: &mut Gw, a: &Keyed) -> [u8; 32] {
     let nonce = gw.accounts[&a.key].recovery_nonce;
     let digest = crate::account_recovery::digest(gw.chain_id, &gw.vault, &a.owner, nonce);
-    let (sig, recid) = a.sk.sign_prehash_recoverable(&digest).unwrap();
+    let (sig, recid) = a.sk.sign_prehash_recoverable(&digest);
     let mut wire = [0u8; 65];
     wire[..64].copy_from_slice(&sig.to_bytes());
     wire[64] = 27 + recid.to_byte();

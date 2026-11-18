@@ -34,8 +34,8 @@ CLOCK_V2_PROOF = {
     "commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e",
     "proof_sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89",
 }
-# The GPU-day record of how the committed proof was produced (prover binaries and hashes).
-GPU_DAY_EVIDENCE = "docs/audits/2026-10-21-gpu-day/gpu-day.json"
+# The GPU run record of how the committed proof was produced (prover binaries and hashes).
+GPU_DAY_EVIDENCE = "docs/audits/2026-11-18-guest-reproof/reproof.json"
 
 
 def source(relative):

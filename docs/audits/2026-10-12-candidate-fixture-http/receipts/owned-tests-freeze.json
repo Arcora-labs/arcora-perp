@@ -7,7 +7,7 @@
   "scope": "Only new test source and ignored receipts edited. Each semantic negative proves both unchanged normal/liquidation full-HTTP positive baselines; TCP fixtures are typed owned 127.0.0.1 ephemeral listeners. Stored source/plan bytes remain existing coordinator authority. Opaque fixture proof/native replay, not actual proof/DON/service/chain acceptance.",
   "sha256": "86106496e135e952a2cd3aa3f6ad95479eb555f5472954618d63f7c6f64106e4",
   "syntax_format": {
-    "command": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt --edition 2021 crates/gateway/src/candidate_fixture_transport_tests.rs",
+    "command": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt --edition 2021 crates/gateway/src/candidate_fixture_transport_tests.rs",
     "exit_code": 0
   },
   "test_build_runs_performed": false,

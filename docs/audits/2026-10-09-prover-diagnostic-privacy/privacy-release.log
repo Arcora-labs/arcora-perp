@@ -1,4 +1,4 @@
-   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+   Compiling prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/prover)
     Finished `release` profile [optimized] target(s) in 5.51s
      Running tests/privacy_environment.rs (target/release/deps/privacy_environment-c1e7211f78b5582d)
 

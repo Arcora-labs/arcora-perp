@@ -110,6 +110,35 @@ class RepositoryPolicyTests(unittest.TestCase):
         self.assertIn("check_sp1_release.py --upstream-audit-lock", workflow)
         self.assertIn('cargo audit --deny unsound --file "$RUNNER_TEMP/guest-upstream/Cargo.lock"', workflow)
 
+    def test_only_the_sp1_locks_skip_the_sp1_owned_advisory(self):
+        # RUSTSEC-2026-0387 lives only inside SP1 6.1.0 (crypto-bigint 0.5 via
+        # sp1-lib / sp1-curves). The four SP1 locks may skip that one advisory, and
+        # only after check_sp1_owned_advisories.py proved no repository crate reaches
+        # it; the application and TEE capture locks are audited with no exception.
+        import re
+        workflow = (ROOT / ".github/workflows/a11-release-evidence.yml").read_text()
+        sp1_locks = ("crates/sp1-host/Cargo.lock", "crates/sp1-guest/Cargo.lock",
+                     '"$RUNNER_TEMP/guest-upstream/Cargo.lock"', "crates/prover-service/Cargo.lock")
+        self.assertEqual(re.findall(r"--ignore \S+", workflow), ["--ignore RUSTSEC-2026-0387\""])
+        self.assertEqual(workflow.count('sp1_owned="--ignore RUSTSEC-2026-0387"'), 1)
+        users = [line.strip() for line in workflow.splitlines() if "$sp1_owned" in line]
+        self.assertEqual(users, [f"cargo audit --deny unsound --file {lock} $sp1_owned --json | tee {out}"
+                                 for lock, out in zip(sp1_locks, ("cargo-audit-host.json", "cargo-audit-guest.json",
+                                                                  "cargo-audit-guest-upstream.json",
+                                                                  "cargo-audit-prover.json"))])
+        guard = "check_sp1_owned_advisories.py --advisory RUSTSEC-2026-0387 $sp1_locks"
+        self.assertIn('sp1_locks="' + " ".join(lock.strip('"') for lock in sp1_locks) + '"', workflow)
+        self.assertLess(workflow.index(guard), workflow.index("unsound --file crates/sp1-host/Cargo.lock $sp1_owned"))
+        for strict in ("cargo audit --deny unsound --json | tee cargo-audit.json",
+                       "cargo audit --deny unsound --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json"):
+            with self.subTest(strict=strict):
+                self.assertIn(strict, workflow)
+        self.assertIn("test_check_sp1_owned_advisories.py", workflow)
+        for other in (ROOT / ".github/workflows").glob("*.yml"):
+            if other.name != "a11-release-evidence.yml":
+                with self.subTest(workflow=other.name):
+                    self.assertNotRegex(other.read_text(), r"--ignore[\s=]")
+
     def test_every_opt_in_anvil_suite_runs_in_a_workflow(self):
         # An `ARCORA_RUN_*` gate that no workflow sets is a suite CI always skips.
         import re

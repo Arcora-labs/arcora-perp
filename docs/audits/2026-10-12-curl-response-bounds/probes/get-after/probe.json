@@ -1,6 +1,6 @@
 {
   "command": [
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/get-after/cargo-target/debug/owned-bounded-curl-get"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/get-after/cargo-target/debug/owned-bounded-curl-get"
   ],
   "exit_code": 0,
   "elapsed_seconds": 1.0381365000503138,

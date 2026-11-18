@@ -29,12 +29,12 @@
   "commands": [
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "generate-lockfile",
         "--offline",
         "--manifest-path",
-        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/harness/Cargo.toml"
+        "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/harness/Cargo.toml"
       ],
       "elapsed_seconds": 0.7843419999117032,
       "exit_code": 0,
@@ -44,13 +44,13 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "build",
         "--offline",
         "--locked",
         "--manifest-path",
-        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/harness/Cargo.toml"
+        "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/harness/Cargo.toml"
       ],
       "elapsed_seconds": 37.328332333941944,
       "exit_code": 0,
@@ -60,7 +60,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-target/debug/owned-curl-response-investigation"
+        "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-target/debug/owned-curl-response-investigation"
       ],
       "elapsed_seconds": 7.8772475000005215,
       "exit_code": 0,

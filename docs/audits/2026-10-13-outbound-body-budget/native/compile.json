@@ -1,20 +1,20 @@
 {
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "--edition=2021",
     "--crate-name",
     "owned_outbound_body_probe",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/probe.rs",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/probe.rs",
     "-L",
-    "dependency=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps",
+    "dependency=/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps",
     "--extern",
-    "prover=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libprover-2b500ed69166089e.rlib",
+    "prover=/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libprover-2b500ed69166089e.rlib",
     "--extern",
-    "postcard=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libpostcard-1948e1f842373c4d.rlib",
+    "postcard=/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libpostcard-1948e1f842373c4d.rlib",
     "--extern",
-    "serde_json=/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libserde_json-1f00db33053c319f.rlib",
+    "serde_json=/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/deps/libserde_json-1f00db33053c319f.rlib",
     "-o",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/probe"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/recovery/owned-body-probe/probe"
   ],
   "exit_code": 0,
   "seconds": 0.9074973339447752,

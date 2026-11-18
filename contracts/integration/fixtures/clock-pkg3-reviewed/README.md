@@ -12,10 +12,34 @@ fixture, the case witnesses and the negatives (`REVIEWED_FIXTURE`). It holds no
 proof. The real Groth16 proof of this fixture under this guest is in
 `../clock-pkg3-verified/` (`PROOF_FIXTURE`), so `proof_status()` reads `PROVEN`.
 
+## History
+
+This guest replaces the earlier reviewed guest (ELF `a6d51648…`, setup key
+`0x009cfc02…`, 535,904 bytes). The audit 2026-11-16 PC-1 and PC-2 fixes changed
+`crates/perp-core` (a liquidation closes the other side of its market, funding,
+withdrawal and unbind limits, the `ForcedClose` hash domain), which the guest
+compiles, so the program and its setup key changed. Against the earlier guest's
+record, the normal fixture's witness and commitment are unchanged; the case
+witnesses `cases/bad-debt-treasury-adl.witness.bin`,
+`cases/debt-top-up-prune.witness.bin` and
+`cases/debt-top-up-next-batch.witness.bin` and the negative
+`negatives/deposit-in-close-only.witness.bin` changed with the liquidation rule
+(`crates/sp1-host/src/cases.rs`), and every cycle count moved.
+
+The same branch then moved `perp-core` from k256 0.13 to k256 0.14 (RUSTSEC-2026-0387:
+k256 0.13 rests on crypto-bigint 0.5, whose constant-time operations could branch
+on secret data). That changed `crates/perp-core/Cargo.toml`, `crates/perp-core/src/oracle.rs`
+(the recovered oracle key must now verify the signature itself, which keeps the
+high-`s` refusal ecdsa 0.16's recovery performed) and `crates/sp1-guest/Cargo.lock`,
+so the program and its setup key changed once more. Every witness, commitment, case
+and negative is the same as for the intermediate guest (ELF `3c0bbb2a…`); only the
+ELF, the setup key and the cycle counts moved, and the guest is cheaper: the normal
+fixture fell from 5,751,985 to 3,812,229 cycles.
+
 | File | Content |
 | --- | --- |
-| `guest.elf` | The reviewed guest ELF, 535904 bytes, SHA-256 `a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df` |
-| `program-vkey.bin` | Its 32-byte setup key, `0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec` |
+| `guest.elf` | The reviewed guest ELF, 544920 bytes, SHA-256 `151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7` |
+| `program-vkey.bin` | Its 32-byte setup key, `0x00a64436bf5e0571d601dc24037255f000ece45670be86945d61b539606fd82a` |
 | `clock.witness.bin` | The normal fixture witness (`DPCLK4` framing), SHA-256 `70b90edcb2cf4e673053ca91b3b811865ca917388ff28a9a0aa696b740f5fa4a` |
 | `execution.json` | The `clock-proof --no-prove` record: hashes, commitments and cycle counts of the fixture, every case and every negative |
 | `cases/` | The nine case witnesses, `NAME.witness.bin` |
@@ -48,21 +72,21 @@ note stays unspent.
 
 The bound commitment (the guest's public value) is
 `0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab`. The guest
-executes the fixture in 5,750,329 cycles.
+executes the fixture in 3,812,229 cycles.
 
 ## Cases and negatives
 
 | Case | Wind-down phase | Cycles |
 | --- | --- | --- |
-| `epoch-price-refresh` | 0 | 2,971,773 |
-| `pause-reopen-fill` | 0 | 5,740,006 |
-| `bad-debt-treasury-adl` | 0 | 2,981,347 |
-| `debt-top-up-prune` | 0 | 252,270 |
-| `debt-top-up-next-batch` | 0 | 2,972,380 |
-| `full-exit-prune` | 0 | 5,755,654 |
-| `empty-keepalive` | 0 | 251,800 |
-| `settle-all-two-markets` | 1 | 290,552 |
-| `phase-two-exit` | 2 | 318,416 |
+| `epoch-price-refresh` | 0 | 1,996,328 |
+| `pause-reopen-fill` | 0 | 3,790,647 |
+| `bad-debt-treasury-adl` | 0 | 2,030,387 |
+| `debt-top-up-prune` | 0 | 261,418 |
+| `debt-top-up-next-batch` | 0 | 2,019,758 |
+| `full-exit-prune` | 0 | 3,803,803 |
+| `empty-keepalive` | 0 | 251,767 |
+| `settle-all-two-markets` | 1 | 290,952 |
+| `phase-two-exit` | 2 | 319,044 |
 
 Each case is accepted natively and by the guest with the same commitment. Each
 negative is refused natively with its expected error and by the guest with exit
@@ -72,18 +96,17 @@ case-derived and fresh batches, and six framings the guest does not accept.
 
 ## Provenance
 
-Built from the working tree on top of commit
-`8820eb58490788aea2dfac2ef831155a364d2153`, with the tiny-keccak precompile patch
-to `crates/sp1-guest/Cargo.toml` and `crates/sp1-guest/Cargo.lock` not yet
-committed; commit `675626e` committed those two files unchanged, so the guest
-inputs of the build are the 21 `REVIEWED_GUEST["sources"]` pins (which that
-commit's tree matches). The host was macOS on aarch64.
+Built on 2026-11-18 from commit `8b569ec` (the audit-remediation branch) with the
+k256 0.14 change and the re-pin of `REVIEWED_GUEST["sources"]` applied, so the guest
+inputs of the build are the 21 `REVIEWED_GUEST["sources"]` pins. The host was macOS on aarch64 (Apple M4).
 
-1. `rebuild_reviewed_guest.py` with the pinned succinct rustc 1.93.0-dev and
-   Cargo 1.99.0 (`--locked --offline`, the tiny-keccak precompile patch already
-   checked out in `CARGO_HOME`), into two fresh output directories. Both runs
-   reported `PASS_BYTE_EXACT_REVIEWED_ELF_REBUILD` with the ELF above, and the
-   two ELFs were byte-identical.
+1. `cold_rebuild_reviewed_guest.py` with the SHA-256-pinned official
+   `succinct-1.93.0-64bit` compiler archive and Cargo 1.99.0, each time into a
+   fresh output directory with an empty Cargo home, registry and target. The
+   first run compiled the guest and then refused at its identity check, as it
+   must while `REVIEWED_GUEST["elf"]` still named the earlier guest; it
+   reported the ELF above. With that ELF pinned, the second run reported
+   `PASS_COLD_BYTE_EXACT_REVIEWED_ELF_REBUILD`. The two ELFs were byte-identical.
 2. `vkey --elf guest.elf` from an `sp1-host` built with
    `SP1_SKIP_PROGRAM_BUILD=true` and an empty stub in place of the build-script
    guest. It printed the setup key above, the same for both ELFs.

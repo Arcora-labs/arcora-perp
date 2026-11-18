@@ -11,3 +11,6 @@ path = "src/main.rs"
 [dependencies]
 perp-core = { path = "../perp-core" }
 matcher = { path = "../matcher" }
+
+[lints]
+workspace = true

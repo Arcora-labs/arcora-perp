@@ -90,11 +90,12 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     let state = directory.join("state.snapshot");
     let mut gw = Gw::boot_with(GenesisMode::Production);
     let sk = k256::ecdsa::SigningKey::from_slice(&[0x63; 32]).unwrap();
-    let point = sk.verifying_key().to_encoded_point(false);
+    let point = sk.verifying_key().to_sec1_point(false);
     let hash = sha3::Keccak256::digest(&point.as_bytes()[1..]);
     let mut signer = [0; 20];
     signer.copy_from_slice(&hash[12..]);
-    let (key, first) = permit(&mut gw, 20_000_000, Some(signer));
+    // The withdrawal below leaves the 100 USDC entry minimum (audit G1-1).
+    let (key, first) = permit(&mut gw, 120_000_000, Some(signer));
     let (_, second) = permit(&mut gw, 7_000_000, None);
     assert_eq!(
         gw.apply_deposit_page(page(&gw, &[first, second])).unwrap(),
@@ -102,9 +103,16 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     );
     // Exercise a real signed withdrawal and retain the drained claim leaf.
     let owner = gw.accounts[&key].wallet.owner;
-    let digest =
-        crate::withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000_000, &[0x71; 20], 1);
-    let (signature, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+    let digest = crate::withdraw_auth_digest(
+        gw.chain_id,
+        &gw.vault,
+        &owner,
+        0,
+        10_000_000,
+        &[0x71; 20],
+        1,
+    );
+    let (signature, recid) = sk.sign_prehash_recoverable(&digest);
     let mut wire = [0; 65];
     wire[..64].copy_from_slice(&signature.to_bytes());
     wire[64] = 27 + recid.to_byte();
@@ -112,7 +120,7 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     // this fixture has no live RPC source, remote attestation or admission service.
     crate::persist_recovery(&gw, &state, &TEST_SEED, None).unwrap();
     gw.deposits.dirty = false;
-    gw.account_withdraw(&key, 0, 5_000_000, [0x71; 20], 1, &wire)
+    gw.account_withdraw(&key, 0, 10_000_000, [0x71; 20], 1, &wire)
         .unwrap();
     let batch_id = gw.seq.state.next_batch_id;
     let (witness, ww) = gw.begin_window_settle(batch_id).unwrap().unwrap();

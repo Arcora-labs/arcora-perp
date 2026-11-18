@@ -2,7 +2,7 @@
   "command": [
     "/opt/homebrew/bin/python3.12",
     "-B",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/publication/poll_ci.py"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/journal-v6-view-validation-20261014/publication/poll_ci.py"
   ],
   "elapsed_seconds": 113.08808700006921,
   "ended_utc": "2026-10-14T10:05:41.686654+00:00",

@@ -1,11 +1,11 @@
 {
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "build",
     "--offline",
     "--locked",
     "--manifest-path",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/get-after/harness/Cargo.toml"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/get-after/harness/Cargo.toml"
   ],
   "exit_code": 0,
   "elapsed_seconds": 24.91020258294884,

@@ -163,7 +163,7 @@
     Checking serde-human-bytes v0.1.3
     Checking parity-scale-codec v3.7.5
     Checking chrono v0.4.45
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
+    Checking perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
    Compiling wasm-bindgen-macro v0.2.126
     Checking postcard v1.1.3
     Checking chacha20poly1305 v0.10.1
@@ -178,11 +178,11 @@
     Checking url v2.5.8
     Checking sha3 v0.10.9
     Checking pbkdf2 v0.11.0
-    Checking dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/vendor/dcap-qvl-webpki)
+    Checking dcap-qvl-webpki v0.103.4+dcap.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/vendor/dcap-qvl-webpki)
    Compiling async-trait v0.1.89
     Checking scrypt v0.10.0
     Checking derive_more v2.1.1
-    Checking sealed-box v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
+    Checking sealed-box v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
     Checking uuid v0.8.2
     Checking serde_urlencoded v0.7.1
     Checking hyper v1.10.1
@@ -193,20 +193,20 @@
     Checking aes v0.8.4
     Checking eth-keystore v0.5.0
     Checking axum-core v0.4.5
-    Checking matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
-    Checking chainlink-oracle-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle-host)
-    Checking note-archive v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
-    Checking prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover)
+    Checking matcher v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
+    Checking chainlink-oracle-host v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle-host)
+    Checking note-archive v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
+    Checking prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover)
     Checking ureq v2.12.1
     Checking hyper-util v0.1.20
-    Checking sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
-    Checking chainlink-streams-client-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
-    Checking oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
+    Checking sequencer v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
+    Checking chainlink-streams-client-host v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
+    Checking oracle-feed v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
     Checking axum v0.7.9
     Checking wasm-bindgen-futures v0.4.76
     Checking dcap-qvl v0.5.2
-    Checking dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation)
-    Checking gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Checking dark-perp-attestation v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation)
+    Checking gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
 error: this call to `clone` can be replaced with `std::slice::from_ref`
    --> crates/gateway/src/candidate_protocol_tests.rs:277:9
     |

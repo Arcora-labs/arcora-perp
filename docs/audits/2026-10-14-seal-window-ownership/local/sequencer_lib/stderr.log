@@ -30,8 +30,8 @@
    Compiling ecdsa v0.16.9
    Compiling k256 v0.13.4
    Compiling serde v1.0.228
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
-   Compiling matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
-   Compiling sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
+   Compiling perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
+   Compiling matcher v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
+   Compiling sequencer v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 4.91s
      Running unittests src/lib.rs (target/debug/deps/sequencer-1844fab9fb564a1d)

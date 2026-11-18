@@ -1,6 +1,6 @@
 {
   "command": [
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/release/deps/gateway-ee1031d433f7d85e",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/release/deps/gateway-ee1031d433f7d85e",
     "prover_client::finite_profile_tests::",
     "--skip",
     "rss_",

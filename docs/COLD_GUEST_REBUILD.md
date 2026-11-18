@@ -8,8 +8,8 @@ kullanmaz: resmi `succinct-1.93.0-64bit` arşivini bağımsız SHA-256 piniyle a
 Tüm guest kaynakları, ELF ve program key `REVIEWED_GUEST` pinlerinde kalır.
 
 Başarı ölçütü derlenen ELF'in SHA-256 değerinin
-`a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df`
-olmasıdır. Beklenen boyut 535904 bayttır. Başarıya ulaşmak için ELF, kaynak,
+`151afdba92636dd8b38f19a3557c5d852498d6739eeb8f71c354502a294340b7`
+olmasıdır. Beklenen boyut 544920 bayttır. Başarıya ulaşmak için ELF, kaynak,
 program key veya pin değiştirilmez. Derleme çıktısı fixture'dan kopyalanmaz.
 
 ## Araçlar ve bağımlılıklar
@@ -103,7 +103,8 @@ olarak kabul edilmez. Ön kontrol hatasında henüz çıktı dizini oluşmamış
 
 ## GitHub'da bağımsız ortam
 
-`guest-cold-rebuild.yml`, standart `macos-14` ARM64 GitHub-hosted runner kullanır.
+`guest-cold-rebuild.yml`, standart `macos-15` ARM64 GitHub-hosted runner kullanır (`macos-14`
+imajı GitHub'da artık sunulmuyor).
 Build cache restore etmez; yalnız `contents: read` izni vardır. Repository key,
 cloud/GPU hesabı veya wallet gerektirmez. Bu ek workflow zorunlu kontrolleri,
 review kararını veya dal korumalarını değiştirmez. Önerilen ruleset şablonu

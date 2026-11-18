@@ -280,31 +280,35 @@ impl<R: Rpc> DepositSource for VaultSource<R> {
                 events: vec![],
             });
         }
-        // Find the next deposit-bearing block. This also catches up a legacy snapshot
-        // without guessing a deployment/start height and without skipping deposit IDs.
-        let mut lo = cursor
+        // The next deposit-bearing block is the one the vault recorded for the next
+        // deposit id (`depositBlock`), read at the pinned head: one read, where a
+        // search over every block since the anchor cost a slow provider two dozen
+        // (audit G2-1). It is not trusted alone: the boundary reads below must find
+        // the deposit in that block and not in its parent. This also catches up a
+        // legacy snapshot without guessing a deployment/start height and without
+        // skipping deposit IDs.
+        let lo = cursor
             .anchor
             .as_ref()
             .map(|b| b.number.saturating_add(1))
             .unwrap_or(0);
-        let mut hi = head.number;
-        if lo > hi {
+        if lo > head.number {
             return Err(Error::Halt("anchor/count inconsistency".into()));
         }
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            let b = self.block(json!(format!("0x{mid:x}")))?;
-            if self.count(&cursor.domain, &b, true)? > cursor.count {
-                hi = mid;
-            } else {
-                lo = mid + 1;
-            }
+        let landed = uint64(&self.word(
+            &cursor.domain,
+            &head,
+            "depositBlock(uint64)",
+            Some(cursor.count),
+        )?)?;
+        if landed < lo || landed > head.number {
+            return Err("invalid or oversized deposit block boundary".into());
         }
-        let block = self.block(json!(format!("0x{lo:x}")))?;
-        let before = if lo == 0 {
+        let block = self.block(json!(format!("0x{landed:x}")))?;
+        let before = if landed == 0 {
             0
         } else {
-            let parent = self.block(json!(format!("0x{:x}", lo - 1)))?;
+            let parent = self.block(json!(format!("0x{:x}", landed - 1)))?;
             self.count(&cursor.domain, &parent, true)?
         };
         let after = self.count(&cursor.domain, &block, false)?;

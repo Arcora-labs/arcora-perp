@@ -14,8 +14,8 @@ before=inventory();assert before==freeze['source_files']
 task=out/name;task.mkdir()
 env=dict(os.environ)
 flags={'CARGO_BUILD_JOBS':'2','RUST_TEST_THREADS':'2','PYTHONDONTWRITEBYTECODE':'1',
-       'PATH':str(out/'python-bin')+':/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:'+os.environ['PATH'],
-       'RUSTC':'/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc',
+       'PATH':str(out/'python-bin')+':/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:'+os.environ['PATH'],
+       'RUSTC':'/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc',
        'RUSTUP_TOOLCHAIN':'1.99.0'}
 env.update(flags)
 start=time.monotonic();now=datetime.datetime.now(datetime.timezone.utc).isoformat()

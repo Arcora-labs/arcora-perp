@@ -16,7 +16,7 @@
         "repos/Arcora-labs/arcora-perp/rules/branches/main"
       ],
       "exit_code": 0,
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-applied-rules.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-applied-rules.json",
       "sha256": "9faea6306394d097f40e28467eee98d774ceb6e7365abd5fefa787948f0cfae7",
       "stderr_bytes": 0,
       "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -29,7 +29,7 @@
         "repos/Arcora-labs/arcora-perp/git/ref/heads/main"
       ],
       "exit_code": 0,
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-main-ref.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-main-ref.json",
       "sha256": "7c48cdb0576f2e39a735ff3998a86fa3a6bcb961af9f1202e829084ce5e3fafa",
       "stderr_bytes": 0,
       "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -42,7 +42,7 @@
         "repos/Arcora-labs/arcora-perp/pulls?state=open&per_page=100"
       ],
       "exit_code": 0,
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-open-prs.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/baseline/github-open-prs.json",
       "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "stderr_bytes": 0,
       "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

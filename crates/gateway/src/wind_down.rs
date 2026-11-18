@@ -264,6 +264,11 @@ impl Gw {
         let _ = self.void_order_records(&voided.hashes, &voided.ticks);
         let voided = voided.hashes;
         let dropped = self.deposits.credits.split_off(&consumed);
+        // The discarded credits and withdrawals leave the state: what they were
+        // charged against their accounts' history quota goes too, as in a live void.
+        for credit in dropped.values() {
+            self.refund_credited_deposit(&credit.route);
+        }
         if !dropped.is_empty() {
             // The ingestion anchor may point past the consumed prefix; refetch from
             // the start of the chain, which close-only stops at its first page.
@@ -275,13 +280,15 @@ impl Gw {
                 account.deposit_authorizations.remove(&commit);
             }
         }
+        let discarded = core::mem::take(&mut self.window_withdrawals);
+        for w in &discarded {
+            self.refund_removed_withdrawal(w);
+        }
         let voided_withdrawals: std::collections::BTreeSet<[u8; 32]> =
-            core::mem::take(&mut self.window_withdrawals)
-                .iter()
-                .map(Withdrawal::leaf)
-                .collect();
+            discarded.iter().map(Withdrawal::leaf).collect();
         self.pending_withdrawals
             .retain(|w| !voided_withdrawals.contains(&w.leaf()));
+        self.dust_sweeps.forget(&voided_withdrawals);
         self.bootstrap =
             match core::mem::replace(&mut self.bootstrap, bootstrap::Bootstrap::NotStarted) {
                 bootstrap::Bootstrap::InsuranceApplied { window_id } if window_id >= window => {
@@ -391,7 +398,7 @@ mod tests {
         std::env::set_var("FIN_ADMIN_KEY", "local-wind-down-test");
         let mut gw = Gw::boot_with(GenesisMode::Production);
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x51; 32]).unwrap();
-        let public = sk.verifying_key().to_encoded_point(false);
+        let public = sk.verifying_key().to_sec1_point(false);
         let address: [u8; 20] = RawKeccak::digest(&public.as_bytes()[1..])[12..]
             .try_into()
             .unwrap();
@@ -444,7 +451,7 @@ mod tests {
                 .account_withdraw_observed(
                     &key,
                     0,
-                    QUOTE_SCALE,
+                    MIN_WITHDRAWAL,
                     address,
                     (1, &[0; 65]),
                     Some(&initial)
@@ -533,9 +540,17 @@ mod tests {
         // Actual HTTP withdrawal, fresh pinned L1 phase observation, real signature.
         let digest = {
             let gw = app.gw.lock().await;
-            withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, QUOTE_SCALE, &address, 1)
+            withdraw_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                MIN_WITHDRAWAL,
+                &address,
+                1,
+            )
         };
-        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest);
         let mut wire = [0; 65];
         wire[..64].copy_from_slice(&sig.to_bytes());
         wire[64] = recid.to_byte() + 27;
@@ -545,7 +560,7 @@ mod tests {
             .header("x-api-key", hex0x(&key))
             .header("content-type", "application/json")
             .body(axum::body::Body::from(
-                serde_json::json!({"marketId":0,"amount":QUOTE_SCALE.to_string(),
+                serde_json::json!({"marketId":0,"amount":MIN_WITHDRAWAL.to_string(),
                 "to":hex0x(&address),"nonce":1,"signature":hex0x(&wire)})
                 .to_string(),
             ))
@@ -750,7 +765,7 @@ mod tests {
         };
         let digest =
             withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, auth_nonce);
-        let (sig, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let (sig, recid) = sk.sign_prehash_recoverable(&digest);
         let mut wire = [0u8; 65];
         wire[..64].copy_from_slice(&sig.to_bytes());
         wire[64] = 27 + recid.to_byte();
@@ -771,17 +786,18 @@ mod tests {
         // The demo genesis seeds the insurance fund, so phase 1 pays a reserve leaf.
         let mut gw = Gw::boot_genesis(GenesisMode::Demo, recipient);
         let sk = k256::ecdsa::SigningKey::from_slice(&[0x52; 32]).unwrap();
-        let public = sk.verifying_key().to_encoded_point(false);
+        let public = sk.verifying_key().to_sec1_point(false);
         let address: [u8; 20] = RawKeccak::digest(&public.as_bytes()[1..])[12..]
             .try_into()
             .unwrap();
         let (key, _) = gw.register_account(Some(address));
-        gw.account_deposit(&key, 0, 100 * QUOTE_SCALE).unwrap();
+        // Its partial withdrawals before close-only leave the entry minimum.
+        gw.account_deposit(&key, 0, 200 * QUOTE_SCALE).unwrap();
         let mut published: Vec<Withdrawal> = Vec::new();
         let mut counters = vec![gw.next_withdraw_nonce];
         // Window 0 settles one withdrawal.
-        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
-        gw.account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, MIN_WITHDRAWAL, address);
+        gw.account_withdraw(&key, 0, MIN_WITHDRAWAL, address, nonce, &sig)
             .unwrap();
         counters.push(gw.next_withdraw_nonce);
         let (w0, ww0) = gw.begin_window_settle(0).unwrap().unwrap();
@@ -802,9 +818,9 @@ mod tests {
         assert!(settled_last > 0);
         let consumed = gw.seq.state.consumed_deposit_count;
         // Window 1 never settles: its withdrawal is voided by the rebase.
-        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, QUOTE_SCALE, address);
+        let (nonce, sig) = signed_withdraw(&gw, &key, &sk, MIN_WITHDRAWAL, address);
         let voided = gw
-            .account_withdraw(&key, 0, QUOTE_SCALE, address, nonce, &sig)
+            .account_withdraw(&key, 0, MIN_WITHDRAWAL, address, nonce, &sig)
             .unwrap();
         assert_eq!(voided.nonce, settled_last + 1);
         counters.push(gw.next_withdraw_nonce);
@@ -885,14 +901,15 @@ mod tests {
             trading_gate::GateObservation::StaysClosed,
         );
         // A phase-2 withdrawal through the HTTP route.
-        let (nonce, sig) = signed_withdraw(&*app.gw.lock().await, &key, &sk, QUOTE_SCALE, address);
+        let (nonce, sig) =
+            signed_withdraw(&*app.gw.lock().await, &key, &sk, MIN_WITHDRAWAL, address);
         let req = axum::http::Request::builder()
             .method("POST")
             .uri("/v1/accounts/withdraw")
             .header("x-api-key", hex0x(&key))
             .header("content-type", "application/json")
             .body(axum::body::Body::from(
-                serde_json::json!({"marketId":0,"amount":QUOTE_SCALE.to_string(),
+                serde_json::json!({"marketId":0,"amount":MIN_WITHDRAWAL.to_string(),
                 "to":hex0x(&address),"nonce":nonce,"signature":hex0x(&sig)})
                 .to_string(),
             ))

@@ -74,6 +74,8 @@ HTTP body intake and handler admission also have per-process bounds:
 | `GATEWAY_HTTP_MAX_IN_FLIGHT_PER_CLIENT` | 8 (or the global cap, if lower) | 1–global cap |
 | `GATEWAY_HTTP_MAX_BODY_BYTES` | 2,097,152 | 1–8,388,608 |
 | `GATEWAY_HTTP_BODY_TIMEOUT_MS` | 5,000 | 1–60,000 |
+| `GATEWAY_ORDER_RATE_PER_CLIENT` | 20 | 1–10,000 |
+| `GATEWAY_ORDER_BURST_PER_CLIENT` | 40 | 1–100,000 |
 
 Capacity or draining returns 503 before polling the body. A client already at its
 per-client share gets 429; the client is the forwarded address when the peer is the
@@ -82,6 +84,12 @@ trusted loopback proxy, and IPv6 clients are grouped by /64. A body deadline ret
 permit remains held through the handler; HTTP mutation/durability is not cancelled
 by the body deadline. The body is buffered within these bounds. WebSocket streams
 use their separate connection pool after the HTTP upgrade finishes.
+
+`POST /v1/orders` also charges a per-client token bucket before it takes the state
+lock: a client (the same forwarded address, IPv6 by /64) may send
+`GATEWAY_ORDER_BURST_PER_CLIENT` orders at once and `GATEWAY_ORDER_RATE_PER_CLIENT`
+per second after that, across all its accounts; past it the route returns 429
+`RATE_LIMIT`. The per-account limit (10 orders per second) still applies on top.
 
 SIGTERM/SIGINT closes admission and the listener, drops both WebSocket streams,
 and waits for accepted HTTP work. Background workers stop between operations;
