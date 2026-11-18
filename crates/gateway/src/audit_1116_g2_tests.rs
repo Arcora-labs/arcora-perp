@@ -699,7 +699,7 @@ mod audit_1116_g2 {
             post_json(
                 "/v1/accounts/deposit/authorize",
                 &key,
-                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "10000000",
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "100000000",
                     "marketId": 0, "purpose": "collateral"}),
             )
         };
