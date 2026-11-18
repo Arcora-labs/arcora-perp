@@ -103,7 +103,8 @@ olarak kabul edilmez. Ön kontrol hatasında henüz çıktı dizini oluşmamış
 
 ## GitHub'da bağımsız ortam
 
-`guest-cold-rebuild.yml`, standart `macos-14` ARM64 GitHub-hosted runner kullanır.
+`guest-cold-rebuild.yml`, standart `macos-15` ARM64 GitHub-hosted runner kullanır (`macos-14`
+imajı GitHub'da artık sunulmuyor).
 Build cache restore etmez; yalnız `contents: read` izni vardır. Repository key,
 cloud/GPU hesabı veya wallet gerektirmez. Bu ek workflow zorunlu kontrolleri,
 review kararını veya dal korumalarını değiştirmez. Önerilen ruleset şablonu
