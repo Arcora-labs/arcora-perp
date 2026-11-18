@@ -252,9 +252,18 @@ fn skipped_rows_session(window: bool) {
         }
         if next(3) == 0 {
             let key = keys[next(keys.len())];
+            // Pick among the orders that still have something to cancel, so the
+            // run cancels often enough whatever the random account keys did to
+            // the matching (picking among every row left it flaky).
+            let owner = gw.accounts[&key].wallet.owner;
             let ids: Vec<String> = gw.accounts[&key]
                 .orders
                 .iter()
+                .filter(|o| {
+                    gw.seq
+                        .cancellable_size(&owner, &o.order, o.sealed)
+                        .is_some()
+                })
                 .map(|o| o.id.clone())
                 .collect();
             if !ids.is_empty() && gw.account_cancel(&key, &ids[next(ids.len())]).is_ok() {
