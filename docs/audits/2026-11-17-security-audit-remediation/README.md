@@ -63,7 +63,14 @@ license (MIT OR Apache-2.0). The commit `3d0470e` has no blank line before its t
   Python suites fail with `guest source changed; rebuild and reprove: crates/perp-core/src/engine.rs`:
   `test_verify_clock_proof`, `test_candidate_identity_manifest`, `test_candidate_target_observer`,
   `test_rebuild_reviewed_guest` and `test_cold_rebuild_reviewed_guest`. CI stays red on those until
-  the guest is rebuilt and re-pinned.
+  the guest is rebuilt and re-pinned. On GitHub the same refusal fails three required contexts
+  (`dependency advisories`, `foundry release gate`, `gateway RPC, crash and alert drills`) and two
+  that are not required (`reviewed guest execution (CPU)`, `Chainlink candidate drills`), so the main
+  ruleset does not accept the merge until then.
+- **`crates/perp-core/src/merkle.rs` changed too.** The stable toolchain on CI (1.100) flags
+  `clippy::needless_range_loop` in `root` and `prove`. Both functions now carry an `allow` for it and
+  their code is unchanged, but the file is pinned guest source, so its pin is stale as well. This
+  went in before the guest rebuild on purpose: fixing it afterwards would stale the new pin.
 - **Snapshot format.** The base snapshot (`DPSNAP10`) and rollback journal (`DPRBJL7`) magics are
   unchanged and everything `bb16693` wrote still loads. Additions: side logs beside the snapshot
   (migrated at boot when `DARKPERP_STATE` is set) and the optional trailing sections `DPHIST1`,
