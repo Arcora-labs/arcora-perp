@@ -699,8 +699,10 @@ those every outstanding permit may open fit the 1,328 bound, and at every level 
 client (IPv4 address or IPv6 /48) holds at most 2 of them, a renewal of a reservation
 counted against the client asking for it. Below 100 USDC no order adds exposure (at
 intake, and in the sequencer when a fill settles, measured there without that
-settlement pass's fees, rebates and funding so an opener at the minimum that fills
-in pieces is not refused by its own fees), a withdrawal leaves at least 100 USDC in its entry unless it is a full
+settlement pass's fees, rebates and funding, and allowed twice the taker fee of the
+largest position the minimum margins, 2 USDC at 10x and 10 bps, so an opener at the
+minimum that fills in pieces, also across batches, is not refused by its own fees;
+a realized loss of more than that still stops it), a withdrawal leaves at least 100 USDC in its entry unless it is a full
 exit (open position or not), and a full exit waits while a top-up permit below 100
 USDC for that market is outstanding. When the entries alone refuse a permit that
 opens an entry the gateway sweeps as many flat entries below 100 USDC as admit it (a
@@ -716,7 +718,11 @@ Unfunded permits cost nothing but are bounded per client: holding the whole 1,32
 bound with them takes 664 independent IPv4 addresses or IPv6 /48s renewing every
 permit before it expires, a known residual for an attacker with that much address
 diversity (and for one permit lifetime after a gateway restart, which forgets the
-clients of the permits then outstanding). A
+clients of the permits then outstanding). The per-client limit applies at every
+level, so it also costs honest users: everyone behind one carrier-grade NAT IPv4
+address, or on one carrier's or ISP's shared IPv6 /48, shares two outstanding
+opening permits for the permit lifetime, and one of them who keeps renewing can
+keep the others from first deposits, a known cost of the limit. A
 withdrawal that would need more room than the bound
 leaves is refused unless it is a full exit (the whole balance of a closed position),
 so the deposit of every permit already signed is credited within the bound and funds

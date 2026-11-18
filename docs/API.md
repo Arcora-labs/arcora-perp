@@ -257,9 +257,12 @@ recorded. Orders that only reduce the position are exempt. The sequencer holds e
 fill to the same rule when it settles, so an order accepted while the entry held 100
 USDC or more does not fill once a trading loss took the entry below that: it is
 rejected with `InsufficientMargin` and leaves the book. At settlement the entry is
-measured without the trading fees, rebates and funding of that settlement pass, so
-an opener at exactly 100 USDC that fills in several pieces fills them all; the
-entry then holds less than 100 USDC, and a further opening order needs a top-up. Deposit into the market to
+measured without the trading fees, rebates and funding of that settlement pass, and
+held to 100 USDC less twice the taker fee of the largest position 100 USDC margins
+(2 USDC on a 10x market at 10 bps), so an opener at exactly 100 USDC that fills in
+several pieces, in one batch or across batches while its remainder rests, fills them
+all; the entry then holds less than 100 USDC, and a further opening order needs a
+top-up. Deposit into the market to
 trade it again (§ Admission cap, Position entries and dust).
 
 **Margin.** Initial and maintenance margin are computed on the notional rounded up,
@@ -507,12 +510,19 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
      for an entry its account already reserves included, which counts against the
      client asking for it (`429` `OPENING_PERMIT_LIMIT`). So unfunded permits from
      one client, or from one IPv6 /48 however many /64s it uses, hold at most two
-     entries.
+     entries. The limit applies to honest clients too: everyone behind one
+     carrier-grade NAT IPv4 address, or on one carrier's or ISP's shared IPv6 /48,
+     shares those two outstanding first-deposit permits, even with an empty state,
+     and one of them who keeps renewing a permit can keep the others from a first
+     deposit into a new market entry for as long as they do. Top-ups of an entry
+     that already exists are not limited this way; a client refused
+     with `OPENING_PERMIT_LIMIT` can retry from another network.
    - Below **100 USDC** in a market's entry no order opens, grows or flips a
      position (`400` `BELOW_ENTRY_BALANCE` at submission, `InsufficientMargin` at
      settlement for an order accepted before; § Orders). Settlement measures the
-     entry without that pass's trading fees, rebates and funding, so an opener at
-     the minimum is not refused by its own fees. So an entry below the minimum that
+     entry without that pass's trading fees, rebates and funding, and allows it twice
+     the taker fee of the largest position the minimum margins (2 USDC at 10x and
+     10 bps), so an opener at the minimum is not refused by its own fees. So an entry below the minimum that
      holds a position got there through trading (a realized loss, fees or funding)
      after it opened at 100 USDC or more, and a flat one stays flat until topped up
      to the minimum.
