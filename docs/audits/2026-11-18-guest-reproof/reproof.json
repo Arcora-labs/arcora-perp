@@ -1,0 +1,79 @@
+{
+  "kind": "audit-1116-guest-reproof",
+  "date": "2026-11-18",
+  "scope": "Reviewed rebuild of the clock guest after the 2026-11-16 audit PC-1/PC-2 perp-core changes, and a real Groth16 proof of the reviewed normal fixture under it. Public synthetic test data only; no chain was written to and no proving network or production key was used. The GPU was not in confidential-computing mode and the host is not attested.",
+  "guest_rebuild": {
+    "host": "macOS on aarch64 (Apple M4)",
+    "recipe": "scripts/local-verification/cold_rebuild_reviewed_guest.py",
+    "status": "PASS_COLD_BYTE_EXACT_REVIEWED_ELF_REBUILD",
+    "runs": 2,
+    "first_run": "compiled, then refused at the identity check while REVIEWED_GUEST['elf'] still named the earlier guest",
+    "elfs_byte_identical": true,
+    "elf_sha256": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028",
+    "elf_bytes": 566368,
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "rustc_sha256": "985c33069083f55ed42b68ef51a8528d0cb1632e43428ffdb5c489306154f964",
+    "toolchain_archive_sha256": "8ee4ea0f27efbf73ddfe8a2038ced4c0802fdcf9e1ee109349763b9f4a808cf6",
+    "program_vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
+    "execution": "clock-proof --no-prove once per ELF; the two output directories were byte-identical"
+  },
+  "host": {
+    "provider": "Google Colab (colab CLI)",
+    "gpu": "NVIDIA L4",
+    "gpu_memory": "23034 MiB",
+    "driver": "580.82.07",
+    "compute_capability": "8.9",
+    "host_cuda": "13.0",
+    "cuda_runtime_for_server": "libcudart.so.12 from the nvidia-cuda-runtime-cu12 12.9.79 wheel preinstalled on the image (prepended to LD_LIBRARY_PATH; the image ships CUDA 13 only)",
+    "allotted_vcpu": 12,
+    "allotted_ram_gb": 52,
+    "image": "Ubuntu 24.04.4 LTS"
+  },
+  "tools": {
+    "repository_commit": "361b1ea plus the uncommitted re-pin of REVIEWED_GUEST and the sp1-host REVIEWED_ELF constants",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "features": "cuda",
+    "binary_sha256": {
+      "clock-proof": "38867ff06002990f4a791523c5b07f891dba1ad5f8a1e6cad9ffedec04204d83"
+    }
+  },
+  "prover": {
+    "sdk_version": "6.1.0",
+    "sp1_gpu_server": {
+      "version": "6.1.0",
+      "release_asset": "sp1_gpu_server_v6.1.0_x86_64.tar.gz",
+      "release_archive_sha256": "f76d0430df8602dbeeda881453580936acb976179d743f5e31a8f42ddb1719c0",
+      "binary_sha256": "eede5df89e9e8957f5d06cf9abdca3e979a80224c25d84796a60f47766ab58da"
+    },
+    "groth16_circuit": "download_clock_circuit.py pins (archive 18beebb6..., groth16_vk.bin 4388a21c...)",
+    "groth16_backend": "gnark on the CPU inside sp1-gpu-server (acceleration=none in its log)"
+  },
+  "fixture_proof": {
+    "dir": "contracts/integration/fixtures/clock-pkg3-verified",
+    "proof_sha256": "0ff6c29fdc0390c6dbfafeb6af5a17000ce19fa394c52f186fc5873e1f398fca",
+    "cycles": 5751985,
+    "groth16_prove_wall_s": 110.56205784,
+    "setup_wall_s": 5.541126315,
+    "local_sdk_verified": true,
+    "gnark_stages": [
+      {
+        "stage": "read R1CS",
+        "s": 27.43
+      },
+      {
+        "stage": "read proving key",
+        "s": 4.21
+      },
+      {
+        "stage": "gnark prover",
+        "s": 48.16
+      },
+      {
+        "stage": "generate proof (total)",
+        "s": 53.42
+      }
+    ],
+    "constraints": 15972262
+  },
+  "real_target_verification": "real-clock-proof/verification.json (verify_clock_proof.py, 27 real-verifier Solidity checks)"
+}

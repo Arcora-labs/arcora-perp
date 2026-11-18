@@ -11,7 +11,7 @@ reviewed fixture under the reviewed guest, so `proof_status()` reads `PROVEN`.
 
 | File | Content |
 | --- | --- |
-| `proof.bin` | The 356-byte Groth16 proof (verifier selector `4388a21c`), SHA-256 `28d6804949242eac9a44e0d90542674a4e3325c15fbac30f258215505e6084db`; `../clock-v2/verified-calldata/proof.bin` is the same bytes |
+| `proof.bin` | The 356-byte Groth16 proof (verifier selector `4388a21c`), SHA-256 `0ff6c29fdc0390c6dbfafeb6af5a17000ce19fa394c52f186fc5873e1f398fca` |
 | `public-values.bin` | The proof's public value, the bound commitment `0x6e382af92ac5b4872e4a1f6c0f6bdf6d1a246bb2ca6f834dc7aeb3748edab5ab` |
 | `proof.sdk.json` | The SP1 SDK proof object |
 | `proof-evidence.json` | The `clock-proof --prove` record: identity, cycles, the 22 negatives, the prover backend and wall times |
@@ -21,10 +21,17 @@ reviewed fixture under the reviewed guest, so `proof_status()` reads `PROVEN`.
 The run also wrote the case and negative witnesses; they are byte-identical to
 `../clock-pkg3-reviewed/cases/` and `negatives/` and are not repeated here.
 
+This proof replaces the proof of the earlier reviewed guest (proof `28d68049…`,
+2026-10-21), which the audit 2026-11-16 PC-1 and PC-2 fixes to `crates/perp-core`
+superseded. The normal fixture's witness and bound commitment did not change; the
+guest ELF and its setup key did.
+
 ## How it was produced
 
-On 2026-10-21, on a rented single NVIDIA H100 80 GB HBM3 (driver 595.91.07,
-CUDA 13.2 host; 26 vCPU), from commit `6fb38a5` of this repository:
+On 2026-11-18, on a Google Colab VM with a single NVIDIA L4 (23,034 MiB, driver
+580.82.07, CUDA 13.0 host; 12 vCPU, 52 GB), from commit `361b1ea` with this
+change's re-pin of `REVIEWED_GUEST` and of the `sp1-host` `REVIEWED_ELF` constants
+applied:
 
 ```sh
 SP1_SKIP_PROGRAM_BUILD=true cargo build --release --locked \
@@ -38,14 +45,20 @@ crates/sp1-host/target/release/clock-proof \
   `v6.1.0` SP1 release (`sp1_gpu_server_v6.1.0_x86_64.tar.gz`, SHA-256
   `f76d0430df8602dbeeda881453580936acb976179d743f5e31a8f42ddb1719c0`, checked
   before use; the server binary's SHA-256 is
-  `eede5df89e9e8957f5d06cf9abdca3e979a80224c25d84796a60f47766ab58da`).
+  `eede5df89e9e8957f5d06cf9abdca3e979a80224c25d84796a60f47766ab58da`). The image
+  ships CUDA 13 only, so the server's `libcudart.so.12` came from NVIDIA's
+  `nvidia-cuda-runtime-cu12` 12.9.79 wheel preinstalled on it, prepended to
+  `LD_LIBRARY_PATH` ahead of the driver directory.
 - The Groth16 wrap used the pinned circuit files that `download_clock_circuit.py`
   verifies (verifying key `4388a21c…`).
 - `clock-proof` first checked native == guest on the fixture, the nine cases and
   the 22 negatives. It then generated the proof and verified it with the SP1 SDK
   verifier (`local_sdk_verified` true).
-- The Groth16 proof took 78.2 s of wall time, including about 25 s of one-time
-  circuit loading.
+- The Groth16 proof took 110.6 s of wall time, including about 32 s of one-time
+  circuit loading (R1CS 27.4 s, proving key 4.2 s); the gnark prover itself took
+  48.2 s.
+
+The run record is `docs/audits/2026-11-18-guest-reproof/reproof.json`.
 
 ## Verify
 
@@ -56,8 +69,9 @@ python3 scripts/local-verification/verify_clock_proof.py --output-dir /tmp/arcor
 ```
 
 The runner checks the pinned guest sources, ELF, setup key, witness, public
-commitment, vendor provenance and proof shape before executing 24 real-verifier
-Solidity checks, including the actual clock adapter, settlement and vault.
+commitment, vendor provenance and proof shape before executing 27 real-verifier
+Solidity checks, including the actual clock adapter, settlement and vault. Its
+output for this proof is in `docs/audits/2026-11-18-guest-reproof/real-clock-proof/`.
 
 The token is mocked and fixed synthetic addresses are installed by running the
 real constructors. The zero payer is impersonated inside an owned local EVM.

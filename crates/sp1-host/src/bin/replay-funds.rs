@@ -9,7 +9,7 @@ use sp1_sdk::{include_elf, Elf, Prover, ProverClient, SP1Stdin, StatusCode};
 use std::{path::Path, time::Instant};
 
 const ELF: Elf = include_elf!("perp-core-guest");
-const REVIEWED_ELF: &str = "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df";
+const REVIEWED_ELF: &str = "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028";
 
 fn file(dir: &Path, name: &str) -> Vec<u8> {
     let path = dir.join(name);

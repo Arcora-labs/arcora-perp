@@ -68,7 +68,7 @@ prover observation.
     "sp1_adapter": "0x0000000000000000000000000000000000000005",
     "sp1_verifier": "0x0000000000000000000000000000000000000006"
   },
-  "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
+  "program_vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
   "clock": {"max_window_ms": 30000, "clock_skew_ms": 30000, "anchor_timeout_ms": 3600000},
   "gateway": {
     "L1_CHAIN_ID": "31337",
@@ -79,11 +79,11 @@ prover observation.
     "L1_ALLOW_MOCK_PROOF": "0",
     "DEPOSIT_PERMIT_TTL_SECS": "1800",
     "WIND_DOWN_RECIPIENT": "0x0000000000000000000000000000000000000009",
-    "PROVER_EXPECTED_ELF_SHA256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
+    "PROVER_EXPECTED_ELF_SHA256": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028"
   },
   "prover": {
-    "program_vkey": "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec",
-    "guest_elf_sha256": "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
+    "program_vkey": "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861",
+    "guest_elf_sha256": "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028"
   },
   "genesis": {
     "root": "<GENESIS_ROOT printed by --print-genesis-root>",
@@ -123,8 +123,9 @@ a record without committing new proof files does not change the status.
 In this checkout the two agree. The reviewed guest's ELF, setup key and normal
 fixture are committed in `contracts/integration/fixtures/clock-pkg3-reviewed/`, and
 `PROOF_FIXTURE` names `contracts/integration/fixtures/clock-pkg3-verified/`, a real
-Groth16 proof of that fixture under that guest (generated on 2026-10-21 with SP1
-6.1.0's GPU prover; see that directory's README). The status is therefore `PROVEN`.
+Groth16 proof of that fixture under that guest (regenerated on 2026-11-18 for the guest
+rebuilt after the 2026-11-16 audit fixes, with SP1 6.1.0's GPU prover; see that
+directory's README). The status is therefore `PROVEN`.
 The earlier clock-v2 proof stays in `contracts/integration/fixtures/clock-v2-verified/`
 as history.
 

@@ -35,7 +35,7 @@ use sp1_sdk::{
 use std::{fs::File, io::Read, path::Path, time::Instant};
 
 /// REVIEWED_GUEST["elf"] in scripts/local-verification/verify_clock_proof.py.
-const REVIEWED_ELF: &str = "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df";
+const REVIEWED_ELF: &str = "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028";
 const MAX_ELF_BYTES: u64 = 16 * 1024 * 1024;
 const USAGE: &str =
     "usage: clock-proof --elf REVIEWED_ELF NEW_OUTPUT_DIRECTORY [--prove | --no-prove]";

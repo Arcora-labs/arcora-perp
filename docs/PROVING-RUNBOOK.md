@@ -75,6 +75,10 @@ an NVIDIA GPU when built with `--features cuda` (off by default and in CI). Exec
 the native twin and every check are the same; only setup and proving move to SP1
 6.1.0's native `sp1-gpu-server`, which also runs the Groth16 wrap. No Docker is needed.
 It needs Linux x86_64, an NVIDIA GPU with at least 24 GB, and a CUDA 12 driver.
+The server links `libcudart.so.12`: on an image that ships only CUDA 13, prepend a
+CUDA 12 runtime (for example NVIDIA's `nvidia-cuda-runtime-cu12` wheel) to
+`LD_LIBRARY_PATH` and keep the driver directory on it
+(`docs/audits/2026-11-18-guest-reproof/`).
 
 ```bash
 # Pin the server the SDK would otherwise fetch unchecked from the SP1 release.

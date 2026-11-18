@@ -1,7 +1,8 @@
 # Security audit remediation: verified findings
 
 PRODUCTION RELEASE HOLD. This code has not settled anything on L1. The SP1 guest program key
-changed and the guest has not been rebuilt (see Operational consequences).
+changed: the guest was rebuilt, re-pinned and re-proven, but no deployed stack uses the new key
+yet (see Operational consequences).
 
 Date: 2026-11-17. Base: `bb16693` (the commit audited on 2026-11-16). Head: `ba27fe9`.
 Finding texts and per-item review history are kept outside the repository (the audit
@@ -53,24 +54,21 @@ license (MIT OR Apache-2.0). The commit `3d0470e` has no blank line before its t
 
 ## Operational consequences
 
-- **The SP1 guest program key changes.** `crates/perp-core` changed (`engine.rs`, `hash.rs`, new
-  `Domain::ForcedClose = 33` appended last). The guest was **not** rebuilt, no verifier key was
-  produced and no fixture was regenerated: there is no SP1 toolchain in this environment. Before this
-  code can settle on L1 a cold reviewed guest rebuild, a new verifier key (vkey) and a redeploy are required,
-  and `REVIEWED_GUEST` has to be re-pinned. Until then `guest.elf`, `program-vkey.bin`, `execution.json`,
-  three case witnesses, one negative and `clock-pkg3-verified` are stale
-  (see `contracts/integration/fixtures/clock-pkg3-reviewed/README.md`), and five local-verification
-  Python suites fail with `guest source changed; rebuild and reprove: crates/perp-core/src/engine.rs`:
-  `test_verify_clock_proof`, `test_candidate_identity_manifest`, `test_candidate_target_observer`,
-  `test_rebuild_reviewed_guest` and `test_cold_rebuild_reviewed_guest`. CI stays red on those until
-  the guest is rebuilt and re-pinned. On GitHub the same refusal fails three required contexts
-  (`dependency advisories`, `foundry release gate`, `gateway RPC, crash and alert drills`) and two
-  that are not required (`reviewed guest execution (CPU)`, `Chainlink candidate drills`), so the main
-  ruleset does not accept the merge until then.
+- **The SP1 guest program key changed.** `crates/perp-core` changed (`engine.rs`, `error.rs`,
+  `funding.rs`, `hash.rs` with the new `Domain::ForcedClose = 33` appended last, `merkle.rs`,
+  `position.rs`, `state.rs`). On 2026-11-18 the guest was rebuilt with the cold reviewed recipe
+  (byte-exact twice: ELF `3c0bbb2a…`, 566,368 bytes; setup key `0x001dba0f…`), `REVIEWED_GUEST` and
+  `REVIEWED_FIXTURE` were re-pinned, and the reviewed fixture was regenerated with
+  `clock-proof --no-prove` (the normal fixture's witness and commitment are unchanged; three case
+  witnesses and one negative changed with the liquidation rule). The normal fixture was then proven
+  for real on one GPU and `PROOF_FIXTURE` now names that proof, so `proof_status()` reads `PROVEN`;
+  27 real-verifier Solidity checks pass on it. The prover service's program table and the `sp1-host`
+  binaries name the new ELF. Records: `docs/audits/2026-11-18-guest-reproof/`. Before this code can
+  settle on L1 the stack still has to be redeployed with the new verifier key (see SV-1 below).
 - **`crates/perp-core/src/merkle.rs` changed too.** The stable toolchain on CI (1.100) flags
   `clippy::needless_range_loop` in `root` and `prove`. Both functions now carry an `allow` for it and
-  their code is unchanged, but the file is pinned guest source, so its pin is stale as well. This
-  went in before the guest rebuild on purpose: fixing it afterwards would stale the new pin.
+  their code is unchanged, but the file is pinned guest source. This went in before the guest rebuild
+  on purpose, so the rebuilt guest and its pin include it.
 - **Snapshot format.** The base snapshot (`DPSNAP10`) and rollback journal (`DPRBJL7`) magics are
   unchanged and everything `bb16693` wrote still loads. Additions: side logs beside the snapshot
   (migrated at boot when `DARKPERP_STATE` is set) and the optional trailing sections `DPHIST1`,
@@ -97,7 +95,9 @@ license (MIT OR Apache-2.0). The commit `3d0470e` has no blank line before its t
 
 ## Not verified
 
-- No SP1 guest build, no vkey, no regenerated fixture, no proof of any kind.
+- The guest rebuild, vkey, fixture and proof (2026-11-18) cover the normal fixture only: no case,
+  cap or lifecycle witness was proven (all are executed on CPU in CI), the proving GPU was not in
+  confidential-computing mode, and no target settlement accepted the proof on a chain.
 - No real L1, TEE or live-RPC run. The challenge-watcher loop in `main()` and the real feed poller and
   HTTP route for OR-1 were not exercised end to end; tests call the helpers directly.
 - The full suite was run once on the merged branch (2026-11-18, as root, no SP1 toolchain):

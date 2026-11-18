@@ -63,18 +63,18 @@ fn assert_closed_scope(value: &Value) {
 #[test]
 fn injected_reviewed_fixture_descriptor_binds_exact_bytes_and_clock_domain() {
     // Existing fixture bytes only. No setup, key derivation, SDK client or proof.
-    assert_eq!(FIXTURE_ELF.len(), 535_904);
+    assert_eq!(FIXTURE_ELF.len(), 566_368);
     assert_eq!(
         crate::service_identity::sha256(FIXTURE_ELF),
-        "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df"
+        "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028"
     );
     let key = format!("0x{}", hex::encode(FIXTURE_VKEY));
     assert_eq!(
         key,
-        "0x009cfc02120c4255b1a8c3eebbcc31f92a9ce0891c88641e78e0af23aae098ec"
+        "0x001dba0f3361c67c362a09fd282df70c8e4f4d69e57951f2c54befa729de0861"
     );
     let first = program_descriptor(FIXTURE_ELF, &key);
-    assert_eq!(first["elf_bytes"], 535_904);
+    assert_eq!(first["elf_bytes"], 566_368);
     assert_eq!(
         first["elf_sha256"],
         crate::service_identity::sha256(FIXTURE_ELF)
@@ -128,7 +128,7 @@ fn supported_domains_are_those_of_the_embedded_program() {
     );
     // The reviewed guest accepts exactly the clock-bound framing.
     assert!(PROGRAM_WITNESS_DOMAINS.contains(&(
-        "a6d516488c542673ef750c6c6d7cd0fb6b9c004d0cb6c82eb5b4bc57d630e7df",
+        "3c0bbb2a44fee0479937db860d698445c780e5f436091a99078c399b3821e028",
         WITNESS_DOMAIN
     )));
     assert_eq!(
