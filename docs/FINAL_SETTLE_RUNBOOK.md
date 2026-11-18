@@ -99,9 +99,13 @@ set. The refund needs only the `Deposit` event fields; anyone may send it. See
 credits these deposits; they leave the vault only as refunds. Ids below the count
 leave only through withdrawal leaves.
 
-**The engine can be close-only before L1 is.** The engine trips to close-only on
-its own when a liquidation's shortfall exceeds insurance, the treasury and
-auto-deleverage (`docs/ECONOMIC_SECURITY.md`, Q3/Q7). From then on:
+**The engine can be close-only before L1 is.** A liquidation closes the other side
+of the market with the liquidated position, at the same price and by the same size,
+so the clearing pool never holds a position. The engine trips to close-only on its
+own when the shortfall those closes leave, on the liquidated position or on a
+counterparty closed out under water, exceeds insurance, the treasury and
+auto-deleverage (`docs/ECONOMIC_SECURITY.md`, Q3/Q7). The uncovered rest stays on
+those closed positions until `SettleAll` covers it. From then on:
 
 - the guest refuses every `Deposit` op, so a later deposit never shares in the
   earlier shortfall;
@@ -258,12 +262,16 @@ changes it, so the genesis root a deployment pins on L1 also pins its recipient.
 
 What the recipient receives: the insurance fund, the treasury and the clearing pool's
 positive balance, after every deficit is covered. At that point every user claim has
-been settled at the settlement price. The clearing pool is the counterparty to open
-interest left behind by liquidations, so the payout also includes that interest's gain
-at the settlement price; a loss on it falls first on the reserves and only then on
-users through the haircut. The payout is protocol reserves, fee revenue and rounding
-residue; no user claim is part of it. If the recipient's key is lost, the payout is
-lost with it.
+been settled at the settlement price. A liquidation closes the other side of the
+market with the liquidated position (audit 2026-11-16, PC-1), so the clearing pool
+holds no open interest: its balance is realized results and funding passed between
+positions, which nets to zero once step 1 has closed every position, up to rounding.
+Only a state written before that rule may still hold a pool position, left by an
+earlier liquidation; its gain at the settlement price is part of the payout, and a
+loss on it falls first on the reserves and only then on users through the haircut.
+The payout is protocol reserves, fee revenue and rounding residue; no user claim is
+part of it, and it never takes the withdrawals above the deposits. If the
+recipient's key is lost, the payout is lost with it.
 
 ## Trust statements
 
@@ -300,6 +308,38 @@ phase word. Rust and Solidity pin phase 1 with the KAT:
 `0x10e0f1fecdde1dc0b2aad3f551163ce9ea181ecc40f44d3b935dd11c5c373b88`
 
 for seven roots `[0x01.., 0x02.., ... 0x07..]` and phase `1`.
+
+## Upgrading across an engine rule change
+
+The audit 2026-11-16 PC-1 and PC-2 fixes change what four ops mean in the proven
+transition, without changing their encoding or the snapshot and journal layouts:
+
+- `Liquidate` also closes the other side of its market by the liquidated size, and a
+  counterparty that was itself liquidatable pays the penalty on what that close took;
+- `Unbind` from a position that stays open keeps the initial margin in collateral;
+- `Withdraw`, `WindDownWithdraw` and the `SettleAll` payout stop at `external_in`;
+- `AccrueFunding` stores a zero rate while the receiving side holds more open interest
+  than the paying side.
+
+A snapshot or rollback journal written by the earlier build therefore still decodes,
+but an op in it that is not settled yet would be proven under the new meaning against
+a live state the earlier rules produced: the window's derived root would not be the
+gateway's, or the replay would be refused. Before switching builds:
+
+1. Stop intake (orders, deposits, withdrawal requests) and let the earlier build seal,
+   prove and settle the open window, until no rollback journal
+   (`<DARKPERP_STATE>.rollback`) is left and `currentStateRoot()` equals the gateway's
+   root. The earlier guest's proofs verify only under its own program key, so no
+   window may be left in flight across the switch either.
+2. Stop the earlier build once it has persisted that state, then start this build
+   from the snapshot.
+
+This build checks the open window itself: at restore it replays the window's ops from
+its baseline under its own rules, and refuses to start when the replay is refused or
+reaches another state than the restored one (`check_open_window_replays`; the error
+names this section). It cannot judge a journaled window that the chain has not
+settled, which step 1 resolves first. The new guest program key and verifier pin are
+the release steps of § Operational checks.
 
 ## Operational checks
 

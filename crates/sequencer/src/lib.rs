@@ -23,15 +23,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
-use matcher::{ImpactWindow, Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus};
-use perp_core::engine::BatchOp;
+use matcher::{
+    ImpactWindow, Match, MatchingEngine, OrderRemoval, RestingQuote, SubmitStatus, TradeCheck,
+};
+use perp_core::engine::{BatchOp, ForcedClose};
 use perp_core::fixed::{notional_quote, QUOTE_SCALE, RATE_SCALE};
 use perp_core::funding::MAX_FUNDING_RATE_PER_INTERVAL;
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::note::PubKey;
 use perp_core::oracle::OracleTranscript;
-use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side};
+use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::{DefaultState, EngineError, FillLeg, Mode};
 
@@ -177,6 +179,13 @@ pub struct SealedBatch {
     /// surface — a socialized loss is recorded and self-detectable, not silent —
     /// while staying unlinkable to an observer who knows only the public owner id.
     pub adl_receipts: Vec<AdlReceipt>,
+    /// Per-position **forced-close receipts** for this batch (audit 2026-11-16
+    /// PC-1). A liquidation closes the other side of its market by the liquidated
+    /// size; each position it reduced gets a receipt: a secret-keyed
+    /// [`forced_close_tag`] only that account can recognize, paired with what the
+    /// close did. The owner's resting orders in that market are cancelled with
+    /// removal reason `ForcedClose` (in `removals`).
+    pub forced_close_receipts: Vec<ForcedCloseReceipt>,
     /// The batch's replayable op-log: `[applied fills] ++ [maintenance AccrueFunding/
     /// Liquidate]`, in application order. Replaying it against the batch's pre-state
     /// (the retained snapshot) via `apply_batch` reproduces `new_state_root` — the
@@ -254,12 +263,37 @@ pub struct AdlReceipt {
     pub clawed: i128,
 }
 
-/// The liquidated owners and ADL haircuts produced by one [`Sequencer::run_maintenance`]
-/// pass. The haircuts carry `(owner, market, clawed)` so the seal can tag them.
+/// A published forced close (audit 2026-11-16 PC-1): another account's
+/// liquidation closed `size` of the affected account's position at the oracle
+/// `price`. The account recognizes `tag` by recomputing
+/// `forced_close_tag(&adl_tag_key(spend_key), market, batch)`. Unlinkable to any
+/// other observer, like an [`AdlReceipt`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ForcedCloseReceipt {
+    pub tag: Digest,
+    /// The size change the close applied, size-scaled, opposite in sign to the
+    /// position (a short gives up size by buying).
+    pub size: i128,
+    /// The liquidation's validated oracle price, price-scaled.
+    pub price: i128,
+    /// The PnL the close realized, quote-scaled.
+    pub realized: i128,
+    /// The liquidation penalty charged on the closed size (only a position that
+    /// was itself liquidatable pays one), quote-scaled.
+    pub penalty: i128,
+}
+
+/// The liquidated owners, ADL haircuts and forced closes produced by one
+/// [`Sequencer::run_maintenance`] pass. The haircuts carry `(owner, market,
+/// clawed)` and the forced closes `(market, price, close)` so the seal can tag
+/// them.
 pub struct MaintenanceOutcome {
     pub removals: Vec<OrderRemoval>,
     pub liquidated: Vec<(PubKey, MarketId)>,
     pub adl: Vec<(PubKey, MarketId, i128)>,
+    /// Every position a liquidation closed with the liquidated one, with its
+    /// market and the liquidation's oracle price, in application order.
+    pub forced_closes: Vec<(MarketId, i128, ForcedClose)>,
     /// The AccrueFunding + Liquidate ops applied this pass, in application order —
     /// the maintenance half of the batch's replayable op-log (Slice 3a).
     pub ops: Vec<BatchOp>,
@@ -308,6 +342,18 @@ pub fn adl_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
     )
 }
 
+/// A per-`(account, market, batch)` forced-close tag (audit 2026-11-16 PC-1),
+/// keyed on the account's SECRET ADL tag key ([`adl_tag_key`]): the close of the
+/// other side is the size half of the same backstop. A distinct domain
+/// (`Domain::ForcedClose`), so it never equals the account's ADL or liquidation
+/// tag. Published in [`ForcedCloseReceipt`].
+pub fn forced_close_tag(adl_tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
+    Keccak256::hash_words(
+        Domain::ForcedClose,
+        &[*adl_tag_key, word_u64(market_id), word_u64(batch_id)],
+    )
+}
+
 /// The smallest notional, quote-scaled ($10), of an order the sequencer admits
 /// when the order adds exposure: it opens, grows or flips its owner's position and
 /// is not reduce-only. The notional is the order's full size at the validated
@@ -339,13 +385,279 @@ pub const FUNDING_IMPACT_NOTIONAL: i128 = 1_000 * QUOTE_SCALE;
 /// this span.
 pub const FUNDING_MARK_MIN_SPAN_MS: u64 = 7_000;
 
-/// The most resting orders one side's impact sweep visits, inside the fill band,
-/// before it reaches [`FUNDING_IMPACT_NOTIONAL`]. A side that needs more gives no
-/// impact price, and the mark falls back to the oracle index, as for a side
-/// without the depth. Honest depth reaches the notional in far fewer orders: a
-/// hundred orders at the order minimum hold it. The bound keeps the cost of a
-/// funding sample independent of how many orders rest on the book.
-pub const FUNDING_IMPACT_MAX_ORDERS: usize = 4_096;
+/// The most open orders one account may keep in one market (audit 2026-11-16
+/// GA-1): orders resting on the book, orders accepted and waiting for the next
+/// batch, and the earlier orders of the batch being sealed. Only orders that can
+/// rest count: a GTC with a limit price, or a post-only. An IOC, a FOK or a market
+/// GTC never rests, so it is neither counted nor refused for the cap (the
+/// collateral reserve still applies to it).
+///
+/// Sixty-four is a 32-level ladder on each side, more than an honest market maker
+/// needs (one order can hold the funding mark's whole impact notional); for small
+/// accounts the collateral reserve binds long before it ($10 of collateral margins
+/// ten $10 orders a side at 10x). The cap bounds the book, and every per-tick pass
+/// over it, by the number of funded accounts instead of by how fast one account can
+/// post: before it, 60 accounts with $10 each kept 22,081 orders resting. An order
+/// past it is refused at intake
+/// ([`Sequencer::check_open_order_limits`]) and at the seal, where the manifest
+/// records it as [`RejectReason::InvalidOrder`]. Orders a snapshot restores above
+/// it stay on the book; the account's new orders are refused until it is back under.
+pub const MAX_OPEN_ORDERS_PER_MARKET: usize = 64;
+
+/// The most open orders one account may keep across every market, counted as for
+/// [`MAX_OPEN_ORDERS_PER_MARKET`]: two full markets.
+pub const MAX_OPEN_ORDERS_PER_ACCOUNT: usize = 2 * MAX_OPEN_ORDERS_PER_MARKET;
+
+/// An open-order limit that refused an order (audit 2026-11-16 GA-1 + SM-1).
+/// [`Sequencer::check_open_order_limits`] returns it at intake; [`Sequencer::seal_batch`]
+/// records an order it refuses in the manifest under [`OpenOrderLimit::reject_reason`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpenOrderLimit {
+    /// The account already keeps [`MAX_OPEN_ORDERS_PER_MARKET`] open orders in the
+    /// order's market.
+    Market,
+    /// The account already keeps [`MAX_OPEN_ORDERS_PER_ACCOUNT`] open orders across
+    /// every market.
+    Account,
+    /// The account's collateral in the market does not cover the initial margin of
+    /// its pending orders on the order's side together with the order (the
+    /// collateral reserve, [`Sequencer::check_open_order_limits`]).
+    PendingMargin,
+}
+
+impl OpenOrderLimit {
+    /// The reason the batch manifest records for an order the limit refuses at the
+    /// seal. The caps have no reason code of their own (the codes are part of the
+    /// proven manifest encoding), so they record the catch-all.
+    pub fn reject_reason(self) -> RejectReason {
+        match self {
+            Self::Market | Self::Account => RejectReason::InvalidOrder,
+            Self::PendingMargin => RejectReason::InsufficientMargin,
+        }
+    }
+}
+
+impl core::fmt::Display for OpenOrderLimit {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Market => write!(
+                f,
+                "OPEN_ORDER_LIMIT: this account already has {MAX_OPEN_ORDERS_PER_MARKET} open \
+                 orders in this market; cancel one first"
+            ),
+            Self::Account => write!(
+                f,
+                "OPEN_ORDER_LIMIT: this account already has {MAX_OPEN_ORDERS_PER_ACCOUNT} open \
+                 orders across all markets; cancel one first"
+            ),
+            Self::PendingMargin => f.write_str(
+                "PENDING_MARGIN: the collateral in this market does not cover the initial \
+                 margin of this order together with the account's pending orders on the same \
+                 side",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for OpenOrderLimit {}
+
+/// Whether `order` can rest on the book, and so counts against the open-order
+/// caps: a GTC with a limit price, or a post-only.
+fn can_rest(order: &Order) -> bool {
+    match order.tif {
+        TimeInForce::Gtc => order.limit_price > 0,
+        TimeInForce::PostOnly => true,
+        TimeInForce::Ioc | TimeInForce::Fok => false,
+    }
+}
+
+/// One side of an account's pending orders in one market, size-scaled: the orders
+/// that can add exposure, and the orders settlement holds to reducing it
+/// (reduce-only, or admitted below the minimum because they reduced).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PendingSide {
+    adding: i128,
+    reducing: i128,
+}
+
+/// An account's pending orders in one market: how many can rest (what the caps
+/// count) and their size on each side (what the collateral reserve margins).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PendingOrders {
+    open: usize,
+    buy: PendingSide,
+    sell: PendingSide,
+}
+
+impl PendingOrders {
+    fn side_mut(&mut self, side: Side) -> &mut PendingSide {
+        match side {
+            Side::Buy => &mut self.buy,
+            Side::Sell => &mut self.sell,
+        }
+    }
+
+    /// Both tallies together.
+    fn plus(mut self, other: Self) -> Self {
+        self.open = self.open.saturating_add(other.open);
+        for side in [Side::Buy, Side::Sell] {
+            let o = match side {
+                Side::Buy => other.buy,
+                Side::Sell => other.sell,
+            };
+            let s = self.side_mut(side);
+            s.adding = s.adding.saturating_add(o.adding);
+            s.reducing = s.reducing.saturating_add(o.reducing);
+        }
+        self
+    }
+}
+
+/// One pending order as the tally counts it.
+#[derive(Clone, Copy, Debug)]
+struct PendingOrder {
+    owner: PubKey,
+    market_id: MarketId,
+    side: Side,
+    /// unfilled size, size-scaled
+    size: i128,
+    reducing: bool,
+    /// whether it counts against the caps
+    open: bool,
+}
+
+/// Every account's pending orders, per market and in total. Off-chain sequencer
+/// state, never persisted: it is rebuilt from the book.
+#[derive(Clone, Debug, Default)]
+struct PendingTally {
+    markets: BTreeMap<(PubKey, MarketId), PendingOrders>,
+    accounts: BTreeMap<PubKey, usize>,
+}
+
+impl PendingTally {
+    fn add(&mut self, o: &PendingOrder) {
+        let entry = self.markets.entry((o.owner, o.market_id)).or_default();
+        let side = entry.side_mut(o.side);
+        if o.reducing {
+            side.reducing = side.reducing.saturating_add(o.size);
+        } else {
+            side.adding = side.adding.saturating_add(o.size);
+        }
+        if o.open {
+            entry.open = entry.open.saturating_add(1);
+            let total = self.accounts.entry(o.owner).or_default();
+            *total = total.saturating_add(1);
+        }
+    }
+
+    /// Take back what [`Self::add`] added for `o`, dropping entries that hold
+    /// nothing any more.
+    fn remove(&mut self, o: &PendingOrder) {
+        let key = (o.owner, o.market_id);
+        if let Some(entry) = self.markets.get_mut(&key) {
+            let side = entry.side_mut(o.side);
+            if o.reducing {
+                side.reducing = side.reducing.saturating_sub(o.size).max(0);
+            } else {
+                side.adding = side.adding.saturating_sub(o.size).max(0);
+            }
+            if o.open {
+                entry.open = entry.open.saturating_sub(1);
+            }
+            if *entry == PendingOrders::default() {
+                self.markets.remove(&key);
+            }
+        }
+        if o.open {
+            if let Some(total) = self.accounts.get_mut(&o.owner) {
+                *total = total.saturating_sub(1);
+                if *total == 0 {
+                    self.accounts.remove(&o.owner);
+                }
+            }
+        }
+    }
+
+    fn market(&self, owner: &PubKey, market_id: MarketId) -> PendingOrders {
+        self.markets
+            .get(&(*owner, market_id))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn account(&self, owner: &PubKey) -> usize {
+        self.accounts.get(owner).copied().unwrap_or(0)
+    }
+}
+
+/// Whether `position` keeps initial margin at the validated `mark` if every
+/// pending order on `side` (`pending`) fills there in full: the collateral reserve
+/// for pending orders (audit 2026-11-16 SM-1). An order settlement holds to
+/// reducing counts only up to the size that closes the position, since it can
+/// never fill past that; every other order counts in full, so the orders on a side
+/// together cannot commit more margin than the collateral holds. Each side is
+/// checked on its own, as both cannot fill in full and leave the larger exposure.
+/// With nothing else pending, this is exactly the per-order check
+/// ([`Position::fits_initial_after`]).
+fn pending_side_fits(
+    position: &Position,
+    market: &Market,
+    side: Side,
+    pending: PendingSide,
+    mark: i128,
+    funding_index: i128,
+) -> bool {
+    let closable = match side {
+        Side::Buy => position.size.min(0).saturating_neg(),
+        Side::Sell => position.size.max(0),
+    };
+    let total = pending
+        .adding
+        .saturating_add(pending.reducing.min(closable));
+    let delta = match side {
+        Side::Buy => total,
+        Side::Sell => total.saturating_neg(),
+    };
+    position.fits_initial_after(market, delta, mark, funding_index)
+}
+
+/// The open-order limits for `order` (counted against the caps if it can rest,
+/// margined as `reducing` or not), from an account with `pending` orders in the
+/// order's market and `account_open` open orders across every market. `margin` is
+/// the order's market, its owner's committed position there, the validated oracle
+/// price and the funding index; without it (no validated price) the reserve is not
+/// checked, and the seal refuses the order as `OracleUnavailable`.
+fn open_order_limits(
+    order: &Order,
+    reducing: bool,
+    pending: PendingOrders,
+    account_open: usize,
+    margin: Option<(&Market, &Position, i128, i128)>,
+) -> Result<(), OpenOrderLimit> {
+    if can_rest(order) {
+        if pending.open >= MAX_OPEN_ORDERS_PER_MARKET {
+            return Err(OpenOrderLimit::Market);
+        }
+        if account_open >= MAX_OPEN_ORDERS_PER_ACCOUNT {
+            return Err(OpenOrderLimit::Account);
+        }
+    }
+    if let Some((market, position, mark, funding_index)) = margin {
+        let mut side = match order.side {
+            Side::Buy => pending.buy,
+            Side::Sell => pending.sell,
+        };
+        if reducing {
+            side.reducing = side.reducing.saturating_add(order.size);
+        } else {
+            side.adding = side.adding.saturating_add(order.size);
+        }
+        if !pending_side_fits(position, market, order.side, side, mark, funding_index) {
+            return Err(OpenOrderLimit::PendingMargin);
+        }
+    }
+    Ok(())
+}
 
 /// Whether the minimum order size ([`MIN_ORDER_NOTIONAL`]) refuses `order` against
 /// its owner's current `position` (an empty one when the owner holds none), at the
@@ -522,6 +834,20 @@ impl FundingMarkWindow {
 thread_local! {
     /// Funding-premium samples computed on this thread (each walks the book).
     static PREMIUM_SAMPLES: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+    /// Matching passes `seal_batch` ran on this thread: the first of each batch
+    /// and every rematch.
+    static MATCH_ROUNDS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+    /// Book changes `seal_batch` undid on this thread to return the book to
+    /// where its batch started, for a rematch: each an order put back, a trade
+    /// or a level. (The book used to be copied whole, every batch.)
+    static ROLLBACK_ORDERS: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// Add `n` to one of this thread's counters (tests only).
+#[cfg(test)]
+fn count(counter: &'static std::thread::LocalKey<core::cell::Cell<u64>>, n: impl TryInto<u64>) {
+    let n = n.try_into().unwrap_or(u64::MAX);
+    counter.with(|c| c.set(c.get().saturating_add(n)));
 }
 
 /// Why an order was rejected at settlement, mapped from an engine error.
@@ -573,6 +899,9 @@ struct FillSettlement {
     rejected: Vec<(Digest, RejectReason)>,
     /// Order hashes with at least one settled fill, deduplicated, in fill order.
     settled_order_hashes: Vec<Digest>,
+    /// The members of `settled_order_hashes`, to deduplicate it without a scan
+    /// of it per fill.
+    settled_seen: BTreeSet<Digest>,
     /// SEC-022 §6: order hashes whose fill failed for an ATTRIBUTABLE reason
     /// (band / bankruptcy / reduce_only settlement violation), each paired with
     /// the reason recorded at its OWN push site. `seal_batch`'s dry-run bans
@@ -584,6 +913,96 @@ struct FillSettlement {
     /// lookup would commit that earlier, wrong reason into `manifest_hash`
     /// (whole-branch review I2).
     offenders: Vec<(Digest, RejectReason)>,
+    /// The offenders among `offenders` that were the MAKER of a fill that failed
+    /// for a reason that can ban the maker's side ([`bans_side`]), once per
+    /// maker and reason: its owner, the market, the side it rests on and the
+    /// reason. `seal_batch` bans the owner's orders on that side that would fail
+    /// the same way with it, under that reason (audit 2026-11-16 SM-2), whatever
+    /// reason the maker itself was first recorded with.
+    side_bans: BTreeMap<(Digest, u8), SideBan>,
+}
+
+/// A maker's failure that can take its owner's other orders on the same side
+/// of the market with it ([`FillSettlement::side_bans`]).
+#[derive(Clone, Copy, Debug)]
+struct SideBan {
+    owner: PubKey,
+    market_id: MarketId,
+    side: Side,
+    reason: RejectReason,
+}
+
+/// Whether a fill failed because its leg's collateral could not carry it: below
+/// initial margin, or left bankrupt or under maintenance. Every other order of
+/// that owner on that side would add the same exposure to the same collateral.
+fn fails_collateral(reason: RejectReason) -> bool {
+    matches!(
+        reason,
+        RejectReason::InsufficientMargin | RejectReason::FillWouldBankrupt
+    )
+}
+
+/// Whether a maker's failure for `reason` can ban its owner's side (audit
+/// 2026-11-16 SM-2): its collateral could not carry the fill
+/// ([`fails_collateral`]), or the fill would add exposure where only a
+/// reduction may trade (a reduce-only order, close-only mode, an order admitted
+/// below the minimum because it reduced). A price out of band is the order's
+/// own and bans only it.
+fn bans_side(reason: RejectReason) -> bool {
+    fails_collateral(reason)
+        || matches!(
+            reason,
+            RejectReason::ReduceOnlyViolation
+                | RejectReason::MarketCloseOnly
+                | RejectReason::BelowMinimumSize
+        )
+}
+
+/// Whether a side ban for `reason` takes an order of the banned owner that is
+/// `reduce_only` and, if `exempt`, was admitted below the minimum because it
+/// reduced: the orders that would fail the same way. A reduce-only order adds
+/// no exposure, so only a reduce-only ban takes it.
+fn side_ban_takes(reason: RejectReason, reduce_only: bool, exempt: bool) -> bool {
+    match reason {
+        RejectReason::ReduceOnlyViolation => reduce_only,
+        RejectReason::BelowMinimumSize => exempt && !reduce_only,
+        _ => !reduce_only,
+    }
+}
+
+/// Whether `owner`'s position in `market_id` gives an order on `side` nothing
+/// to reduce: no short for a bid to buy back, no long for an ask to sell.
+fn nothing_to_reduce(
+    state: &DefaultState,
+    owner: &PubKey,
+    market_id: MarketId,
+    side: Side,
+) -> bool {
+    let size = state.position(owner, market_id).map_or(0, |p| p.size);
+    match side {
+        Side::Buy => size >= 0,
+        Side::Sell => size <= 0,
+    }
+}
+
+/// The name of `reason`, as a rejection reads in an order's execution record:
+/// the reason of a removal that stands for one (see `Sequencer::seal_batch`).
+fn reason_name(reason: RejectReason) -> &'static str {
+    match reason {
+        RejectReason::Expired => "Expired",
+        RejectReason::SelfTradePrevented => "SelfTradePrevented",
+        RejectReason::PostOnlyWouldTake => "PostOnlyWouldTake",
+        RejectReason::ReduceOnlyViolation => "ReduceOnlyViolation",
+        RejectReason::InsufficientMargin => "InsufficientMargin",
+        RejectReason::MarketCloseOnly => "MarketCloseOnly",
+        RejectReason::OracleUnavailable => "OracleUnavailable",
+        RejectReason::FillOrKillUnfillable => "FillOrKillUnfillable",
+        RejectReason::Cancelled => "Cancelled",
+        RejectReason::InvalidOrder => "InvalidOrder",
+        RejectReason::FillPriceOutOfBand => "FillPriceOutOfBand",
+        RejectReason::FillWouldBankrupt => "FillWouldBankrupt",
+        RejectReason::BelowMinimumSize => "BelowMinimumSize",
+    }
 }
 
 /// Whether a signed `delta` would INCREASE `owner`'s absolute exposure in
@@ -635,121 +1054,166 @@ fn settle_fills(
 ) -> FillSettlement {
     let mut out = FillSettlement::default();
     for m in fills {
-        let Some(oracle) = oracles.get(&m.market_id).copied() else {
-            for oh in [m.taker_order_hash, m.maker_order_hash] {
-                out.rejected.push((oh, RejectReason::OracleUnavailable));
-            }
-            continue;
-        };
-        // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
-        // the fill if it would increase a reduce_only party's absolute exposure. (Matching
-        // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
-        // The pre-trade gate already rejects a reduce_only order that would open against
-        // the pre-batch position; this is the live backstop for an intra-batch change.
-        //
-        // The violation is attributed ONLY to the offending order(s), never to an
-        // innocent counterparty (adversarial-review follow-up). SEC-022 §6 (Task 7
-        // review I1a): it is ATTRIBUTABLE, so the offender is also BANNED like any
-        // other offending leg — without the ban the dropped fill still burned the
-        // innocent counterparty's consumed depth. Reachable cross-batch: a reduce_only
-        // maker resting since batch N whose position an EARLIER fill of this very
-        // settlement pass closed (the pre-trade gate and the owners_with_order guard
-        // see only current-batch orders). Where both legs offend, both are banned.
-        //
-        // The close-only and minimum checks follow the same rule. In close-only mode
-        // the engine refuses a fill when either leg adds exposure; naming that leg here
-        // lets a close that crossed a resting opener (admitted before the mode
-        // changed) be rematched instead of rejected with it.
-        let taker_delta = if m.taker_side == Side::Buy {
-            m.size
-        } else {
-            -m.size
-        };
-        let close_only = state.mode == Mode::CloseOnly;
-        let leg_offense = |owner: &PubKey, hash: &Digest, reduce_only: bool, delta: i128| {
-            if !exposure_increases_in(state, owner, m.market_id, delta) {
-                None
-            } else if reduce_only {
-                Some(RejectReason::ReduceOnlyViolation)
-            } else if close_only {
-                Some(RejectReason::MarketCloseOnly)
-            } else if minimum_exempt.contains(hash) {
-                Some(RejectReason::BelowMinimumSize)
-            } else {
-                None
-            }
-        };
-        let taker_offense = leg_offense(
-            &m.taker,
-            &m.taker_order_hash,
-            m.taker_reduce_only,
-            taker_delta,
-        );
-        let maker_offense = leg_offense(
-            &m.maker,
-            &m.maker_order_hash,
-            m.maker_reduce_only,
-            -taker_delta,
-        );
-        if taker_offense.is_some() || maker_offense.is_some() {
-            for (hash, offense) in [
-                (m.taker_order_hash, taker_offense),
-                (m.maker_order_hash, maker_offense),
-            ] {
-                if let Some(reason) = offense {
-                    out.rejected.push((hash, reason));
-                    out.offenders.push((hash, reason));
-                }
-            }
-            continue;
+        settle_fill(state, oracles, m, now_ms, minimum_exempt, &mut out);
+    }
+    out
+}
+
+/// Settle one matched fill `m` into `out`, as [`settle_fills`] settles each of
+/// its fills in turn, and return which of its orders failed it, attributably:
+/// `drop_maker` for the maker, `stop_taker` for the taker. A fill that settled,
+/// or failed for no order's fault, returns [`TradeCheck::TRADE`]. The last
+/// matching pass of `seal_batch` asks this about each trade before the book
+/// changes for it (audit 2026-11-16 SM-2).
+fn settle_fill(
+    state: &mut DefaultState,
+    oracles: &BTreeMap<MarketId, OracleTranscript>,
+    m: &Match,
+    now_ms: u64,
+    minimum_exempt: &BTreeSet<Digest>,
+    out: &mut FillSettlement,
+) -> TradeCheck {
+    let maker_side = match m.taker_side {
+        Side::Buy => Side::Sell,
+        Side::Sell => Side::Buy,
+    };
+    let maker_failed = |out: &mut FillSettlement, reason: RejectReason| {
+        out.rejected.push((m.maker_order_hash, reason));
+        out.offenders.push((m.maker_order_hash, reason));
+        if bans_side(reason) {
+            out.side_bans
+                .entry((m.maker_order_hash, reason as u8))
+                .or_insert(SideBan {
+                    owner: m.maker,
+                    market_id: m.market_id,
+                    side: maker_side,
+                    reason,
+                });
         }
-        let op = BatchOp::Fill {
-            taker: m.taker,
-            maker: m.maker,
-            market_id: m.market_id,
-            taker_side: m.taker_side,
-            size: m.size,
-            price: m.price,
-            oracle,
-            now_ms,
+    };
+    let Some(oracle) = oracles.get(&m.market_id).copied() else {
+        for oh in [m.taker_order_hash, m.maker_order_hash] {
+            out.rejected.push((oh, RejectReason::OracleUnavailable));
+        }
+        return TradeCheck::TRADE;
+    };
+    // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
+    // the fill if it would increase a reduce_only party's absolute exposure. (Matching
+    // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
+    // The pre-trade gate already rejects a reduce_only order that would open against
+    // the pre-batch position; this is the live backstop for an intra-batch change.
+    //
+    // The violation is attributed ONLY to the offending order(s), never to an
+    // innocent counterparty (adversarial-review follow-up). SEC-022 §6 (Task 7
+    // review I1a): it is ATTRIBUTABLE, so the offender is also BANNED like any
+    // other offending leg — without the ban the dropped fill still burned the
+    // innocent counterparty's consumed depth. Reachable cross-batch: a reduce_only
+    // maker resting since batch N whose position an EARLIER fill of this very
+    // settlement pass closed (the pre-trade gate and the owners_with_order guard
+    // see only current-batch orders). Where both legs offend, both are banned.
+    //
+    // The close-only and minimum checks follow the same rule. In close-only mode
+    // the engine refuses a fill when either leg adds exposure; naming that leg here
+    // lets a close that crossed a resting opener (admitted before the mode
+    // changed) be rematched instead of rejected with it.
+    let taker_delta = if m.taker_side == Side::Buy {
+        m.size
+    } else {
+        -m.size
+    };
+    let close_only = state.mode == Mode::CloseOnly;
+    let leg_offense = |owner: &PubKey, hash: &Digest, reduce_only: bool, delta: i128| {
+        if !exposure_increases_in(state, owner, m.market_id, delta) {
+            None
+        } else if reduce_only {
+            Some(RejectReason::ReduceOnlyViolation)
+        } else if close_only {
+            Some(RejectReason::MarketCloseOnly)
+        } else if minimum_exempt.contains(hash) {
+            Some(RejectReason::BelowMinimumSize)
+        } else {
+            None
+        }
+    };
+    let taker_offense = leg_offense(
+        &m.taker,
+        &m.taker_order_hash,
+        m.taker_reduce_only,
+        taker_delta,
+    );
+    let maker_offense = leg_offense(
+        &m.maker,
+        &m.maker_order_hash,
+        m.maker_reduce_only,
+        -taker_delta,
+    );
+    if taker_offense.is_some() || maker_offense.is_some() {
+        if let Some(reason) = taker_offense {
+            out.rejected.push((m.taker_order_hash, reason));
+            out.offenders.push((m.taker_order_hash, reason));
+        }
+        if let Some(reason) = maker_offense {
+            maker_failed(out, reason);
+        }
+        return TradeCheck {
+            drop_maker: maker_offense.is_some(),
+            stop_taker: taker_offense.is_some(),
         };
-        match state.apply_op(&op) {
-            // A Fill never yields a withdrawal output, so discard it.
-            Ok(_) => {
-                for oh in [m.taker_order_hash, m.maker_order_hash] {
-                    if !out.settled_order_hashes.contains(&oh) {
-                        out.settled_order_hashes.push(oh);
+    }
+    let op = BatchOp::Fill {
+        taker: m.taker,
+        maker: m.maker,
+        market_id: m.market_id,
+        taker_side: m.taker_side,
+        size: m.size,
+        price: m.price,
+        oracle,
+        now_ms,
+    };
+    match state.apply_op(&op) {
+        // A Fill never yields a withdrawal output, so discard it.
+        Ok(_) => {
+            for oh in [m.taker_order_hash, m.maker_order_hash] {
+                if out.settled_seen.insert(oh) {
+                    out.settled_order_hashes.push(oh);
+                }
+            }
+            // log the fill only after it settled — a failed fill (Err arm) is
+            // dropped, so it never enters the replayable op-log.
+            out.ops.push(op);
+            out.applied_fills.push(*m);
+            TradeCheck::TRADE
+        }
+        Err(e) => {
+            let reason = settlement_reason(&e);
+            // Attribute the rejection to the offending leg ONLY, never to an
+            // innocent counterparty — the same rule the reduce_only arm above
+            // already follows.
+            match offending_leg(&e) {
+                Some(FillLeg::Taker) => {
+                    out.rejected.push((m.taker_order_hash, reason));
+                    out.offenders.push((m.taker_order_hash, reason));
+                    TradeCheck {
+                        drop_maker: false,
+                        stop_taker: true,
                     }
                 }
-                // log the fill only after it settled — a failed fill (Err arm) is
-                // dropped, so it never enters the replayable op-log.
-                out.ops.push(op);
-                out.applied_fills.push(*m);
-            }
-            Err(e) => {
-                let reason = settlement_reason(&e);
-                // Attribute the rejection to the offending leg ONLY, never to an
-                // innocent counterparty — the same rule the reduce_only arm above
-                // already follows.
-                match offending_leg(&e) {
-                    Some(FillLeg::Taker) => {
-                        out.rejected.push((m.taker_order_hash, reason));
-                        out.offenders.push((m.taker_order_hash, reason));
+                Some(FillLeg::Maker) => {
+                    maker_failed(out, reason);
+                    TradeCheck {
+                        drop_maker: true,
+                        stop_taker: false,
                     }
-                    Some(FillLeg::Maker) => {
-                        out.rejected.push((m.maker_order_hash, reason));
-                        out.offenders.push((m.maker_order_hash, reason));
+                }
+                None => {
+                    for oh in [m.taker_order_hash, m.maker_order_hash] {
+                        out.rejected.push((oh, reason));
                     }
-                    None => {
-                        for oh in [m.taker_order_hash, m.maker_order_hash] {
-                            out.rejected.push((oh, reason));
-                        }
-                    }
+                    TradeCheck::TRADE
                 }
             }
         }
     }
-    out
 }
 
 /// serde default for the skipped `enclave` field: a placeholder identity a
@@ -773,6 +1237,28 @@ const TICK_WINDOW_GRACE_WINDOWS: u64 = 8;
 /// Hard backstop on the tick→window map so no path can leak (the legacy path never settles a
 /// window, so it has no window-settle prune event) — evict the oldest entries beyond this cap.
 const TICK_WINDOW_MAX: usize = 16_384;
+/// The matching passes one [`Sequencer::seal_batch`] runs at most (audit
+/// 2026-11-16 SM-2): the first, and a rematch after each pass whose settlement
+/// found an attributable offender. The last pass settles each fill as it
+/// matches it and stands: a fill that would fail for one of its orders drops
+/// that maker from the book or stops that taker before the book changes for
+/// it, so the other side loses no size to it and trades on. The poisoned
+/// orders it did not reach wait for the next batch.
+pub const MAX_MATCH_ROUNDS: u32 = 8;
+
+/// What the pre-trade gate of [`Sequencer::seal_batch`] decided for a batch
+/// ([`Sequencer::admit_batch`]).
+struct BatchAdmission {
+    /// the orders admitted, in order
+    admitted: Vec<Order>,
+    /// the orders refused, with their reasons, in order
+    pre_rejected: Vec<(Digest, RejectReason)>,
+    /// the resting orders admitted below the minimum because they reduce, and this
+    /// batch's
+    minimum_exempt: BTreeSet<Digest>,
+    /// whether each order was admitted, one per order of the batch
+    verdicts: Vec<bool>,
+}
 
 /// The pre-trade gate's verdict on an order it admits.
 struct Admitted {
@@ -895,6 +1381,22 @@ pub struct Sequencer {
     /// nothing new does not scan the records again. Runtime-only.
     #[serde(skip)]
     history_pruned_through: Option<u64>,
+    /// The resting orders the open-order limits count at intake, per account
+    /// (audit 2026-11-16 GA-1 + SM-1), so a check costs no walk over the book.
+    /// Built from the book when an intake check first needs it, kept up to date by
+    /// [`Sequencer::cancel_order`], and dropped whenever the book changes otherwise
+    /// (a seal, a void, a legacy rollback). Not persisted: a restore rebuilds it.
+    #[serde(skip)]
+    open_orders: Option<PendingTally>,
+    /// Orders accepted ([`Sequencer::accept_order`]) and not yet sealed, by hash:
+    /// the intake's pending orders. An order leaves when a batch seals it or it is
+    /// cancelled. Not persisted: after a restore the seal still counts every order
+    /// against the book, so it only refuses what intake let through.
+    #[serde(skip)]
+    intake: BTreeMap<Digest, PendingOrder>,
+    /// [`Self::intake`] tallied per account.
+    #[serde(skip)]
+    intake_tally: PendingTally,
 }
 
 impl Sequencer {
@@ -926,6 +1428,9 @@ impl Sequencer {
             minimum_exempt_owner: None,
             hardened_through: None,
             history_pruned_through: None,
+            open_orders: None,
+            intake: BTreeMap::new(),
+            intake_tally: PendingTally::default(),
         }
     }
 
@@ -1023,6 +1528,15 @@ impl Sequencer {
     /// has the size of the taker it answers, and the taker is measured against the
     /// minimum itself, so without the exemption a small exempt close could find its
     /// counter refused. Boot configuration, not persisted.
+    ///
+    /// The same owner is exempt from the open-order limits
+    /// ([`MAX_OPEN_ORDERS_PER_MARKET`], [`MAX_OPEN_ORDERS_PER_ACCOUNT`] and the
+    /// collateral reserve), for the same reason: its counters answer takers that
+    /// are held to the limits themselves, and a counter left resting (its taker
+    /// filled against other depth first) must not block the next one. Each of its
+    /// orders still passes the per-order margin check. The gateway gives a counter
+    /// only to a taker the seal admits ([`Sequencer::seal_admits`]), so no counter
+    /// answers a taker the batch refuses.
     pub fn set_minimum_exempt_owner(&mut self, owner: Option<PubKey>) {
         self.minimum_exempt_owner = owner;
     }
@@ -1229,9 +1743,227 @@ impl Sequencer {
     /// (censorship/withholding) detectable via [`Sequencer::inclusion_violations`].
     /// The receipt's `seq_no` is the authoritative sequencer seq and is preserved
     /// if the same order is later sealed.
+    ///
+    /// A first acceptance also counts the order as pending at intake, for
+    /// [`Sequencer::check_open_order_limits`], until a batch seals it or it is
+    /// cancelled. Accepting does not itself check the limits: the caller checks
+    /// first, and the seal applies them to every order either way.
     pub fn accept_order(&mut self, order: &Order, now_ms: u64) -> SignedReceipt {
         let order_hash = order.order_hash::<Keccak256>();
+        if order.size > 0
+            && self.state.markets.contains_key(&order.market_id)
+            && !self.finality.contains_key(&order_hash)
+            && !self.intake.contains_key(&order_hash)
+        {
+            let pending = PendingOrder {
+                owner: order.owner,
+                market_id: order.market_id,
+                side: order.side,
+                size: order.size,
+                reducing: self.intake_reducing(order),
+                open: can_rest(order),
+            };
+            self.intake_tally.add(&pending);
+            self.intake.insert(order_hash, pending);
+        }
         self.issue_receipt(order_hash, now_ms)
+    }
+
+    /// The open-order limits at intake (audit 2026-11-16 GA-1 + SM-1), for an order
+    /// about to be accepted: the caps ([`MAX_OPEN_ORDERS_PER_MARKET`],
+    /// [`MAX_OPEN_ORDERS_PER_ACCOUNT`], for an order that can rest) and the
+    /// collateral reserve. The reserve admits the order only if the owner's
+    /// committed position in the market keeps initial margin at the validated
+    /// oracle price when every pending order on the order's side fills there in
+    /// full, the order included; an order that can only reduce counts up to the
+    /// size that closes the position. Pending orders are the owner's orders
+    /// resting on the book and those accepted but not yet sealed. Reads the book
+    /// through a per-account tally, so a check costs no walk over the book (the
+    /// first after the book changed rebuilds the tally once).
+    ///
+    /// Each side is margined on its own, and a fill, a cancel, an expiry or a
+    /// rejection releases what the order held: the tally is the orders still
+    /// pending, never a running reservation. Until then the collateral stays
+    /// held: an unbind (a withdrawal, a transfer) that would take it is refused
+    /// ([`Sequencer::unbind_keeps_reserve`]). While the market has no validated
+    /// price the reserve is not checked here (the seal refuses the order as
+    /// `OracleUnavailable`). The house owner ([`Sequencer::set_minimum_exempt_owner`])
+    /// is exempt. [`Sequencer::seal_batch`] applies the same limits to every order it
+    /// seals, against the book and the batch's earlier orders, so no path around
+    /// this check gets past them; an order it refuses is recorded in the manifest
+    /// under [`OpenOrderLimit::reject_reason`].
+    pub fn check_open_order_limits(
+        &mut self,
+        order: &Order,
+        now_ms: u64,
+    ) -> Result<(), OpenOrderLimit> {
+        if self.minimum_exempt_owner == Some(order.owner) {
+            return Ok(());
+        }
+        let (pending, account_open) = self.pending_of(&order.owner, order.market_id);
+        let valuation = self.valuation(order, now_ms).ok();
+        open_order_limits(
+            order,
+            self.intake_reducing(order),
+            pending,
+            account_open,
+            valuation
+                .as_ref()
+                .map(|(market, position, mark, index)| (market, position, *mark, *index)),
+        )
+    }
+
+    /// Whether unbinding `amount` of `owner`'s collateral in `market_id` at `now_ms`
+    /// (a withdrawal, a transfer out of the market) keeps the collateral reserve of
+    /// its pending orders (audit 2026-11-16 SM-1). The reserve holds an order's
+    /// margin from its admission until it fills, is cancelled, expires or is
+    /// rejected; without this check the collateral could leave right after the
+    /// orders were admitted, and they would rest with nothing behind them while it
+    /// backed another account's orders. So after the unbind, the owner's committed
+    /// position must still keep initial margin at the validated oracle price when
+    /// every pending order on either side fills there in full, as
+    /// [`Sequencer::check_open_order_limits`] margins them: the orders resting on
+    /// the book and those accepted but not yet sealed, an order that can only reduce
+    /// counting up to the size that closes the position.
+    ///
+    /// Always true for the house owner ([`Sequencer::set_minimum_exempt_owner`]), for
+    /// an owner with nothing pending in the market, and while the engine is
+    /// close-only (no pending order can then add exposure). While the market's
+    /// oracle price does not validate, an owner with a pending order that could add
+    /// exposure is refused: its reserve cannot be measured. The position's own
+    /// margin is the caller's check, as before.
+    pub fn unbind_keeps_reserve(
+        &mut self,
+        owner: &PubKey,
+        market_id: MarketId,
+        amount: i128,
+        now_ms: u64,
+    ) -> bool {
+        if self.minimum_exempt_owner == Some(*owner) || self.state.mode == Mode::CloseOnly {
+            return true;
+        }
+        let (pending, _) = self.pending_of(owner, market_id);
+        let sides = [(Side::Buy, pending.buy), (Side::Sell, pending.sell)];
+        if sides
+            .iter()
+            .all(|(_, side)| *side == PendingSide::default())
+        {
+            return true;
+        }
+        let Some(market) = self.state.markets.get(&market_id) else {
+            return true;
+        };
+        let mark = self
+            .oracles
+            .get(&market_id)
+            .and_then(|oracle| oracle.validate(market, now_ms).ok());
+        let Some(mark) = mark else {
+            return sides.iter().all(|(_, side)| side.adding == 0);
+        };
+        let mut after = self
+            .state
+            .position(owner, market_id)
+            .copied()
+            .unwrap_or_else(|| Position::empty(*owner, market_id));
+        let Some(collateral) = after.collateral.checked_sub(amount) else {
+            return false;
+        };
+        after.collateral = collateral;
+        let funding_index = self.funding_index_at(market_id, mark, now_ms);
+        sides.iter().all(|(side, pending)| {
+            *pending == PendingSide::default()
+                || pending_side_fits(&after, market, *side, *pending, mark, funding_index)
+        })
+    }
+
+    /// `owner`'s pending orders in `market_id`, resting on the book or accepted and
+    /// waiting for their batch, and its open orders across every market.
+    fn pending_of(&mut self, owner: &PubKey, market_id: MarketId) -> (PendingOrders, usize) {
+        if self.open_orders.is_none() {
+            self.open_orders = Some(self.book_tally(None));
+        }
+        let book = self.open_orders.as_ref().expect("built above");
+        let pending = book
+            .market(owner, market_id)
+            .plus(self.intake_tally.market(owner, market_id));
+        let account_open = book
+            .account(owner)
+            .saturating_add(self.intake_tally.account(owner));
+        (pending, account_open)
+    }
+
+    /// Whether intake counts `order` as one settlement holds to reducing: a
+    /// reduce-only order, or one below [`MIN_ORDER_NOTIONAL`] (the seal admits
+    /// such an order only if it reduces). Measured at the market's current
+    /// transcript price; the seal classifies the order exactly.
+    fn intake_reducing(&self, order: &Order) -> bool {
+        order.reduce_only
+            || (self.minimum_exempt_owner != Some(order.owner)
+                && self
+                    .oracles
+                    .get(&order.market_id)
+                    .is_some_and(|t| under_minimum_notional(order, t.price)))
+    }
+
+    /// Drop `hash` from the intake's pending orders, if it is there.
+    fn forget_intake(&mut self, hash: &Digest) {
+        if let Some(pending) = self.intake.remove(hash) {
+            self.intake_tally.remove(&pending);
+        }
+    }
+
+    /// Every order resting on the book, tallied per account. With `live_at`, an
+    /// order expired at that time holds nothing (matching no longer trades it);
+    /// without, every resting order counts until it is reaped.
+    fn book_tally(&self, live_at: Option<u64>) -> PendingTally {
+        let mut tally = PendingTally::default();
+        for &market_id in self.state.markets.keys() {
+            let Some(book) = self.matcher.book(market_id) else {
+                continue;
+            };
+            for (side, quote, expiry_ms) in book.resting_orders() {
+                let expired = live_at.is_some_and(|now| expiry_ms != 0 && now >= expiry_ms);
+                if quote.remaining <= 0 || expired {
+                    continue;
+                }
+                tally.add(&PendingOrder {
+                    owner: quote.owner,
+                    market_id,
+                    side,
+                    size: quote.remaining,
+                    reducing: quote.reduce_only || self.minimum_exempt.contains(&quote.order_hash),
+                    open: true,
+                });
+            }
+        }
+        tally
+    }
+
+    /// What the margin checks measure `order` with at `now_ms`: its market, its
+    /// owner's committed position there (an empty one when it holds none), the
+    /// validated oracle price and the funding index the engine's fill reads.
+    fn valuation(
+        &self,
+        order: &Order,
+        now_ms: u64,
+    ) -> Result<(Market, Position, i128, i128), RejectReason> {
+        let Some(market) = self.state.markets.get(&order.market_id) else {
+            // audit Tier-3: an unknown market is not a reduce-only violation.
+            return Err(RejectReason::InvalidOrder);
+        };
+        let Some(oracle) = self.oracles.get(&order.market_id) else {
+            return Err(RejectReason::OracleUnavailable);
+        };
+        let mark = oracle
+            .validate(market, now_ms)
+            .map_err(|_| RejectReason::OracleUnavailable)?;
+        let funding_index = self.funding_index_at(order.market_id, mark, now_ms);
+        let base = self
+            .state
+            .position(&order.owner, order.market_id)
+            .copied()
+            .unwrap_or_else(|| Position::empty(order.owner, order.market_id));
+        Ok((*market, base, mark, funding_index))
     }
 
     /// Pre-trade risk (§12, Phase 3): would this order, filled in full at the
@@ -1253,9 +1985,10 @@ impl Sequencer {
     /// This is the check for an order on its own, against its owner's committed
     /// position. [`Sequencer::seal_batch`] applies the same check to each order of a
     /// batch, also against the position after the owner's earlier orders of the
-    /// batch.
+    /// batch, together with the open-order limits
+    /// ([`Sequencer::check_open_order_limits`]), which this check leaves out.
     pub fn pre_trade_check(&self, order: &Order, now_ms: u64) -> Result<(), RejectReason> {
-        self.admission(order, now_ms, 0).map(|_| ())
+        self.admission(order, now_ms, 0, None).map(|_| ())
     }
 
     /// [`Sequencer::pre_trade_check`] for an order whose owner already has orders
@@ -1264,28 +1997,20 @@ impl Sequencer {
     /// against that position after the earlier orders fill in full; the order adds
     /// exposure if it does so against either. Returns whether the order was admitted
     /// below the minimum because it reduces (settlement then holds it to that).
+    ///
+    /// With `limits`, the owner's pending orders in the market and its open orders
+    /// across every market, the order must also pass the open-order limits
+    /// (audit 2026-11-16 GA-1 + SM-1); a refusal is recorded under
+    /// [`OpenOrderLimit::reject_reason`]. The house owner is exempt.
     fn admission(
         &self,
         order: &Order,
         now_ms: u64,
         earlier: i128,
+        limits: Option<(PendingOrders, usize)>,
     ) -> Result<Admitted, RejectReason> {
-        let Some(market) = self.state.markets.get(&order.market_id) else {
-            // audit Tier-3: an unknown market is not a reduce-only violation.
-            return Err(RejectReason::InvalidOrder);
-        };
-        let Some(oracle) = self.oracles.get(&order.market_id) else {
-            return Err(RejectReason::OracleUnavailable);
-        };
-        let mark = oracle
-            .validate(market, now_ms)
-            .map_err(|_| RejectReason::OracleUnavailable)?;
-        let funding_index = self.funding_index_at(order.market_id, mark, now_ms);
-        let base = self
-            .state
-            .position(&order.owner, order.market_id)
-            .copied()
-            .unwrap_or_else(|| Position::empty(order.owner, order.market_id));
+        let (market, base, mark, funding_index) = self.valuation(order, now_ms)?;
+        let market = &market;
         let mut projected = base;
         projected.size = base.size.saturating_add(earlier);
         // audit DP-009 (adversarial-review follow-up): reject a reduce_only order that
@@ -1310,10 +2035,20 @@ impl Sequencer {
         if !base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
             return Err(RejectReason::InsufficientMargin);
         }
+        let below_minimum_exempt =
+            minimum_applies && !order.reduce_only && under_minimum_notional(order, mark);
+        if let Some((pending, account_open)) = limits.filter(|_| minimum_applies) {
+            open_order_limits(
+                order,
+                order.reduce_only || below_minimum_exempt,
+                pending,
+                account_open,
+                Some((market, &base, mark, funding_index)),
+            )
+            .map_err(OpenOrderLimit::reject_reason)?;
+        }
         Ok(Admitted {
-            below_minimum_exempt: minimum_applies
-                && !order.reduce_only
-                && under_minimum_notional(order, mark),
+            below_minimum_exempt,
         })
     }
 
@@ -1334,8 +2069,8 @@ impl Sequencer {
     /// bids and against the asks. Only depth the engine could fill counts: a
     /// resting order inside the market's fill band around the validated index
     /// whose maker could settle the fill. `None` when either side holds less than
-    /// that within its first [`FUNDING_IMPACT_MAX_ORDERS`] in-band orders, or when
-    /// the market's oracle does not validate at `now_ms`.
+    /// that in its fill band, or when the market's oracle does not validate at
+    /// `now_ms`.
     pub fn impact_mid(&self, market_id: MarketId, now_ms: u64) -> Option<i128> {
         let market = self.state.markets.get(&market_id)?;
         let index = self
@@ -1362,9 +2097,22 @@ impl Sequencer {
     /// trade against therefore cannot move the funding mark; in particular an
     /// order admitted below the minimum because it reduced counts only while it
     /// still reduces, so stacking such orders gives no depth beyond the maker's
-    /// position. The sweep walks only the levels inside the fill band and visits
-    /// at most [`FUNDING_IMPACT_MAX_ORDERS`] orders; a side that needs more has no
-    /// impact price.
+    /// position. Every other order counts whatever its size: an order at the
+    /// minimum resting below the index, or a partial fill's remainder, is worth
+    /// less than [`MIN_ORDER_NOTIONAL`] at its own price and is still depth a taker
+    /// can fill.
+    ///
+    /// The sweep walks only the levels inside the fill band and ends at the order
+    /// that completes the impact notional, inside its level (audit 2026-11-16
+    /// SM-3). It has no order budget: an order it cannot count costs it only the
+    /// visit, so no number of such orders, ahead of the depth or queued behind it at
+    /// its price, can leave the side without its impact price (before, a sweep
+    /// that visited 4,096 orders without reaching the notional gave none, so
+    /// 4,096 unfillable dust orders pinned the mark to the index). Its work is the
+    /// in-band orders ahead of the depth: at most [`MAX_OPEN_ORDERS_PER_MARKET`]
+    /// per account, each margined with the account's other pending orders on its
+    /// side when it was admitted, its collateral held until it fills, is cancelled
+    /// or expires ([`Sequencer::unbind_keeps_reserve`]).
     fn impact_price(&self, market: &Market, index: i128, side: Side, now_ms: u64) -> Option<i128> {
         let book = self.matcher.book(market.id)?;
         // the fill band as a price range: |price − index| · RATE_SCALE <= ratio · index
@@ -1372,7 +2120,6 @@ impl Sequencer {
         let window = ImpactWindow {
             lo: index.checked_sub(reach)?,
             hi: index.checked_add(reach)?,
-            max_orders: FUNDING_IMPACT_MAX_ORDERS,
         };
         let funding_index = self.funding_index_at(market.id, index, now_ms);
         let close_only = self.state.mode == Mode::CloseOnly;
@@ -1488,18 +2235,18 @@ impl Sequencer {
     /// **Funding mark.** Each tick samples, per market, the premium of the
     /// impact-notional book mid ([`Sequencer::impact_mid`]) over the validated
     /// oracle index, or 0 when either side lacks [`FUNDING_IMPACT_NOTIONAL`] of
-    /// depth the engine could fill (within [`FUNDING_IMPACT_MAX_ORDERS`] orders of
-    /// the fill band). [`Sequencer::seal_batch`] takes the sample from
-    /// the book the tick's takers face, before it matches, and the sample prices
-    /// the span since the previous tick. The `AccrueFunding` mark is the index plus
-    /// the time-weighted average of those spans since the open window began (reset
-    /// by [`Sequencer::seal_window`]), with each sample and the average capped at the
-    /// premium that saturates the rate, and the average taken over at least
-    /// [`FUNDING_MARK_MIN_SPAN_MS`]. So moving the mark takes fillable depth that
-    /// takers can trade against, held over time: a quote withdrawn before the next
-    /// tick never counts, a quote placed in a tick does not move that tick's mark,
-    /// and one sample moves the mark by at most its share of the window. The engine
-    /// still bounds the mark to the market's mark band and the rate to its clamp.
+    /// depth the engine could fill inside the fill band. [`Sequencer::seal_batch`]
+    /// takes the sample from the book the tick's takers face, before it matches,
+    /// and the sample prices the span since the previous tick. The `AccrueFunding`
+    /// mark is the index plus the time-weighted average of those spans since the
+    /// open window began (reset by [`Sequencer::seal_window`]), with each sample and
+    /// the average capped at the premium that saturates the rate, and the average
+    /// taken over at least [`FUNDING_MARK_MIN_SPAN_MS`]. So moving the mark takes
+    /// fillable depth that takers can trade against, held over time: a quote
+    /// withdrawn before the next tick never counts, a quote placed in a tick does
+    /// not move that tick's mark, and one sample moves the mark by at most its share
+    /// of the window. The engine still bounds the mark to the market's mark band and
+    /// the rate to its clamp.
     ///
     /// Called on its own (outside `seal_batch`), it samples the book as it rests at
     /// `now_ms`.
@@ -1509,9 +2256,13 @@ impl Sequencer {
         // matching already refuses to trade against it. Within `seal_batch` the
         // sample at `now_ms` was taken before matching, so this one changes nothing.
         let removals = self.matcher.reap_expired_with_events(now_ms);
+        if !removals.is_empty() {
+            self.open_orders = None;
+        }
         self.sample_funding_premiums(now_ms);
         let mut liquidated = Vec::new();
         let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
+        let mut forced_closes: Vec<(MarketId, i128, ForcedClose)> = Vec::new();
         // The replayable op-log for this maintenance pass: every AccrueFunding/Liquidate
         // we actually apply is recorded here, in application order, so the proof can
         // reproduce the maintenance transition (Slice 3a). An op is pushed ONLY when its
@@ -1553,8 +2304,11 @@ impl Sequencer {
                 })
                 .map(|((o, _), _)| *o)
                 .collect();
+            // A liquidation also closes the other side of the market by its size
+            // (audit 2026-11-16 PC-1), so a later candidate may already be reduced
+            // or flat: the engine then refuses it and nothing is logged.
             for owner in candidates {
-                if let Ok(haircuts) = self.state.liquidate(&owner, mid, &oracle, now_ms) {
+                if let Ok(report) = self.state.liquidate_reported(&owner, mid, &oracle, now_ms) {
                     liquidated.push((owner, mid));
                     // `state.liquidate` is the SAME transition as `BatchOp::Liquidate`
                     // (both dispatch to `op_liquidate`, incl. the ADL cascade), so record
@@ -1568,8 +2322,13 @@ impl Sequencer {
                     });
                     // Carry each auto-deleverage haircut up with its market so the
                     // seal can publish an attributable receipt for it (audit Q2).
-                    for h in haircuts {
+                    for h in report.haircuts {
                         adl.push((h.owner, mid, h.clawed));
+                    }
+                    // And each position the close of the other side reduced, so the
+                    // seal can cancel its owner's orders here and publish a receipt.
+                    for close in report.forced_closes {
+                        forced_closes.push((mid, price, close));
                     }
                 }
             }
@@ -1578,7 +2337,100 @@ impl Sequencer {
             removals,
             liquidated,
             adl,
+            forced_closes,
             ops,
+        }
+    }
+
+    /// Which of `orders`, sealed together at `now_ms`, [`Sequencer::seal_batch`]
+    /// would admit past its pre-trade gate: the per-order checks of
+    /// [`Sequencer::pre_trade_check`], each against the position after the owner's
+    /// earlier orders of the batch too, the reduce-only rule for an owner's later
+    /// orders, and the open-order limits against the book and the batch's earlier
+    /// orders. One verdict per order, in order. Nothing changes: no order is
+    /// matched, and an admitted order can still be refused when its fill does not
+    /// settle. An owner's verdicts depend only on its own orders of the batch, so
+    /// leaving another owner's orders out (or adding them) changes none of them.
+    ///
+    /// The gateway's house market maker asks it before it gives a taker a counter
+    /// (round 2 of the audit 2026-11-16 GA-1 + SM-1 review): a counter answering a
+    /// taker the seal refuses would rest with nothing to answer, and the house is
+    /// exempt from the open-order caps.
+    pub fn seal_admits(&self, orders: &[Order], now_ms: u64) -> Vec<bool> {
+        self.admit_batch(orders, now_ms).verdicts
+    }
+
+    /// The pre-trade gate of [`Sequencer::seal_batch`] over `orders` at `now_ms`.
+    fn admit_batch(&self, orders: &[Order], now_ms: u64) -> BatchAdmission {
+        let mut pre_rejected: Vec<(Digest, RejectReason)> = Vec::new();
+        let mut admitted: Vec<Order> = Vec::new();
+        let mut verdicts: Vec<bool> = Vec::with_capacity(orders.len());
+        // owners with an already-admitted order for a market this batch. A reduce_only order
+        // whose owner is here could have its position shift intra-batch (via that earlier
+        // order's fill) and then OPEN at settlement — where the drop would consume an innocent
+        // maker's resting depth. Reject it up front instead (audit DP-009 review follow-up); the
+        // owner can resubmit in a later batch. The pre-trade gate below handles the pre-batch case.
+        let mut owners_with_order: BTreeSet<(PubKey, MarketId)> = BTreeSet::new();
+        // the net signed size of each owner's orders admitted so far this batch, per
+        // market: the minimum and the close-only rule also judge an order against the
+        // position after these fill in full
+        let mut earlier: BTreeMap<(PubKey, MarketId), i128> = BTreeMap::new();
+        // orders below the minimum admitted only because they reduce: the ones
+        // resting from earlier batches plus this batch's
+        let mut minimum_exempt = self.minimum_exempt.clone();
+        // The orders the open-order limits count (audit 2026-11-16 GA-1 + SM-1): the
+        // book this batch's takers face (an order expired at `now_ms` holds
+        // nothing), then each order of this batch as it is admitted, whatever it
+        // turns out to do when it matches. Built for the first order, so an idle
+        // tick walks no book.
+        let mut pending: Option<PendingTally> = None;
+        for o in orders {
+            if o.reduce_only && owners_with_order.contains(&(o.owner, o.market_id)) {
+                pre_rejected.push((
+                    o.order_hash::<Keccak256>(),
+                    RejectReason::ReduceOnlyViolation,
+                ));
+                verdicts.push(false);
+                continue;
+            }
+            let key = (o.owner, o.market_id);
+            let tally = pending.get_or_insert_with(|| self.book_tally(Some(now_ms)));
+            let limits = (tally.market(&o.owner, o.market_id), tally.account(&o.owner));
+            match self.admission(
+                o,
+                now_ms,
+                earlier.get(&key).copied().unwrap_or(0),
+                Some(limits),
+            ) {
+                Ok(admitted_order) => {
+                    owners_with_order.insert(key);
+                    let net = earlier.entry(key).or_default();
+                    *net = net.saturating_add(o.signed_size());
+                    if admitted_order.below_minimum_exempt {
+                        minimum_exempt.insert(o.order_hash::<Keccak256>());
+                    }
+                    tally.add(&PendingOrder {
+                        owner: o.owner,
+                        market_id: o.market_id,
+                        side: o.side,
+                        size: o.size,
+                        reducing: o.reduce_only || admitted_order.below_minimum_exempt,
+                        open: can_rest(o),
+                    });
+                    admitted.push(*o);
+                    verdicts.push(true);
+                }
+                Err(reason) => {
+                    pre_rejected.push((o.order_hash::<Keccak256>(), reason));
+                    verdicts.push(false);
+                }
+            }
+        }
+        BatchAdmission {
+            admitted,
+            pre_rejected,
+            minimum_exempt,
+            verdicts,
         }
     }
 
@@ -1600,44 +2452,18 @@ impl Sequencer {
         }
 
         // 0. pre-trade risk gate: drop unmarginable orders before matching, so a
-        //    matched fill can never fail to settle on margin (§12, Phase 3).
-        let mut pre_rejected: Vec<(Digest, RejectReason)> = Vec::new();
-        let mut admitted: Vec<Order> = Vec::new();
-        // owners with an already-admitted order for a market this batch. A reduce_only order
-        // whose owner is here could have its position shift intra-batch (via that earlier
-        // order's fill) and then OPEN at settlement — where the drop would consume an innocent
-        // maker's resting depth. Reject it up front instead (audit DP-009 review follow-up); the
-        // owner can resubmit in a later batch. The pre-trade gate below handles the pre-batch case.
-        let mut owners_with_order: BTreeSet<(PubKey, MarketId)> = BTreeSet::new();
-        // the net signed size of each owner's orders admitted so far this batch, per
-        // market: the minimum and the close-only rule also judge an order against the
-        // position after these fill in full
-        let mut earlier: BTreeMap<(PubKey, MarketId), i128> = BTreeMap::new();
-        // orders below the minimum admitted only because they reduce: the ones
-        // resting from earlier batches plus this batch's
-        let mut minimum_exempt = self.minimum_exempt.clone();
+        //    matched fill can never fail to settle on margin (§12, Phase 3). Every
+        //    order of the batch leaves the intake's pending orders: the batch
+        //    decides it now.
         for o in orders {
-            if o.reduce_only && owners_with_order.contains(&(o.owner, o.market_id)) {
-                pre_rejected.push((
-                    o.order_hash::<Keccak256>(),
-                    RejectReason::ReduceOnlyViolation,
-                ));
-                continue;
-            }
-            let key = (o.owner, o.market_id);
-            match self.admission(o, now_ms, earlier.get(&key).copied().unwrap_or(0)) {
-                Ok(admitted_order) => {
-                    owners_with_order.insert(key);
-                    let net = earlier.entry(key).or_default();
-                    *net = net.saturating_add(o.signed_size());
-                    if admitted_order.below_minimum_exempt {
-                        minimum_exempt.insert(o.order_hash::<Keccak256>());
-                    }
-                    admitted.push(*o);
-                }
-                Err(reason) => pre_rejected.push((o.order_hash::<Keccak256>(), reason)),
-            }
+            self.forget_intake(&o.order_hash::<Keccak256>());
         }
+        let BatchAdmission {
+            admitted,
+            pre_rejected,
+            mut minimum_exempt,
+            ..
+        } = self.admit_batch(orders, now_ms);
 
         // The funding-mark sample for the span that ends at this tick is the book
         // this tick's takers face: taken before matching, so only a quote still on
@@ -1649,19 +2475,57 @@ impl Sequencer {
         //    depth during `process_stream`, but settlement only discovers an
         //    out-of-band or bankrupting fill afterwards — so a rejected fill used to
         //    burn liquidity that never executed. On any ATTRIBUTABLE failure we
-        //    restore the book, ban the offending order, and rematch. `MatchingEngine`
-        //    is `Clone` and the restore carries `next_seq` with it, so the final pass
-        //    assigns exactly the seq numbers the banned orders' absence would have
-        //    produced. An offender need not be in `live` at all: a maker resting
-        //    since an EARLIER batch (the drifted-Gtc case) survives the restore, so
-        //    a ban also cancels the hash from the rematch base book — for a
-        //    current-batch offender that cancel is a no-op (it never rested there).
-        let mut rematch_base = self.matcher.clone();
+        //    restore the book, ban the offending order, and rematch. Each pass
+        //    records what it changed on the books, and undoing that record puts
+        //    them back, `next_seq` included, so the next pass assigns exactly the
+        //    seq numbers the banned orders' absence would have produced; the
+        //    restore costs what the pass changed, not a copy of the books, and a
+        //    batch that finds no offender copies nothing (audit 2026-11-16 SM-2).
+        //    An offender need not be in `live` at all: a maker resting since an
+        //    EARLIER batch (the drifted-Gtc case) survives the restore, so a ban
+        //    also cancels the hash from the restored book — for a current-batch
+        //    offender that cancel is a no-op (it never rested there).
+        //
+        //    A maker whose own collateral could not carry its fill takes every
+        //    pending order of its owner on that side of that market with it (audit
+        //    2026-11-16 SM-2): its resting orders and this batch's, which would add
+        //    the same exposure to the same collateral; only its reduce-only orders,
+        //    which add none, stay. So does a maker that would add exposure where
+        //    only a reduction may trade, while its owner's position at the start
+        //    of the batch gives that side nothing to reduce (round 1 review): a
+        //    reduce-only maker takes the owner's reduce-only orders on that side, a
+        //    maker in close-only mode its plain ones, a maker admitted below the
+        //    minimum its other such orders, each an order the pre-trade gate would
+        //    refuse now. Thousands of such orders of a few owners then cost a pass
+        //    per owner, not one per order, and a pass bans all its owners' sides in
+        //    one walk of each side it touches.
+        //
+        //    And the passes are bounded: the [`MAX_MATCH_ROUNDS`]th settles each
+        //    fill as it matches it and stands. A fill that would fail there for
+        //    one of its orders drops that maker from the book, or stops that
+        //    taker, before the book changes for it, so the other side loses no
+        //    size and trades on (round 1 review: keeping a pass whose failed fills
+        //    had already taken size off innocent orders burned it unreported).
         let mut live: Vec<Order> = admitted;
         let mut banned: Vec<(Digest, RejectReason)> = Vec::new();
         let mut banned_set: BTreeSet<Digest> = BTreeSet::new();
+        let mut round: u32 = 0;
         let (stream, probe_outcome) = loop {
-            let stream = self.matcher.process_stream(&live, now_ms);
+            round += 1;
+            #[cfg(test)]
+            count(&MATCH_ROUNDS, 1u64);
+            if round == MAX_MATCH_ROUNDS {
+                let mut probe = self.state.clone();
+                let mut probed = FillSettlement::default();
+                let oracles = &self.oracles;
+                let stream = self
+                    .matcher
+                    .process_stream_checked(&live, now_ms, &mut |m| {
+                        settle_fill(&mut probe, oracles, m, now_ms, &minimum_exempt, &mut probed)
+                    });
+                break (stream, Some((probe, probed)));
+            }
+            let (stream, undo) = self.matcher.process_stream_undoable(&live, now_ms);
             // no fills → nothing to probe (`settle_fills` over no fills is a no-op,
             // so its outcome is `FillSettlement::default()` and the state is left
             // untouched), which also spares the idle 700ms ticks the per-round
@@ -1688,6 +2552,9 @@ impl Sequencer {
             // its own `settle_fills` push site — never looked up in `rejected`,
             // where an earlier fill of the same pass can have recorded the same
             // hash as an innocent counterparty with a different reason (I2).
+            #[cfg(test)]
+            count(&ROLLBACK_ORDERS, undo.len());
+            self.matcher.undo(undo);
             let banned_before = banned_set.len();
             for (oh, reason) in &probed.offenders {
                 if banned_set.insert(*oh) {
@@ -1702,7 +2569,7 @@ impl Sequencer {
                     // through the gateway today (per-account nonce monotonicity
                     // makes duplicate order hashes impossible), but the library
                     // API does not enforce that.
-                    let cancelled = rematch_base.cancel_order(oh).is_some();
+                    let cancelled = self.matcher.cancel_order(oh).is_some();
                     assert!(
                         cancelled || live.iter().any(|o| o.order_hash::<Keccak256>() == *oh),
                         "ban made no progress: offender {oh:?} neither rests in the \
@@ -1710,19 +2577,88 @@ impl Sequencer {
                     );
                 }
             }
+            // The rest of a failed maker's side goes with it, under the reason of
+            // that failure (its own, not the first the maker was recorded with):
+            // the owner's orders resting in the book that would fail the same way
+            // (lower price first, in queue order), then its orders of this batch.
+            // One walk per side of a market the pass's bans touch, keyed by the
+            // market and whether the side is the bids.
+            let mut sides: BTreeMap<(MarketId, bool), BTreeMap<PubKey, Vec<RejectReason>>> =
+                BTreeMap::new();
+            for ban in probed.side_bans.values() {
+                if fails_collateral(ban.reason)
+                    || nothing_to_reduce(&self.state, &ban.owner, ban.market_id, ban.side)
+                {
+                    let reasons = sides
+                        .entry((ban.market_id, ban.side == Side::Buy))
+                        .or_default()
+                        .entry(ban.owner)
+                        .or_default();
+                    if !reasons.contains(&ban.reason) {
+                        reasons.push(ban.reason);
+                    }
+                }
+            }
+            for (&(market_id, bids), owners) in &sides {
+                let side = if bids { Side::Buy } else { Side::Sell };
+                let ban_of = |owner: &PubKey, hash: &Digest, reduce_only: bool| {
+                    let exempt = minimum_exempt.contains(hash);
+                    owners
+                        .get(owner)?
+                        .iter()
+                        .copied()
+                        .find(|reason| side_ban_takes(*reason, reduce_only, exempt))
+                };
+                let resting = self.matcher.cancel_side_where(market_id, side, ban_of);
+                let pending = live
+                    .iter()
+                    .filter(|o| o.market_id == market_id && o.side == side)
+                    .filter_map(|o| {
+                        let hash = o.order_hash::<Keccak256>();
+                        ban_of(&o.owner, &hash, o.reduce_only).map(|reason| (hash, reason))
+                    });
+                for (hash, reason) in resting.into_iter().chain(pending) {
+                    if banned_set.insert(hash) {
+                        banned.push((hash, reason));
+                    }
+                }
+            }
             // Termination, made explicit: every round that reaches here bans at least
             // one NEW hash — an already-banned order can appear in no fill, because a
             // banned taker was removed from `live` and a banned resting maker was
-            // cancelled from the rematch base. The bannable set is finite (this
-            // batch's admitted orders + the makers resting at batch start), so the
-            // loop runs at most once per member of it.
+            // cancelled from the restored book. The bannable set is finite (this
+            // batch's admitted orders + the makers resting at batch start), and the
+            // passes are capped at `MAX_MATCH_ROUNDS` besides.
             assert!(
                 banned_set.len() > banned_before,
                 "rematch loop must terminate: a round that produced offenders banned no new order",
             );
             live.retain(|o| !banned_set.contains(&o.order_hash::<Keccak256>()));
-            self.matcher = rematch_base.clone();
         };
+
+        // The last pass settled each fill as it matched it: an order that failed
+        // a fill there was dropped from the book or stopped, and no other order
+        // lost size to it. One with no settled fill is rejected like a ban, under
+        // the reason of its own failure (I2): it leaves `ordered` and gets no
+        // receipt. One that traded first stays ordered, and a removal under that
+        // reason shows that it left the book. (Every other pass that stands found
+        // no offender.)
+        let mut last_pass_removals: Vec<OrderRemoval> = Vec::new();
+        if let Some((_, probed)) = &probe_outcome {
+            let mut removed: BTreeSet<Digest> = BTreeSet::new();
+            for (oh, reason) in &probed.offenders {
+                if probed.settled_seen.contains(oh) {
+                    if removed.insert(*oh) {
+                        last_pass_removals.push(OrderRemoval {
+                            order_hash: *oh,
+                            reason: reason_name(*reason),
+                        });
+                    }
+                } else if banned_set.insert(*oh) {
+                    banned.push((*oh, *reason));
+                }
+            }
+        }
 
         // 2. issue signed receipts for every accepted (non-rejected) order in the
         //    FINAL stream. A banned order never entered the book on that pass, so it
@@ -1731,7 +2667,9 @@ impl Sequencer {
         //    rejection rather than censorship.
         let mut receipts = Vec::new();
         for p in &stream.processed {
-            if !matches!(p.outcome.status, SubmitStatus::Rejected(_)) {
+            if !matches!(p.outcome.status, SubmitStatus::Rejected(_))
+                && !banned_set.contains(&p.outcome.order_hash)
+            {
                 receipts.push(self.issue_receipt(p.outcome.order_hash, now_ms));
             }
         }
@@ -1748,20 +2686,19 @@ impl Sequencer {
         //    whose proof RSS already scales with state size. Swapping the probe in
         //    IS the committed settlement; the old "committed pass must reproduce
         //    the dry run" assert is structurally unnecessary now — the loop's break
-        //    condition (`probed.offenders.is_empty()`) is the guarantee, so
-        //    `offenders` is dropped unread. A no-fills break settles nothing and
-        //    leaves `self.state` untouched. See [`settle_fills`] for the
-        //    failure-attribution rule; NON-attributable failures (no offender)
-        //    still reject here, and an order all of whose recorded fills failed is
-        //    moved out of `ordered` into `rejected` below. `ops` becomes the
-        //    batch's replayable op-log: `[applied fills] ++ [maintenance ops]`, in
-        //    application order (Slice 3a).
+        //    condition (`probed.offenders.is_empty()`, or the last pass, which
+        //    settled as it matched) is the guarantee. A no-fills break settles
+        //    nothing and leaves `self.state` untouched. See [`settle_fills`] for the failure-attribution rule;
+        //    NON-attributable failures (no offender) still reject here, and an
+        //    order all of whose recorded fills failed is moved out of `ordered`
+        //    into `rejected` below. `ops` becomes the batch's replayable op-log:
+        //    `[applied fills] ++ [maintenance ops]`, in application order (Slice 3a).
         let FillSettlement {
             applied_fills,
             mut ops,
             rejected: settlement_rejected,
             settled_order_hashes,
-            offenders: _,
+            ..
         } = match probe_outcome {
             Some((mut probe, probed)) => {
                 std::mem::swap(&mut self.state, &mut probe);
@@ -1784,20 +2721,35 @@ impl Sequencer {
         // 3b. maintenance: accrue funding + liquidate underwater positions (§5,§8).
         //     Liquidating an owner also cancels its resting orders, so a
         //     bad-debt account can't leave stale makers that would fail to settle.
+        //     A liquidation also closes some or all of the positions on the other
+        //     side (audit 2026-11-16 PC-1): their owners' resting orders in that
+        //     market were placed against positions that changed under them (a
+        //     take-profit that was a close would now open a new position), so they
+        //     are cancelled too, after the liquidated owners', whose removal
+        //     reason wins.
         let MaintenanceOutcome {
             mut removals,
             liquidated: liquidations,
             adl: adl_haircuts,
+            forced_closes,
             ops: maintenance_ops,
         } = self.run_maintenance(now_ms);
         ops.extend(maintenance_ops);
         for (owner, _market) in &liquidations {
             removals.extend(self.matcher.cancel_owner_with_events(owner));
         }
+        for (market, _, close) in &forced_closes {
+            removals.extend(
+                self.matcher
+                    .cancel_owner_forced_close_with_events(&close.owner, *market),
+            );
+        }
         // Keep the minimum-exempt orders that still rest; the rest have filled,
         // been banned, expired or been cancelled with a liquidated owner.
         self.matcher.retain_resting(&mut minimum_exempt);
         self.minimum_exempt = minimum_exempt;
+        // The book changed: the intake's tally of it is rebuilt when next needed.
+        self.open_orders = None;
 
         removals.extend(
             stream
@@ -1805,6 +2757,7 @@ impl Sequencer {
                 .iter()
                 .flat_map(|p| p.outcome.removals.iter().copied()),
         );
+        removals.extend(last_pass_removals);
 
         // 4. build the manifest, keeping `ordered`/`rejected` DISJOINT and HONEST.
         //    `rejected` = pre-trade rejects + dry-run BANS (attributable offenders,
@@ -1820,7 +2773,7 @@ impl Sequencer {
         let mut failed_unsettled: Vec<(Digest, RejectReason)> = Vec::new();
         let mut seen_failed: std::collections::BTreeSet<Digest> = std::collections::BTreeSet::new();
         for (oh, reason) in &settlement_rejected {
-            if !settled_set.contains(oh) && seen_failed.insert(*oh) {
+            if !settled_set.contains(oh) && !banned_set.contains(oh) && seen_failed.insert(*oh) {
                 failed_unsettled.push((*oh, *reason));
             }
         }
@@ -1830,7 +2783,7 @@ impl Sequencer {
             .ordered
             .iter()
             .copied()
-            .filter(|h| !reject_set.contains(h))
+            .filter(|h| !reject_set.contains(h) && !banned_set.contains(h))
             .collect();
         let mut rejected = pre_rejected.clone();
         rejected.extend_from_slice(&banned);
@@ -1930,6 +2883,26 @@ impl Sequencer {
             })
             .collect();
 
+        // Publish each forced close the same way, keyed on the account's ADL tag
+        // key under its own domain (audit 2026-11-16 PC-1).
+        let forced_close_receipts: Vec<ForcedCloseReceipt> = forced_closes
+            .iter()
+            .map(|(market, price, close)| {
+                let tag_key = self
+                    .adl_tag_keys
+                    .get(&close.owner)
+                    .copied()
+                    .unwrap_or_else(|| self.adl_fallback_key(&close.owner));
+                ForcedCloseReceipt {
+                    tag: forced_close_tag(&tag_key, *market, batch_id),
+                    size: close.size,
+                    price: *price,
+                    realized: close.realized,
+                    penalty: close.penalty,
+                }
+            })
+            .collect();
+
         // Append this tick's ops + settled/rejected hashes to the open window's
         // accumulators, in application order. `seal_window` drains these into the
         // per-window `WindowWitness`; `ops`/`manifest` are still moved into `SealedBatch`
@@ -1951,6 +2924,7 @@ impl Sequencer {
             receipts,
             liquidation_tags,
             adl_receipts,
+            forced_close_receipts,
             ops,
         }
     }
@@ -2058,6 +3032,42 @@ impl Sequencer {
             return None;
         }
         Some(self.seal_window())
+    }
+
+    /// Check that the open window still replays: applying its op-log to the
+    /// window baseline under this build's engine rules reaches the live state.
+    /// `seal_window` relies on exactly that (`derive_roots(pre_state, ops,
+    /// manifest).new_state_root` is the live root), and the settle path proves the
+    /// replay, not the live state.
+    ///
+    /// The check matters across an upgrade that changes what an op means (audit
+    /// 2026-11-16 PC-1: `Liquidate` now closes the other side, `Unbind` keeps the
+    /// initial margin in collateral, `Withdraw` stops at `external_in`, a
+    /// one-sided book accrues no funding). A snapshot written by the earlier build
+    /// holds a live state that its own rules produced, and an open window whose
+    /// ops the new rules replay to another state or refuse; sealing it would prove
+    /// a root the live state does not have. The gateway refuses to start from such
+    /// a snapshot instead (settle the window with the earlier build first, see
+    /// `docs/FINAL_SETTLE_RUNBOOK.md`). Reads only; costs one replay of the window.
+    pub fn check_open_window_replays(&self) -> Result<(), String> {
+        let mut replay = self.window_start_state.clone();
+        for (i, op) in self.window_ops.iter().enumerate() {
+            replay.apply_op(op).map_err(|e| {
+                format!(
+                    "the open window does not replay under this build: op {i} of {} is \
+                     refused ({e:?})",
+                    self.window_ops.len()
+                )
+            })?;
+        }
+        if replay.state_root() != self.state.state_root() {
+            return Err(format!(
+                "the open window does not replay under this build: its {} ops reach \
+                 another state than the live one",
+                self.window_ops.len()
+            ));
+        }
+        Ok(())
     }
 
     pub fn window_op_count(&self) -> usize {
@@ -2297,6 +3307,7 @@ impl Sequencer {
             self.snapshots.remove(tick);
         }
         let hashes = dedup_in_order(hashes);
+        self.open_orders = None;
         for hash in &hashes {
             let _ = self.matcher.cancel_order(hash);
             for (_, matcher) in self.snapshots.values_mut() {
@@ -2465,6 +3476,7 @@ impl Sequencer {
         // revert live state + matcher to before the failed batch
         self.state = state;
         self.matcher = matcher;
+        self.open_orders = None;
         // drop this and all later pending batches; revert their finality
         let dropped: Vec<u64> = self.snapshots.range(batch_id..).map(|(k, _)| *k).collect();
         for b in &dropped {
@@ -4064,5 +5076,838 @@ mod tests {
         assert_eq!(book.resting_size(Side::Sell), 0);
         assert_eq!(book.resting_size(Side::Buy), 0, "the taker fully filled");
         assert!(sq.state.conservation_holds());
+    }
+
+    /// Rest `orders` straight on the book, without the pre-trade gate: the book a
+    /// snapshot written before the open-order limits restores.
+    fn restore_onto_book(seq: &mut Sequencer, orders: &[Order]) {
+        for o in orders {
+            let processed = seq.matcher.submit(o, now());
+            assert_eq!(processed.outcome.status, SubmitStatus::Resting);
+        }
+    }
+
+    /// Audit 2026-11-16 GA-1: orders that a snapshot from before the open-order cap
+    /// restores above it stay on the book (nothing cancels them), but the account's
+    /// new orders are refused until it is back under the cap. An IOC, which never
+    /// rests, is not refused for the cap.
+    #[test]
+    fn audit_1116_ga1_orders_restored_above_the_cap_stay_but_new_ones_are_refused() {
+        const PER_MARKET: u64 = MAX_OPEN_ORDERS_PER_MARKET as u64;
+        let mut s = test_sequencer();
+        fund(&mut s, 3, 1_000_000, 0x33);
+        let restored: Vec<Order> = (0..PER_MARKET + 36)
+            .map(|n| t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 10 + n))
+            .collect();
+        restore_onto_book(&mut s, &restored);
+        let fresh = t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 1_000);
+        let sealed = s.seal_batch(&[fresh], now());
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(fresh.order_hash::<Keccak256>(), RejectReason::InvalidOrder)]
+        );
+        for o in &restored {
+            assert!(s
+                .remaining_order_size(&o.order_hash::<Keccak256>())
+                .is_some());
+        }
+        // still above the cap after one cancel
+        assert!(s.cancel_order(&owner_id(3), &restored[0], true).is_some());
+        let again = t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 1_001);
+        let sealed = s.seal_batch(&[again], now());
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(again.order_hash::<Keccak256>(), RejectReason::InvalidOrder)]
+        );
+        // an IOC is admitted: it trades nothing here and does not rest
+        let take = Order {
+            tif: TimeInForce::Ioc,
+            ..t_order_at(3, Side::Sell, 101_000, SIZE_SCALE / 100, 1_002)
+        };
+        let sealed = s.seal_batch(&[take], now());
+        assert!(sealed
+            .manifest
+            .ordered
+            .contains(&take.order_hash::<Keccak256>()));
+        // back under the cap, the next order rests
+        for o in &restored[1..37] {
+            assert!(s.cancel_order(&owner_id(3), o, true).is_some());
+        }
+        let under = t_order_at(3, Side::Buy, 99_000, SIZE_SCALE / 100, 1_003);
+        let sealed = s.seal_batch(&[under], now());
+        assert!(sealed.manifest.rejected.is_empty());
+        assert!(s
+            .remaining_order_size(&under.order_hash::<Keccak256>())
+            .is_some());
+    }
+
+    /// A book restored from before the collateral reserve: owner 3, with $15 of
+    /// collateral, rests `wall` $10 bids at $100,010, ahead of owner 1's $10,000 of
+    /// bids at $99,990; owner 2 asks $10,000 at $100,030.
+    fn walled_book(wall: u64) -> Sequencer {
+        let mut s = test_sequencer();
+        fund(&mut s, 3, 15, 0x33);
+        let dust: Vec<Order> = (0..wall)
+            .map(|n| t_order_at(3, Side::Buy, 100_010, SIZE_SCALE / 10_000, 10 + n))
+            .collect();
+        restore_onto_book(&mut s, &dust);
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(1, Side::Buy, 99_990, SIZE_SCALE / 10, 1),
+                t_order_at(2, Side::Sell, 100_030, SIZE_SCALE / 10, 2),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        s
+    }
+
+    /// Run `f` with this thread's matching-round and rollback counters reset;
+    /// return its result, the matching passes it ran and the resting orders it
+    /// copied or put back to roll the book back.
+    fn counted<T>(f: impl FnOnce() -> T) -> (T, u64, u64) {
+        MATCH_ROUNDS.with(|n| n.set(0));
+        ROLLBACK_ORDERS.with(|n| n.set(0));
+        let out = f();
+        (
+            out,
+            MATCH_ROUNDS.with(core::cell::Cell::get),
+            ROLLBACK_ORDERS.with(core::cell::Cell::get),
+        )
+    }
+
+    /// 0.001 BTC: $100 at the $100k mark, so $10 of initial margin.
+    const LOT: i128 = SIZE_SCALE / 1_000;
+
+    /// Fund `owners` with $5 each: not enough for the initial margin of one lot,
+    /// so every sell of theirs that fills fails for margin, as the maker leg.
+    fn underfunded(s: &mut Sequencer, owners: core::ops::Range<u64>) {
+        for owner in owners {
+            fund(s, owner, 5, owner as u8);
+        }
+    }
+
+    /// Audit 2026-11-16 SM-2: thousands of resting sells of three under-margined
+    /// owners (a book a snapshot from before the collateral reserve restores),
+    /// interleaved, ahead of an honest one. One taker crosses them all. A maker
+    /// that fails for margin takes every pending sell of its owner with it, so the
+    /// batch matches at most once per poisoned owner and once more, instead of
+    /// once per poisoned order; and the taker still fills against the honest sell.
+    #[test]
+    fn audit_1116_sm2_thousands_of_poisoned_makers_of_three_owners_resolve_in_four_rounds() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..13);
+        let poisoned: Vec<Order> = (0..3_000u64)
+            .map(|n| t_order_at(10 + n % 3, Side::Sell, 100_000, LOT, 10_000 + n))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 20_000);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 20_001);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert!(rounds <= 4, "{rounds} matching rounds");
+        let rejected: BTreeMap<Digest, RejectReason> =
+            sealed.manifest.rejected.iter().copied().collect();
+        assert_eq!(rejected.len(), poisoned.len());
+        for o in &poisoned {
+            assert_eq!(
+                rejected.get(&o.order_hash::<Keccak256>()),
+                Some(&RejectReason::InsufficientMargin)
+            );
+        }
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&taker.order_hash::<Keccak256>()));
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&honest.order_hash::<Keccak256>()));
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+        let book = s.matcher.book(0).unwrap();
+        assert_eq!(book.resting_size(Side::Sell), 0);
+        assert_eq!(book.resting_size(Side::Buy), 0);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// Audit 2026-11-16 SM-2: however many owners are poisoned, a batch runs a
+    /// bounded number of matching passes. Twenty under-margined owners rest one
+    /// sell each ahead of an honest sell; a taker crosses in every batch. No batch
+    /// matches more than 8 times; each takes poisoned sells off the book, and
+    /// within three batches a taker fills against the honest sell.
+    #[test]
+    fn audit_1116_sm2_matching_rounds_are_bounded_however_many_owners_are_poisoned() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..30);
+        let poisoned: Vec<Order> = (10..30u64)
+            .map(|owner| t_order_at(owner, Side::Sell, 100_000, LOT, 10_000 + owner))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 20_000);
+        let honest_h = honest.order_hash::<Keccak256>();
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+
+        let mut rejected = BTreeSet::new();
+        let mut batches = 0;
+        let filled = loop {
+            batches += 1;
+            assert!(
+                batches <= 3,
+                "the honest sell is not reached in three batches"
+            );
+            let taker = t_order_at(2, Side::Buy, 100_000, LOT, 20_000 + batches);
+            let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+            assert!(rounds <= 8, "batch {batches} matched {rounds} times");
+            rejected.extend(sealed.manifest.rejected.iter().map(|(h, _)| *h));
+            assert!(s.state.conservation_holds());
+            if sealed.settled_order_hashes.contains(&honest_h) {
+                break sealed;
+            }
+        };
+        assert!(filled
+            .settled_order_hashes
+            .iter()
+            .all(|h| !rejected.contains(h)));
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+        for o in &poisoned {
+            let h = o.order_hash::<Keccak256>();
+            assert!(rejected.contains(&h), "a poisoned sell was never rejected");
+            assert!(s.remaining_order_size(&h).is_none());
+        }
+    }
+
+    /// Audit 2026-11-16 SM-2: returning the book to where its batch started, to
+    /// rematch, costs what the batch changed, not a copy of the book. Two thousand
+    /// bids of a third owner rest untouched far below the mark. A batch that finds
+    /// no culprit, and an idle one, copy nothing; one poisoned maker costs the
+    /// changes its round made to the book.
+    #[test]
+    fn audit_1116_sm2_rolling_the_book_back_costs_what_the_round_changed() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..11);
+        let untouched: Vec<Order> = (0..2_000u64)
+            .map(|n| t_order_at(3, Side::Buy, 95_000, LOT, 30_000 + n))
+            .collect();
+        restore_onto_book(&mut s, &untouched);
+
+        let (_, _, copied) = counted(|| s.seal_batch(&[], now()));
+        assert_eq!(copied, 0, "an idle batch");
+        let clean = [
+            t_order_at(1, Side::Sell, 100_000, LOT, 40_000),
+            t_order_at(2, Side::Buy, 100_000, LOT, 40_001),
+        ];
+        let (sealed, rounds, copied) = counted(|| s.seal_batch(&clean, now()));
+        assert_eq!(sealed.settled_order_hashes.len(), 2);
+        assert_eq!((rounds, copied), (1, 0), "a batch without a culprit");
+
+        let poisoned = t_order_at(10, Side::Sell, 100_000, LOT, 40_002);
+        restore_onto_book(&mut s, &[poisoned]);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 40_003);
+        s.seal_batch(&[honest], now());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 40_004);
+        let (sealed, rounds, copied) = counted(|| s.seal_batch(&[taker], now()));
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(
+                poisoned.order_hash::<Keccak256>(),
+                RejectReason::InsufficientMargin
+            )]
+        );
+        assert_eq!(rounds, 2);
+        assert!(copied <= 4, "{copied} orders copied or put back");
+    }
+
+    /// Every order of market 0's book with its remainder.
+    fn resting(s: &Sequencer) -> Vec<(Digest, i128)> {
+        s.book(0)
+            .unwrap()
+            .resting_orders()
+            .map(|(_, quote, _)| (quote.order_hash, quote.remaining))
+            .collect()
+    }
+
+    /// Every order that rested before `sealed` (`before`, see [`resting`]) and
+    /// whose remainder it changed is named by one of its applied fills,
+    /// rejections or removals: the gateway updates only the rows a batch names.
+    fn assert_book_changes_reported(
+        before: &[(Digest, i128)],
+        s: &Sequencer,
+        sealed: &SealedBatch,
+    ) {
+        let named: BTreeSet<Digest> = sealed
+            .applied_fills
+            .iter()
+            .flat_map(|m| [m.taker_order_hash, m.maker_order_hash])
+            .chain(sealed.manifest.rejected.iter().map(|(h, _)| *h))
+            .chain(sealed.removals.iter().map(|r| r.order_hash))
+            .collect();
+        for (hash, remaining) in before {
+            if s.remaining_order_size(hash) != Some(*remaining) {
+                assert!(
+                    named.contains(hash),
+                    "{hash:?} rested with {remaining} and now {:?}, unreported",
+                    s.remaining_order_size(hash)
+                );
+            }
+        }
+    }
+
+    /// An IOC version of `t_order_at`.
+    fn ioc_at(owner: u64, side: Side, price_usd: i128, size: i128, nonce: u64) -> Order {
+        Order {
+            tif: TimeInForce::Ioc,
+            ..t_order_at(owner, side, price_usd, size, nonce)
+        }
+    }
+
+    /// Audit 2026-11-16 SM-2, the pass cap: eight under-margined owners rest one
+    /// sell each ahead of an honest one, the last of them two lots. A taker of one
+    /// lot bans the first seven, one pass each; the eighth pass is the last, and it
+    /// settles each fill as it matches it. The two-lot sell fails and leaves the
+    /// book without trading, rejected; the taker goes on to the honest sell and
+    /// fills against it in this batch.
+    #[test]
+    fn audit_1116_sm2_the_last_pass_settles_each_fill_as_it_matches() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..18);
+        let mut poisoned: Vec<Order> = (10..17u64)
+            .map(|owner| t_order_at(owner, Side::Sell, 100_000, LOT, 50_000 + owner))
+            .collect();
+        poisoned.push(t_order_at(17, Side::Sell, 100_000, 2 * LOT, 50_017));
+        restore_onto_book(&mut s, &poisoned);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 50_100);
+        let honest_h = honest.order_hash::<Keccak256>();
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 50_101);
+        let taker_h = taker.order_hash::<Keccak256>();
+        let before = resting(&s);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, u64::from(MAX_MATCH_ROUNDS));
+        let expected: Vec<(Digest, RejectReason)> = poisoned
+            .iter()
+            .map(|o| {
+                (
+                    o.order_hash::<Keccak256>(),
+                    RejectReason::InsufficientMargin,
+                )
+            })
+            .collect();
+        assert_eq!(sealed.manifest.rejected, expected);
+        for (hash, _) in &expected {
+            assert!(s.remaining_order_size(hash).is_none());
+        }
+        assert_eq!(sealed.manifest.ordered, vec![taker_h]);
+        assert_eq!(sealed.settled_order_hashes, vec![taker_h, honest_h]);
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, LOT);
+        assert!(s.remaining_order_size(&honest_h).is_none());
+        assert!(sealed.removals.is_empty());
+        assert_book_changes_reported(&before, &s, &sealed);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: the last pass must not burn an
+    /// innocent maker's size. Through the pre-trade gate: X shorts a lot; seven
+    /// under-margined owners' bids rest ahead of X's plain bid; owner 1 asks a lot.
+    /// One batch sells into the bids and sends X's reduce-only buy. Each of the
+    /// first seven passes bans one under-margined owner, and X's buy reduces X's
+    /// short there. In the eighth and last pass the sell fills X's bid first, so
+    /// X's buy would open a position: X's buy stops there and is rejected, and
+    /// owner 1's ask, which it never traded with, keeps its lot on the book.
+    #[test]
+    fn audit_1116_sm2_an_innocent_maker_keeps_its_size_in_the_last_pass() {
+        let mut s = test_sequencer();
+        fund(&mut s, 3, 20_000, 0x33);
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(3, Side::Sell, 100_000, LOT, 70_000),
+                ioc_at(1, Side::Buy, 100_000, LOT, 70_001),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        assert_eq!(s.state.position(&owner_id(3), 0).unwrap().size, -LOT);
+        underfunded(&mut s, 10..17);
+        let poisoned: Vec<Order> = (10..17u64)
+            .map(|owner| t_order_at(owner, Side::Buy, 99_900, LOT, 70_100 + owner))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let x_bid = t_order_at(3, Side::Buy, 99_900, LOT, 70_200);
+        let ask = t_order_at(1, Side::Sell, 100_100, LOT, 70_201);
+        let ask_h = ask.order_hash::<Keccak256>();
+        assert!(s
+            .seal_batch(&[x_bid, ask], now())
+            .manifest
+            .rejected
+            .is_empty());
+        let sell = ioc_at(2, Side::Sell, 99_900, LOT, 70_300);
+        let mut x_buy = ioc_at(3, Side::Buy, 100_100, LOT, 70_301);
+        x_buy.reduce_only = true;
+        let x_buy_h = x_buy.order_hash::<Keccak256>();
+        let owner_1 = s.state.position(&owner_id(1), 0).copied();
+        let before = resting(&s);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[sell, x_buy], now()));
+
+        assert_eq!(rounds, u64::from(MAX_MATCH_ROUNDS));
+        assert_eq!(s.remaining_order_size(&ask_h), Some(LOT));
+        assert_eq!(s.state.position(&owner_id(1), 0).copied(), owner_1);
+        let rejected: BTreeMap<Digest, RejectReason> =
+            sealed.manifest.rejected.iter().copied().collect();
+        assert_eq!(
+            rejected.get(&x_buy_h),
+            Some(&RejectReason::ReduceOnlyViolation)
+        );
+        for o in &poisoned {
+            assert_eq!(
+                rejected.get(&o.order_hash::<Keccak256>()),
+                Some(&RejectReason::InsufficientMargin)
+            );
+        }
+        assert_eq!(rejected.len(), poisoned.len() + 1);
+        assert_eq!(
+            sealed.settled_order_hashes,
+            vec![
+                sell.order_hash::<Keccak256>(),
+                x_bid.order_hash::<Keccak256>()
+            ]
+        );
+        assert!(s
+            .state
+            .position(&owner_id(3), 0)
+            .is_none_or(|p| p.size == 0));
+        assert_book_changes_reported(&before, &s, &sealed);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: in the last pass a maker that
+    /// already traded in it and then fails leaves the book with a removal naming
+    /// the failure, so its row shows it; the taker it failed goes on to the next
+    /// maker. Fourteen under-margined owners' sells take seven passes (two takers
+    /// each meet one per pass); owner 4 sells two lots with the margin for one.
+    #[test]
+    fn audit_1116_sm2_a_maker_that_traded_and_then_fails_in_the_last_pass_is_removed() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..24);
+        fund(&mut s, 4, 15, 0x44);
+        let poisoned: Vec<Order> = (10..24u64)
+            .map(|owner| t_order_at(owner, Side::Sell, 99_900, LOT, 90_000 + owner))
+            .collect();
+        restore_onto_book(&mut s, &poisoned);
+        let twice = t_order_at(4, Side::Sell, 100_000, 2 * LOT, 90_100);
+        let twice_h = twice.order_hash::<Keccak256>();
+        restore_onto_book(&mut s, &[twice]);
+        let honest = t_order_at(1, Side::Sell, 100_050, LOT, 90_101);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let first = ioc_at(2, Side::Buy, 100_100, LOT, 90_200);
+        let second = ioc_at(2, Side::Buy, 100_100, LOT, 90_201);
+        let before = resting(&s);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[first, second], now()));
+
+        assert_eq!(rounds, u64::from(MAX_MATCH_ROUNDS));
+        assert!(s.remaining_order_size(&twice_h).is_none());
+        assert!(sealed.settled_order_hashes.contains(&twice_h));
+        assert!(!sealed.manifest.rejected.iter().any(|(h, _)| *h == twice_h));
+        assert!(sealed
+            .removals
+            .iter()
+            .any(|r| r.order_hash == twice_h && r.reason == "InsufficientMargin"));
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&honest.order_hash::<Keccak256>()));
+        assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, 2 * LOT);
+        assert_eq!(s.state.position(&owner_id(4), 0).unwrap().size, -LOT);
+        assert_book_changes_reported(&before, &s, &sealed);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: reduce-only orders left resting
+    /// after their owner closed the position fail one by one, as makers; one
+    /// account's seven such bids used up seven passes. A maker that fails as
+    /// reduce-only while its owner holds nothing its side reduces (at the start of
+    /// the batch) takes the owner's other reduce-only orders on that side with
+    /// it, so they cost one rematch; the owner's plain bid stays and trades.
+    #[test]
+    fn audit_1116_sm2_reduce_only_leftovers_of_one_owner_cost_one_rematch() {
+        let mut s = test_sequencer();
+        fund(&mut s, 4, 20_000, 0x44);
+        let leftovers: Vec<Order> = (0..7u64)
+            .map(|n| Order {
+                reduce_only: true,
+                ..t_order_at(4, Side::Buy, 99_900, LOT, 80_000 + n)
+            })
+            .collect();
+        restore_onto_book(&mut s, &leftovers);
+        let plain = t_order_at(4, Side::Buy, 99_800, LOT, 80_010);
+        restore_onto_book(&mut s, &[plain]);
+        let honest = t_order_at(1, Side::Buy, 99_850, LOT, 80_011);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = ioc_at(2, Side::Sell, 99_800, 2 * LOT, 80_012);
+        let before = resting(&s);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        let expected: Vec<(Digest, RejectReason)> = leftovers
+            .iter()
+            .map(|o| {
+                (
+                    o.order_hash::<Keccak256>(),
+                    RejectReason::ReduceOnlyViolation,
+                )
+            })
+            .collect();
+        assert_eq!(sealed.manifest.rejected, expected);
+        for hash in [
+            taker.order_hash::<Keccak256>(),
+            honest.order_hash::<Keccak256>(),
+            plain.order_hash::<Keccak256>(),
+        ] {
+            assert!(sealed.settled_order_hashes.contains(&hash));
+        }
+        assert_eq!(s.state.position(&owner_id(4), 0).unwrap().size, LOT);
+        assert_book_changes_reported(&before, &s, &sealed);
+        assert!(s.state.conservation_holds());
+    }
+
+    /// The reduce-only side ban takes only an owner who holds nothing that side
+    /// reduces: owner 4 is short a lot, and its two-lot reduce-only bid would flip
+    /// the position, but its one-lot one still closes it. Only the two-lot bid is
+    /// rejected; the one-lot bid trades in the rematch.
+    #[test]
+    fn audit_1116_sm2_a_reduce_only_order_that_still_reduces_is_not_banned_with_its_side() {
+        let mut s = test_sequencer();
+        fund(&mut s, 4, 20_000, 0x44);
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(4, Side::Sell, 100_000, LOT, 81_000),
+                ioc_at(1, Side::Buy, 100_000, LOT, 81_001),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        let flips = Order {
+            reduce_only: true,
+            ..t_order_at(4, Side::Buy, 99_900, 2 * LOT, 81_002)
+        };
+        let closes = Order {
+            reduce_only: true,
+            ..t_order_at(4, Side::Buy, 99_850, LOT, 81_003)
+        };
+        restore_onto_book(&mut s, &[flips, closes]);
+        let taker = ioc_at(2, Side::Sell, 99_850, 3 * LOT, 81_004);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(
+                flips.order_hash::<Keccak256>(),
+                RejectReason::ReduceOnlyViolation
+            )]
+        );
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&closes.order_hash::<Keccak256>()));
+        assert!(s
+            .state
+            .position(&owner_id(4), 0)
+            .is_none_or(|p| p.size == 0));
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: in close-only mode a resting bid of
+    /// an owner holding nothing a bid reduces fails as `MarketCloseOnly`, and so
+    /// would each of its other plain bids: the first takes them with it, one
+    /// rematch for all three, and the closing sell trades against the honest bid.
+    #[test]
+    fn audit_1116_sm2_close_only_openers_of_one_owner_cost_one_rematch() {
+        let mut s = test_sequencer();
+        let sealed = s.seal_batch(
+            &[
+                t_order_at(1, Side::Sell, 100_000, LOT, 82_000),
+                ioc_at(2, Side::Buy, 100_000, LOT, 82_001),
+            ],
+            now(),
+        );
+        assert!(sealed.manifest.rejected.is_empty());
+        fund(&mut s, 4, 20_000, 0x44);
+        let openers: Vec<Order> = (0..3u64)
+            .map(|n| t_order_at(4, Side::Buy, 99_900, LOT, 82_010 + n))
+            .collect();
+        restore_onto_book(&mut s, &openers);
+        let closing_bid = t_order_at(1, Side::Buy, 99_800, LOT, 82_020);
+        restore_onto_book(&mut s, &[closing_bid]);
+        s.state.mode = Mode::CloseOnly;
+        let taker = ioc_at(2, Side::Sell, 99_800, LOT, 82_021);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        let expected: Vec<(Digest, RejectReason)> = openers
+            .iter()
+            .map(|o| (o.order_hash::<Keccak256>(), RejectReason::MarketCloseOnly))
+            .collect();
+        assert_eq!(sealed.manifest.rejected, expected);
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&closing_bid.order_hash::<Keccak256>()));
+        for owner in [1, 2] {
+            assert!(s
+                .state
+                .position(&owner_id(owner), 0)
+                .is_none_or(|p| p.size == 0));
+        }
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: pseudo-random batches against books
+    /// full of orders that fail as makers (under-margined owners' orders, and
+    /// reduce-only orders of owners who hold nothing they reduce), many of them
+    /// reaching the last pass. After every batch: at most `MAX_MATCH_ROUNDS`
+    /// passes, every change to an order that rested before it named by one of
+    /// its fills, rejections or removals, `ordered` and `rejected` disjoint, every
+    /// settled order ordered, conservation; and each session's op-log replays to
+    /// its state root.
+    #[test]
+    fn audit_1116_sm2_poisoned_sessions_report_every_book_change() {
+        let mut last_passes = 0;
+        for seed in 1..=10u64 {
+            let mut rng = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+            let mut next = move |bound: u64| {
+                rng ^= rng << 13;
+                rng ^= rng >> 7;
+                rng ^= rng << 17;
+                rng % bound
+            };
+            let mut s = test_sequencer();
+            for owner in 3..6u64 {
+                fund(&mut s, owner, 20_000, owner as u8);
+            }
+            for owner in 6..9u64 {
+                fund(&mut s, owner, 20_000, owner as u8);
+            }
+            underfunded(&mut s, 10..40);
+            let mut nonce = 100_000u64;
+            for _ in 0..24 {
+                let book = s.book(0).unwrap();
+                let (best_bid, best_ask) = (book.best_bid(), book.best_ask());
+                let poisoned: Vec<Order> = (0..next(10))
+                    .filter_map(|_| {
+                        nonce += 1;
+                        let side = if next(2) == 0 { Side::Buy } else { Side::Sell };
+                        let price = match side {
+                            Side::Buy => 99_990 - next(60) as i128,
+                            Side::Sell => 100_010 + next(60) as i128,
+                        };
+                        let crosses = match side {
+                            Side::Buy => best_ask.is_some_and(|a| a <= price * PRICE_SCALE),
+                            Side::Sell => best_bid.is_some_and(|b| b >= price * PRICE_SCALE),
+                        };
+                        let owner = if next(3) == 0 {
+                            6 + next(3)
+                        } else {
+                            10 + next(30)
+                        };
+                        let mut o = t_order_at(owner, side, price, LOT, nonce);
+                        o.reduce_only = owner < 10;
+                        (!crosses).then_some(o)
+                    })
+                    .collect();
+                restore_onto_book(&mut s, &poisoned);
+                let orders: Vec<Order> = (0..1 + next(4))
+                    .map(|_| {
+                        nonce += 1;
+                        let side = if next(2) == 0 { Side::Buy } else { Side::Sell };
+                        let price = match next(4) {
+                            0 => 0,
+                            _ => 99_900 + next(200) as i128,
+                        };
+                        let mut o = t_order_at(
+                            1 + next(5),
+                            side,
+                            price,
+                            LOT * (1 + next(3) as i128),
+                            nonce,
+                        );
+                        o.limit_price = price * PRICE_SCALE;
+                        o.tif = match next(6) {
+                            0 => TimeInForce::Fok,
+                            1 | 2 => TimeInForce::Gtc,
+                            3 => TimeInForce::PostOnly,
+                            _ => TimeInForce::Ioc,
+                        };
+                        o.reduce_only = next(6) == 0;
+                        o
+                    })
+                    .collect();
+                let before = resting(&s);
+
+                let (sealed, rounds, _) = counted(|| s.seal_batch(&orders, now()));
+
+                assert!(rounds <= u64::from(MAX_MATCH_ROUNDS), "seed {seed}");
+                if rounds == u64::from(MAX_MATCH_ROUNDS) {
+                    last_passes += 1;
+                }
+                assert_book_changes_reported(&before, &s, &sealed);
+                // A limit GTC of this batch that was neither rejected nor removed
+                // traded or rests every bit of its size.
+                let named: BTreeSet<Digest> = sealed
+                    .manifest
+                    .rejected
+                    .iter()
+                    .map(|(h, _)| *h)
+                    .chain(sealed.removals.iter().map(|r| r.order_hash))
+                    .collect();
+                for o in orders
+                    .iter()
+                    .filter(|o| o.tif == TimeInForce::Gtc && o.limit_price != 0)
+                {
+                    let hash = o.order_hash::<Keccak256>();
+                    if named.contains(&hash) {
+                        continue;
+                    }
+                    let traded: i128 = sealed
+                        .applied_fills
+                        .iter()
+                        .filter(|m| m.taker_order_hash == hash || m.maker_order_hash == hash)
+                        .map(|m| m.size)
+                        .sum();
+                    let left = s.remaining_order_size(&hash).unwrap_or(0);
+                    assert_eq!(traded + left, o.size, "seed {seed}: a GTC lost size");
+                }
+                let ordered: BTreeSet<Digest> = sealed.manifest.ordered.iter().copied().collect();
+                assert!(
+                    sealed
+                        .manifest
+                        .rejected
+                        .iter()
+                        .all(|(h, _)| !ordered.contains(h)),
+                    "seed {seed}: ordered and rejected overlap"
+                );
+                assert!(
+                    sealed
+                        .settled_order_hashes
+                        .iter()
+                        .all(|h| ordered.contains(h) || before.iter().any(|(r, _)| r == h)),
+                    "seed {seed}: a settled order of this batch is not ordered"
+                );
+                assert!(s.state.conservation_holds(), "seed {seed}");
+            }
+            let w = s.seal_window();
+            let derived =
+                perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
+                    .expect("the session replays");
+            assert_eq!(derived.new_state_root, s.state.state_root(), "seed {seed}");
+        }
+        assert!(
+            last_passes >= 10,
+            "{last_passes} batches reached the last pass"
+        );
+    }
+
+    /// Audit 2026-11-16 SM-2, round 1 review: a maker recorded twice in one pass,
+    /// first for a price out of band (which bans only that order) and then for
+    /// margin, bans its side under the margin failure's reason, not under the
+    /// first reason it was recorded with.
+    #[test]
+    fn audit_1116_sm2_a_side_ban_carries_the_reason_of_its_own_failure() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..11);
+        let fill = |price_usd: i128| Match {
+            market_id: 0,
+            taker: owner_id(2),
+            maker: owner_id(10),
+            taker_side: Side::Buy,
+            size: LOT,
+            price: price_usd * PRICE_SCALE,
+            taker_order_hash: [2; 32],
+            maker_order_hash: [10; 32],
+            taker_reduce_only: false,
+            maker_reduce_only: false,
+        };
+        let mut state = s.state.clone();
+        let out = settle_fills(
+            &mut state,
+            &s.oracles,
+            &[fill(110_000), fill(100_000)],
+            now(),
+            &BTreeSet::new(),
+        );
+        assert_eq!(
+            out.offenders,
+            vec![
+                ([10; 32], RejectReason::FillPriceOutOfBand),
+                ([10; 32], RejectReason::InsufficientMargin),
+            ]
+        );
+        let bans: Vec<(PubKey, bool, RejectReason)> = out
+            .side_bans
+            .values()
+            .map(|ban| (ban.owner, ban.side == Side::Sell, ban.reason))
+            .collect();
+        assert_eq!(
+            bans,
+            vec![(owner_id(10), true, RejectReason::InsufficientMargin)]
+        );
+    }
+
+    /// Audit 2026-11-16 SM-2: the side ban leaves an under-margined maker's
+    /// reduce-only orders, which add no exposure, where they rest; its plain
+    /// orders on that side go with the one that failed.
+    #[test]
+    fn audit_1116_sm2_a_side_ban_spares_reduce_only_orders() {
+        let mut s = test_sequencer();
+        underfunded(&mut s, 10..11);
+        let failing = t_order_at(10, Side::Sell, 100_000, LOT, 60_000);
+        let plain = t_order_at(10, Side::Sell, 100_500, LOT, 60_001);
+        let mut reducing = t_order_at(10, Side::Sell, 100_500, LOT, 60_002);
+        reducing.reduce_only = true;
+        restore_onto_book(&mut s, &[failing, plain, reducing]);
+        let honest = t_order_at(1, Side::Sell, 100_000, LOT, 60_003);
+        assert!(s.seal_batch(&[honest], now()).manifest.rejected.is_empty());
+        let taker = t_order_at(2, Side::Buy, 100_000, LOT, 60_004);
+
+        let (sealed, rounds, _) = counted(|| s.seal_batch(&[taker], now()));
+
+        assert_eq!(rounds, 2);
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![
+                (
+                    failing.order_hash::<Keccak256>(),
+                    RejectReason::InsufficientMargin
+                ),
+                (
+                    plain.order_hash::<Keccak256>(),
+                    RejectReason::InsufficientMargin
+                ),
+            ]
+        );
+        assert!(sealed
+            .settled_order_hashes
+            .contains(&honest.order_hash::<Keccak256>()));
+        assert_eq!(
+            s.remaining_order_size(&reducing.order_hash::<Keccak256>()),
+            Some(LOT)
+        );
+        assert!(s
+            .remaining_order_size(&plain.order_hash::<Keccak256>())
+            .is_none());
+    }
+
+    /// Audit 2026-11-16 SM-3, the original wall: 4,096 such bids, and as many again.
+    /// Only the first few could fill; the honest bids price the rest of the side,
+    /// exactly as in a book where owner 3 rests only twenty, and the mark is not
+    /// pinned to the index.
+    #[test]
+    fn audit_1116_sm3_a_restored_dust_wall_does_not_pin_the_mark() {
+        let few = walled_book(20).impact_mid(0, now());
+        let mid = few.expect("the honest bids are reached");
+        assert!(mid > 100_000 * PRICE_SCALE && mid < 100_030 * PRICE_SCALE);
+        for wall in [4_096, 8_192] {
+            assert_eq!(walled_book(wall).impact_mid(0, now()), few, "{wall}");
+        }
     }
 }

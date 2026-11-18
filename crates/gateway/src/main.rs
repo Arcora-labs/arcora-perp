@@ -42,7 +42,9 @@ use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::position::Position;
 use perp_core::state::Mode;
-use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
+use sequencer::{
+    adl_tag, adl_tag_key, forced_close_tag, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness,
+};
 
 mod account_recovery;
 mod admission;
@@ -125,6 +127,8 @@ mod injected_inputs;
 mod l1;
 mod listen_config;
 mod live_void;
+#[cfg(test)]
+mod open_order_limit_tests;
 mod ops_alerts;
 mod oracle_crosscheck;
 #[cfg(test)]
@@ -153,6 +157,8 @@ mod service_shutdown_tests;
 mod settle_health;
 mod side_log;
 mod snapshot;
+#[cfg(test)]
+mod tick_scaling_tests;
 mod trading_gate;
 mod wind_down;
 #[cfg(test)]
@@ -952,6 +958,15 @@ fn account_order_history_cap(holders: usize, budget: usize) -> usize {
     (budget / holders.max(1)).clamp(1, MAX_ACCOUNT_ORDER_HISTORY)
 }
 
+/// Whether `owner`'s order of row `o` rests with a remainder in its market's
+/// book, found by its hash (audit 2026-11-16 GA-1 + SM-1): a lookup, not a walk
+/// of the book.
+fn order_rests(seq: &Sequencer, owner: &PubKey, o: &GwOrder) -> bool {
+    seq.book(o.order.market_id)
+        .and_then(|book| book.remaining_for(owner, &o.order_hash))
+        .is_some_and(|remaining| remaining > 0)
+}
+
 /// Evict up to `len - max` of the OLDEST terminal entries (front-first) so a Vec stays
 /// bounded, never dropping a non-terminal (live/in-flight) entry. Generic over the
 /// "is terminal" predicate so the eviction rule is unit-testable without heavy fixtures.
@@ -1350,6 +1365,12 @@ fn below_order_minimum(
     );
     sequencer::below_minimum_order_notional(position, &probe, mark)
 }
+/// The refusal of a withdrawal or transfer that would take the collateral the
+/// account's pending orders hold (audit 2026-11-16 SM-1,
+/// `Sequencer::unbind_keeps_reserve`).
+const PENDING_MARGIN_UNBIND: &str = "PENDING_MARGIN: the account's pending orders in this \
+     market need this collateral as initial margin until they fill, are cancelled or \
+     expire; cancel some of them first, or move less";
 fn below_order_minimum_error() -> String {
     format!(
         "Order is below the minimum size: an order that opens, grows or flips a position \
@@ -1857,6 +1878,13 @@ struct Gw {
     mm_nonce: u64,
     rng: u64,
     pending_settle: Vec<(u64, u64)>, // (batch_id, tick sealed)
+    /// The ticks whose fills an order row may hold unsettled (audit 2026-11-16
+    /// GA-1 + SM-1, round 1 review): a tick updates a row holding such a fill
+    /// only once its tick settles or is discarded (`Gw::settled_fill_ticks`),
+    /// not on every tick until then. Rebuilt from the rows when unset, after a
+    /// boot or a restore; never persisted.
+    #[serde(skip)]
+    unsettled_fill_ticks: Option<std::collections::BTreeSet<u64>>,
     /// Cumulative collateral the USER has had clawed by auto-deleverage (audit Q2),
     /// recognized from the sealed batches' ADL receipts via the user's secret key.
     user_adl_clawed: i128,
@@ -2555,6 +2583,7 @@ impl Gw {
             mm_nonce: 1_000_000,
             rng: 0x2545F4914F6CDD1D,
             pending_settle: Vec::new(),
+            unsettled_fill_ticks: None,
             user_adl_clawed: 0,
             accounts: std::collections::BTreeMap::new(),
             pending_withdrawals: Vec::new(),
@@ -2679,6 +2708,17 @@ impl Gw {
             return Err("wind-down snapshot latch requires CloseOnly".into());
         }
         gw.validate_deposit_state()?;
+        // The open window must replay under this build's engine rules, or its next
+        // seal would prove a root the live state does not have. A snapshot written
+        // by a build whose ops meant something else (audit 2026-11-16 PC-1) is
+        // refused here, not wedged at the next settle.
+        gw.seq.check_open_window_replays().map_err(|e| {
+            format!(
+                "{e}; settle the open window with the build that wrote this snapshot \
+                 before upgrading (docs/FINAL_SETTLE_RUNBOOK.md, upgrading across an \
+                 engine rule change)"
+            )
+        })?;
 
         let attestation = attest_from_env();
         let measurement = attestation
@@ -3484,6 +3524,15 @@ impl Gw {
                 MIN_WITHDRAWAL / QUOTE_SCALE
             ));
         }
+        // audit 2026-11-16 SM-1: the collateral reserve holds the margin of the
+        // account's pending orders until they fill, are cancelled or expire, so a
+        // withdrawal cannot take it first and leave them resting unbacked.
+        if !self
+            .seq
+            .unbind_keeps_reserve(&wallet.owner, market, amount, context.price.now_ms)
+        {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
         if let Some(refusal) = self.exit_cap_refusal(key, &wallet.owner, market, amount) {
             return Err(refusal.into());
         }
@@ -4240,6 +4289,12 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
+        // The sequencer's open-order limits (audit 2026-11-16 GA-1 + SM-1), before the
+        // nonce is spent or anything is recorded: `OPEN_ORDER_LIMIT` (409) or
+        // `PENDING_MARGIN` (400). The seal applies them again to every order.
+        self.seq
+            .check_open_order_limits(&order, price_use.now_ms)
+            .map_err(|e| e.to_string())?;
         if let Some(expected) = signer {
             let sig_hex = match req.signature.as_deref() {
                 Some(s) => s,
@@ -4510,18 +4565,37 @@ impl Gw {
             view
         })
     }
-    /// One scan per market, not one full-book scan per historical order row.
-    fn live_order_hashes(&self, owner: &PubKey) -> std::collections::BTreeSet<Digest> {
-        self.mkts
+    /// The ticks whose fills an order row held unsettled and that settled or
+    /// were discarded since the last tick, no longer watched (audit 2026-11-16
+    /// GA-1 + SM-1, round 1 review). Watching costs a lookup per tick with an
+    /// unsettled fill, not one per row; the set is rebuilt from the rows after a
+    /// boot or a restore.
+    fn settled_fill_ticks(&mut self) -> std::collections::BTreeSet<u64> {
+        if self.unsettled_fill_ticks.is_none() {
+            let ticks = self
+                .orders
+                .iter()
+                .chain(self.accounts.values().flat_map(|a| &a.orders))
+                .filter_map(|o| o.execution.as_ref())
+                .flat_map(execution::Execution::unsettled_ticks)
+                .collect();
+            self.unsettled_fill_ticks = Some(ticks);
+        }
+        let watched = self
+            .unsettled_fill_ticks
+            .as_mut()
+            .expect("the watched ticks were just built");
+        let settled: std::collections::BTreeSet<u64> = watched
             .iter()
-            .filter_map(|m| self.seq.book(m.id))
-            .flat_map(|book| book.resting_hashes_for(owner))
-            .collect()
+            .copied()
+            .filter(|tick| !self.seq.fill_tick_pending(*tick))
+            .collect();
+        watched.retain(|tick| !settled.contains(tick));
+        settled
     }
 
     fn v1_orders_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let a = self.accounts.get(key)?;
-        let live = self.live_order_hashes(&a.wallet.owner);
         let orders: Vec<_> = a
             .orders
             .iter()
@@ -4536,7 +4610,7 @@ impl Gw {
                     "reduceOnly": o.input.reduce_only,
                     "orderHash": hex0x(&o.order_hash),
                     "finality": o.last_finality,
-                    "cancellable": live.contains(&o.order_hash) || (!o.sealed && self.seq.cancellable_size(&a.wallet.owner, &o.order, false).is_some()),
+                    "cancellable": order_rests(&self.seq, &a.wallet.owner, o) || (!o.sealed && self.seq.cancellable_size(&a.wallet.owner, &o.order, false).is_some()),
                     "filledSize": o.execution.as_ref().filter(|e| e.known).map(|e| e.filled.to_string()),
                     "avgFillPrice": o.execution.as_ref().filter(|e| e.known).map(|e| e.average().to_string()),
                     "execution": execution::wire(o, &self.seq),
@@ -4910,6 +4984,11 @@ impl Gw {
         }
         let now = now_ms();
         self.refuse_if_clock_window_closing(now)?;
+        // The debit leg is an unbind like a withdrawal's: it cannot take the margin
+        // of `from`'s pending orders either (audit 2026-11-16 SM-1).
+        if !self.seq.unbind_keeps_reserve(&from.owner, 0, value, now) {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
         let oracle = oracle_of(self.px_of(0), now, 0, &self.oracle_signer);
         let c = self.lp_counter;
         self.lp_counter += 1;
@@ -5367,7 +5446,6 @@ impl Gw {
         }
 
         let nonce = self.user_nonce;
-        self.user_nonce += 1;
         // user is the taker (Ioc) — crosses the resting market-maker maker each seal.
         // Pass the RAW limit (0 = market) so the seal loop can tell a market order (fill
         // at the mark) from a caller-chosen limit and apply the off-market check to the
@@ -5383,6 +5461,12 @@ impl Gw {
             req.reduce_only,
         );
         let oh = order.order_hash::<Keccak256>();
+        // The sequencer's open-order limits, as on the /v1 path: before the nonce
+        // is spent, so a refused order leaves it for the next one.
+        self.seq
+            .check_open_order_limits(&order, now)
+            .map_err(|e| e.to_string())?;
+        self.user_nonce += 1;
         let signed = self.seq.accept_order(&order, now);
         let r = &signed.receipt;
         let receipt = WReceipt {
@@ -5463,6 +5547,12 @@ impl Gw {
             );
         }
         let now = now_ms();
+        if !self
+            .seq
+            .unbind_keeps_reserve(&self.user.owner, self.selected, amount, now)
+        {
+            return Err(PENDING_MARGIN_UNBIND.into());
+        }
         let oracle = oracle_of(
             self.px_of(self.selected),
             now,
@@ -5653,9 +5743,42 @@ impl Gw {
             .filter(|(_, o)| !o.sealed)
             .map(|(i, _)| i)
             .collect();
+        // registered /v1 accounts' pending orders, sealed after the demo user's
+        let mut account_refs: Vec<([u8; 32], usize)> = Vec::new();
+        for (k, acct) in &self.accounts {
+            for (i, o) in acct.orders.iter().enumerate() {
+                if !o.sealed {
+                    account_refs.push((*k, i));
+                }
+            }
+        }
+        // Whether the seal's pre-trade gate admits each of these orders, in seal
+        // order: the per-order checks, the owner's earlier orders of the batch, the
+        // reduce-only rule and the open-order limits (audit 2026-11-16 GA-1 + SM-1).
+        // The house counters pushed between them change no other owner's verdict.
+        // Only asked when some order is a taker the house could answer.
+        let takers: Vec<Order> = pending
+            .iter()
+            .map(|&i| self.orders[i].order)
+            .chain(
+                account_refs
+                    .iter()
+                    .map(|(k, i)| self.accounts[k].orders[*i].order),
+            )
+            .collect();
+        let admits = if self.trading_gate == trading_gate::TradingGate::Open
+            && takers
+                .iter()
+                .any(|o| matches!(o.tif, TimeInForce::Ioc | TimeInForce::Fok))
+        {
+            self.seq.seal_admits(&takers, now)
+        } else {
+            vec![false; takers.len()]
+        };
+        let (demo_takers, account_takers) = takers.split_at(pending.len());
+        let (demo_admits, account_admits) = admits.split_at(pending.len());
         let mut seal: Vec<Order> = Vec::new();
-        for &i in &pending {
-            let uo = self.orders[i].order;
+        for (&uo, &admitted) in demo_takers.iter().zip(demo_admits) {
             let mark = self.px_of(uo.market_id);
             // Same off-market protection as the /v1 path: the house MM quotes at the mark,
             // and only counters a market order (limit 0 → matcher crosses at any price) or
@@ -5672,11 +5795,11 @@ impl Gw {
             // vector without touching `accept_order` and carries no `prod` gate of its
             // own — a gate placed only in the order handlers would leave it live, stopped
             // merely because no taker got through. A taker the seal would refuse gets
-            // no counter, which would otherwise rest with nothing to answer.
-            if crosses
-                && self.trading_gate == trading_gate::TradingGate::Open
-                && self.seq.pre_trade_check(&uo, now).is_ok()
-            {
+            // no counter, which would otherwise rest with nothing to answer: the
+            // verdict is the seal's own (`Sequencer::seal_admits`), not the per-order
+            // check alone, which leaves out the batch's earlier orders and the
+            // open-order limits.
+            if crosses && self.trading_gate == trading_gate::TradingGate::Open && admitted {
                 let opp = match uo.side {
                     Side::Buy => Side::Sell,
                     Side::Sell => Side::Buy,
@@ -5697,68 +5820,52 @@ impl Gw {
             seal.push(uo);
         }
         // registered /v1 accounts
-        let account_keys: Vec<[u8; 32]> = self.accounts.keys().copied().collect();
-        let mut account_refs: Vec<([u8; 32], usize)> = Vec::new();
-        for k in &account_keys {
-            let pend: Vec<usize> = self.accounts[k]
-                .orders
-                .iter()
-                .enumerate()
-                .filter(|(_, o)| !o.sealed)
-                .map(|(i, _)| i)
-                .collect();
-            for i in pend {
-                let uo = self.accounts[k].orders[i].order; // Order: Copy
-                let mark = self.px_of(uo.market_id);
-                // A market order carries limit_price == 0 (kept through admission); the
-                // matcher treats it as crossing any price, so it fills at the MM's mark.
-                // A limit order keeps the caller's own price for its crossing check. Either
-                // way the taker order is pushed UNCHANGED so its seal-time order hash still
-                // matches the one accept_order recorded at admission.
-                let is_market = uo.limit_price == 0;
-                if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
-                    // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
-                    // never at the taker's own limit, and only provides the counter-fill
-                    // when a limit order's price actually crosses the mark (a market order
-                    // always crosses). Otherwise a taker could name an off-market price (buy
-                    // far below / sell far above the mark), mint an off-market entry against
-                    // the fabricated MM, and drain the vault.
-                    let crosses = is_market
-                        || match uo.side {
-                            Side::Buy => uo.limit_price >= mark,
-                            Side::Sell => uo.limit_price <= mark,
-                        };
-                    // SEC-025-D: the /v1-account injector, gated on the SAME terms as the
-                    // demo arm above. There are TWO injectors and the first pass gated only
-                    // one — not exploitable today, since the one-way latch means no order
-                    // can be staged while Closed, but that is exactly the positional
-                    // reliance this branch refuses one screen earlier for `simulate_adl`.
-                    // As above, a taker the seal would refuse gets no counter.
-                    if crosses
-                        && self.trading_gate == trading_gate::TradingGate::Open
-                        && self.seq.pre_trade_check(&uo, now).is_ok()
-                    {
-                        let opp = match uo.side {
-                            Side::Buy => Side::Sell,
-                            Side::Sell => Side::Buy,
-                        };
-                        let mmn = self.mm_nonce;
-                        self.mm_nonce += 1;
-                        seal.push(mk_order(
-                            self.mm.owner,
-                            uo.market_id,
-                            opp,
-                            uo.size,
-                            mark,
-                            mmn,
-                            TimeInForce::Gtc,
-                            false,
-                        ));
-                    }
+        for (&uo, &admitted) in account_takers.iter().zip(account_admits) {
+            let mark = self.px_of(uo.market_id);
+            // A market order carries limit_price == 0 (kept through admission); the
+            // matcher treats it as crossing any price, so it fills at the MM's mark.
+            // A limit order keeps the caller's own price for its crossing check. Either
+            // way the taker order is pushed UNCHANGED so its seal-time order hash still
+            // matches the one accept_order recorded at admission.
+            let is_market = uo.limit_price == 0;
+            if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
+                // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
+                // never at the taker's own limit, and only provides the counter-fill
+                // when a limit order's price actually crosses the mark (a market order
+                // always crosses). Otherwise a taker could name an off-market price (buy
+                // far below / sell far above the mark), mint an off-market entry against
+                // the fabricated MM, and drain the vault.
+                let crosses = is_market
+                    || match uo.side {
+                        Side::Buy => uo.limit_price >= mark,
+                        Side::Sell => uo.limit_price <= mark,
+                    };
+                // SEC-025-D: the /v1-account injector, gated on the SAME terms as the
+                // demo arm above. There are TWO injectors and the first pass gated only
+                // one — not exploitable today, since the one-way latch means no order
+                // can be staged while Closed, but that is exactly the positional
+                // reliance this branch refuses one screen earlier for `simulate_adl`.
+                // As above, a taker the seal would refuse gets no counter.
+                if crosses && self.trading_gate == trading_gate::TradingGate::Open && admitted {
+                    let opp = match uo.side {
+                        Side::Buy => Side::Sell,
+                        Side::Sell => Side::Buy,
+                    };
+                    let mmn = self.mm_nonce;
+                    self.mm_nonce += 1;
+                    seal.push(mk_order(
+                        self.mm.owner,
+                        uo.market_id,
+                        opp,
+                        uo.size,
+                        mark,
+                        mmn,
+                        TimeInForce::Gtc,
+                        false,
+                    ));
                 }
-                seal.push(uo);
-                account_refs.push((*k, i));
             }
+            seal.push(uo);
         }
         let sealed = self.seq.seal_batch(&seal, now);
         self.last_manifest = sealed.manifest_hash;
@@ -5782,20 +5889,47 @@ impl Gw {
             self.user_adl_clawed += adl_clawed;
         }
         let any_sealed = !pending.is_empty() || !account_refs.is_empty();
-        // Update all orders, including makers submitted in older ticks/windows.
-        // Applied-fill attribution is independent of the monotone finality axis.
+        // Update the order rows this batch touched, including makers submitted in
+        // older ticks/windows (audit 2026-11-16 GA-1 + SM-1): the orders it sealed
+        // (the rows still unsealed, every one of which was pushed into it above),
+        // the orders with an applied fill, a rejection or a removal in it, and the
+        // rows holding a fill of a tick that settled or was discarded since the
+        // last tick (`execution::needs_update`). Every other row is an order
+        // resting as recorded or ended, whose fills still wait for their proof;
+        // updating it changed nothing a response or an event shows, and cost a
+        // book lookup and a scan of the batch per row, every tick, under this
+        // lock. The batch is indexed by order hash once (`execution::Touches`).
+        // Rows are visited in the same order as before, so the events keep
+        // theirs. Applied-fill attribution is independent of the monotone
+        // finality axis.
+        let settled_ticks = self.settled_fill_ticks();
+        let touches = execution::Touches::of(&sealed, settled_ticks);
         let mut acct_events: Vec<String> = Vec::new();
-        for (i, o) in self.orders.iter_mut().enumerate() {
-            let fresh = pending.contains(&i);
-            let _ = execution::update(o, &self.seq, &sealed, fresh);
+        for o in self.orders.iter_mut() {
+            let fresh = !o.sealed;
+            if !fresh && !execution::needs_update(o, &touches) {
+                #[cfg(test)]
+                tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
+                continue;
+            }
+            #[cfg(test)]
+            tick_scaling_tests::count_row_update();
+            let _ = execution::update_with(o, &self.seq, &touches, fresh);
             if fresh {
                 o.sealed = true;
             }
         }
-        for (key, acct) in &mut self.accounts {
-            for (i, o) in acct.orders.iter_mut().enumerate() {
-                let fresh = account_refs.contains(&(*key, i));
-                for mut event in execution::update(o, &self.seq, &sealed, fresh) {
+        for acct in self.accounts.values_mut() {
+            for o in acct.orders.iter_mut() {
+                let fresh = !o.sealed;
+                if !fresh && !execution::needs_update(o, &touches) {
+                    #[cfg(test)]
+                    tick_scaling_tests::check_skipped_row(o, &self.seq, &sealed);
+                    continue;
+                }
+                #[cfg(test)]
+                tick_scaling_tests::count_row_update();
+                for mut event in execution::update_with(o, &self.seq, &touches, fresh) {
                     event["owner"] = serde_json::json!(hex0x(&acct.wallet.owner));
                     acct_events.push(event.to_string());
                 }
@@ -5803,6 +5937,12 @@ impl Gw {
                     o.sealed = true;
                 }
             }
+        }
+        // The rows that recorded a fill of this tick hold it unsettled.
+        if !sealed.applied_fills.is_empty() {
+            self.unsettled_fill_ticks
+                .get_or_insert_with(Default::default)
+                .insert(sealed.batch_id);
         }
         // Task 5: the SETTLE_TICKS queue is the LEGACY (demo/no-prover) finality
         // simulation. In window-settle mode SETTLED is earned by the real on-chain
@@ -5856,8 +5996,9 @@ impl Gw {
         for acct in self.accounts.values_mut() {
             let owner_hex = hex0x(&acct.wallet.owner);
             for o in acct.orders.iter_mut() {
-                // Execution was updated above for every row. This separate
-                // receipt axis may retain an earlier SETTLED fact indefinitely.
+                // Execution was updated above for every row the batch touched.
+                // This separate receipt axis may retain an earlier SETTLED fact
+                // indefinitely.
                 if o.last_finality == "SETTLED" {
                     continue;
                 }
@@ -5896,6 +6037,24 @@ impl Gw {
                     .to_string(),
                 );
             }
+            // per-account forced close (audit 2026-11-16 PC-1): another account's
+            // liquidation closed some or all of this position at the oracle price,
+            // and the sequencer cancelled the account's resting orders in that
+            // market (`ForcedClose`). Recognized the same way, under its own tag.
+            for m in &self.mkts {
+                let tag = forced_close_tag(&tag_key, m.id, sealed.batch_id);
+                for r in sealed.forced_close_receipts.iter().filter(|r| r.tag == tag) {
+                    acct_events.push(
+                        serde_json::json!({
+                            "owner": owner_hex, "type": "forcedClose", "marketId": m.id,
+                            "size": r.size.to_string(), "price": r.price.to_string(),
+                            "realizedPnl": r.realized.to_string(),
+                            "penalty": r.penalty.to_string(),
+                        })
+                        .to_string(),
+                    );
+                }
+            }
         }
         self.cap_account_order_history(ORDER_HISTORY_BUDGET);
         // Every row above has recorded the finality it reports, so the sequencer can
@@ -5930,13 +6089,18 @@ impl Gw {
                 .filter(|a| !a.orders.is_empty())
                 .count();
         let cap = account_order_history_cap(holders, budget);
-        let (seq, mkts) = (&self.seq, &self.mkts);
+        let seq = &self.seq;
+        // A row that ended without filling never reaches SETTLED, so it is also
+        // finished once the tick that last updated it is hard (audit 2026-11-16
+        // GA-1 + SM-1).
         let finished = |o: &GwOrder| {
+            let Some(e) = o.execution.as_ref().filter(|e| e.terminal()) else {
+                return false;
+            };
             o.sealed
-                && (o.last_finality == "SETTLED" || seq.finality_of(&o.order_hash).is_none())
-                && o.execution
-                    .as_ref()
-                    .is_some_and(execution::Execution::terminal)
+                && (o.last_finality == "SETTLED"
+                    || seq.finality_of(&o.order_hash).is_none()
+                    || (e.filled == 0 && e.last_tick_hardened(seq)))
         };
         let lists = std::iter::once((self.user.owner, &mut self.orders)).chain(
             self.accounts
@@ -5948,15 +6112,11 @@ impl Gw {
             if rows.len() <= cap || !rows.iter().any(finished) {
                 continue;
             }
-            // Gather the live hashes once per list, not once per history row.
-            let live: std::collections::BTreeSet<Digest> = mkts
-                .iter()
-                .filter_map(|m| seq.book(m.id))
-                .flat_map(|book| book.resting_hashes_for(&owner))
-                .collect();
-            // Rows are kept newest first; `cap_history` evicts from the front.
+            // Rows are kept newest first; `cap_history` evicts from the front. A
+            // row's book is looked up by its hash, not walked (audit 2026-11-16
+            // GA-1 + SM-1).
             rows.reverse();
-            cap_history(rows, cap, |o| finished(o) && !live.contains(&o.order_hash));
+            cap_history(rows, cap, |o| finished(o) && !order_rests(seq, &owner, o));
             rows.reverse();
         }
     }
@@ -6039,7 +6199,6 @@ impl Gw {
                 }
             }
         }
-        let live = self.live_order_hashes(&self.user.owner);
         let orders: Vec<WTrackedOrder> = self
             .orders
             .iter()
@@ -6048,7 +6207,7 @@ impl Gw {
                 input: o.input.clone(),
                 receipt: self.receipt_json(&o.receipt, None),
                 finality: self.finality_str(o),
-                cancellable: live.contains(&o.order_hash)
+                cancellable: order_rests(&self.seq, &self.user.owner, o)
                     || (!o.sealed
                         && self
                             .seq
@@ -9312,6 +9471,15 @@ async fn post_v1_order(
     };
     let (receipt, beneficiary) = match r {
         Ok(accepted) => accepted,
+        // audit 2026-11-16 GA-1: the account's open-order cap
+        // (`sequencer::OpenOrderLimit`); cancelling an open order clears it.
+        Err(e) if e.starts_with("OPEN_ORDER_LIMIT") => {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({ "error": e })),
+            )
+                .into_response();
+        }
         Err(e) => return mutation_error(e),
     };
     // Audit GF-2: the enclave-signed receipt and its `l1Challenge` let the holder
@@ -9622,10 +9790,10 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
-                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; or, in close-only, the L1 wind-down phase could not be read. Nothing was recorded and the nonce is not used; retry later" } } } },
+                "responses": { "200": { "description": "recorded withdrawal + leaf (the minimum is 1 USDC unless `amount` is the whole free balance in that market; once the provable-history admission cap leaves no room, only a full exit — the whole balance of a closed position — is accepted)" }, "400": { "description": "refused, including a withdrawal that would take collateral the account's pending orders in that market hold as initial margin (`PENDING_MARGIN: ...`) until they fill, are cancelled or expire" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; or, in close-only, the L1 wind-down phase could not be read. Nothing was recorded and the nonce is not used; retry later" } } } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[] + voided[] (the account's withdrawals the last live void of a settlement window removed since the gateway started; request them again with a new signature)") } },
             "/v1/orders": {
-                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt, including `l1Challenge`, sent once a durable state snapshot holds the order" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt)" }, "429": { "description": "rate limit (10/s per account; per client address, 40 at once then 20/s by default)" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; nothing was recorded, retry later. With `durability: \"unknown\"` and the `orderHash`: the order was accepted, but the snapshot write it waited for failed or timed out, so no receipt or `l1Challenge` was issued; it may still execute, and GET /v1/orders serves its receipt once a durable snapshot holds it. CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; nothing was recorded, retry in a few seconds" } } },
+                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt, including `l1Challenge`, sent once a durable state snapshot holds the order" }, "400": { "description": "rejected, including an order that opens, grows or flips a position with less than $10 of notional at the validated oracle price (reduce-only orders and reductions are exempt), and an order whose initial margin together with the account's pending orders on the same side exceeds its collateral in the market (`PENDING_MARGIN: ...`)" }, "409": { "description": "the account already has 64 open orders in the market or 128 across all markets (`OPEN_ORDER_LIMIT: ...`); cancel one first" }, "429": { "description": "rate limit (10/s per account; per client address, 40 at once then 20/s by default)" }, "503": { "description": "PERSISTENCE_UNAVAILABLE: the latest state snapshot could not be written; nothing was recorded, retry later. With `durability: \"unknown\"` and the `orderHash`: the order was accepted, but the snapshot write it waited for failed or timed out, so no receipt or `l1Challenge` was issued; it may still execute, and GET /v1/orders serves its receipt once a durable snapshot holds it. CLOCK_WINDOW_CLOSING (with Retry-After: 2): the open settlement window is closing and admits no timed operation until it is sealed; nothing was recorded, retry in a few seconds" } } },
                 "get": { "summary": "Own orders, signed receipt finality, and native cumulative execution (unknown legacy history is null). An order's `receipt` is null until a durable state snapshot holds it", "security": auth["security"], "responses": ok("orders") }
             },
             "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a pending order or live maker remainder. Prior fills are unchanged, including settled partial fills. Retains the original receipt and execution history; retries are idempotent. Production success requires a durable snapshot; cancellation is recorded in the open window manifest", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: unknown order or no cancellable remainder" }, "503": { "description": "persistence unavailable or durable cancellation outcome unknown" } } } },

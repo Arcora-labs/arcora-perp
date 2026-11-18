@@ -451,12 +451,13 @@ fn auto_deleverage_after_a_pause_sizes_each_haircut_at_the_settled_index() {
         let mut s = state();
         apply(&mut s, tick(PREMIUM, T0));
         assert_eq!(s.funding[&0].rate, MAX);
-        let (l, w) = (owner_of(1), owner_of(2));
-        // L short 1 BTC from $100k with $11k; W long 1 BTC from $109k with $3k;
-        // both opened at the current index
+        let (l, w, y) = (owner_of(1), owner_of(2), owner_of(3));
+        // L short 1 BTC from $100k with $5k; W long 10 BTC from $109k with $27k;
+        // Y short 9 BTC from $109k with $200k; all opened at the current index
         for (owner, size, entry, collateral) in [
-            (l, -SIZE_SCALE, 100_000, usd(11_000)),
-            (w, SIZE_SCALE, 109_000, usd(3_000)),
+            (l, -SIZE_SCALE, 100_000, usd(5_000)),
+            (w, 10 * SIZE_SCALE, 109_000, usd(27_000)),
+            (y, -9 * SIZE_SCALE, 109_000, usd(200_000)),
         ] {
             s.positions.insert(
                 (owner, 0),
@@ -478,18 +479,32 @@ fn auto_deleverage_after_a_pause_sizes_each_haircut_at_the_settled_index() {
         let stored = s.funding[&0].cumulative_index;
         let settled = s.funding[&0].index_at(px, now);
         // $112k for the pause at the clamp: $28 per BTC for 30 minutes, $56 for 60
-        assert_eq!(settled - stored, usd(28) * pause_min as i128 / 30);
+        let owed = settled - stored;
+        assert_eq!(owed, usd(28) * pause_min as i128 / 30);
         let winner = *s.position(&w, 0).unwrap();
         assert!(!winner.is_liquidatable(&m, px, settled));
         assert!(s.position(&l, 0).unwrap().is_liquidatable(&m, px, settled));
-        let clawable = winner.adl_clawable(&m, px, settled).unwrap();
+        // The liquidation closes 1 BTC of W with L; W keeps 9 BTC, and its
+        // headroom above maintenance binds: $27k + $30k − 10 · owed − $50,400.
+        let reduced_at = |index: i128| {
+            let mut r = winner;
+            r.apply_fill(-SIZE_SCALE, px, index).unwrap();
+            r
+        };
+        let reduced = reduced_at(settled);
+        let clawable = winner
+            .adl_clawable_after(&reduced, &m, px, settled)
+            .unwrap();
         assert_eq!(
             clawable,
-            usd(400) - (settled - stored),
+            usd(6_600) - 10 * owed,
             "the headroom above maintenance binds"
         );
         assert!(
-            winner.adl_clawable(&m, px, stored).unwrap() > clawable,
+            winner
+                .adl_clawable_after(&reduced_at(stored), &m, px, stored)
+                .unwrap()
+                > clawable,
             "the index before the pause would leave a larger clawable amount"
         );
 
@@ -500,7 +515,8 @@ fn auto_deleverage_after_a_pause_sizes_each_haircut_at_the_settled_index() {
         assert_eq!(haircuts[0].owner, w);
         assert_eq!(haircuts[0].clawed, clawable, "pause {pause_min} min");
         let after = *s.position(&w, 0).unwrap();
-        assert_eq!(after.collateral, winner.collateral - clawable);
+        assert_eq!(after.size, 9 * SIZE_SCALE);
+        assert_eq!(after.collateral, reduced.collateral - clawable);
         assert_eq!(
             after.equity(px, settled),
             after.maintenance_required(&m, px),

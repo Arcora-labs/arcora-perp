@@ -169,6 +169,14 @@ pub enum Domain {
     /// attestation can never share a preimage structure with the transcript
     /// commitment. Appended last so existing committed hashes are unchanged.
     OracleAttest = 32,
+    /// Forced-close receipt tag (audit 2026-11-16 PC-1). A liquidation closes the
+    /// other side of its market by the liquidated size; each position it reduced
+    /// gets a per-(owner, market, batch) tag its owner recomputes from its own
+    /// secret to detect "a liquidation closed part of my position", paired in the
+    /// sealed batch with the size and the result. Distinct from `Adl` and
+    /// `Liquidation`, so the three events never share a preimage. Appended last so
+    /// existing committed hashes are unchanged. Not a cross-layer-committed value.
+    ForcedClose = 33,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -261,6 +269,7 @@ mod tests {
             OrderLogChain,
             SealNonce,
             OracleAttest,
+            ForcedClose,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

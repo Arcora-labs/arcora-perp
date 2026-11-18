@@ -9,7 +9,10 @@ protocol guarantees something and where it does not.
 The honest one-line summary: the protocol guarantees that solvent value can always
 **exit**, and that protocol-level bad debt is absorbed by a capital stack
 (penalty → insurance → treasury → capped auto-deleverage → halt) before it can
-socialize silently.
+socialize silently. This holds because a liquidation closes the other side of the
+market with the liquidated position, so the clearing pool is never left as the
+counterparty to open interest: no loss can build up in it, outside that stack, and
+later be paid out of other accounts' deposits (audit 2026-11-16, PC-1; Q3/Q7).
 It does **not** guarantee that a trader who loses a trade is made whole — that is
 not a property a perpetual can have, and any design that claims it is hiding a
 subsidy. The line between "recoverable" and "not recoverable" is drawn explicitly
@@ -100,9 +103,12 @@ the loss, because the protocol's obligation is different for each.
    (capacity) and funds the fines.
 2. **Protocol bad debt** (a position goes underwater faster than it can be
    liquidated, leaving a deficit). Recoverable up to the capital stack: the
-   insurance fund absorbs it first, then the treasury, and only a *true* depletion
-   socializes — and even then via the deterministic, attributable ADL path, never
-   silently (Q3/Q7).
+   insurance fund absorbs it first, then the treasury, then auto-deleverage of the
+   winners, which reaches the gain the liquidation's counterparties realize in it;
+   only a *true* depletion halts the system and is shared at wind-down — never
+   silently (Q3/Q7). An account that does not trade carries none of it before that
+   wind-down: the clearing pool takes no position, so a price move after a
+   liquidation cannot turn into a loss that its deposit pays for.
 3. **Counterparty/ADL haircut** (you were a winner clawed to cover someone else's
    deficit). Bounded and attributable: ADL only ever takes your gain net of funding,
    never more than your collateral, and never so much that your equity falls below
@@ -141,26 +147,75 @@ unchanged.
 
 ## Q3 / Q7 — What feeds the insurance fund, and what happens when it's empty?
 
-**Mechanism — the liquidation waterfall.** When a liquidation leaves a deficit
-(bad debt: the close left the position's collateral negative), the engine runs a
-fixed cascade, all inside the one `Liquidate` op:
+**Mechanism — both sides close together.** A liquidation closes the whole position
+at the validated oracle price and, at the same price, the positions on the other
+side of the market by the same size between them, pro rata by size (the remainder
+of the split goes out in key order, so the prover reproduces it). Their realized
+results and settled funding go through the clearing pool like a fill's. So the
+sizes of a market's positions keep summing to zero, and the clearing pool
+(`vault_pool`) is never the counterparty to open interest: it only carries realized
+results and funding between positions, and nets to zero, up to rounding, when every
+position is closed. The engine recomputes that sum after each liquidation and
+refuses one that would leave the pool holding a position (`ClearingPoolExposure`),
+so the proof covers it. A counterparty is reduced like any other trade, without its
+consent, as in any auto-deleverage. Three things follow from that:
+
+- **Its orders in that market are cancelled.** They were placed against the position
+  the close just changed: a take-profit buy of a short that the close flattened
+  would otherwise fill later and open a long its owner never asked for. The
+  sequencer cancels every resting order of each reduced account in that market, as
+  it cancels a liquidated account's orders everywhere; `GET /v1/orders` shows them
+  `CANCELLED` with reason `ForcedClose` (`docs/API.md`).
+- **It is told.** Each reduced position gets a forced-close receipt in the sealed
+  batch: the size the close took, the price, the PnL it realized and any penalty,
+  under a tag keyed on the account's secret like an ADL receipt, so only that
+  account can recognize it. The gateway sends it as a `forcedClose` event.
+- **A counterparty that was itself liquidatable pays the penalty.** It gives up the
+  liquidation penalty on the size the close takes, out of its positive collateral,
+  into the insurance fund, as a liquidation of that size would have charged it.
+  Without this, an account under maintenance would leave penalty-free whenever an
+  opposite liquidation hit first. A healthy counterparty pays no penalty.
+
+Before this rule (audit 2026-11-16, PC-1), the liquidated position closed against
+the pool alone and its counterparty stayed open. When the price kept moving the same
+way, the pool paid that counterparty's further gain, with no margin and no
+liquidation of its own, out of the deposits of everyone else, and the capital stack
+below never saw it. A state written then may still hold such a pool position: a
+liquidation only shrinks it (the pool takes the part of a close that reduces its own
+position, the other side the rest), funding is not paid out of the pool on its
+account (Q8), and `SettleAll` closes what is left at the settlement price.
+
+**Mechanism — the liquidation waterfall.** When the closes leave a deficit (bad
+debt: the liquidated position's collateral is negative, or a counterparty the close
+left flat was itself under water), the engine runs a fixed cascade, all inside the
+one `Liquidate` op:
 
 1. take the liquidation penalty out of the position's remaining collateral, into the
-   insurance fund;
+   insurance fund (and out of every counterparty that was itself liquidatable, on
+   the size the close took from it);
 2. draw `min(shortfall, insurance_fund)` from the **insurance fund**;
 3. draw `min(remaining shortfall, treasury)` from the **treasury**, the operator's
    accrued fee revenue (Q4);
 4. if a shortfall remains, **auto-deleverage** the winners in the same market. Each
-   open position is weighted by what it can give,
-   `max(0, min(P − F, C⁺, E − MM))`: its price gain `P` net of the funding it owes
-   `F`, capped at its non-negative collateral `C⁺` and at the headroom of its equity
-   `E` above its maintenance margin `MM`. The covered amount, `min(shortfall,
-   Σ weights)`, is split floor-pro-rata over those weights, and the remainder is
-   handed out in key order without exceeding any weight, so the haircuts sum to the
-   covered amount exactly and the prover reproduces the same split;
-5. if the position is *still* negative — no winner had anything left to give — the
-   uncovered rest stays parked on the closed position and the whole system trips to
-   `Mode::CloseOnly` (the depletion halt).
+   position that was open before the liquidation is weighted by what it can give,
+   `max(0, min(P − F, C'⁺, E' − MM'))`: its price gain `P` net of the funding it
+   owes `F`, measured before the close (so the gain a counterparty just realized in
+   it still counts), capped at its non-negative collateral `C'⁺` and at the headroom
+   of its equity `E'` above its maintenance margin `MM'` after the close. The
+   covered amount, `min(shortfall, Σ weights)`, is split floor-pro-rata over those
+   weights, and the remainder is handed out in key order without exceeding any
+   weight, so the haircuts sum to the covered amount exactly and the prover
+   reproduces the same split;
+5. if a closed position is *still* negative — no winner had anything left to give —
+   the uncovered rest stays parked on it (the liquidated position's debt is covered
+   first) and the whole system trips to `Mode::CloseOnly` (the depletion halt).
+
+In a market of two positions the counterparty's gain at the liquidation price equals
+the liquidated position's loss, so once the reserves are spent, auto-deleverage
+covers the rest of the shortfall out of that gain. Two accounts trading against each
+other can therefore take out, beyond what they put in, at most what the insurance
+fund and the treasury pay toward a gap (which is what those reserves are for), never
+the deposits of other accounts.
 
 What the ADL cap guarantees:
 
@@ -168,8 +223,11 @@ What the ADL cap guarantees:
   ADL never creates new bad debt and never makes a position liquidatable;
 - only a gain net of funding is taken: funding a winner still owes reduces it, and
   funding it is still owed counts towards it;
-- ADL takes collateral, not size: a clawed winner keeps its full exposure on a
-  thinner margin;
+- ADL takes collateral; the size has already been reduced by the close, and a clawed
+  winner keeps whatever exposure it still holds on a thinner margin;
+- a position that stays open cannot unbind its collateral below its initial margin,
+  whatever its unrealized gain (`Unbind`, audit PC-2; the gateway's withdrawal rule,
+  now also proven), so a profitable winner always has collateral for ADL to take;
 - any arithmetic overflow while planning ADL means no haircut at all: the shortfall
   stays parked and the system trips to close-only (fail closed).
 
@@ -185,9 +243,12 @@ covers any deficit left from the clearing pool, insurance and the treasury befor
 global pro-rata haircut, and pays whatever reserves remain to the deployment's
 wind-down recipient (Q2, `docs/FINAL_SETTLE_RUNBOOK.md`).
 
-— `crates/perp-core/src/engine.rs` (`op_liquidate`, `auto_deleverage_plan`,
-`allocate_pro_rata`), `crates/perp-core/src/position.rs` (`adl_clawable`); tests in
-`crates/perp-core/tests/adl_health.rs` (for example
+— `crates/perp-core/src/engine.rs` (`op_liquidate`, `counterparty_closes`,
+`auto_deleverage_plan`, `allocate_pro_rata`), `crates/perp-core/src/position.rs`
+(`adl_clawable_after`); tests in `crates/perp-core/tests/pool_exposure.rs` (the
+audit PC-1/PC-2 cases), `crates/sequencer/tests/pool_exposure.rs` (the audit
+scenario through the sequencer loop), `crates/perp-core/tests/adl_health.rs` (for
+example
 `the_treasury_covers_the_shortfall_after_insurance_and_before_adl`,
 `adl_stops_at_the_maintenance_margin`,
 `a_winner_whose_funding_debt_exceeds_its_price_gain_gives_nothing`) and
@@ -195,11 +256,19 @@ wind-down recipient (Q2, `docs/FINAL_SETTLE_RUNBOOK.md`).
 `adl_distributes_pro_rata_across_multiple_winners`,
 `true_insolvency_trips_close_only_when_winners_have_exited`).
 
-**Limit.** The trade-off of the cap is more frequent close-only trips: a winner near
-its maintenance margin gives little or nothing. Drawing the treasury before ADL
-offsets that. At wind-down, a deficit the reserves cannot cover is haircut across
-the positive collateral and notes of all markets, not first within the market that
-caused it.
+**Limit.** The trade-off of the cap is more frequent close-only trips: a winner
+that keeps exposure near its maintenance margin gives little or nothing, and a
+counterparty that entered close to the liquidation price has little gain to give.
+Drawing the treasury before ADL offsets that. At wind-down, a deficit the reserves
+cannot cover is haircut across the positive collateral and notes of all markets, not
+first within the market that caused it.
+
+**Cost.** A liquidation reads every position once to find the other side and the
+market's net size, and once more only when its shortfall reaches auto-deleverage.
+A funding tick needs the net size too: within one proven batch each market's net
+size is measured once and then kept (a liquidation updates it), so the per-tick
+cost in the guest does not grow with the number of positions beyond what the
+batch's per-op conservation check already reads.
 
 **What feeds the fund.** Two real inflows, not a hand-wave: an explicit
 capitalization op (`BatchOp::FundInsurance` / `op_fund_insurance`, SEC-024), which
@@ -232,7 +301,20 @@ inside the conservation identity and is re-checked after each op (`apply_batch`
 checks `Σnotes + Σcollateral + insurance + vault_pool + treasury == external_in −
 external_out`, with checked sums: an overflowing sum fails the identity rather than
 wrapping). An adversarial review confirmed the cascade and its conservation; the
-fixes from that pass are in commit `8aa3559`.
+fixes from that pass are in commit `8aa3559`. Because `vault_pool` is a signed term,
+the identity alone would also hold with the pool driven far below zero; so the
+engine also refuses any withdrawal (and the wind-down payout) that would take the
+cumulative `external_out` above `external_in` (`WithdrawalExceedsDeposits`): the
+protocol never pays out more than came in.
+
+That cap is only a backstop. It is one lifetime total over the whole deployment:
+`external_in` counts every account's deposits, so it does not stop one account
+from withdrawing value that belongs to others, first come, first served, while the
+total stays below what came in. What keeps a loss from reaching other accounts'
+deposits is that a liquidation closes the other side with it, so no loss builds up
+in the clearing pool, together with the capital stack above; the cap only catches
+an accounting that has already gone wrong before it pays out more than the
+deployment ever held.
 
 ## Q4 — Why would a market-maker provide liquidity here?
 
@@ -343,7 +425,16 @@ tick and the time from which the not-yet-committed span runs.
   index is kept as a remainder over `RATE_SCALE × FUNDING_INTERVAL_MS`, so many short
   spans add up to exactly what one long span at the same rate would. The span's
   notional is the validated index price at its end. Position-level `funding_owed`
-  still truncates toward zero; that residue stays in the clearing pool.
+  still truncates toward zero, for a payer and a receiver alike, so each position
+  settlement leaves a residue of under one micro-USD with the clearing pool, in
+  either direction.
+- **Both sides.** One index serves both sides, so funding nets out only when the
+  side that receives holds no more open interest than the side that pays. A tick
+  stores the observed rate only then, and a zero rate otherwise, so the receivers
+  never get more than the payers owe and the clearing pool pays no funding (audit
+  2026-11-16, PC-1). Liquidations keep both sides equal (Q3/Q7), so this binds only
+  on a state that already held a pool position; with one side empty nothing is
+  charged.
 - **Idle markets.** A tick that observes a zero rate while the stored rate is zero
   changes nothing, so an idle market's ticks leave the state root unchanged.
 - **Wind-down.** `SettleAll` carries no time, so it settles the committed index only.
@@ -367,10 +458,22 @@ window. Three rules make it costly to move:
   settle the fill within its margin. An order admitted below the order minimum
   because it reduced the maker's position counts only while it still reduces, as
   settlement fills it, so stacking such orders gives no depth beyond that position.
-  A quote no taker could trade against does not move the mark. The sample walks
-  only the fill band and at most 4,096 resting orders of a side
-  (`FUNDING_IMPACT_MAX_ORDERS`); a side that would need more counts as a side
-  without the depth, so its mark is the index.
+  A quote no taker could trade against does not move the mark. Every order a taker
+  could fill is depth, whatever its size: an order at the $10 minimum (measured at
+  the oracle price) resting below the index, or a partial fill's remainder, is
+  worth a little less at its own price and still counts. The sample walks only the
+  fill band and stops at the order that completes the $1,000, inside its price
+  level. It has no order budget: an order it cannot count costs it only the visit,
+  so no number of such orders, ahead of honest depth or queued behind it at the
+  same price, can leave a side without its impact price and pin the mark to the
+  index (audit 2026-11-16 SM-3; before, a side the sample had to walk more than
+  4,096 orders of had none). The work of a sample is the orders in the fill band
+  ahead of the depth: at most 64 per account (Q9), each margined with the
+  account's other pending orders on its side when it was admitted, with that
+  collateral kept from withdrawal until it fills, is cancelled or expires. Orders
+  can still become unfillable (the maker's losses, or 64 reduce-only orders that
+  each close the same position, of which only the first could fill); they are
+  visited and not counted.
 - **Sampled where takers trade.** The sequencer samples the book once per tick,
   before that tick's batch is matched, so each sample is the book the tick's takers
   face. Each sample prices the time since the previous tick. A quote withdrawn
@@ -391,9 +494,11 @@ sequencer.
 `crates/perp-core/tests/funding_attribution.rs` and the `funding.rs` unit tests. The
 sequencer's pre-trade check reads the index through `index_at`, so it agrees with
 the engine. The mark is built in `crates/sequencer/src/lib.rs`
-(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_IMPACT_MAX_ORDERS`,
-`FUNDING_MARK_MIN_SPAN_MS`);
-tests in `crates/sequencer/tests/admission_and_funding_mark.rs`.
+(`Sequencer::run_maintenance`, `FUNDING_IMPACT_NOTIONAL`, `FUNDING_MARK_MIN_SPAN_MS`)
+and `crates/matcher/src/book.rs`
+(`OrderBook::impact_price_within`);
+tests in `crates/sequencer/tests/admission_and_funding_mark.rs` and
+`crates/sequencer/tests/order_flood.rs`.
 
 **Limit.** A pause is charged at the rate in force before it, for at most one hour.
 
@@ -440,6 +545,52 @@ the position the order meets. The gateway's initial-margin check uses the engine
 own `initial_required`. These minimums also slow the growth of the note tree and the
 nullifier log.
 
+**Mechanism — open-order limits, off-chain (audit 2026-11-16 GA-1 + SM-1).** Margin
+used to be checked for each order alone, and nothing bounded how many orders an
+account kept open, so 60 accounts with $10 each kept 22,081 orders resting and every
+tick did work over all of them. The sequencer now holds every account to:
+
+| Limit | Value | Counts |
+|---|---|---|
+| Open orders in one market | 64 (`MAX_OPEN_ORDERS_PER_MARKET`) | orders that can rest (a GTC with a limit price, a post-only): resting, accepted and waiting for the next batch, and the batch's earlier orders |
+| Open orders across all markets | 128 (`MAX_OPEN_ORDERS_PER_ACCOUNT`) | the same, summed |
+| Collateral reserve | the account's collateral in the market | the initial margin, at the validated oracle price, of the position after every pending order on the new order's side fills in full, the new order included |
+
+An IOC, a FOK or a market order never rests, so the caps neither count nor refuse
+it; the reserve margins it with the pending orders on its side, and once its batch
+has run it holds nothing, whether it traded or not. A reduce-only order (or one
+admitted below the minimum because it reduced) counts in the reserve only up to the
+size that closes the position, since it can never fill past that. Each side is
+margined on its own. Nothing is reserved ahead: the reserve is the orders still
+pending, so a fill moves an order's margin into the position, and a cancel, an
+expiry or a rejection releases it. Until then the collateral stays held: a
+withdrawal, or a demo pool transfer, that would leave the account's pending orders
+in the market without that initial margin is refused (`PENDING_MARGIN`,
+`Sequencer::unbind_keeps_reserve`), so the collateral cannot move on to back
+another account's orders while the first account's still rest. With $10 an account
+can keep ten $10 orders on a side; a 32-level ladder on each side fits the
+per-market cap. Orders a snapshot restores above a cap stay on the book; the
+account's new orders are refused until it is back under.
+
+The sequencer enforces the limits at the seal for every order, whatever path it
+came by (the manifest records a refusal as `InvalidOrder` for a cap and
+`InsufficientMargin` for the reserve), and the gateway asks it at submission, which
+refuses the order before it gets a receipt (§ `docs/API.md`). The gateway's house
+market maker is exempt: its counters answer takers held to the limits themselves,
+and the gateway gives a counter only to a taker the seal admits
+(`Sequencer::seal_admits`), so none rests answering a taker the batch refused.
+The caps bound the book, and every per-tick pass over it, by the number of funded
+accounts rather than by how fast one account can post, and the reserve by their
+collateral: the audit's 60 accounts with $10 each, which kept 22,081 bids resting,
+now keep at most ten bids each on a side of a market, and cannot withdraw the $10
+to fund more accounts while those bids rest.
+
+— `crates/sequencer/src/lib.rs` (`MAX_OPEN_ORDERS_PER_MARKET`,
+`MAX_OPEN_ORDERS_PER_ACCOUNT`, `OpenOrderLimit`, `Sequencer::check_open_order_limits`,
+`Sequencer::unbind_keeps_reserve`, `Sequencer::seal_admits`);
+tests in `crates/sequencer/tests/order_flood.rs` and
+`crates/gateway/src/open_order_limit_tests.rs`.
+
 — `crates/perp-core/src/position.rs` (`maintenance_required`, `initial_required`),
 `crates/perp-core/src/fixed.rs` (`notional_quote_ceil`, `apply_rate_ceil`),
 `crates/perp-core/src/order.rs` (`RejectReason::BelowMinimumSize`),
@@ -447,6 +598,80 @@ nullifier log.
 tests in `crates/perp-core/tests/position_prune.rs`,
 `crates/sequencer/tests/admission_and_funding_mark.rs` and
 `crates/gateway/src/order_minimum_tests.rs`.
+
+**Mechanism — the tick and the rematch do work for what a batch touched, off-chain
+(audit 2026-11-16 GA-1 + SM-1, the tick; SM-2).** The open-order limits bound the
+book, but two passes still did work over all of it under the gateway's single lock.
+Every 700 ms tick updated the execution record of every order row the gateway keeps,
+and each update searched the whole book for its order: with 20,000 resting orders a
+tick took 0.50 s, with 40,000 3.75 s. Each book now indexes its resting orders by
+hash, so a lookup, a cancel or a ban finds its order without walking the book; the
+index is not persisted (the snapshot layout is unchanged) and a restore rebuilds it.
+A tick updates only the rows its batch touched: the orders it sealed, those with an
+applied fill, a rejection or a removal in it, and those holding a fill of a tick
+that settled or was discarded since the tick before. The batch is indexed by order
+hash once per tick, so an update costs that row's own entries. A row whose fills wait
+for their window to settle on L1 (about 13 minutes in window-settle mode, and such
+rows cost an attacker nothing to make with IOCs the house answers) is not updated
+again until then: the gateway watches the ticks with unsettled fills, a lookup per
+such tick, not per row. Any other row's update changed nothing a response or an event
+shows, so both are what they were; every change a batch makes to a resting order is
+named by one of its fills, rejections or removals (below). What a tick still does per
+row is cheap and was there before: it visits every row to find the unsealed ones and
+to compare each row's finality with the sequencer's (a flag check and a map lookup).
+An account over the history cap (500 rows) no longer walks every book for its resting
+orders on each tick; each row is looked up by its hash, and a row of an order that
+ended without filling, which never reaches SETTLED, leaves the history once the tick
+that last updated it is hard, so such an account does not stay over the cap.
+
+When a fill failed to settle because of one of its orders, the batch copied the
+whole book to roll back to and matched again, once per failing order, so one $60 IOC
+against ~6,000 under-margined sells of 20 accounts stalled the API for 1.29 s. Now
+each pass records what it changed on the books and the rollback undoes just that; a
+batch that finds no offender copies nothing. A resting maker whose account's
+collateral could not carry its fill (`InsufficientMargin`, `FillWouldBankrupt`)
+takes every other order of that account on that side of the market with it, resting
+or in the batch, under the same reason; reduce-only orders, which add no exposure,
+stay. So does a resting maker that would add exposure where only a reduction may
+trade (a reduce-only order, close-only mode, an order admitted below the minimum
+because it reduced) while its account's position at the start of the batch gives
+that side nothing to reduce: it takes the account's orders on that side that would
+fail the same way, each one the pre-trade checks would refuse now. The batch then
+matches again once per such account and side, not once per order: 3,000 such sells
+of three accounts take four passes, seven reduce-only leftovers of one account two.
+All of a pass's side bans are applied in one walk per side of a market.
+
+And a batch runs at most `MAX_MATCH_ROUNDS` (8) passes. The last one settles each
+fill as it matches it, before the book changes for it: a fill that would fail because
+of one of its orders drops that resting maker from the book, or stops that incoming
+order (its remainder neither trades nor rests), and the other side loses no size and
+trades on against the next order. The failing order is rejected under its own reason,
+or, if it already traded in that pass, keeps those fills and leaves the book with a
+removal under that reason; the failing orders the pass did not reach wait for the
+next batch. (Round 1 review: the first version kept the last pass as matched and only
+dropped its failed fills. The size those fills had taken off innocent orders was gone
+with no fill, rejection or removal, so the gateway never updated their rows, and one
+account's seven reduce-only leftovers were enough to reach that pass.) A fill-or-kill
+that has not traded yet when a maker it crossed fails is checked again against what
+is left; one that already traded can end short, the one case where the last pass
+gives up all-or-nothing, as a fill failing for a reason no order is to blame for
+always could.
+
+What is left (not done): each pass but the last still settles on a copy of the
+state, so a batch makes at most `MAX_MATCH_ROUNDS` state copies; an undo log in the
+engine would change the proven guest code. A side ban walks each side it touches,
+not just the banned accounts' orders: at most once per side per pass.
+
+— `crates/matcher/src/book.rs` (`OrderBook::remaining`, `OrderBook::cancel`,
+`OrderBook::cancel_side_where`, `OrderBook::undo`, `TradeCheck`),
+`crates/matcher/src/lib.rs` (`MatchingEngine::process_stream_undoable`,
+`MatchingEngine::undo`, `MatchingEngine::process_stream_checked`),
+`crates/sequencer/src/lib.rs` (`MAX_MATCH_ROUNDS`, `Sequencer::seal_batch`,
+`settle_fill`), `crates/gateway/src/execution.rs` (`Touches`, `needs_update`),
+`crates/gateway/src/main.rs` (`Gw::settled_fill_ticks`, the history cap); tests in
+`crates/gateway/src/tick_scaling_tests.rs`, the `audit_1116_sm2_*` tests of
+`crates/sequencer/src/lib.rs` and `crates/sequencer/tests/fuzz.rs`, and the
+`audit_1116_*` tests of `crates/matcher/src/lib.rs`.
 
 **Mechanism — the provable-history admission cap, off-chain.** Every batch proof
 re-derives the whole note tree and nullifier log, so proving cost, the final
@@ -490,7 +715,7 @@ in `docs/API.md` (§ Admission cap).
 | Q4 | MM incentive | **Done** + review hardening | `market.rs`/`engine.rs` (`7cb9eea`,`1c1c34a`) |
 | Q5 | MM hedge / inventory | **Done (protocol side)** — hedge signal; external keeper is the operator's | `perp-core/src/position.rs` + gateway/UI |
 | Q6 | Liquidation privacy | **Done** + review fix | `sequencer/src/lib.rs` (`7e9186d`,`8aa3559`) |
-| Q7 | Bad-debt attribution | **Done** (insurance → treasury → capped ADL → halt) | `engine.rs`, `position.rs` (`adl_clawable`) |
+| Q7 | Bad-debt attribution | **Done** (counterparty close → insurance → treasury → capped ADL → halt) | `engine.rs`, `position.rs` (`adl_clawable_after`) |
 | Q8 | Funding attribution | **Done** — stored rate, exact carry, settlement at every position touch | `funding.rs`, `engine.rs` |
 | Q9 | Dust | **Done** — rounded-up margin with a $1 floor; off-chain admission minimums and a measured history cap | `position.rs`, gateway, sequencer |
 

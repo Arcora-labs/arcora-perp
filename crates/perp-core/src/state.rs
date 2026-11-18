@@ -91,6 +91,12 @@ pub struct State<H: Hasher> {
     /// at one price, the pool stays bounded and nets to zero when all positions
     /// close. This is what makes collateral conservation an exact integer
     /// identity in Phase 0 rather than an oracle-dependent approximation.
+    ///
+    /// The pool is never a counterparty: a liquidation closes the other side of
+    /// the market with the liquidated position (audit 2026-11-16 PC-1), so per
+    /// market the sizes of all positions sum to zero. A state written before that
+    /// rule may hold a pool position (the negation of that sum); liquidations
+    /// only shrink it, and funding is not paid out of the pool on its account.
     pub vault_pool: i128,
     /// Protocol-treasury balance: the operator's accrued trading-fee revenue (§9).
     /// Grows by each fill's `treasury_fee`. It backs bad debt: a liquidation's

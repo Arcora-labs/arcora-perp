@@ -51,7 +51,23 @@ impl Sequencer {
     pub fn cancel_order(&mut self, owner: &PubKey, order: &Order, submitted: bool) -> Option<i128> {
         let size = self.cancellable_size(owner, order, submitted)?;
         let hash = order.order_hash::<Keccak256>();
-        let _ = self.matcher.cancel_order(&hash);
+        // The open-order limits release what the order held (audit 2026-11-16
+        // GA-1 + SM-1): its resting remainder leaves the intake's tally of the
+        // book, and an order not yet sealed leaves the intake's pending orders.
+        let reducing = order.reduce_only || self.minimum_exempt.contains(&hash);
+        if let Some(remaining) = self.matcher.cancel_order(&hash) {
+            if let Some(tally) = self.open_orders.as_mut() {
+                tally.remove(&PendingOrder {
+                    owner: order.owner,
+                    market_id: order.market_id,
+                    side: order.side,
+                    size: remaining,
+                    reducing,
+                    open: true,
+                });
+            }
+        }
+        self.forget_intake(&hash);
         // A legacy tick rollback must not resurrect a quote the owner withdrew.
         // Account balances/fills can roll back, but the cancellation intent survives.
         // Production window rollback does not restore a matcher at all: it prepends

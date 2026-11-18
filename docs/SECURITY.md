@@ -358,11 +358,20 @@ snapshots and rollback journals) are refused by their format magic, not migrated
   denomination can't be bucketed and are reported explicitly (`bridge`).
 - **Confidentiality depends on hardware** until the committee/MPC hardening lands;
   a compromised gateway also retains the custody and oracle risks described above.
-- **Bad debt has a fixed live waterfall.** A liquidation's shortfall is covered by
-  the insurance fund, then the treasury, then auto-deleverage of the market's
-  winners, each capped so that it keeps collateral at or above zero and equity at or
-  above maintenance margin. Whatever is still uncovered stays parked on the closed
-  position, inside the conservation identity, and trips the system to close-only.
+- **Bad debt has a fixed live waterfall.** A liquidation closes the other side of
+  the market with the liquidated position, at the same price and by the same size,
+  so the clearing pool is never left as the counterparty to open interest (audit
+  2026-11-16, PC-1). The shortfall those closes leave is covered by the insurance
+  fund, then the treasury, then auto-deleverage of the market's winners (which
+  reaches the gain a counterparty realized in the close), each capped so that it
+  keeps collateral at or above zero and equity at or above maintenance margin.
+  Whatever is still uncovered stays parked on the closed positions, inside the
+  conservation identity, and trips the system to close-only. The guest also refuses
+  any withdrawal that would take cumulative withdrawals above cumulative deposits.
+  A counterparty that was itself liquidatable pays the liquidation penalty on the
+  size the close takes. Off the proof, the sequencer cancels each reduced account's
+  resting orders in that market (removal reason `ForcedClose`) and publishes a
+  forced-close receipt only that account can recognize, as for an ADL haircut.
   From then on the guest refuses new deposits, so they cannot absorb the earlier
   shortfall (`docs/ECONOMIC_SECURITY.md`, Q3/Q7). What reaches users through ADL or
   the wind-down haircut is attributable, never silent.

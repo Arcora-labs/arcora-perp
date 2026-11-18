@@ -55,7 +55,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
 | POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
-| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges), sent once a durable state snapshot holds the order; `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written, and `503` with `durability: "unknown"` (no receipt) when the write the order waits for fails (§ When the state cannot be written); `503` `CLOCK_WINDOW_CLOSING` with `Retry-After: 2` while the open settlement window is closing (§ When the settlement window is closing) |
+| POST | `/v1/orders` | ✓ | order body (below) → signed receipt, including `l1Challenge` (§ L1 inclusion challenges), sent once a durable state snapshot holds the order; `409` past the open-order cap (§ Open-order limits); `429` past the account or client-address rate limit; `503` `PERSISTENCE_UNAVAILABLE` while the state cannot be written, and `503` with `durability: "unknown"` (no receipt) when the write the order waits for fails (§ When the state cannot be written); `503` `CLOCK_WINDOW_CLOSING` with `Retry-After: 2` while the open settlement window is closing (§ When the settlement window is closing) |
 | GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`; `receipt` is `null` until a durable state snapshot holds the order), newest first; finished orders beyond the account's share of the row budget are dropped (see **Order rows kept per account**) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
@@ -176,19 +176,59 @@ fill only against genuine external resting liquidity and are otherwise killed. T
 (§ Trading is gated until launch discusses the same gap.)
 
 Opening orders
-are margin-checked against the account's free balance; close-only mode blocks
-openers (§6). Acceptance is not a fill guarantee: that margin check runs against the
+are margin-checked against the account's free balance, and together with the
+account's other pending orders (§ Open-order limits); close-only mode blocks
+openers (§6). Acceptance is not a fill guarantee: those checks run against the
 **pre-batch** state, so an order can also be **rejected at settlement**, not just at
-submission — the ordinary cause is two of your own orders that individually fit your
-margin but together do not (each passes alone; the second fails initial margin when
-the batch settles). A settlement-rejected order never rests or fills and receives no
-further receipt — it stays `ACCEPTED` in `GET /v1/orders` and is resolved in the
-batch manifest's **rejected** set. **Rate limit:** at most 10 orders/sec per account
-— over that returns `429` `{ "error": "RATE_LIMIT: ..." }`. Each client address (the
+submission — when the oracle price moves before the batch, or when the account's
+earlier orders of the same batch change the position the order meets. A
+settlement-rejected order never rests or fills and receives no further receipt — it
+stays `ACCEPTED` in `GET /v1/orders` and is resolved in the batch manifest's
+**rejected** set. **Rate limit:** at most 10 orders/sec per account — over that
+returns `429` `{ "error": "RATE_LIMIT: ..." }`. Each client address (the
 address the gateway's trusted proxy reports; IPv6 counted by /64) is also limited
 across all its accounts: 40 orders at once, then 20 per second
 (`GATEWAY_ORDER_BURST_PER_CLIENT`, `GATEWAY_ORDER_RATE_PER_CLIENT`), with the same
 `429` past it.
+
+**Open-order limits.** An account keeps at most **64 open orders in one market** and
+**128 across all markets**. Open orders are the orders that can rest on the book —
+`Gtc` with a limit price, and `PostOnly` — counting the ones resting, the ones
+accepted and waiting for the next batch, and the earlier orders of the same batch.
+`Ioc`, `Fok` and market orders never rest, so they are neither counted nor refused
+for the cap. An order past a cap is refused at submission with `409`
+`{ "error": "OPEN_ORDER_LIMIT: ..." }`; cancel an open order (or let one fill or
+expire) to place another.
+
+Every order is also held to a **collateral reserve**: the account's collateral in the
+market must cover the initial margin of the position after **every pending order on
+the new order's side** fills in full at the validated oracle price, the new order
+included. A reduce-only order counts only up to the size that closes the position;
+each side is margined on its own. Nothing is held back in advance: a fill moves an
+order's margin into the position, and a cancel, an expiry or a rejection releases
+it. An `Ioc` holds nothing once its batch has run, whether it traded or not. With
+$10 of collateral an account can keep ten $10 orders on a side. An order the reserve
+refuses is refused at submission with `400`
+`{ "error": "PENDING_MARGIN: ..." }`. While the market has no validated oracle price,
+submission does not check the reserve; the batch then rejects the order as
+`OracleUnavailable`. Until an order fills, is cancelled, expires or is rejected, the
+collateral its margin needs stays in the market: a withdrawal (§ Withdrawals), or in
+the demo build an LP deposit, that would leave the account's pending orders in that
+market short of it is refused with `400` `{ "error": "PENDING_MARGIN: ..." }`; cancel
+orders first, or move less. While the market has no validated oracle price, an
+account with a pending order that could add exposure cannot withdraw from that
+market. In close-only mode pending orders hold nothing (they can only reduce).
+
+A refused order gets no receipt and is never recorded. The sequencer applies both
+limits again to every order when it seals the batch, whatever path the order came by,
+against the book the batch faces; an order it refuses there is in the batch
+manifest's **rejected** set as `InvalidOrder` (a cap) or `InsufficientMargin` (the
+reserve). Orders restored above a cap after an upgrade stay on the book, but the
+account's new orders are refused until it is back under. The gateway's house
+market-maker account (the counterparty it injects for `Ioc`/`Fok` takers) is exempt
+from both limits in every build; each of its orders still passes the per-order margin
+check, so where it holds no collateral its counters are refused. The gateway gives a
+counter only to a taker the batch admits.
 
 **Minimum order size.** An order that opens, grows or flips a position needs at least
 **$10 of notional** (10,000,000 quote units). Reduce-only orders, and orders that
@@ -211,8 +251,11 @@ submission does not refuse an order for its size; the batch then rejects it as
 and the ratio product is rounded up too. Initial margin is never below **$1** for an
 open position. The floor applies when an order opens, grows or flips a position, and
 when an unbind leaves the position open; reductions, closes and liquidations are
-checked against maintenance margin only. Submission computes the initial margin of
-the order and of the open position with the engine's own rule
+checked against maintenance margin only. An unbind that leaves the position open must
+also leave the initial margin in collateral alone: unrealized profit does not count
+toward it (the free balance of § Withdrawals; the proof enforces it too). Submission
+computes the initial margin of the order and of the open position with the engine's
+own rule
 (`Position::initial_required`), so for an order that opens a position from flat at
 the oracle price it admits exactly the orders the batch's initial-margin check
 admits.
@@ -226,15 +269,44 @@ the reason the batch manifest records for it (the manifest stores the numeric co
 | 2 | `SelfTradePrevented` | it would have traded against the same account |
 | 3 | `PostOnlyWouldTake` | a post-only order would have taken liquidity |
 | 4 | `ReduceOnlyViolation` | a reduce-only order would have opened or grown a position |
-| 5 | `InsufficientMargin` | not enough free margin for the initial-margin requirement |
+| 5 | `InsufficientMargin` | not enough free margin for the initial-margin requirement, of the order alone or together with the account's pending orders on its side (§ Open-order limits) |
 | 6 | `MarketCloseOnly` | the system is close-only and the order would open, grow or flip a position (reductions still trade), or the order was in a window dropped by the wind-down |
 | 7 | `OracleUnavailable` | no fresh validated price |
 | 8 | `FillOrKillUnfillable` | a fill-or-kill order could not fill in full |
 | 9 | `Cancelled` | the order expired before or at its matching instant |
-| 10 | `InvalidOrder` | malformed, or could not be applied for a reason with no more specific code |
+| 10 | `InvalidOrder` | malformed, could not be applied for a reason with no more specific code, or past an open-order cap (§ Open-order limits) |
 | 11 | `FillPriceOutOfBand` | the fill price lay outside the market's band around the oracle price |
 | 12 | `FillWouldBankrupt` | the fill would have left a leg with negative collateral, or open below maintenance margin |
 | 13 | `BelowMinimumSize` | the order adds exposure but its notional is below the minimum order size |
+
+**Fills that fail to settle.** A batch settles its fills on a copy of the state
+before they stand. A fill that fails because of one of its orders (a resting order
+that drifted out of the price band, a reduce-only order that would now add exposure,
+an account whose collateral cannot carry the fill) rejects that order, and the batch
+matches again without it, so the other side trades against the next order instead.
+When that order is a resting maker whose account's collateral could not carry the
+fill (`InsufficientMargin`, `FillWouldBankrupt`), every other order of that account on
+the same side of that market, resting or in the same batch, is rejected with it under
+the same reason; its reduce-only orders stay. When it is a resting maker that would
+add exposure where only a reduction may trade, and the account's position at the
+start of the batch gives that side nothing to reduce (no short for a bid, no long for
+an ask), the account's other orders on that side that would fail the same way go
+with it under the same reason: its reduce-only orders for `ReduceOnlyViolation`, its
+other orders but the reduce-only ones in close-only mode for `MarketCloseOnly`, its
+other orders admitted below the minimum for `BelowMinimumSize`. Each is an order the
+pre-trade checks would refuse against that position now.
+
+A batch matches at most 8 times (`MAX_MATCH_ROUNDS`, audit 2026-11-16 SM-2). The
+last pass settles each fill as it is matched, before the book changes for it: an
+order a fill would fail because of is rejected with its reason there and then (a
+resting order leaves the book; an incoming order stops, and its remainder neither
+trades nor rests), and the other side loses no size and goes on to the next order.
+An order that already traded in that pass keeps those fills and reads `CANCELLED`
+with the failure's reason (below). A fill-or-kill order that has not traded yet when
+a resting order it crossed fails is checked again against what is left, and rejected
+`FillOrKillUnfillable` if that cannot fill it; one that already traded can end with
+part of its size unfilled (`CANCELLED`, `UnfilledRemainder`). The failing orders the
+last pass did not reach wait for the next batch.
 
 Rejection membership is proven; the truthfulness of a rejection reason is not
 (`docs/SECURITY.md`).
@@ -243,6 +315,19 @@ An order of a voided settlement window (§ Voided settlement windows) reads
 `execution.status` `CANCELLED` with `execution.reason` `WindowVoided`, a reason no
 manifest records: the replacement window's manifest rejects its hash as `Cancelled`
 (code 9).
+
+**Removed by the sequencer.** A resting order the sequencer takes off the book reads
+`execution.status` `CANCELLED` with one of these reasons, which no manifest records
+either:
+
+| Reason | Meaning |
+|---|---|
+| `Expired` | its good-till-time expiry passed while it rested |
+| `Liquidated` | your position was liquidated: all your resting orders, in every market, are cancelled |
+| `ForcedClose` | another account's liquidation closed some or all of your position in this market (a liquidation closes the other side of its market by the same size, pro rata; `docs/ECONOMIC_SECURITY.md`, Q3/Q7): your resting orders in this market are cancelled, because they were placed against the position that changed. Place them again against the new position if you still want them. |
+| a rejection reason (codes 4, 5, 6, 11, 12, 13) | in a batch's last matching pass (§ Fills that fail to settle) the order traded and then a further fill failed because of it, for that reason: it keeps the fills it made, and the rest of it leaves the book (an incoming order's remainder does not rest) |
+
+A forced close also sends a `forcedClose` event (§ WebSocket).
 
 ## Faucet — get test USDC
 
@@ -589,6 +674,15 @@ directly:
    account-wide `settledBalance`); a smaller request is a `400`. Once the admission
    cap leaves no room for it, a withdrawal other than a full exit (the whole balance
    of a closed position) is a `400` with a `HISTORY_CAP` error (§ Admission cap).
+   The free balance is the market's collateral less the initial margin of the open
+   position, whatever its unrealized profit, and the proven transition applies the
+   same rule. It also refuses a withdrawal that would take the deployment's
+   cumulative withdrawals above its cumulative deposits; either refusal is a `400`
+   `withdrawal refused: …` (`Risk { InsufficientMargin, .. }` or
+   `WithdrawalExceedsDeposits`). A withdrawal that would take collateral the
+   account's pending orders in that market hold as initial margin is a `400`
+   `PENDING_MARGIN: …` until they fill, are cancelled or expire (§ Open-order limits);
+   `marketFree` does not deduct what they hold.
 2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
@@ -980,6 +1074,13 @@ To also receive **your own** events, send `{ "type": "auth", "apiKey": "0x<64 he
 - `{ "type": "order", "orderId": "o1", "finality": "MATCHED", "marketId": 0 }`
 - `{ "type": "fill", "orderId": "o1", "marketId": 0, "side": "Buy", "size": "...", "price": "..." }`
 - `{ "type": "adl", "clawed": "..." }` (your position was auto-deleveraged, audit Q2)
+- `{ "type": "forcedClose", "marketId": 0, "size": "...", "price": "...", "realizedPnl": "...", "penalty": "..." }`
+  (another account's liquidation closed `size` of your position at the oracle
+  `price`, audit 2026-11-16 PC-1; `size` is the signed change, opposite in sign to
+  your position, in size units, `price` in price units, `realizedPnl` and `penalty`
+  in quote units. The penalty is non-zero only when your position was itself
+  liquidatable. Your resting orders in that market were cancelled with reason
+  `ForcedClose`)
 - `{ "type": "execution", "orderId": "o1", "execution": { "status": "CANCELLED", "reason": "WindowVoided", ... } }`
   (your order's cumulative execution changed; the object is the order's `execution`
   in `GET /v1/orders`)

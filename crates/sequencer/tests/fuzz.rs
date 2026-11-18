@@ -440,3 +440,121 @@ fn fuzz_settling_a_height_finalizes_all_prior_batches() {
         run_height_settle(seed.wrapping_mul(0x9E3779B97F4A7C15));
     }
 }
+
+/// One `run_session`-shaped session (same orders, oracle walk, close-only toggles,
+/// rollbacks and settles) whose owners each hold `funding_usd`, digested batch by
+/// batch: the manifest, the roots, the applied fills, the removals, the settlement
+/// rejections and every order left on the book with its remainder.
+fn session_digest(seed: u64, batches: usize, funding_usd: i128) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as Sha};
+    const N: u64 = 5;
+    let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
+    let mut s = Sequencer::new(enclave, 22);
+    s.add_market(test_market(0));
+    let mut rng = Rng(seed | 1);
+    let mut now = 1_000u64;
+    let mut price = 100_000i128;
+    s.set_oracle(0, oracle(price, now));
+    for i in 0..N {
+        let o = owner_id(i);
+        let mut blind = [0u8; 32];
+        blind[..8].copy_from_slice(&(i + 1).to_le_bytes());
+        let amt = funding_usd * QUOTE_SCALE;
+        let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
+        let deposit_id = s.state.consumed_deposit_count;
+        s.apply(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: blind,
+            from: [0u8; 20],
+            deposit_id,
+            deposit_blind: [0u8; 32],
+        })
+        .unwrap();
+        s.apply(&BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [i as u8; 32],
+        })
+        .unwrap();
+    }
+    let mut digest = Sha::new();
+    let mut nonce = 0u64;
+    for _ in 0..batches {
+        now += 1 + rng.below(10);
+        price = (price + (rng.below(401) as i128) - 200).clamp(60_000, 160_000);
+        s.set_oracle(0, oracle(price, now));
+        if rng.below(20) == 0 {
+            s.apply(&BatchOp::EnterCloseOnly).ok();
+        }
+        let k = rng.below(8) as usize;
+        let mut orders = Vec::new();
+        for _ in 0..k {
+            nonce += 1;
+            orders.push(rand_order(&mut rng, N, price, nonce));
+        }
+        let sealed = s.seal_batch(&orders, now);
+        digest.update(sealed.batch_id.to_le_bytes());
+        digest.update(sealed.manifest_hash);
+        digest.update(sealed.new_state_root);
+        digest.update(format!(
+            "{:?}|{:?}|{:?}|{:?}",
+            sealed.applied_fills,
+            sealed.removals,
+            sealed.settlement_rejected,
+            sealed.settled_order_hashes
+        ));
+        let book: Vec<_> = s.book(0).unwrap().resting_orders().collect();
+        digest.update(format!("{book:?}"));
+        if rng.below(5) == 0 {
+            assert!(s.mark_failed(sealed.batch_id));
+        } else if rng.below(2) == 0 {
+            s.mark_settled(sealed.batch_id);
+        }
+        if matches!(s.state.mode, perp_core::Mode::CloseOnly) {
+            s.state.mode = perp_core::Mode::Normal;
+        }
+    }
+    digest.finalize().into()
+}
+
+/// The digest of 40 sessions of 40 batches each.
+fn sessions_digest(funding_usd: i128) -> String {
+    use sha3::{Digest as _, Keccak256 as Sha};
+    let mut all = Sha::new();
+    for seed in 1..=40u64 {
+        all.update(session_digest(
+            seed.wrapping_mul(0x9E3779B97F4A7C15),
+            40,
+            funding_usd,
+        ));
+    }
+    all.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Audit 2026-11-16 SM-2 (and GA-1's book index): bounding the rematch loop and
+/// banning an under-margined maker's whole side change nothing for a book whose
+/// makers can all pay. Every owner holds $10M, so no fill fails for margin; the
+/// manifests, roots, fills, removals and the book itself are the ones the
+/// matcher and sequencer produced before the audit fix (digest recorded then).
+#[test]
+fn audit_1116_sm2_matching_an_honest_book_is_unchanged() {
+    assert_eq!(
+        sessions_digest(10_000_000),
+        "c2b24966c465c3629fbd51d86de2ab7109ef9d33d1da3caf91ba19bdbaafb7fb"
+    );
+}
+
+/// The same sessions with `run_session`'s $100k per owner, where fills do fail
+/// for margin, out of band and close-only, and drifted makers are banned and
+/// rematched: as long as no under-margined maker has a second order on its side,
+/// the outcome is the one before the audit fix too.
+#[test]
+fn audit_1116_sm2_rematching_the_fuzz_sessions_is_unchanged() {
+    assert_eq!(
+        sessions_digest(100_000),
+        "57858294171951ca2f220e63452c4e0919d3997eab073e8c658c0bc7f2e29592"
+    );
+}

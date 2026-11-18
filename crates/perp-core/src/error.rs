@@ -125,6 +125,18 @@ pub enum EngineError {
     /// emit no withdrawal leaf, so their nonce must be 0. Refused before any state
     /// is touched.
     InternalBurnNonceNotZero,
+    /// A withdrawal (`Withdraw` or `WindDownWithdraw`, real or internal) would take
+    /// the cumulative `external_out` above `external_in`: the protocol would pay out
+    /// more than ever came in, and the difference could only come out of other
+    /// accounts' claims. Refused before any state is touched (audit 2026-11-16,
+    /// PC-1).
+    WithdrawalExceedsDeposits,
+    /// A liquidation would leave the clearing pool (`vault_pool`) holding an open
+    /// position it did not hold before: the sizes of all positions in the market
+    /// must still sum to zero, or, in a state that already held a pool position,
+    /// to no more than before and on the same side. Unreachable by construction;
+    /// checked so the proof covers it (audit 2026-11-16, PC-1).
+    ClearingPoolExposure,
 }
 
 /// A serialized structure whose derived parts could not be rebuilt from its

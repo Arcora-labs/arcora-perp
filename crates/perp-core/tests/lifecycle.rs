@@ -460,8 +460,9 @@ fn invariant_liquidation_threshold() {
 #[test]
 fn bad_debt_is_clawed_from_the_winners_via_adl() {
     // A gap-down past A's maintenance buffer leaves A underwater by MORE than its
-    // collateral (bad debt). With no insurance seeded, the auto-deleverage cascade
-    // funds the shortfall from the WINNER (B, the profitable short) rather than
+    // collateral (bad debt). The liquidation closes B's short with A's long at
+    // $80k (audit PC-1), realizing B's $10k gain. With no insurance seeded, the
+    // auto-deleverage cascade funds A's $4k shortfall out of that gain rather than
     // parking it or silently socializing it onto the clearing pool. Conservation
     // holds and the loser walks away flat (covered), not with a stranded debt.
     let mut s = bad_debt_setup(0);
@@ -481,10 +482,12 @@ fn bad_debt_is_clawed_from_the_winners_via_adl() {
         "ADL covers the bad debt from the winner — nothing parked, so the closed \
          position's entry is removed"
     );
-    let b_after = s.position(&b, 0).unwrap().collateral;
-    assert!(
-        b_after < b_before,
-        "the winning short funded the loser's shortfall"
+    let b_after = *s.position(&b, 0).unwrap();
+    assert_eq!(b_after.size, 0, "the winning short is closed with A");
+    assert_eq!(
+        b_after.collateral,
+        b_before + 10_000 * QUOTE_SCALE - 4_000 * QUOTE_SCALE,
+        "the winning short funded the loser's shortfall out of its gain"
     );
     assert_eq!(
         s.mode,
@@ -594,8 +597,9 @@ fn insurance_backstop_absorbs_bad_debt() {
 #[test]
 fn adl_covers_residual_after_insurance() {
     // A small seed plus the auto-deleverage cascade together absorb the bad debt:
-    // insurance pays what it can, the winner (B) funds the rest, the loser walks
-    // away flat, and the system stays open.
+    // insurance pays what it can, the winner (B, closed with A at $80k) funds the
+    // rest out of its $10k gain, the loser walks away flat, and the system stays
+    // open.
     let mut s = bad_debt_setup(1_000);
     let b_before = s.position(&owner_of(2), 0).unwrap().collateral;
     s.apply_op(&BatchOp::Liquidate {
@@ -610,8 +614,9 @@ fn adl_covers_residual_after_insurance() {
         "insurance + ADL cover the bad debt, so the closed entry is removed"
     );
     assert_eq!(s.insurance_fund, 0, "the small fund is fully drawn first");
-    assert!(
-        s.position(&owner_of(2), 0).unwrap().collateral < b_before,
+    assert_eq!(
+        s.position(&owner_of(2), 0).unwrap().collateral,
+        b_before + 10_000 * QUOTE_SCALE - 3_000 * QUOTE_SCALE,
         "the winner funded the residual"
     );
     assert_eq!(s.mode, Mode::Normal, "fully covered → no halt");
@@ -733,7 +738,8 @@ fn adl_distributes_pro_rata_across_multiple_winners() {
     // A's bad debt is clawed from TWO winners — B (short 0.3) and C (short 0.2) —
     // pro-rata to their profit: the bigger winner pays more, the takes exactly
     // cover the loss (exercising the floor-pro-rata + remainder distribution), and
-    // neither winner is pushed underwater.
+    // neither winner is pushed underwater. Both are closed with A at $80k first,
+    // realizing $6k and $4k.
     let mut s = fresh_state();
     let (a, b, c) = (owner_of(1), owner_of(2), owner_of(3));
     for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000), (c, 3u8, 50_000)] {
@@ -793,11 +799,16 @@ fn adl_distributes_pro_rata_across_multiple_winners() {
     })
     .unwrap();
 
-    let b_take = b0 - s.position(&b, 0).unwrap().collateral;
-    let c_take = c0 - s.position(&c, 0).unwrap().collateral;
+    let b_take = b0 + 6_000 * QUOTE_SCALE - s.position(&b, 0).unwrap().collateral;
+    let c_take = c0 + 4_000 * QUOTE_SCALE - s.position(&c, 0).unwrap().collateral;
     assert!(
         s.position(&a, 0).is_none(),
         "ADL fully covered the loss across both winners, so the closed entry is removed"
+    );
+    assert_eq!(
+        b_take + c_take,
+        4_000 * QUOTE_SCALE,
+        "the takes cover the loss"
     );
     assert!(b_take > 0 && c_take > 0, "both winners contributed");
     assert!(
@@ -1092,11 +1103,12 @@ fn adl_surfaces_the_per_winner_haircut_attribution() {
     let b0 = s.position(&b, 0).unwrap().collateral;
     let c0 = s.position(&c, 0).unwrap().collateral;
 
-    // the event-returning liquidation entry surfaces the ADL haircuts
+    // the event-returning liquidation entry surfaces the ADL haircuts; B and C
+    // are closed with A at $80k first, realizing $6k and $4k
     let haircuts: Vec<AdlHaircut> = s.liquidate(&a, 0, &oracle(80_000, 2_000), 2_000).unwrap();
 
-    let b_take = b0 - s.position(&b, 0).unwrap().collateral;
-    let c_take = c0 - s.position(&c, 0).unwrap().collateral;
+    let b_take = b0 + 6_000 * QUOTE_SCALE - s.position(&b, 0).unwrap().collateral;
+    let c_take = c0 + 4_000 * QUOTE_SCALE - s.position(&c, 0).unwrap().collateral;
     assert_eq!(haircuts.len(), 2, "both clawed winners are attributed");
     let clawed_of = |o: &[u8; 32]| haircuts.iter().find(|h| &h.owner == o).map(|h| h.clawed);
     assert_eq!(
@@ -1205,12 +1217,17 @@ fn assert_liquidatable_at_90k(s: &DefaultState) {
 /// the next proof wedged. Every fallible path must leave state byte-identical.
 ///
 /// Variant 1: poison the VAULT POOL so the post-close pool arithmetic overflows.
-/// The liquidated loser's realized PnL is negative, so the pool GAINS
-/// (`checked_sub` of a negative) — the poison that trips is `i128::MAX`, not MIN.
+/// A liquidation closes B's short with A's long, so the pool's net change is
+/// nil; with B's short gone, as in a state written before audit PC-1 that held a
+/// pool position, A's close goes against the pool instead. The liquidated loser's
+/// realized PnL is negative, so the pool GAINS (`checked_sub` of a negative) —
+/// the poison that trips is `i128::MAX`, not MIN.
 #[test]
 fn liquidation_overflow_in_vault_pool_leaves_state_byte_identical() {
     let mut s = solvent_liquidatable_setup();
     let a = owner_of(1);
+    let b = s.positions.get_mut(&(owner_of(2), 0)).unwrap();
+    (b.size, b.entry_price) = (0, 0);
     assert_liquidatable_at_90k(&s);
     s.vault_pool = i128::MAX;
     let before = s.state_root();
@@ -1911,14 +1928,16 @@ fn external_in_has_exactly_one_writer_and_it_is_op_deposit() {
     let norm: String = src.chars().filter(|c| !c.is_whitespace()).collect();
     let touches = norm.matches("self.external_in").count();
     assert_eq!(
-        touches, 2,
-        "expected exactly 2 whitespace-normalized occurrences of `self.external_in` \
+        touches, 4,
+        "expected exactly 4 whitespace-normalized occurrences of `self.external_in` \
          in engine.rs — the read (`self.external_in.checked_add`) and the write \
-         (`self.external_in = …`), both in op_deposit — found {touches}. A NEW \
-         writer of external_in must be bound to real external value (op_deposit's \
-         is the SEC-019 L1 deposit hash chain); an unbound writer is the \
-         fabrication SEC-024 removed. Update this count only with that binding \
-         named here."
+         (`self.external_in = …`), both in op_deposit, and two comparisons that \
+         only read it (audit 2026-11-16 PC-1: `new_out > self.external_in` in \
+         op_withdraw and `external_out <= self.external_in` in op_settle_all) — \
+         found {touches}. A NEW writer of external_in must be bound to real \
+         external value (op_deposit's is the SEC-019 L1 deposit hash chain); an \
+         unbound writer is the fabrication SEC-024 removed. Update this count \
+         only with that binding named here."
     );
     // The sharper pin: the ASSIGNMENT form specifically. `==` comparisons are
     // excluded so a future assert/debug check does not masquerade as a writer.
