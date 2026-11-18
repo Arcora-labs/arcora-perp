@@ -1,4 +1,4 @@
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
 error[E0369]: binary operation `==` cannot be applied to type `&candidate_protocol::ProtocolRequest`
    --> crates/gateway/src/candidate_preparation_lock_tests.rs:326:9
     |

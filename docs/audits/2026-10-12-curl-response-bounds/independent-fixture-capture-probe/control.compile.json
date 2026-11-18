@@ -1,12 +1,12 @@
 {
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "--edition=2021",
     "--crate-name",
     "owned_fixture_probe_control",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking.rs",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking.rs",
     "-o",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking"
   ],
   "exit_code": 0,
   "elapsed_seconds": 2.149627375,

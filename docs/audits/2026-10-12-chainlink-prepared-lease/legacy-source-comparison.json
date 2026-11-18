@@ -1,7 +1,7 @@
 {
   "schema": "arcora-prepared-lease-legacy-source-comparison-v1",
   "observed_utc": "2026-10-11T23:22:24.966092+00:00",
-  "checkout": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "checkout": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
   "base_commit": "56f91ab740d5cce42edcc287ded4b0c39eb4f9f8",
   "execution": "Read-only source inspection; no Cargo, runtime test, Git/index write or original-source edit.",
   "git_read_environment": {

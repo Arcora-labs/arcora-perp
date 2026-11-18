@@ -31,7 +31,7 @@
   },
   "checkouts_before": {
     "primary": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "path": "/Users/<dev>/Desktop/arcora-perp/repo",
       "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
       "expected_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
       "head_matches": true,
@@ -63,7 +63,7 @@
       ]
     },
     "job17": {
-      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "path": "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
       "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
       "expected_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
       "head_matches": true,
@@ -89,7 +89,7 @@
       ]
     },
     "old_desktop": {
-      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "path": "/Users/<dev>/Desktop/Projeler/Dark Perp/dark-perp",
       "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
       "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
       "head_matches": true,
@@ -172,7 +172,7 @@
   },
   "checkouts_after": {
     "primary": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "path": "/Users/<dev>/Desktop/arcora-perp/repo",
       "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
       "expected_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
       "head_matches": true,
@@ -204,7 +204,7 @@
       ]
     },
     "job17": {
-      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "path": "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
       "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
       "expected_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
       "head_matches": true,
@@ -230,7 +230,7 @@
       ]
     },
     "old_desktop": {
-      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "path": "/Users/<dev>/Desktop/Projeler/Dark Perp/dark-perp",
       "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
       "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
       "head_matches": true,
@@ -1080,7 +1080,7 @@
     ],
     "checkouts": {
       "primary": {
-        "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+        "path": "/Users/<dev>/Desktop/arcora-perp/repo",
         "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
         "expected_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
         "head_matches": true,
@@ -1096,7 +1096,7 @@
         "status_sha256": "cbb1f86391f7d0ca76898b892399b680695e2b1161e5b499131db7161bb18da4"
       },
       "job17": {
-        "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+        "path": "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
         "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
         "expected_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
         "head_matches": true,
@@ -1112,7 +1112,7 @@
         "status_sha256": "62a57db3340b49e04bb5354addc888a4c6ff88aa7f351e871256b626b2edb2e0"
       },
       "old_desktop": {
-        "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+        "path": "/Users/<dev>/Desktop/Projeler/Dark Perp/dark-perp",
         "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
         "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
         "head_matches": true,

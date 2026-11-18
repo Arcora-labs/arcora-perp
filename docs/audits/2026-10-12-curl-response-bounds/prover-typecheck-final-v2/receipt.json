@@ -3,7 +3,7 @@
   "captured_at": "2026-10-12T17:27:11.948973+00:00",
   "passed": true,
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "check",
     "--offline",
     "--locked",
@@ -18,7 +18,7 @@
   "timeout_seconds": 1800,
   "expected_source_sha256": "1d8f7e3984d4ac4b7d107470044896fd8cfb6f0a86242ae45828b55b14c6d1c7",
   "root_source_freeze": {
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/source-freeze-v2.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/source-freeze-v2.json",
     "sha256": "9f77b288ae9f07c90204185b92ef3f38212cf10551b1a6259004871bd01245c4",
     "bytes": 44608,
     "unchanged": true
@@ -31,23 +31,23 @@
     "protoc": "libprotoc 29.3"
   },
   "explicit_env_whitelist": {
-    "RUSTC": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "RUSTC": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "RUSTUP_TOOLCHAIN": "1.99.0",
-    "CARGO_HOME": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-home",
-    "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target",
+    "CARGO_HOME": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-home",
+    "CARGO_TARGET_DIR": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target",
     "CARGO_BUILD_JOBS": "2",
     "CARGO_INCREMENTAL": "0",
     "CARGO_NET_OFFLINE": "true",
     "SP1_SKIP_PROGRAM_BUILD": "true",
-    "SP1_CORE_RUNNER_OVERRIDE_BINARY": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/sp1-native-runner-existing",
-    "PROTOC": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/protoc",
-    "PROTOC_INCLUDE": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/include",
+    "SP1_CORE_RUNNER_OVERRIDE_BINARY": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/sp1-native-runner-existing",
+    "PROTOC": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/protoc",
+    "PROTOC_INCLUDE": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools/include",
     "PYTHONDONTWRITEBYTECODE": "1"
   },
   "path_prefix_only": [
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/python-bin",
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools"
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/python-bin",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/tools"
   ],
   "source_before": {
     "covered_source_files": 378,
@@ -522,7 +522,7 @@
     "candidate_vkey_metadata_only": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
     "reviewed_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
     "skipped_build_include_elf": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
       "bytes": 525824,
       "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
     }
@@ -1000,7 +1000,7 @@
     "candidate_vkey_metadata_only": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
     "reviewed_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
     "skipped_build_include_elf": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
       "bytes": 525824,
       "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
     }

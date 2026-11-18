@@ -3,7 +3,7 @@
   "records": [
     {
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
         "--version"
       ],
       "exit_code": 0,
@@ -13,7 +13,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "--version"
       ],
       "exit_code": 0,
@@ -43,7 +43,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
         "--edition",
         "2021",
         "--config",
@@ -62,7 +62,7 @@
     },
     {
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "generate-lockfile",
         "--offline",
         "--manifest-path",

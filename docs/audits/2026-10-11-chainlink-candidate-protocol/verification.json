@@ -189,7 +189,7 @@
   "cpu_validation": {
     "observed_start_utc": "2026-10-11T12:55:09.164991+00:00",
     "command": [
-      "/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/sp1-host/target/release/replay-chainlink-lifecycle",
+      "/Users/<dev>/Desktop/arcora-perp/repo/crates/sp1-host/target/release/replay-chainlink-lifecycle",
       "--elf",
       "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf",
       "--input-dir",

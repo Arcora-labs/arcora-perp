@@ -356,7 +356,7 @@
   "head_at_capture": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
   "initial_compile": {
     "command": [
-      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+      "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
       "--edition=2021",
       "--crate-name",
       "owned_fixture_probe",

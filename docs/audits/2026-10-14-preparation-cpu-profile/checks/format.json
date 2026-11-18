@@ -1,6 +1,6 @@
 {
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "fmt",
     "--all",
     "--check"
@@ -19,7 +19,7 @@
   "runtime": {
     "cargo_build_jobs": 2,
     "rust_test_threads": 1,
-    "rustc": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
+    "rustc": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc"
   },
   "source_count": 382,
   "source_sha256": "31d74fdd003299a7a64ff505537d50ca40578b552bcea2d8cfcf14ac013df23f",

@@ -1,22 +1,22 @@
 {
   "PR64_delivery_ledger": {
     "bytes": 136294,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_PR64_Kanit_2026-10-14/delivery-ledger.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/Arcora_PR64_Kanit_2026-10-14/delivery-ledger.json",
     "sha256": "b1f18ac97cf0471f56d801cc9ad9a4764367bb959573aa8e19cc7b932470dbe7"
   },
   "PR64_final_QA": {
     "bytes": 20641,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_PR64_Rapor_QA_2026-10-14.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/Arcora_PR64_Rapor_QA_2026-10-14.json",
     "sha256": "16c232ad7949f55ca084c571bbe34df18cba0b41f2f10006985022526cf5561a"
   },
   "PR64_report": {
     "bytes": 7812,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_Durum_Raporu_2026-10-14_PR64.md",
+    "path": "/Users/<dev>/Desktop/arcora-perp/Arcora_Durum_Raporu_2026-10-14_PR64.md",
     "sha256": "01218af8a07c11e0d45f57fdf758497098bac5bca9d69bb202659a75756204ce"
   },
   "active_PR64_pointer": {
     "bytes": 539,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/Arcora_Devam_2026-10-11.md",
+    "path": "/Users/<dev>/Desktop/arcora-perp/Arcora_Devam_2026-10-11.md",
     "sha256": "f1ef88c5f35fcb4f71f8b83adda4cf6a112463889aca8cd4acc8d7f20c340a7a"
   },
   "base": "c387dbe2de0392a996d6028f745f81fa963809dd",
@@ -53,17 +53,17 @@
   },
   "full_baseline": {
     "bytes": 1328265,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/baseline.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/baseline.json",
     "sha256": "654b0f85ba856ad8b9a0bff1817dd9ae17e86d85397ce725e3695b96e5ff8584"
   },
   "github_start_summary": {
     "bytes": 1737,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/github-start-summary.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/github-start-summary.json",
     "sha256": "59baae7a1bd9f29391b509f4b9c2e997c76024cf7a10b4731ced7a0e33afd870"
   },
   "initial379_capture": {
     "bytes": 44653,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/start-source-cut.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/seal-window-ownership-validation-20261014/baseline/start-source-cut.json",
     "sha256": "24bb2baf77db5bcd7ac7c0e4d1e883515c8c92acd682180f348a837d7979913f"
   },
   "initial_checkout_clean": true,

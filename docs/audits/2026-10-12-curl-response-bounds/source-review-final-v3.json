@@ -97,7 +97,7 @@
     },
     "prover_typecheck": {
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "check",
         "--offline",
         "--locked",
@@ -131,7 +131,7 @@
     "clippy-final": {
       "bytes": 90254,
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "clippy",
         "--workspace",
         "--all-targets",
@@ -152,7 +152,7 @@
     "format-current-final": {
       "bytes": 90188,
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "fmt",
         "--all",
         "--check"
@@ -169,7 +169,7 @@
     "gateway-http-final-v3": {
       "bytes": 90379,
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "test",
         "--locked",
         "-p",
@@ -240,7 +240,7 @@
       "gateway-http-final-v2": {
         "bytes": 90386,
         "command": [
-          "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+          "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
           "test",
           "--locked",
           "-p",
@@ -293,7 +293,7 @@
       "gateway-http-verified": {
         "bytes": 90314,
         "command": [
-          "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+          "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
           "test",
           "--locked",
           "-p",
@@ -378,7 +378,7 @@
     "receipt": {
       "bytes": 90379,
       "command": [
-        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
         "test",
         "--locked",
         "-p",

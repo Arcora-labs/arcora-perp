@@ -1,5 +1,5 @@
 warning: variant `Close` is never constructed
-  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking.rs:30:5
+  --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking.rs:30:5
    |
 27 | enum Framing {
    |      ------- variant in this enum
@@ -11,7 +11,7 @@ warning: variant `Close` is never constructed
    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
 warning: field `request` is never read
-  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking.rs:34:5
+  --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking.rs:34:5
    |
 33 | struct Exchange {
    |        -------- field in this struct
@@ -19,13 +19,13 @@ warning: field `request` is never read
    |     ^^^^^^^
 
 warning: constant `MAX_GET_RESPONSE_BYTES` is never used
-  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:13:18
+  --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:13:18
    |
 13 | pub(crate) const MAX_GET_RESPONSE_BYTES: usize = 1024 * 1024;
    |                  ^^^^^^^^^^^^^^^^^^^^^^
 
 warning: constant `MAX_STDERR_BYTES` is never used
-  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:14:18
+  --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/service-transport/curl.rs:14:18
    |
 14 | pub(crate) const MAX_STDERR_BYTES: usize = 16 * 1024;
    |                  ^^^^^^^^^^^^^^^^

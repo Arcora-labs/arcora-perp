@@ -1,6 +1,6 @@
-   Compiling prover-service v0.0.0 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover-service)
+   Compiling prover-service v0.0.0 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover-service)
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation/src/vtpm.rs:239:32
+   --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation/src/vtpm.rs:239:32
     |
 239 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
     |                                ^^^^^^^^
@@ -8,7 +8,7 @@ warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T
     = note: `#[warn(deprecated)]` on by default
 
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation/src/vtpm.rs:270:21
+   --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation/src/vtpm.rs:270:21
     |
 270 |     if h.finalize().as_slice() != q.pcr_digest {
     |                     ^^^^^^^^

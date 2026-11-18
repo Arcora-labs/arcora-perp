@@ -43,7 +43,7 @@
   "source": {
     "all_current_sources_equal": true,
     "freeze_sha256": "ef75146bb088f13cab3afde51702f55e5fcdedcb001ee9fe1b23da3d0356ad7f",
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/source-freeze-final.json",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/source-freeze-final.json",
     "source_count": 379,
     "source_sha256": "87262139b3b44c0348df3cee3ccc9fe389c4b64370a32daaeccb335cfbf90cc2"
   }

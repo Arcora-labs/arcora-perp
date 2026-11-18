@@ -2,7 +2,7 @@
   "verified_at": "2026-10-12T09:59:42.627311+00:00",
   "passed": true,
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "check",
     "--offline",
     "--locked",
@@ -201,11 +201,11 @@
   },
   "harness_versions_outside_root": {},
   "compiler_sp1_elf_directive": {
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
     "bytes": 525824,
     "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
     "guest_build_skipped": true,
-    "directive_file": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/debug/build/prover-service-35476488a5d7068b/output",
+    "directive_file": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/prover/actual-typecheck/cargo-target/debug/build/prover-service-35476488a5d7068b/output",
     "directive_sha256": "e04caba6d88f670bda14bce898806881fa19010e19fea26958e4683779fda3ba"
   },
   "compiler_generated_build_identity": {

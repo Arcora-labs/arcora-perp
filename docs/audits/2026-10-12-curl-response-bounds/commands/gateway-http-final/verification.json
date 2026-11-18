@@ -1,6 +1,6 @@
 {
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "test",
     "--locked",
     "-p",
@@ -11,12 +11,12 @@
     "--",
     "--nocapture"
   ],
-  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
   "elapsed_seconds": 22.177961917012,
   "environment_override": {
     "CARGO_BUILD_JOBS": "2",
     "PYTHONDONTWRITEBYTECODE": "1",
-    "RUSTC": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "RUSTC": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "RUSTUP_TOOLCHAIN": "1.99.0",
     "RUST_TEST_THREADS": "2"
   },

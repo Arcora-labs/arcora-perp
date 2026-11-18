@@ -4020,7 +4020,7 @@
   "scope": "Postmerge current-main push CI continuation; all counts are from main push, separate from earlier PR54 checks. No fresh proof, real DON, live service, custody or release acceptance.",
   "logs": {
     "workspace": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-workspace.log",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-workspace.log",
       "job_id": 114734881895,
       "bytes": 210529,
       "sha256": "04429054af158fd5064ad91e42f77a9add1eb207039209d36843db715d585aad",
@@ -4032,7 +4032,7 @@
       "exit_code": 0
     },
     "excluded-prover": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-excluded-prover.log",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-excluded-prover.log",
       "job_id": 114734882112,
       "bytes": 80914,
       "sha256": "b3d6d526a1d477e7535c8d363891aa54b0730f96dec46261c0611b2cee273ce4",
@@ -4044,7 +4044,7 @@
       "exit_code": 0
     },
     "gateway-local-drills": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-gateway-local-drills.log",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-gateway-local-drills.log",
       "job_id": 114734882038,
       "bytes": 132041,
       "sha256": "0b5e57bed76b0bfdf9762494da0ec6eb604cfcb9679e0ff6625589f8f2910ffc",
@@ -4056,7 +4056,7 @@
       "exit_code": 0
     },
     "a11-dependency": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-a11-dependency.log",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-a11-dependency.log",
       "job_id": 114734882222,
       "bytes": 78957,
       "sha256": "9e2e2d6b6edc613ea1c40c95a35011f157dd8c3552df566d22f55277b60d0406",
@@ -4068,7 +4068,7 @@
       "exit_code": 0
     },
     "a11-release": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-a11-release.log",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-a11-release.log",
       "job_id": 114734882267,
       "bytes": 192418,
       "sha256": "3f5157b50e6227fc06e75e67d70f57befd4c028b1a7df8c9515536045891c10d",
@@ -4080,7 +4080,7 @@
       "exit_code": 0
     },
     "foundry-release": {
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-foundry-release.log",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/candidate-service-validation-20261012/main-refresh-foundry-release.log",
       "job_id": 114734882588,
       "bytes": 94855,
       "sha256": "1ab367d88fe6dfa60d7fad452a34e1bbcff91bbb4f596e933fd7050e555e7b71",

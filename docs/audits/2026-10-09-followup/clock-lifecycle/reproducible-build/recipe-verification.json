@@ -34,8 +34,8 @@
     "perp_core_guest": "2c8a895641ad00f3"
   },
   "path_remap": {
-    "from": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
-    "to": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009"
+    "from": "/Users/<dev>/Desktop/arcora-perp/repo",
+    "to": "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009"
   },
   "compiler_flags": [
     "-C",
@@ -59,7 +59,7 @@
   "build_log_sha256": "e67de593e60279ffe6709f0da6347c43a2f70c25357e587dfc58b9ea227a5596",
   "build_seconds": 40.61608829104807,
   "command": [
-    "/Users/huseyinarslan/.cargo/bin/cargo",
+    "/Users/<dev>/.cargo/bin/cargo",
     "+1.99.0",
     "build",
     "--manifest-path",

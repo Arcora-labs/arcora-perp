@@ -13,7 +13,7 @@
         "api",
         "repos/Arcora-labs/arcora-perp/rules/branches/main"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/applied-rules-start.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/applied-rules-start.json",
       "sha256": "9faea6306394d097f40e28467eee98d774ceb6e7365abd5fefa787948f0cfae7"
     },
     "github-base-commit": {
@@ -23,7 +23,7 @@
         "api",
         "repos/Arcora-labs/arcora-perp/git/commits/76f658433882e5448c12c05c3f80bd7f3d78de39"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-base-commit.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-base-commit.json",
       "sha256": "d415f5df29579c3de31c774d90e84c5a97ba41bad00f674c3579473bd4935469"
     },
     "github-main-ref": {
@@ -33,7 +33,7 @@
         "api",
         "repos/Arcora-labs/arcora-perp/git/ref/heads/main"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-main-ref.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-main-ref.json",
       "sha256": "03c40b47b59e9fd44d942d447ce056f36c906e67762b79152e902241fc64e287"
     },
     "github-open-prs": {
@@ -49,7 +49,7 @@
         "--json",
         "number,url,headRefOid"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-open-prs.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-open-prs.json",
       "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
     },
     "github-pr62": {
@@ -64,7 +64,7 @@
         "--json",
         "number,url,state,isDraft,headRefOid,baseRefOid,mergeCommit,mergedAt,statusCheckRollup"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-pr62.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/github-pr62.json",
       "sha256": "007bf02f5d77ae79c3feba0235ad5df7b202ff79dd855b87b8e3eeecc7668acd"
     },
     "main-run-38452601438": {
@@ -79,7 +79,7 @@
         "--json",
         "databaseId,headSha,status,conclusion,workflowName,jobs,url"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-38452601438.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-38452601438.json",
       "sha256": "fdc9f150b374ecb2dccf5e08d9315727e5d1e7b744eeb2df122c0e2e4a0eab00"
     },
     "main-run-38452601485": {
@@ -94,7 +94,7 @@
         "--json",
         "databaseId,headSha,status,conclusion,workflowName,jobs,url"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-38452601485.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-38452601485.json",
       "sha256": "d9073650e869d630fc6accf04ba1db145a6495d2b68d5caaae021c65e2de4dbc"
     },
     "main-run-38452601498": {
@@ -109,7 +109,7 @@
         "--json",
         "databaseId,headSha,status,conclusion,workflowName,jobs,url"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-38452601498.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-38452601498.json",
       "sha256": "162c10ac8b76136ac0f0162d99cef65e2875060d9bc3efdbcd7fa66c10973ac0"
     },
     "main-run-inventory": {
@@ -119,7 +119,7 @@
         "api",
         "repos/Arcora-labs/arcora-perp/actions/runs?head_sha=76f658433882e5448c12c05c3f80bd7f3d78de39&per_page=100"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-inventory.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/main-run-inventory.json",
       "sha256": "c5c8667dc707e71e3d2072b1b22754107388a1a48a8dcddaa09d828b2b591535"
     },
     "ruleset-start": {
@@ -129,7 +129,7 @@
         "api",
         "repos/Arcora-labs/arcora-perp/rulesets/24812584"
       ],
-      "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/ruleset-start.json",
+      "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/baseline/ruleset-start.json",
       "sha256": "fc9f696a8d29d606db37b73a8999371cb5388ecc9fc5ca1298ac811f92359c21"
     }
   },

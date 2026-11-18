@@ -1,5 +1,5 @@
 warning: function `curl` is never used
-   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe.rs:125:4
+   --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe.rs:125:4
     |
 125 | fn curl() -> Command {
     |    ^^^^
@@ -7,7 +7,7 @@ warning: function `curl` is never used
     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
 warning: variants `Chunked` and `Close` are never constructed
-   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe.rs:135:24
+   --> /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe.rs:135:24
     |
 135 | enum Framing { Length, Chunked, Close }
     |      -------           ^^^^^^^  ^^^^^

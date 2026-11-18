@@ -1,4 +1,4 @@
-arcora-service-identity-harness v0.0.0 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service-identity-harness)
+arcora-service-identity-harness v0.0.0 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service-identity-harness)
 ├── axum v0.7.9
 │   ├── async-trait v0.1.89 (proc-macro)
 │   │   ├── proc-macro2 v1.0.106

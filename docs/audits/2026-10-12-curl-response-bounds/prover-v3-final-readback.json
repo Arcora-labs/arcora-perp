@@ -2,7 +2,7 @@
   "schema": "arcora-curl-bounds-prover-v3-final-readback/v1",
   "read_at": "2026-10-12T17:39:58.123378+00:00",
   "passed": true,
-  "receipt": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/receipt.json",
+  "receipt": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v3/receipt.json",
   "receipt_sha256": "18fca940d0a4ea24abff9a6eb2c020714f657ccfb890a681b9b374cd00c4527e",
   "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "stderr_sha256": "4b148e1df2d13435378939e6a0b9b960ca271c559984a66b68b65b9edfb52bd3",

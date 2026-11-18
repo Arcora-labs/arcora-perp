@@ -10,7 +10,7 @@ before = hashes()
 name = sys.argv[1] if len(sys.argv) > 1 else 'smoke'
 os.environ['PATH'] = str(root/'target/candidate-service-validation-20261012/prover/python-bin') + ':' + os.environ['PATH']
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
-command = ['/Users/huseyinarslan/.cargo/bin/cargo','+1.99.0','test','--locked','-p','gateway','public_identity','--','--nocapture']
+command = ['/Users/<dev>/.cargo/bin/cargo','+1.99.0','test','--locked','-p','gateway','public_identity','--','--nocapture']
 start = time.monotonic()
 with (out/(name+'.stdout.log')).open('xb') as stdout, (out/(name+'.stderr.log')).open('xb') as stderr:
     result = subprocess.run(command, stdout=stdout, stderr=stderr, timeout=600)

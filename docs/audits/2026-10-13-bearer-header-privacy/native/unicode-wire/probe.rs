@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 #[path="live-curl.rs"] mod curl_transport;
-mod client {#[path="/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/live-header.rs"] mod bearer_header;#[derive(Debug)]pub enum ProverClientError{Http(String),Unauthorized}
+mod client {#[path="/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/bearer-argv-validation-20261013/native/live-header.rs"] mod bearer_header;#[derive(Debug)]pub enum ProverClientError{Http(String),Unauthorized}
 const STATUS_SENTINEL: &str = "__DPHTTP_STATUS__";
 const MAX_PROVE_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer_header: Option<&str>) -> Vec<String> {

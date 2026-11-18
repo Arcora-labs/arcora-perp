@@ -1,6 +1,6 @@
 {
   "command": [
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-before/probe",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-before/probe",
     "--exact",
     "non2xx_prover_error_cannot_echo_peer_data",
     "--nocapture"

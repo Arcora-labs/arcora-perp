@@ -14,7 +14,7 @@
       "receipt_sha256": "d2c0b6273da1b3e38e4bdf7ad9d515e1e5936af17a5232eb49815f29d1ba4eb0",
       "exit_code": 101,
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",
@@ -46,7 +46,7 @@
       "receipt_sha256": "215ac64862a467812dc440ae8e32b11f77c7085c5a22711b3a46266453cda30b",
       "exit_code": 0,
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "test",
         "--locked",

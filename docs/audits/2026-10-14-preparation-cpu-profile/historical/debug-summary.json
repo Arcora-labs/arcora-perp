@@ -561,7 +561,7 @@
   "profile_basis": "Explicit caller-supplied actual build mode; not inferred from timings/stdout",
   "raw_log": {
     "bytes": 34533,
-    "path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/cpu-profile-validation-20261014/profile-and-correctness.stdout.log",
+    "path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/cpu-profile-validation-20261014/profile-and-correctness.stdout.log",
     "sha256": "ddb35b44fbd450e3aeed6eb719032e92349f0066285e95f06f0c4da9dcd8e57a"
   },
   "repetitions_per_sample": 10,

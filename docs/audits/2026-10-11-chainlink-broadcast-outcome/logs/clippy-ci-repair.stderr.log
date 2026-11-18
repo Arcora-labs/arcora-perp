@@ -111,7 +111,7 @@
     Checking tracing v0.1.44
     Checking bitflags v2.13.0
     Checking matchit v0.7.3
-    Checking e2e v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/e2e)
+    Checking e2e v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/e2e)
     Checking tower-http v0.5.2
    Compiling proc-macro-crate v3.5.0
    Compiling synstructure v0.13.2
@@ -174,16 +174,16 @@
     Checking icu_properties v2.2.0
     Checking icu_normalizer v2.2.0
     Checking k256 v0.13.4
-    Checking sealed-box v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
+    Checking sealed-box v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
     Checking chrono v0.4.45
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
+    Checking perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
    Compiling wasm-bindgen-macro v0.2.126
     Checking serde-human-bytes v0.1.3
     Checking postcard v1.1.3
     Checking x509-cert v0.2.5
     Checking scale-info v2.11.6
     Checking derive_more v2.1.1
-    Checking dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/vendor/dcap-qvl-webpki)
+    Checking dcap-qvl-webpki v0.103.4+dcap.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/vendor/dcap-qvl-webpki)
     Checking ppv-lite86 v0.2.21
     Checking idna_adapter v1.2.2
     Checking idna v1.1.0
@@ -204,21 +204,21 @@
     Checking js-sys v0.3.103
     Checking ureq v2.12.1
     Checking ctr v0.9.2
-    Checking matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
-    Checking prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover)
-    Checking note-archive v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
-    Checking chainlink-oracle-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle-host)
-    Checking committee v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/committee)
-    Checking sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
-    Checking bridge v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/bridge)
-    Checking oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
+    Checking matcher v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
+    Checking prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover)
+    Checking note-archive v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
+    Checking chainlink-oracle-host v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle-host)
+    Checking committee v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/committee)
+    Checking sequencer v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
+    Checking bridge v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/bridge)
+    Checking oracle-feed v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
     Checking tungstenite v0.24.0
-    Checking chainlink-streams-client-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
+    Checking chainlink-streams-client-host v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
     Checking eth-keystore v0.5.0
     Checking axum-core v0.4.5
-    Checking node v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/node)
-    Checking demo v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/demo)
-    Checking loadbot v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/loadbot)
+    Checking node v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/node)
+    Checking demo v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/demo)
+    Checking loadbot v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/loadbot)
     Checking hyper v1.10.1
     Checking tower v0.5.3
     Checking tokio-tungstenite v0.24.0
@@ -226,6 +226,6 @@
     Checking axum v0.7.9
     Checking wasm-bindgen-futures v0.4.76
     Checking dcap-qvl v0.5.2
-    Checking dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation)
-    Checking gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Checking dark-perp-attestation v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation)
+    Checking gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 5m 12s

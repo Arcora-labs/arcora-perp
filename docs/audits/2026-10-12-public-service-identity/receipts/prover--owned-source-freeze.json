@@ -1,7 +1,7 @@
 {
   "frozen_at": "2026-10-12T09:34:11.710672+00:00",
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
     "--edition",
     "2021",
     "--config",

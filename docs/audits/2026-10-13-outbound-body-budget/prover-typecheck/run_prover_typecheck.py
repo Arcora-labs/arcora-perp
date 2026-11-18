@@ -111,7 +111,7 @@ def run(args):
     before = snapshot(identity, args.expected_source_sha256)
     require(before["covered_source_files_sha256"] == freeze["source_files"]
             and before["covered_source_files"] == freeze["source_count"])
-    cargo = "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo"
+    cargo = "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo"
     tool_bin = Path(cargo).parent
     required = (Path(cargo), tool_bin / "rustc", CACHE / "cargo-home", CACHE / "cargo-target",
                 CACHE / "tools/protoc", CACHE / "tools/include",

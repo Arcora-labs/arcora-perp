@@ -2,7 +2,7 @@
   "schema": "arcora-service-identity-check-v1",
   "observed_utc": "2026-10-12T12:07:17.285703+00:00",
   "command": [
-    "/Users/huseyinarslan/.cargo/bin/cargo",
+    "/Users/<dev>/.cargo/bin/cargo",
     "+1.99.0",
     "fmt",
     "--all",

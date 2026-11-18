@@ -32,6 +32,6 @@ test candidate_preparation_tests::preparation_source_checkpoint_failures_keep_ol
 
 test result: ok. 28 passed; 0 failed; 1 ignored; 0 measured; 649 filtered out; finished in 39.02s
 
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.54s
      Running unittests src/main.rs (target/debug/deps/gateway-e2e0fc6b5916941a)

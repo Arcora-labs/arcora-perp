@@ -5,8 +5,8 @@ p=repair/('tee-check' if kind=='check' else 'tee-audit')
 if kind=='audit':p.mkdir(mode=0o700)
 sha=lambda q:hashlib.sha256(q.read_bytes()).hexdigest();freeze=root/'target/curl-bounds-validation-20261012/source-freeze-final.json';f=json.loads(freeze.read_text());public=lambda:{n:sha(root/n) for n in f['source_files']}
 current=public();assert current==f['source_files'];lock=root/'scripts/tee-capture/Cargo.lock';manifest=root/'scripts/tee-capture/Cargo.toml';before={'covered_source_files':len(current),'covered_source_sha256':f['source_sha256'],'source_files_sha256':current,'tee_lock_sha256':sha(lock),'tee_manifest_sha256':sha(manifest),'root_Cargo_lock_sha256':sha(root/'Cargo.lock'),'root_Cargo_toml_sha256':sha(root/'Cargo.toml')}
-actualbin=Path('/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin');cargo=actualbin/'cargo';rustc=actualbin/'rustc';home=repair/'tee-check/home';cache=repair/'tee-check/cargo-home'
-env={'HOME':str(home),'CARGO_HOME':str(cache),'PATH':str(actualbin)+':/Users/huseyinarslan/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin','RUSTC':str(rustc),'RUSTUP_TOOLCHAIN':'1.99.0','CARGO_BUILD_JOBS':'2','CARGO_TARGET_DIR':str(repair/'tee-check/cargo-target'),'PYTHONDONTWRITEBYTECODE':'1'}
+actualbin=Path('/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin');cargo=actualbin/'cargo';rustc=actualbin/'rustc';home=repair/'tee-check/home';cache=repair/'tee-check/cargo-home'
+env={'HOME':str(home),'CARGO_HOME':str(cache),'PATH':str(actualbin)+':/Users/<dev>/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin','RUSTC':str(rustc),'RUSTUP_TOOLCHAIN':'1.99.0','CARGO_BUILD_JOBS':'2','CARGO_TARGET_DIR':str(repair/'tee-check/cargo-target'),'PYTHONDONTWRITEBYTECODE':'1'}
 args=[str(cargo),'check','--locked','--manifest-path','scripts/tee-capture/Cargo.toml'] if kind=='check' else [str(cargo),'audit','--deny','unsound','--file','scripts/tee-capture/Cargo.lock','--json','--db',str(p/'advisory-db')]
 start=time.monotonic();started=datetime.datetime.now(datetime.timezone.utc).isoformat();timed=False
 with (p/'stdout.log').open('xb') as stdout,(p/'stderr.log').open('xb') as stderr:

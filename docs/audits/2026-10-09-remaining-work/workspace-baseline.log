@@ -101,7 +101,7 @@
    Compiling anyhow v1.0.103
    Compiling convert_case v0.10.0
    Compiling base64 v0.13.1
-   Compiling sealed-box v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/sealed-box)
+   Compiling sealed-box v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/sealed-box)
    Compiling const_format v0.2.36
    Compiling toml_parser v1.1.2+spec-1.1.0
    Compiling pem v3.0.6
@@ -122,7 +122,7 @@
    Compiling tower-layer v0.3.3
    Compiling futures-channel v0.3.32
    Compiling sha1 v0.10.6
-   Compiling e2e v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/e2e)
+   Compiling e2e v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/e2e)
    Compiling utf-8 v0.7.6
    Compiling proc-macro-crate v3.5.0
    Compiling atomic-waker v1.1.2
@@ -146,7 +146,7 @@
    Compiling http-body-util v0.1.3
    Compiling tower-http v0.5.2
    Compiling rustls-webpki v0.103.15
-   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/vendor/dcap-qvl-webpki)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/<dev>/Desktop/arcora-perp/repo/vendor/dcap-qvl-webpki)
    Compiling serde_derive v1.0.228
    Compiling der_derive v0.7.3
    Compiling zerofrom-derive v0.1.7
@@ -186,7 +186,7 @@
    Compiling k256 v0.13.4
    Compiling tokio-macros v2.7.0
    Compiling serde-human-bytes v0.1.3
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
+   Compiling perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/perp-core)
    Compiling idna_adapter v1.2.2
    Compiling idna v1.1.0
    Compiling derive_more v2.1.1
@@ -203,28 +203,28 @@
    Compiling async-trait v0.1.89
    Compiling serde_urlencoded v0.7.1
    Compiling uuid v0.8.2
-   Compiling matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/matcher)
-   Compiling oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/oracle-feed)
-   Compiling sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/sequencer)
-   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
-   Compiling note-archive v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/note-archive)
+   Compiling matcher v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/matcher)
+   Compiling oracle-feed v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/oracle-feed)
+   Compiling sequencer v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/sequencer)
+   Compiling prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/prover)
+   Compiling note-archive v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/note-archive)
    Compiling tungstenite v0.24.0
-   Compiling node v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/node)
-   Compiling committee v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/committee)
-   Compiling bridge v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/bridge)
+   Compiling node v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/node)
+   Compiling committee v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/committee)
+   Compiling bridge v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/bridge)
    Compiling axum-core v0.4.5
    Compiling eth-keystore v0.5.0
    Compiling hyper v1.10.1
    Compiling tower v0.5.3
    Compiling tokio-tungstenite v0.24.0
-   Compiling demo v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/demo)
-   Compiling loadbot v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/loadbot)
+   Compiling demo v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/demo)
+   Compiling loadbot v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/loadbot)
    Compiling hyper-util v0.1.20
    Compiling axum v0.7.9
    Compiling wasm-bindgen-futures v0.4.76
    Compiling dcap-qvl v0.5.2
-   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/attestation)
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/gateway)
+   Compiling dark-perp-attestation v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/attestation)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 33.94s
      Running unittests src/lib.rs (target/debug/deps/bridge-110c2394b353619a)
 

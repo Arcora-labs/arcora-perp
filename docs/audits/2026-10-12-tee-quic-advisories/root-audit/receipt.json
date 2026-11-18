@@ -1,14 +1,14 @@
 {
   "schema": "arcora-tee-quic-local-audit/v1",
   "command": [
-    "/Users/huseyinarslan/.cargo/bin/cargo-audit",
+    "/Users/<dev>/.cargo/bin/cargo-audit",
     "audit",
     "--deny",
     "unsound",
     "--file",
     "scripts/tee-capture/Cargo.lock",
     "--db",
-    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/root-audit/advisory-db",
+    "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/root-audit/advisory-db",
     "--json"
   ],
   "exit_code": 0,

@@ -1,7 +1,7 @@
-   Compiling demo v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/demo)
-   Compiling e2e v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/e2e)
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/gateway)
-   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+   Compiling demo v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/demo)
+   Compiling e2e v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/e2e)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/gateway)
+   Compiling prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/repo/crates/prover)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 11.36s
      Running unittests src/lib.rs (target/debug/deps/bridge-110c2394b353619a)
 

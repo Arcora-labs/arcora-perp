@@ -41,7 +41,7 @@
     Checking serde_urlencoded v0.7.1
     Checking axum-core v0.4.5
     Checking digest v0.10.7
-   Compiling arcora-service-identity-harness v0.0.0 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service-identity-harness)
+   Compiling arcora-service-identity-harness v0.0.0 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service-identity-harness)
     Checking hyper-util v0.1.20
     Checking tower v0.5.3
     Checking serde_path_to_error v0.1.20

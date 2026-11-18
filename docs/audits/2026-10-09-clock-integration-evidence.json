@@ -150,7 +150,7 @@
         "forge",
         "test",
         "--root",
-        "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009/contracts",
+        "/Users/<dev>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009/contracts",
         "-vv"
       ],
       "exit_code": 0,

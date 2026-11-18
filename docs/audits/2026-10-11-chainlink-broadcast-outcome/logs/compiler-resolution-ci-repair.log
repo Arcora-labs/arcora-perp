@@ -1,6 +1,6 @@
 Compiler identity read-only inspection
 Observed: 2026-10-11T21:16:36.700784+00:00
-CWD: /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011
+CWD: /Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011
 
 DWARF command: ["xcrun", "dwarfdump", "--debug-info", "target/debug/incremental/gateway-0lwz5v10e68di/s-hn4fagbffa-0tdhyva-3k4kt0tilqa07jusdmsd3fifl/8ndvilzu8jaxazcvrrsk2r7mn.o"]
 Exit: 0
@@ -44,9 +44,9 @@ rustfmt 1.9.0
 
 Command: ["rustup", "which", "--toolchain", "1.99.0", "rustc"]
 Exit: 0
-/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc
+/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc
 
-Command: ["/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc", "-Vv"]
+Command: ["/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc", "-Vv"]
 Exit: 0
 rustc 1.99.0 (b940084d7 2026-09-28)
 binary: rustc
@@ -58,17 +58,17 @@ LLVM version: 23.1.1
 
 Command: ["rustup", "which", "--toolchain", "1.99.0", "clippy-driver"]
 Exit: 0
-/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/clippy-driver
+/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/clippy-driver
 
-Command: ["/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/clippy-driver", "-V"]
+Command: ["/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/clippy-driver", "-V"]
 Exit: 0
 clippy 0.1.99 (b940084d7e 2026-09-28)
 
 Command: ["rustup", "which", "--toolchain", "1.99.0", "rustfmt"]
 Exit: 0
-/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt
+/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt
 
-Command: ["/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt", "--version"]
+Command: ["/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt", "--version"]
 Exit: 0
 rustfmt 1.10.0-stable (b940084d7e 2026-09-28)
 

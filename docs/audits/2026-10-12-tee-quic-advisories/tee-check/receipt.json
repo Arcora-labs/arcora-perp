@@ -1,22 +1,22 @@
 {
-  "cargo_binary": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+  "cargo_binary": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
   "command": [
-    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
     "check",
     "--locked",
     "--manifest-path",
     "scripts/tee-capture/Cargo.toml"
   ],
-  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
   "elapsed_seconds": 451.94000633400003,
   "environment_overrides": {
     "CARGO_BUILD_JOBS": "2",
-    "CARGO_HOME": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/tee-check/cargo-home",
-    "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/tee-check/cargo-target",
-    "HOME": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/tee-check/home",
-    "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/Users/huseyinarslan/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin",
+    "CARGO_HOME": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/tee-check/cargo-home",
+    "CARGO_TARGET_DIR": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/tee-check/cargo-target",
+    "HOME": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/dependency-repair/tee-check/home",
+    "PATH": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/Users/<dev>/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin",
     "PYTHONDONTWRITEBYTECODE": "1",
-    "RUSTC": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "RUSTC": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "RUSTUP_TOOLCHAIN": "1.99.0"
   },
   "environment_scope": "Explicit public build environment; own HOME/CARGO_HOME/target, reuse only public cachedregistry. No ambient Cargo configuration or credential files read. No capture.sh/bin/service/backend/proving executed.",
@@ -25,7 +25,7 @@
   "kind": "check",
   "production_release": "HOLD",
   "runner_sha256": "ed8d8bbb22ec4a8aa965335e8b1cad9302c6e1f23a7a8272053d5c3afeb501c6",
-  "rustc_binary": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+  "rustc_binary": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
   "schema": "arcora-curl-dependency-repair-validation/v1",
   "scope": "Actual excluded tee tool compilation only",
   "source_after": {

@@ -11,7 +11,7 @@
   },
   "actual_syntax_check": {
     "command": [
-      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+      "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
       "--check",
       "--edition",
       "2021",

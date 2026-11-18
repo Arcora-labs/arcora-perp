@@ -10,13 +10,13 @@
     "test_service_*.py",
     "-v"
   ],
-  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "cwd": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011",
   "elapsed_seconds": 0.34976870799437165,
   "environment_override": {
     "CARGO_BUILD_JOBS": "2",
-    "PATH": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/python-bin:/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0iEhaeB:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+    "PATH": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/outbound-body-validation-20261013/python-bin:/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/<dev>/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/<dev>/.codex/tmp/arg0/codex-arg0iEhaeB:/Users/<dev>/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/<dev>/.grok/bin:/Users/<dev>/.aztec/current/bin:/Users/<dev>/.aztec/bin:/Users/<dev>/.bb:/Users/<dev>/.antigravity/antigravity/bin:/Users/<dev>/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/<dev>/.local/bin:/Users/<dev>/.cargo/bin:/Users/<dev>/.foundry/bin:/Users/<dev>/.nargo/bin:/Users/<dev>/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
     "PYTHONDONTWRITEBYTECODE": "1",
-    "RUSTC": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "RUSTC": "/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
     "RUSTUP_TOOLCHAIN": "1.99.0",
     "RUST_TEST_THREADS": "2"
   },

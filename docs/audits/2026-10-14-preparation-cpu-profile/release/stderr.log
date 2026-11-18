@@ -93,7 +93,7 @@
    Compiling toml_parser v1.1.2+spec-1.1.0
    Compiling icu_collections v2.2.0
    Compiling icu_provider v2.2.0
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
+   Compiling perp-core v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
    Compiling toml_datetime v1.1.1+spec-1.1.0
    Compiling unicode-xid v0.2.6
    Compiling memchr v2.8.2
@@ -186,7 +186,7 @@
    Compiling wasm-bindgen-futures v0.4.76
    Compiling chrono v0.4.45
    Compiling pem v3.0.6
-   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/vendor/dcap-qvl-webpki)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/vendor/dcap-qvl-webpki)
    Compiling salsa20 v0.10.2
    Compiling x509-cert v0.2.5
    Compiling hkdf v0.12.4
@@ -200,21 +200,21 @@
    Compiling dcap-qvl v0.5.2
    Compiling serde_urlencoded v0.7.1
    Compiling scrypt v0.10.0
-   Compiling sealed-box v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
+   Compiling sealed-box v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
    Compiling hyper-util v0.1.20
    Compiling tokio-tungstenite v0.24.0
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
 warning: stripping debug info with `rust-objcopy` failed: signal: 6 (SIGABRT)
   |
   = note: dyld[67402]: Library not loaded: @rpath/libLLVM.dylib
-            Referenced from: <D6B3C499-A2AF-3E42-8F77-C42BD658AAB5> /Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/rust-objcopy
-            Reason: tried: '/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/release/deps/libLLVM.dylib' (no such file), '/Users/huseyinarslan/lib/libLLVM.dylib' (no such file), '/usr/local/lib/libLLVM.dylib' (no such file), '/usr/lib/libLLVM.dylib' (no such file, not in dyld cache)
+            Referenced from: <D6B3C499-A2AF-3E42-8F77-C42BD658AAB5> /Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/rust-objcopy
+            Reason: tried: '/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/release/deps/libLLVM.dylib' (no such file), '/Users/<dev>/lib/libLLVM.dylib' (no such file), '/usr/local/lib/libLLVM.dylib' (no such file), '/usr/lib/libLLVM.dylib' (no such file, not in dyld cache)
           
 
 warning: `gateway` (build script) generated 1 warning
    Compiling tower v0.5.3
-   Compiling chainlink-oracle-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle-host)
-   Compiling matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
+   Compiling chainlink-oracle-host v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle-host)
+   Compiling matcher v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
    Compiling ctr v0.9.2
    Compiling aes v0.8.4
    Compiling uuid v0.8.2
@@ -223,18 +223,18 @@ warning: `gateway` (build script) generated 1 warning
    Compiling bitflags v2.13.0
    Compiling tower-http v0.5.2
    Compiling axum v0.7.9
-   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation)
+   Compiling dark-perp-attestation v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation)
    Compiling eth-keystore v0.5.0
-   Compiling sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
-   Compiling chainlink-streams-client-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
-   Compiling note-archive v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
-   Compiling oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
-   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover)
+   Compiling sequencer v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
+   Compiling chainlink-streams-client-host v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
+   Compiling note-archive v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
+   Compiling oracle-feed v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
+   Compiling prover v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover)
 warning: stripping debug info with `rust-objcopy` failed: signal: 6 (SIGABRT)
   |
   = note: dyld[67581]: Library not loaded: @rpath/libLLVM.dylib
-            Referenced from: <D6B3C499-A2AF-3E42-8F77-C42BD658AAB5> /Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/rust-objcopy
-            Reason: tried: '/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/release/deps/libLLVM.dylib' (no such file), '/Users/huseyinarslan/lib/libLLVM.dylib' (no such file), '/usr/local/lib/libLLVM.dylib' (no such file), '/usr/lib/libLLVM.dylib' (no such file, not in dyld cache)
+            Referenced from: <D6B3C499-A2AF-3E42-8F77-C42BD658AAB5> /Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/rust-objcopy
+            Reason: tried: '/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/<dev>/.rustup/toolchains/1.99.0-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/release/deps/libLLVM.dylib' (no such file), '/Users/<dev>/lib/libLLVM.dylib' (no such file), '/usr/local/lib/libLLVM.dylib' (no such file), '/usr/lib/libLLVM.dylib' (no such file, not in dyld cache)
           
 
 warning: `gateway` (bin "gateway" test) generated 1 warning

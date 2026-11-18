@@ -50,7 +50,7 @@
    Compiling serde_urlencoded v0.7.1
    Compiling digest v0.10.7
    Compiling hyper-util v0.1.20
-   Compiling arcora-service-identity-harness v0.0.0 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service-identity-harness)
+   Compiling arcora-service-identity-harness v0.0.0 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/service-identity-harness)
    Compiling tower v0.5.3
    Compiling serde_path_to_error v0.1.20
    Compiling cpufeatures v0.2.17

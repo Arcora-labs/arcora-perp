@@ -505,7 +505,7 @@
     "corrected_by": "root after independent reviewer finding",
     "reason": "Correct Deposit + Fill prose label to actual Deposit + signed withdrawal; specify controlled gateway unit-test fixture rather than a live service",
     "source_and_test_evidence_changed": false,
-    "supersedes_path": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/independent/test-ci-acceptance-inventory.json",
+    "supersedes_path": "/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/target/plaintext-preflight-validation-20261014/independent/test-ci-acceptance-inventory.json",
     "supersedes_sha256": "6266fb2ad03b098f05175307c22f1d6649cd4a8bfacbda7fd9884fbbc85835cf"
   },
   "unchanged_ci_commands": {

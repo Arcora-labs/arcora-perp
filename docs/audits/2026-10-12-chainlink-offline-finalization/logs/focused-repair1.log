@@ -21,6 +21,6 @@ test candidate_handoff_tests::handoff_source_binding_and_lock_changes_at_every_c
 
 test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 678 filtered out; finished in 107.92s
 
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+   Compiling gateway v0.0.1 (/Users/<dev>/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 4.07s
      Running unittests src/main.rs (target/debug/deps/gateway-e2e0fc6b5916941a)

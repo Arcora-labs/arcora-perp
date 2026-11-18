@@ -145,7 +145,7 @@
     },
     "gateway-build-after": {
       "command": [
-        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "/Users/<dev>/.cargo/bin/cargo",
         "+1.99.0",
         "check",
         "--locked",
